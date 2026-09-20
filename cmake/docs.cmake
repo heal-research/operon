@@ -56,6 +56,7 @@ add_custom_target(doxygen-xml DEPENDS "${doxygen_xml_index}")
 set(sphinx_html_index "${SPHINX_HTML_OUTPUT_DIRECTORY}/index.html")
 add_custom_command(
     OUTPUT "${sphinx_html_index}"
+    COMMAND "${CMAKE_COMMAND}" -E remove_directory "${DOXYGEN_OUTPUT_DIRECTORY}/doctrees"
     COMMAND "${CMAKE_COMMAND}" -E remove_directory "${SPHINX_HTML_OUTPUT_DIRECTORY}"
     COMMAND "${CMAKE_COMMAND}" -E env
         "OPERON_DOXYGEN_XML_DIR=${DOXYGEN_XML_OUTPUT_DIRECTORY}"

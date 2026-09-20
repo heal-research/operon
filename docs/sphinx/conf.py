@@ -11,6 +11,7 @@ extensions = [
     "breathe",
     "myst_parser",
     "sphinxcontrib.mermaid",
+    "sphinx.ext.graphviz",
 ]
 
 myst_enable_extensions = ["colon_fence"]

@@ -3,12 +3,14 @@
 PROJECT_NAME = "@PROJECT_NAME@"
 PROJECT_NUMBER = "@PROJECT_VERSION@"
 
-INPUT = "@PROJECT_SOURCE_DIR@/include"
+INPUT = "@PROJECT_SOURCE_DIR@/include" "@PROJECT_SOURCE_DIR@/docs/pages"
 RECURSIVE = YES
 EXTRACT_ALL = YES
 EXTRACT_PRIVATE = NO
 EXCLUDE_PATTERNS = */ceres/* */detail/* */backend/eigen/* */backend/eve/* \
                    */backend/mad_eve/* */backend/plain/*
+HAVE_DOT = YES
+DOT_IMAGE_FORMAT = svg
 
 OUTPUT_DIRECTORY = "@DOXYGEN_OUTPUT_DIRECTORY@"
 GENERATE_XML = YES

@@ -8,7 +8,15 @@ extracted from the library's Doxygen comments.
 :hidden:
 :maxdepth: 2
 
-Guides <guides/overview>
+Quick overview <guides/overview>
+Architecture overview <guides/system-overview>
+Core model <guides/core-model>
+Execution <guides/execution>
+Evaluation <guides/evaluation>
+Shape constraints <guides/shape-constraints>
+Search and optimization <guides/search-optimization>
+Grammar enumeration <guides/grammar-enumeration>
+Architecture integration <guides/architecture-integration>
 C++ API <reference/index>
 ```
 
