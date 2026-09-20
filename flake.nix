@@ -171,9 +171,11 @@
               operon.nativeBuildInputs
               ++ (with pkgs; [
                 clang-tools
+                doxygen
                 cppcheck
                 include-what-you-use
                 cmake-language-server
+                (python3.withPackages (ps: [ ps.jinja2 ps.pygments ]))
               ]);
 
             buildInputs =

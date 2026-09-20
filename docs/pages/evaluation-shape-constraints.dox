@@ -1,0 +1,166 @@
+/**
+ * @page evaluation_shape_constraints Evaluation and shape constraints
+ *
+ * This page is the contract for Operon's two-phase evaluator path and for
+ * shape-constraint enforcement. It is intentionally specific: the evaluator
+ * interface is a hot path, and a change that adds an extra forward pass or
+ * bypasses the @c EvaluatedBuffer proof changes both cost and correctness.
+ *
+ * @section evaluation_entrypoints Entrypoints and phase contract
+ *
+ * @c EvaluatorBase::operator()(rng, individual, scratch) is the only composed
+ * three-argument entrypoint. It is @c final and always calls @c Evaluate before
+ * @c Score. The two-argument facade owns a training-range-sized scratch buffer
+ * and forwards to that entrypoint.
+ *
+ * @dot
+ * digraph evaluator_phases {
+ *   rankdir=LR;
+ *   node [shape=box, style="rounded"];
+ *   caller [label="caller"];
+ *   evaluate [label="EvaluatorBase::Evaluate(ind, scratch)"];
+ *   proof [label="optional<EvaluatedBuffer>"];
+ *   score [label="EvaluatorBase::Score(context, proof)"];
+ *   error [label="ErrMax"];
+ *   fitness [label="fitness vector"];
+ *   caller -> evaluate;
+ *   evaluate -> error [label="unexpected InterpreterError"];
+ *   evaluate -> proof [label="success"];
+ *   proof -> score;
+ *   score -> fitness;
+ * }
+ * @enddot
+ *
+ * @c Evaluate has three outcomes:
+ *
+ * - @c tl::unexpected<InterpreterError> means evaluation failed. The composed
+ *   entrypoint increments @c CallCount and returns @c ErrMax.
+ * - An empty @c std::optional means this evaluator has no value buffer to pass
+ *   to @c Score, or a wrapper rejected the individual without an interpreter
+ *   failure.
+ * - A present @c EvaluatedBuffer proves that this exact @c Individual was
+ *   evaluated into the supplied scratch prefix.
+ *
+ * @c EvaluatedBuffer is move-only and can be minted only by
+ * @c EvaluatorBase::MarkEvaluated. A value-based @c Score implementation must
+ * read it with @c Values(individual, scratch); this verifies both identities
+ * before exposing the values. @c ScoreContext carries the RNG, individual, and
+ * scratch span for the duration of that call. It must not be stored.
+ *
+ * Every @c Score override increments its own @c CallCount exactly once. Counter
+ * meaning is therefore phase-specific: @c ResidualEvaluations counts forward
+ * work performed by a concrete evaluator, while @c CallCount counts completed
+ * score-phase attempts plus the base fallback for an @c Evaluate error.
+ *
+ * @section shape_roles Shape-constraint roles
+ *
+ * @c ShapeConstrainedEvaluator wraps an @c EvaluatorBase. It hard-rejects a
+ * tree that cannot be certified over the configured domain and otherwise
+ * delegates scoring to the wrapped evaluator. @c ShapeViolationEvaluator is a
+ * separate one-objective evaluator: it measures violation and does not wrap a
+ * score evaluator.
+ *
+ * A @c ShapeConstraintMeasurement records whether a bound was certified, its
+ * finite interval when available, and its violation. A
+ * @c ShapeConstraintMeasurementSummary is feasible only when every constraint
+ * is certified with zero violation.
+ *
+ * @section shape_hard_reject Hard-reject flow
+ *
+ * @dot
+ * digraph shape_hard_reject {
+ *   rankdir=LR;
+ *   node [shape=box, style="rounded"];
+ *   call [label="EvaluatorBase::operator()"];
+ *   gate_eval [label="ShapeConstrainedEvaluator::Evaluate"];
+ *   inner_eval [label="wrapped Evaluate\n(one forward pass)"];
+ *   certify [label="FeasibleFromValues\n(cache miss: fit scaling from values)"];
+ *   gate_score [label="ShapeConstrainedEvaluator::Score"];
+ *   inner_score [label="wrapped Score"];
+ *   reject [label="WorstValue\nviolations_++"];
+ *   error [label="ErrMax"];
+ *   call -> gate_eval;
+ *   gate_eval -> inner_eval;
+ *   inner_eval -> error [label="InterpreterError"];
+ *   inner_eval -> certify [label="EvaluatedBuffer"];
+ *   certify -> gate_score [label="feasible"];
+ *   certify -> gate_score [label="infeasible: empty optional"];
+ *   gate_score -> inner_score [label="cache says feasible"];
+ *   gate_score -> reject [label="cache says infeasible"];
+ * }
+ * @enddot
+ *
+ * The wrapper always invokes its wrapped evaluator's @c Evaluate first. If that
+ * evaluator supplied an @c EvaluatedBuffer, @c FeasibleFromValues computes the
+ * linear-scaling fit from its existing values and then measures constraints; it
+ * does not run another interpreter pass. If the wrapped evaluator is not
+ * value-based, the wrapper falls back to tree-based @c Feasible.
+ *
+ * Infeasibility returns an empty proof from the wrapper's @c Evaluate. The base
+ * entrypoint still calls the wrapper's @c Score. That score phase increments the
+ * gate's @c CallCount, observes the warm feasibility cache, increments
+ * @c violations_, returns a @c WorstValue vector, and does not call the wrapped
+ * evaluator's @c Score. The wrapped evaluator's forward-pass counters can still
+ * grow by one; hard rejection skips scoring, not the shared forward pass.
+ *
+ * @section shape_bounds Bound construction and enforcement
+ *
+ * Shape constraints are evaluated over a domain box, not sampled points. For an
+ * identity constraint, the original tree is bounded. For a derivative
+ * constraint, @c BuildVariableGradientDag constructs the derivative DAG before
+ * it is bounded. The per-constraint raw bound is transformed by the fitted
+ * linear scaling when scaling is enabled, then checked against the requested
+ * sign or interval. An unavailable or non-finite bound is uncertified and
+ * contributes @c UnknownViolation.
+ *
+ * @c ShapeBoundMode selects the enclosure backend:
+ *
+ * - @c Interval is the default. It uses interval arithmetic only and shares one
+ *   @c IntervalEvaluator across a constraint set.
+ * - @c Combined intersects affine and interval results.
+ * - @c Affine isolates affine arithmetic for published ablation compatibility.
+ * - @c Bisected adds interval-domain subdivision and requires @c Interval.
+ *
+ * @c MeasureConstraints builds one first-derivative DAG lazily when needed and
+ * shares it across all derivative constraints. It shares one interval or affine
+ * evaluator across that constraint set. This is the boundary where bound-mode
+ * cost belongs; it must remain separate from the ordinary interpreter forward
+ * pass used for fitness.
+ *
+ * @section shape_cache Cache lifecycle and limits
+ *
+ * @c ShapeConstrainedEvaluator caches a
+ * @c ShapeConstraintMeasurementSummary by a coefficient-aware tree hash and
+ * @c ShapeBoundMode. @c Feasible and @c FeasibleFromValues use the same cache,
+ * so the score phase normally observes the entry created during its preceding
+ * evaluate phase. @c Prepare delegates to the wrapped evaluator and clears the
+ * feasibility cache. @c SetBoundOptions also clears it because options are not
+ * part of the memoization key.
+ *
+ * The cache is an execution aid, not a source of semantic state. Never extend
+ * its lifetime across generations without a documented capacity or eviction
+ * policy. Coefficient-aware keys prevent stale answers after coefficient
+ * changes; they do not bound memory for a stream of distinct trees.
+ *
+ * @section shape_design_boundaries Design boundaries
+ *
+ * - Linear scaling is part of the certified model when it is enabled for the
+ *   problem. A fast path that certifies only the raw tree is a different
+ *   semantic mode, not a transparent optimization.
+ * - Hard rejection is a gate around scoring. It preserves the forward-pass
+ *   result needed for certification and only suppresses the wrapped score.
+ * - @c Feasible is a public standalone query. A direct @c Score call must still
+ *   re-check it, because that caller may have skipped @c Evaluate.
+ * - Constraint certification is pessimistic: an unprovable bound is not
+ *   accepted as feasible.
+ *
+ * @section shape_api API reference starting points
+ *
+ * - @c EvaluatorBase, @c EvaluatedBuffer, and @c ScoreContext in
+ *   @c include/operon/operators/evaluator.hpp.
+ * - @c ShapeConstrainedEvaluator, @c ShapeViolationEvaluator,
+ *   @c ShapeConstraintPolicy, @c ShapeBoundMode, and @c ShapeBoundOptions in
+ *   @c include/operon/operators/shape_constrained_evaluator.hpp.
+ * - Bound execution and enforcement in
+ *   @c source/operators/shape_constrained_evaluator.cpp.
+ */

@@ -1,0 +1,85 @@
+/**
+ * @page architecture Operon architecture
+ *
+ * Operon has a narrow execution spine: a dataset and problem define a symbolic
+ * regression task; algorithms evolve trees; evaluators score those trees; and
+ * selection/reinsertion feed the resulting individuals back into the search.
+ * This page is the map for the system-level documentation. It describes
+ * responsibilities and boundaries, not every public symbol.
+ *
+ * @section architecture-map System map
+ *
+ * @dot
+ * digraph operon_architecture {
+ *   rankdir=LR;
+ *   graph [pad=0.2, nodesep=0.5, ranksep=0.8];
+ *   node [shape=box, style="rounded"];
+ *   "Dataset / Problem" -> "Tree / Node / PrimitiveSet";
+ *   "Parser / Formatter" -> "Tree / Node / PrimitiveSet";
+ *   "Tree / Node / PrimitiveSet" -> "Interpreter / JIT";
+ *   "Tree / Node / PrimitiveSet" -> "Interval / Affine bounds";
+ *   "Interpreter / JIT" -> "Evaluators";
+ *   "Interval / Affine bounds" -> "Shape constraints";
+ *   "Evaluators" -> "Shape constraints";
+ *   "Evaluators" -> "GP / NSGA-II";
+ *   "Shape constraints" -> "GP / NSGA-II";
+ *   "GP / NSGA-II" -> "Creators / generators / mutation / crossover";
+ *   "GP / NSGA-II" -> "Selection / reinsertion / archive";
+ *   "Optimizers" -> "Evaluators";
+ *   "Algorithms / evaluators" -> "CLI / probes / serialization";
+ * }
+ * @enddot
+ *
+ * @section architecture-systems System documentation sequence
+ *
+ * - @ref architecture_core — tree representation, dataset, problem, primitive
+ *   registry, hashing, and ownership invariants.
+ * - @ref architecture_execution — parser, dispatch, interpreter, JIT, automatic
+ *   differentiation, interval/affine evaluation, and range tightening.
+ * - @ref evaluation_shape_constraints — evaluator phases, scoring, shape
+ *   certification, enforcement, cache lifetime, and the hard-reject path.
+ * - @ref architecture_search — GP/NSGA-II generation flow, variation, selection,
+ *   reinsertion, non-dominated sorting, archive, and evaluation budgets.
+ * - @ref architecture_optimization — linear scaling, local search, likelihood
+ *   objectives, and solver boundaries.
+ * - @ref architecture_integration — CLI configuration, probes, formatting,
+ *   serialization, custom primitives/evaluators, and Python bindings.
+ *
+ * Each system page must state its public entry points, owned and borrowed state,
+ * invariants, failure model, hot-path cost, and the diagrams that explain control
+ * or data flow. API reference belongs in Doxygen comments beside the symbols;
+ * these pages explain how the APIs compose.
+ *
+ * @section architecture-core Core model
+ *
+ * @anchor architecture_core
+ * To document next: @c Dataset, @c Problem, @c Tree, @c Node, @c PrimitiveSet,
+ * subtree rules, coefficient ownership, structural versus coefficient-aware
+ * hashes, and the invariants operators preserve.
+ *
+ * @section architecture-execution Execution and symbolic semantics
+ *
+ * @anchor architecture_execution
+ * To document next: infix parsing, dispatch tables, scalar/SIMD interpreter
+ * evaluation, JIT fallback, derivative DAG construction, interval/affine
+ * semantics, and range tightening.
+ *
+ * @section architecture-search Evolutionary search
+ *
+ * @anchor architecture_search
+ * To document next: population lifecycle, offspring generation, local search,
+ * evaluation budgets, GP, NSGA-II, archive updates, selectors, and reinserters.
+ *
+ * @section architecture-optimization Coefficient optimization
+ *
+ * @anchor architecture_optimization
+ * To document next: linear scaling, optimizer callbacks, likelihood evaluators,
+ * solver error boundaries, and the relation between optimized coefficients and
+ * an @c Individual genotype.
+ *
+ * @section architecture-integration Integration surface
+ *
+ * @anchor architecture_integration
+ * To document next: command-line configuration, shape-constraint JSON,
+ * serialization/formatting, probes, custom registries, and pyoperon-facing API.
+ */
