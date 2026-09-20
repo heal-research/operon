@@ -35,10 +35,18 @@
  * timing, stop request, and evaluator counters.
  *
  * `OffspringGeneratorBase` owns no model state. It chooses two parents, applies
- * crossover and mutation probabilistically, optionally runs a
- * `CoefficientOptimizer`, then calls `ScoreIndividual`. Its optional Zobrist
- * cache stores objective vectors by the configured tree hash; cache use is only
- * sound when that hash captures every result-affecting part of the candidate.
+ * crossover and mutation probabilistically, then optionally runs a
+ * `CoefficientOptimizer` before `ScoreIndividual`. Its optional Zobrist cache
+ * maps a structural hash—not current coefficient values—to a fitness vector.
+ * A cache miss is scored and inserted whether or not the `pLocal` trial ran.
+ * Therefore, with `pLocal < 1`, the first encounter of a structure determines
+ * the score later equivalent structures reuse until cache expiry or `Clear()`.
+ * Enable this cache only when that structural-fitness policy is intended.
+ *
+ * `cache-max-age` is a lazy staleness limit, not a capacity limit: an old entry
+ * is removed only when its hash is revisited. `0` disables expiry. Long-lived
+ * embedding callers must call `Zobrist::Clear()` at their chosen run boundary
+ * if they need to reclaim the table.
  *
  * `ReinserterBase` enforces elitism before each concrete combine strategy. The
  * protected prefix is ordered by the supplied comparison, so GP and NSGA-II

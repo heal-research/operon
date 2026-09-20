@@ -74,11 +74,13 @@ public:
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Position-aware Zobrist hash for GP trees, plus a transposition table that
-// caches fitness vectors keyed by structural hash.  The hash captures tree
+// caches fitness vectors keyed by structural hash. The hash captures tree
 // topology, variable identity, and the Optimize flag of each node, but not
-// coefficient values — by design, so that a cached fitness (computed after
-// local search) can be reused for any structurally identical tree with the
-// same set of trainable parameters, regardless of current coefficient values.
+// coefficient values: it defines the cache identity as a structure with a
+// given trainable-parameter layout, rather than a particular initialization.
+// The first cache miss is inserted after scoring, whether probabilistic local
+// search ran or not. With pLocal < 1, that first outcome therefore determines
+// the cached score for later equivalent structures until expiry or Clear().
 //
 // The Optimize flag is included because it determines the number and layout
 // of trainable coefficients; two trees that differ only in which nodes are
@@ -120,9 +122,9 @@ class OPERON_EXPORT Zobrist {
     mutable std::atomic<std::uint32_t> clock_{0};
 
     // 0 disables age-based expiry (default, today's unbounded behavior).
-    // Otherwise, an entry older than maxAge_ generations is treated as a
-    // miss by TryGet and removed - see TryGet's implementation for why this
-    // is a pragmatic freshness/evolvability mitigation, not a memory bound.
+    // Otherwise, a revisited entry older than maxAge_ generations is treated
+    // as a miss and removed. Entries that are never revisited remain stored,
+    // so this is a freshness/evolvability control, not a memory bound.
     std::size_t maxAge_{0};
 
 public:
