@@ -35,4 +35,19 @@ html_theme_options = {
 }
 html_static_path = ["_static"]
 html_css_files = ["operon.css"]
+html_js_files = ["diagram-size.js"]
 mermaid_output_format = "raw"
+mermaid_init_js = """
+mermaid.initialize({
+  startOnLoad: true,
+  flowchart: {
+    useMaxWidth: false,
+    nodeSpacing: 24,
+    rankSpacing: 32,
+    padding: 10
+  },
+  themeVariables: {
+    fontSize: "13px"
+  }
+});
+"""
