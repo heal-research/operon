@@ -1,0 +1,90 @@
+/**
+ * @page grammar_enumeration Grammar enumeration
+ *
+ * @c operon_enum is Operon's exhaustive symbolic-regression entry point. Unlike
+ * GP and NSGA-II, it has no population, generations, variation, selection, or
+ * reinsertion. It constructs every distinct expression reachable from a
+ * restricted @c Grammar up to a structural-complexity limit, fits each novel
+ * complete expression, scores it with the selected evaluator, and retains the
+ * best results.
+ *
+ * @section enumeration-flow Construction and ranking
+ *
+ * @dot
+ * digraph enumeration_flow {
+ *   rankdir=LR;
+ *   graph [bgcolor="transparent", pad=0.25, nodesep=0.45, ranksep=0.7, size="10.5,2"];
+ *   node [fontname="Helvetica", fontsize=10];
+ *   edge [fontname="Helvetica", fontsize=9, color="#4a5568", fontcolor="#4a5568", arrowsize=0.7];
+ *   start [shape=circle, label="", width=0.18];
+ *   grammar [shape=box, style="rounded", label="Grammar and input\nvariables"];
+ *   build [shape=box, style="rounded", label="Build DP buckets\nby complexity"];
+ *   novel [shape=diamond, label="Novel complete\nexpression?"];
+ *   fit [shape=box, style="rounded", label="Fit coefficients"];
+ *   score [shape=box, style="rounded", label="Score with evaluator"];
+ *   topk [shape=box, style="rounded", label="Keep best TopK"];
+ *   next [shape=box, style="rounded", label="Next budget"];
+ *   finish [shape=doublecircle, label="", width=0.18];
+ *   start -> grammar -> build -> novel;
+ *   novel -> fit [label="yes"];
+ *   novel -> next [label="duplicate"];
+ *   fit -> score -> topk -> next;
+ *   next -> build [label="within limit"];
+ *   next -> finish [label="done"];
+ * }
+ * @enddot
+ *
+ * The engine processes budgets from 1 through @c MaxComplexity. Complexity is
+ * the count of every non-Constant node: variables and operators count, while
+ * free coefficient and bias leaves do not. At every nonterminal and budget it
+ * canonicalizes candidates with @c Reduce and @c Simplify, then deduplicates by
+ * content hash. A complete @c Expression is fitted and scored only when its
+ * canonical form is first inserted; intermediate grammar categories are never
+ * models by themselves.
+ *
+ * @section enumeration-language Restricted language
+ *
+ * @c Grammar is a separate vocabulary from @c PrimitiveSet. It generates a
+ * weighted sum of products of recurring factors. A factor is an input variable
+ * or one enabled unary wrap around a shallow sub-expression. The current unary
+ * wraps are @c Log, @c Exp, @c Sin, @c Sqrt, and @c Cbrt when enabled by the
+ * problem's primitive-set configuration.
+ *
+ * This is deliberately not the full primitive set. The grammar does not
+ * generate @c Sub, @c Div, @c Pow, @c Cos, @c Square, @c Aq, @c Tan, or
+ * @c Tanh. In particular, enabling a primitive makes it available to normal
+ * tree generation and execution, but does not necessarily make it reachable by
+ * enumeration. Unary arguments use a non-recursive sub-grammar, so expressions
+ * such as @c log(sin(x)) are excluded.
+ *
+ * @section enumeration-fitting Fitting and objective
+ *
+ * Each novel complete expression is fitted with a Levenberg-Marquardt
+ * @c CoefficientOptimizer before it is ranked. The optimizer uses execution
+ * residuals and Jacobians; the evaluator independently applies the requested
+ * @c --objective and determines the reported fitness. @c operon_enum uses 50
+ * fitting iterations when @c --iterations is zero, because an unfit weighted
+ * expression is not a meaningful enumeration result.
+ *
+ * @section enumeration-cli CLI contract
+ *
+ * @c operon_enum accepts the dataset, target, train/test ranges, input columns,
+ * primitive enable/disable flags, objective, linear-scaling and non-finite
+ * policy, seed, @c --iterations, @c --max-complexity, and @c --top-k. It
+ * reports progress after each completed complexity budget and prints the best
+ * models as fitness plus round-trippable infix expressions.
+ *
+ * The shared CLI parser also displays many GP-specific options. Those options
+ * are inert for @c operon_enum; enumeration has no population or variation
+ * controls. @c --top-k must be at least one. The algorithm is single-shot:
+ * construct a new @c GrammarEnumerationAlgorithm for a new run rather than
+ * reusing one whose buckets have already been built.
+ *
+ * @section enumeration-api Library API
+ *
+ * Library callers construct @c Grammar from a primitive configuration and input
+ * hashes, then pass it with @c EnumerationConfig, an optimizer, an evaluator,
+ * and an RNG to @c GrammarEnumerationAlgorithm. @c Run accepts a callback once
+ * each budget is complete; returning true requests an early stop. @c BestTrees
+ * exposes the ascending-fitness result set capped by @c TopK.
+ */

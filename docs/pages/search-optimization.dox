@@ -79,11 +79,6 @@
  * fitness cache. Shape feasibility and JIT compilation keep separate caches in
  * their own subsystems, so a cache hit in one does not imply a hit in another.
  *
- * @section search-enumeration Grammar enumeration
- *
- * @c operon_enum enumerates expressions from @c Grammar, optionally fits their
- * coefficients, then ranks them through the evaluator. It shares the evaluation
- * and execution contracts but does not own a population lifecycle.
  *
  * `ReinserterBase` enforces elitism before each concrete combine strategy. The
  * protected prefix is ordered by the supplied comparison, so GP and NSGA-II

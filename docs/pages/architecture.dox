@@ -44,8 +44,10 @@
  *   bounds.
  * - @subpage evaluation — the @c Evaluate then @c Score objective contract.
  * - @subpage shape_constraints — optional static certification and enforcement.
- * - @subpage search_optimization — search orchestration, local fitting,
- *   parallelism, and caches.
+ * - @subpage search_optimization — population-based search orchestration,
+ *   local fitting, parallelism, and caches.
+ * - @subpage grammar_enumeration — exhaustive grammar construction, fitting,
+ *   and ranking without a population lifecycle.
  * - @subpage architecture_integration — CLI construction, serialization,
  *   reporting, and extension points.
  *
