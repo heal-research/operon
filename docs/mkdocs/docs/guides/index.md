@@ -1,6 +1,6 @@
 # Guides
 
-Use these pages as a map of the library boundaries. Each diagram is a fixed-size SVG compiled from D2 source, so it has a stable layout in every browser and at every viewport width.
+Use these pages as a map of the library boundaries. Each diagram is a fixed-size SVG compiled from Graphviz DOT source, so it has a stable layout in every browser and at every viewport width.
 
 - [Architecture overview](overview.md)
 - [System overview](system-overview.md)

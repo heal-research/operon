@@ -1,22 +1,17 @@
-<picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./rtd/_static/logo_mini_dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="./rtd/_static/logo_mini_light.png">
-    <img src="./rtd/_static/logo_mini.png" height="80px" />
-</picture>
-
-<br/>
-
 # Modern C++ framework for Symbolic Regression
+
+
+
 
 [![License](https://img.shields.io/github/license/heal-research/operon?style=flat)](https://github.com/heal-research/operon/blob/master/LICENSE)
 [![build-linux](https://github.com/heal-research/operon/actions/workflows/build-linux.yml/badge.svg)](https://github.com/heal-research/operon/actions/workflows/build-linux.yml)
 [![build-macos](https://github.com/heal-research/operon/actions/workflows/build-macos.yml/badge.svg)](https://github.com/heal-research/operon/actions/workflows/build-macos.yml)
 [![build-windows](https://github.com/heal-research/operon/actions/workflows/build-windows.yml/badge.svg)](https://github.com/heal-research/operon/actions/workflows/build-windows.yml)
-[![Documentation Status](https://readthedocs.org/projects/operongp/badge/?version=latest)](https://operongp.readthedocs.io/en/latest/?badge=latest)
+[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-2ea44f)](https://heal-research.github.io/operon/)
 [![Matrix Channel](https://img.shields.io/matrix/operon%3Amatrix.org)](https://matrix.to/#/#operon:matrix.org)
 
 *Operon* is a modern C++ framework for [symbolic regression](https://en.wikipedia.org/wiki/Symbolic_regression) that uses [genetic programming](https://en.wikipedia.org/wiki/Genetic_programming) to explore a hypothesis space of possible mathematical expressions in order to find the best-fitting model for a given [regression target](https://en.wikipedia.org/wiki/Regression_analysis).
-Its main purpose is to help develop accurate and interpretable white-box models in the area of [system identification](https://en.wikipedia.org/wiki/System_identification). More in-depth documentation available at https://operongp.readthedocs.io/.
+Its main purpose is to help develop accurate and interpretable white-box models in the area of [system identification](https://en.wikipedia.org/wiki/System_identification). More in-depth documentation is available at [heal-research.github.io/operon](https://heal-research.github.io/operon/).
 
 ## How does it work?
 
@@ -24,9 +19,6 @@ Broadly speaking, genetic programming (GP) is said to evolve a population of "co
 
 In symbolic regression, the programs represent mathematical expressions typically encoded as [expression trees](https://en.wikipedia.org/wiki/Binary_expression_tree). Fitness is usually defined as [goodness of fit](https://en.wikipedia.org/wiki/Goodness_of_fit) between the dependent variable and the prediction of a tree-encoded model. Iterative selection of best-scoring models followed by random recombination leads naturally to a self-improving process that is able to uncover patterns in the data:
 
-<p align="center">
-    <img src="./rtd/_static/evo.gif"  />
-</p>
 
 ## Build instructions
 

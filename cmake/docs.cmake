@@ -4,7 +4,6 @@ macro(docs_early_return)
   return()
 endmacro()
 
-find_package(Python3 3.9 REQUIRED COMPONENTS Interpreter)
 find_program(MKDOCS_EXECUTABLE NAMES mkdocs REQUIRED)
 find_program(DOT_EXECUTABLE NAMES dot REQUIRED)
 
