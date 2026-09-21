@@ -186,6 +186,19 @@
             ];
           };
 
+          devShells.docs = pkgs.mkShell {
+            name = "operon-docs";
+            packages = with pkgs; [
+              cmake
+              graphviz
+              (python3.withPackages (
+                ps: with ps; [
+                  mkdocs-material
+                ]
+              ))
+            ];
+          };
+
           devShells.default = stdenv.mkDerivation {
             name = "operon";
 

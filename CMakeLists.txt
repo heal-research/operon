@@ -14,33 +14,6 @@ project(
     LANGUAGES CXX
 )
 
-if(OPERON_DOCS_ONLY)
-    project(
-        operon
-        VERSION 0.3.1
-        DESCRIPTION "Fast and scalable genetic programming library for symbolic regression."
-        HOMEPAGE_URL "https://heal-research.github.io/operon/"
-        LANGUAGES NONE
-    )
-    include(cmake/docs.cmake)
-else()
-    project(
-        operon
-        VERSION 0.3.1
-        DESCRIPTION "Fast and scalable genetic programming library for symbolic regression."
-        HOMEPAGE_URL "https://heal-research.github.io/operon/"
-        LANGUAGES CXX
-    )
-
-    set(CMAKE_CXX_STANDARD 23)
-    set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
-
-    option(BUILD_DOXYGEN_DOCS "Build documentation using Sphinx" OFF)
-    if(BUILD_DOXYGEN_DOCS)
-        include(cmake/docs.cmake)
-    endif()
-endif()
-
 include(cmake/project-is-top-level.cmake)
 
 option(BUILD_DOCS "Build the documentation site." OFF)
