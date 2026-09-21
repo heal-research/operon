@@ -1,0 +1,62 @@
+/**
+ * @page shape_constraints Shape constraints
+ *
+ * Shape constraints are an optional policy around evaluation. They certify a
+ * tree over a domain box; they do not sample dataset rows, choose candidates, or
+ * define an ordinary error metric. Their inputs are the core model, static
+ * bounds from @ref execution, and—when linear scaling is enabled—the sampled
+ * values already produced by @ref evaluation.
+ *
+ * @section shape-roles Evaluator composition
+ *
+ * @c ShapeConstrainedEvaluator decorates an @c EvaluatorBase. It always runs the
+ * wrapped @c Evaluate first, then certifies the model before allowing the
+ * wrapped @c Score. @c ShapeViolationEvaluator is a separate one-objective
+ * evaluator that reports violation; it does not wrap an objective scorer.
+ *
+ * @c ShapeConstraintEnforcement selects the CLI composition: hard rejection,
+ * penalty, extra objective, or feasibility-first comparison. This is a search
+ * policy choice expressed through evaluator composition, not an interpreter
+ * failure mode.
+ *
+ * @section shape-hard-reject Hard rejection
+ *
+ *
+ * A successful value-based inner evaluation supplies an @c EvaluatedBuffer.
+ * @c FeasibleFromValues derives any linear-scaling fit from those values, then
+ * measures the constraints without another sampled interpreter pass. A
+ * non-value-based inner evaluator falls back to tree-based @c Feasible.
+ *
+ * An infeasible result returns an empty proof from the wrapper's @c Evaluate.
+ * The composed base entrypoint still calls the wrapper's @c Score, which returns
+ * @c WorstValue and skips the wrapped scorer. Hard rejection therefore skips
+ * objective scoring, not the shared sampled pass.
+ *
+ * @section shape-bounds Static certification
+ *
+ * Identity constraints bound the original tree; derivative constraints first
+ * build a variable-gradient DAG. @c IntervalEvaluator and @c AffineEvaluator
+ * analyse those trees over a variable domain box. This is static analysis, not
+ * sampled execution: an unknown, empty, or non-finite bound is not certified.
+ *
+ * @c ShapeBoundMode selects interval, affine, combined, or bisected interval
+ * enclosures. @c MeasureConstraints shares the derivative DAG and one bound
+ * evaluator across a constraint set. Bound-backend cost belongs here and must
+ * remain distinct from objective evaluation cost.
+ *
+ * @section shape-cache Feasibility cache
+ *
+ * @c ShapeConstrainedEvaluator caches a measurement summary by coefficient-aware
+ * tree hash and bound mode. @c Feasible and @c FeasibleFromValues share that
+ * cache; @c Prepare and bound-option changes clear it. The cache is an execution
+ * aid, not semantic state, and has no capacity or eviction policy for an
+ * unbounded stream of distinct trees.
+ *
+ * @section shape-entrypoints API entry points
+ *
+ * - @c ShapeConstrainedEvaluator and @c ShapeViolationEvaluator in
+ *   @c include/operon/operators/shape_constrained_evaluator.hpp.
+ * - Constraint measurement and enforcement in
+ *   @c source/operators/shape_constrained_evaluator.cpp.
+ * - @ref execution for interval and affine bounding.
+ */

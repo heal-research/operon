@@ -102,6 +102,28 @@
           operonShared = mkOperon { enableShared = true; };
           operonStatic = mkOperon { enableShared = false; };
           operon = operonShared;
+          # Nixpkgs does not package Sphinx-Immaterial, so keep the wheel
+          # definition adjacent to the documentation development dependencies.
+          sphinxImmaterial = pkgs.python3Packages.buildPythonPackage rec {
+            pname = "sphinx-immaterial";
+            version = "0.13.9";
+            format = "wheel";
+
+            src = pkgs.fetchurl {
+              url = "https://files.pythonhosted.org/packages/3d/42/6e958fc5d80ccd18c87d1b7d7c0e17fed04c0ed8a72933dd41c8643622d4/sphinx_immaterial-0.13.9-py3-none-any.whl";
+              hash = "sha256-XqktLdxr780P7b0+Z2bqR0bpTZqKXMCrCSqUbh/eQlQ=";
+            };
+
+            dependencies = with pkgs.python3Packages; [
+              appdirs
+              markupsafe
+              pydantic
+              pydantic-extra-types
+              requests
+              sphinx
+              typing-extensions
+            ];
+          };
         in
         rec {
           packages = {
@@ -171,11 +193,18 @@
               operon.nativeBuildInputs
               ++ (with pkgs; [
                 clang-tools
-                doxygen
-                cppcheck
-                include-what-you-use
                 cmake-language-server
-                (python3.withPackages (ps: [ ps.jinja2 ps.pygments ]))
+                cppcheck
+                doxygen
+                include-what-you-use
+                (python3.withPackages (
+                  ps: with ps; [
+                    breathe
+                    myst-parser
+                    sphinxImmaterial
+                    sphinx
+                  ]
+                ))
               ]);
 
             buildInputs =

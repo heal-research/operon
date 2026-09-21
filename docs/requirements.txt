@@ -1,0 +1,4 @@
+breathe>=4.35
+myst-parser>=2.0
+sphinx-immaterial>=0.13.9
+sphinx>=7.2

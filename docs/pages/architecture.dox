@@ -1,85 +1,45 @@
 /**
  * @page architecture Operon architecture
  *
- * Operon has a narrow execution spine: a dataset and problem define a symbolic
- * regression task; algorithms evolve trees; evaluators score those trees; and
- * selection/reinsertion feed the resulting individuals back into the search.
- * This page is the map for the system-level documentation. It describes
- * responsibilities and boundaries, not every public symbol.
+ * Operon is an in-process symbolic-regression library. Its architecture is
+ * easiest to understand as three questions over a shared model: which
+ * candidates come next, how good is one candidate, and what does its tree
+ * compute. This page establishes those boundaries; the linked pages explain
+ * their contracts and control flow.
  *
- * @section architecture-map System map
+ * @section architecture-overview System overview
  *
- * @dot
- * digraph operon_architecture {
- *   rankdir=LR;
- *   graph [pad=0.2, nodesep=0.5, ranksep=0.8];
- *   node [shape=box, style="rounded"];
- *   "Dataset / Problem" -> "Tree / Node / PrimitiveSet";
- *   "Parser / Formatter" -> "Tree / Node / PrimitiveSet";
- *   "Tree / Node / PrimitiveSet" -> "Interpreter / JIT";
- *   "Tree / Node / PrimitiveSet" -> "Interval / Affine bounds";
- *   "Interpreter / JIT" -> "Evaluators";
- *   "Interval / Affine bounds" -> "Shape constraints";
- *   "Evaluators" -> "Shape constraints";
- *   "Evaluators" -> "GP / NSGA-II";
- *   "Shape constraints" -> "GP / NSGA-II";
- *   "GP / NSGA-II" -> "Creators / generators / mutation / crossover";
- *   "GP / NSGA-II" -> "Selection / reinsertion / archive";
- *   "Optimizers" -> "Evaluators";
- *   "Algorithms / evaluators" -> "CLI / probes / serialization";
- * }
- * @enddot
+ * Search owns candidate orchestration and consumes fitness. Evaluation turns
+ * one candidate into fitness through its @c Evaluate then @c Score contract.
+ * Execution computes sampled values, Jacobians, and static bounds without
+ * knowing objectives or search. Coefficient fitting is deliberately separate:
+ * it is an optional search-side collaborator that needs execution residuals and
+ * Jacobians rather than objective scoring.
  *
- * @section architecture-systems System documentation sequence
  *
- * - @ref architecture_core — tree representation, dataset, problem, primitive
- *   registry, hashing, and ownership invariants.
- * - @ref architecture_execution — parser, dispatch, interpreter, JIT, automatic
- *   differentiation, interval/affine evaluation, and range tightening.
- * - @ref evaluation_shape_constraints — evaluator phases, scoring, shape
- *   certification, enforcement, cache lifetime, and the hard-reject path.
- * - @ref architecture_search — GP/NSGA-II generation flow, variation, selection,
- *   reinsertion, non-dominated sorting, archive, and evaluation budgets.
- * - @ref architecture_optimization — linear scaling, local search, likelihood
- *   objectives, and solver boundaries.
- * - @ref architecture_integration — CLI configuration, probes, formatting,
- *   serialization, custom primitives/evaluators, and Python bindings.
+ * @section architecture-pages System pages
  *
- * Each system page must state its public entry points, owned and borrowed state,
- * invariants, failure model, hot-path cost, and the diagrams that explain control
- * or data flow. API reference belongs in Doxygen comments beside the symbols;
- * these pages explain how the APIs compose.
+ * - @subpage core_model — shared formulation and representation vocabulary.
+ * - @subpage execution — sampled execution, derivatives, JIT, and static
+ *   bounds.
+ * - @subpage evaluation — the @c Evaluate then @c Score objective contract.
+ * - @subpage shape_constraints — optional static certification and enforcement.
+ * - @subpage search_optimization — population-based search orchestration,
+ *   local fitting, parallelism, and caches.
+ * - @subpage grammar_enumeration — exhaustive grammar construction, fitting,
+ *   and ranking without a population lifecycle.
+ * - @subpage architecture_integration — CLI construction, serialization,
+ *   reporting, and extension points.
  *
- * @section architecture-core Core model
+ * @section architecture-terms Vocabulary
  *
- * @anchor architecture_core
- * To document next: @c Dataset, @c Problem, @c Tree, @c Node, @c PrimitiveSet,
- * subtree rules, coefficient ownership, structural versus coefficient-aware
- * hashes, and the invariants operators preserve.
- *
- * @section architecture-execution Execution and symbolic semantics
- *
- * @anchor architecture_execution
- * To document next: infix parsing, dispatch tables, scalar/SIMD interpreter
- * evaluation, JIT fallback, derivative DAG construction, interval/affine
- * semantics, and range tightening.
- *
- * @section architecture-search Evolutionary search
- *
- * @anchor architecture_search
- * To document next: population lifecycle, offspring generation, local search,
- * evaluation budgets, GP, NSGA-II, archive updates, selectors, and reinserters.
- *
- * @section architecture-optimization Coefficient optimization
- *
- * @anchor architecture_optimization
- * To document next: linear scaling, optimizer callbacks, likelihood evaluators,
- * solver error boundaries, and the relation between optimized coefficients and
- * an @c Individual genotype.
- *
- * @section architecture-integration Integration surface
- *
- * @anchor architecture_integration
- * To document next: command-line configuration, shape-constraint JSON,
- * serialization/formatting, probes, custom registries, and pyoperon-facing API.
+ * | Term | Meaning |
+ * | --- | --- |
+ * | Candidate / individual | An @c Individual: a tree genotype plus fitness. |
+ * | Sampled execution | Running a tree over dataset rows. |
+ * | Bound | Static interval or affine analysis over a domain box. |
+ * | Evaluate | The evaluator phase that may produce an @c EvaluatedBuffer. |
+ * | Score | The evaluator phase that converts an evaluation result into fitness. |
+ * | Fit | Coefficient optimization; distinct from linear scaling and scoring. |
+ * | Feasible | Certified to meet shape constraints over its configured domain. |
  */
