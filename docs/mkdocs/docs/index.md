@@ -24,4 +24,10 @@ Operon is a modern C++ framework for building, evaluating, and evolving symbolic
 
     Configure [shape constraints](guides/shape-constraints.md) for whole-domain properties.
 
+-   :material-code-braces: **C++ API**
+
+    ---
+
+    Find public contracts, ownership rules, failure paths, and extension points in the [API reference](reference/index.md).
+
 </div>

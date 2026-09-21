@@ -1,19 +1,21 @@
 digraph execution {
-  graph [rankdir=TB, bgcolor="transparent", nodesep=0.4, ranksep=0.55, pad=0.1];
-  node [shape=box, style="rounded,filled", fillcolor="#EEF2FF", color="#4F46E5", penwidth=2, fontname="Inter", fontsize=14, fontcolor="#1E1B4B", width=1.5, height=0.65, fixedsize=true];
-  edge [color="#4F46E5", penwidth=1.4, arrowsize=0.7, fontname="Inter", fontsize=10, fontcolor="#312E81"];
+  graph [rankdir=LR, bgcolor="transparent", nodesep=0.42, ranksep=0.55, pad=0.12];
+  node [shape=box, style="rounded,filled", fillcolor="#EEF2FF", color="#4F46E5", penwidth=2, fontname="Inter", fontsize=13, fontcolor="#1E1B4B", width=1.62, height=0.72];
+  edge [color="#4F46E5", penwidth=1.5, arrowsize=0.75, fontname="Inter", fontsize=10, fontcolor="#312E81"];
 
-  derivatives [label="Jacobians"];
-  bounds [label="Interval and\naffine bounds"];
-  interpreter [label="Interpreter"];
-  tree [label="Tree"];
-  dataset [label="Dataset rows"];
-  dispatch [label="Dispatch table"];
+  tree [label="Tree +\ncoefficients"];
+  dataset [label="Dataset +\nRange"];
+  dispatch [label="ScalarDispatch\nfunctions + derivatives"];
+  interpreter [label="Interpreter\nworker-local scratch"];
+  values [label="Sampled\nvalues"];
+  jacobian [label="Coefficient\nJacobian"];
+  bounds [label="Interval / affine\ndomain bounds"];
 
-  derivatives -> interpreter [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2" BGCOLOR="#EEF2FF"><TR><TD><FONT COLOR="#1E1B4B">traces</FONT></TD></TR></TABLE>>];
-  bounds -> tree [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2" BGCOLOR="#EEF2FF"><TR><TD><FONT COLOR="#1E1B4B">analyses</FONT></TD></TR></TABLE>>];
-  bounds -> dispatch [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2" BGCOLOR="#EEF2FF"><TR><TD><FONT COLOR="#1E1B4B">callbacks</FONT></TD></TR></TABLE>>];
-  interpreter -> tree [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2" BGCOLOR="#EEF2FF"><TR><TD><FONT COLOR="#1E1B4B">executes</FONT></TD></TR></TABLE>>];
-  interpreter -> dataset [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2" BGCOLOR="#EEF2FF"><TR><TD><FONT COLOR="#1E1B4B">reads</FONT></TD></TR></TABLE>>];
-  interpreter -> dispatch [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2" BGCOLOR="#EEF2FF"><TR><TD><FONT COLOR="#1E1B4B">resolves</FONT></TD></TR></TABLE>>];
+  tree -> interpreter;
+  dataset -> interpreter;
+  dispatch -> interpreter;
+  interpreter -> values [label="Evaluate"];
+  interpreter -> jacobian [label="JacRev / JacFwd"];
+  tree -> bounds;
+  dispatch -> bounds;
 }

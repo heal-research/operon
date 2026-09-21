@@ -1,21 +1,19 @@
 digraph grammar_enumeration {
-  graph [rankdir=TB, bgcolor="transparent", nodesep=0.35, ranksep=0.5, pad=0.1];
-  node [shape=box, style="rounded,filled", fillcolor="#EEF2FF", color="#4F46E5", penwidth=2, fontname="Inter", fontsize=14, fontcolor="#1E1B4B", width=1.5, height=0.65, fixedsize=true];
-  edge [color="#4F46E5", penwidth=1.4, arrowsize=0.7, fontname="Inter", fontsize=10, fontcolor="#312E81"];
+  graph [rankdir=LR, bgcolor="transparent", nodesep=0.38, ranksep=0.52, pad=0.12];
+  node [shape=box, style="rounded,filled", fillcolor="#EEF2FF", color="#4F46E5", penwidth=2, fontname="Inter", fontsize=13, fontcolor="#1E1B4B", width=1.7, height=0.72];
+  edge [color="#4F46E5", penwidth=1.5, arrowsize=0.75, fontname="Inter", fontsize=10, fontcolor="#312E81"];
 
-  grammar [label="Grammar and\ninput variables"];
-  buckets [label="Complexity\nbuckets"];
-  novel [label="Novel complete\nexpressions"];
-  fit [label="Coefficient fit"];
-  score [label="Evaluator score"];
-  topk [label="Best TopK"];
+  grammar [label="Grammar +\ninput variables"];
+  build [label="Build buckets\nby complexity"];
+  canonical [label="Reduce + simplify\ncontent-hash dedup"];
+  novel [label="Novel complete\nExpression"];
+  fit [label="Fit\ncoefficients"];
+  score [label="Score with\nEvaluatorBase"];
+  topk [label="Sorted\nTopK"];
 
-  { rank=same; grammar; buckets; }
-  { rank=same; novel; fit; }
-  { rank=same; score; topk; }
-
-  grammar -> buckets;
-  buckets -> novel;
+  grammar -> build;
+  build -> canonical;
+  canonical -> novel [label="unique only"];
   novel -> fit;
   fit -> score;
   score -> topk;

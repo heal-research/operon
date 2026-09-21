@@ -1,22 +1,21 @@
 digraph search_optimization {
-  graph [rankdir=TB, bgcolor="transparent", nodesep=0.35, ranksep=0.5, pad=0.1];
-  node [shape=box, style="rounded,filled", fillcolor="#EEF2FF", color="#4F46E5", penwidth=2, fontname="Inter", fontsize=14, fontcolor="#1E1B4B", width=1.5, height=0.65, fixedsize=true];
-  edge [color="#4F46E5", penwidth=1.4, arrowsize=0.7, fontname="Inter", fontsize=10, fontcolor="#312E81"];
+  graph [rankdir=LR, bgcolor="transparent", nodesep=0.38, ranksep=0.52, pad=0.12];
+  node [shape=box, style="rounded,filled", fillcolor="#EEF2FF", color="#4F46E5", penwidth=2, fontname="Inter", fontsize=13, fontcolor="#1E1B4B", width=1.62, height=0.72];
+  edge [color="#4F46E5", penwidth=1.5, arrowsize=0.75, fontname="Inter", fontsize=10, fontcolor="#312E81"];
 
-  prepare [label="Prepare\nsearch"];
-  variation [label="Variation\noperators"];
-  fit [label="Coefficient\nfit"];
-  score [label="Score\nindividual"];
-  reinsert [label="Reinsert\nelites"];
-  parents [label="Next parents"];
+  parents [label="Parent\npopulation"];
+  prepare [label="Prepare\nevaluator / selectors"];
+  select [label="Select and\ncreate offspring"];
+  vary [label="Crossover +\nmutation"];
+  fit [label="Optional\ncoefficient fit"];
+  score [label="Evaluate\nfitness"];
+  reinsert [label="Reinsert\nunder comparison"];
 
-  { rank=same; prepare; variation; }
-  { rank=same; fit; score; }
-  { rank=same; reinsert; parents; }
-
-  prepare -> variation;
-  variation -> fit;
+  parents -> prepare;
+  prepare -> select;
+  select -> vary;
+  vary -> fit;
   fit -> score;
   score -> reinsert;
-  reinsert -> parents;
+  reinsert -> parents [label="next generation"];
 }
