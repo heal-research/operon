@@ -53,11 +53,11 @@ From the Nix development shell, configure the documentation-only build and
 build its stable `docs` target:
 
 ```sh
-cmake -S . -B build/docs -DOPERON_DOCS_ONLY=ON
+cmake -S . -B build/docs -D BUILD_DOCS=ON
 cmake --build build/docs --target docs
 ```
 
-The generated Sphinx site is available at `build/docs/docs/html/index.html`.
+The generated MkDocs site is available at `build/docs/docs/html/index.html`.
 
 ## Install
 

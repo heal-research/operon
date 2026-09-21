@@ -6,7 +6,13 @@ cmake_minimum_required(VERSION 3.25)
 
 include(cmake/prelude.cmake)
 
-option(OPERON_DOCS_ONLY "Configure only the documentation build" OFF)
+project(
+    operon
+    VERSION 0.3.1
+    DESCRIPTION "Fast and scalable genetic programming library for symbolic regression."
+    HOMEPAGE_URL "https://heal-research.github.io/operon/"
+    LANGUAGES CXX
+)
 
 if(OPERON_DOCS_ONLY)
     project(
@@ -33,6 +39,11 @@ else()
     if(BUILD_DOXYGEN_DOCS)
         include(cmake/docs.cmake)
     endif()
+endif()
+
+option(BUILD_DOCS "Build the documentation site." OFF)
+if(BUILD_DOCS)
+  include(cmake/docs.cmake)
 endif()
 
 docs_early_return()

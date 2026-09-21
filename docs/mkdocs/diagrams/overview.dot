@@ -1,0 +1,16 @@
+digraph overview {
+  graph [rankdir=LR, bgcolor="transparent", nodesep=0.35, ranksep=0.5, pad=0.1];
+  node [shape=box, style="rounded,filled", fillcolor="#EEF2FF", color="#4F46E5", penwidth=2, fontname="Inter", fontsize=14, fontcolor="#1E1B4B", width=1.5, height=0.65, fixedsize=true];
+  edge [color="#4F46E5", penwidth=1.6, arrowsize=0.75];
+
+  dataset [label="Dataset"];
+  population [label="Population\nof trees"];
+  evaluator [label="Evaluator"];
+  objectives [label="Objective\nvalues"];
+  variation [label="Selection and\nvariation"];
+
+  dataset -> evaluator;
+  population -> evaluator;
+  evaluator -> objectives;
+  objectives -> variation;
+}

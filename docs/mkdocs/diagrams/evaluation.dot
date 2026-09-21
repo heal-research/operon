@@ -1,0 +1,14 @@
+digraph evaluation {
+  graph [rankdir=LR, bgcolor="transparent", nodesep=0.35, ranksep=0.5, pad=0.1];
+  node [shape=box, style="rounded,filled", fillcolor="#EEF2FF", color="#4F46E5", penwidth=2, fontname="Inter", fontsize=14, fontcolor="#1E1B4B", width=1.5, height=0.65, fixedsize=true];
+  edge [color="#4F46E5", penwidth=1.4, arrowsize=0.7, fontname="Inter", fontsize=10, fontcolor="#312E81"];
+
+  evaluate [label="Sampled\nevaluation"];
+  buffer [label="EvaluatedBuffer"];
+  score [label="Score\nfitness"];
+  error [label="ErrMax"];
+
+  evaluate -> buffer [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2" BGCOLOR="#EEF2FF"><TR><TD><FONT COLOR="#1E1B4B">success</FONT></TD></TR></TABLE>>];
+  buffer -> score;
+  evaluate -> error [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2" BGCOLOR="#EEF2FF"><TR><TD><FONT COLOR="#1E1B4B">setup error</FONT></TD></TR></TABLE>>];
+}

@@ -1,0 +1,16 @@
+digraph shape_constraints {
+  graph [rankdir=TB, bgcolor="transparent", nodesep=0.4, ranksep=0.55, pad=0.1];
+  node [shape=box, style="rounded,filled", fillcolor="#EEF2FF", color="#4F46E5", penwidth=2, fontname="Inter", fontsize=14, fontcolor="#1E1B4B", width=1.5, height=0.65, fixedsize=true];
+  edge [color="#4F46E5", penwidth=1.4, arrowsize=0.7, fontname="Inter", fontsize=10, fontcolor="#312E81"];
+
+  candidate [label="Candidate tree"];
+  domain [label="Domain box"];
+  certify [label="Certify\nconstraints"];
+  score [label="Data score"];
+  enforce [label="Selected\nenforcement"];
+
+  candidate -> certify;
+  domain -> certify;
+  certify -> score [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2" BGCOLOR="#EEF2FF"><TR><TD><FONT COLOR="#1E1B4B">certified</FONT></TD></TR></TABLE>>];
+  certify -> enforce [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2" BGCOLOR="#EEF2FF"><TR><TD><FONT COLOR="#1E1B4B">not certified</FONT></TD></TR></TABLE>>];
+}
