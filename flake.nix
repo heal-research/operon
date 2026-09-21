@@ -171,9 +171,15 @@
               operon.nativeBuildInputs
               ++ (with pkgs; [
                 clang-tools
+                cmake-language-server
                 cppcheck
                 include-what-you-use
-                cmake-language-server
+                graphviz
+                (python3.withPackages (
+                  ps: with ps; [
+                    mkdocs-material
+                  ]
+                ))
               ]);
 
             buildInputs =
@@ -185,7 +191,6 @@
                   with pkgs;
                   [
                     gdb
-                    graphviz
                     hyperfine
                     perf
                   ]

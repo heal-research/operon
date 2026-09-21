@@ -10,12 +10,17 @@ project(
     operon
     VERSION 0.3.1
     DESCRIPTION "Fast and scalable genetic programming library for symbolic regression."
-    HOMEPAGE_URL "https://operongp.readthedocs.io/en/latest/"
+    HOMEPAGE_URL "https://heal-research.github.io/operon/"
     LANGUAGES CXX
 )
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
+
+option(BUILD_DOCS "Build the documentation site." OFF)
+if(BUILD_DOCS)
+  include(cmake/docs.cmake)
+endif()
 
 docs_early_return()
 

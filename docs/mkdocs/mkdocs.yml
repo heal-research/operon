@@ -1,0 +1,82 @@
+site_name: Operon
+site_description: Fast and scalable symbolic regression in C++
+site_url: https://heal-research.github.io/operon/
+repo_url: https://github.com/heal-research/operon
+repo_name: heal-research/operon
+edit_uri: edit/main/docs/mkdocs/docs/
+
+theme:
+  name: material
+  language: en
+  font:
+    text: Inter
+    code: JetBrains Mono
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: operon-light
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/weather-sunny
+        name: Use dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/weather-night
+        name: Use light mode
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+
+plugins:
+  - search
+
+markdown_extensions:
+
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - toc:
+      permalink: true
+
+extra_css:
+  - stylesheets/operon.css
+
+
+nav:
+  - Overview: index.md
+  - Guides:
+      - guides/index.md
+      - Architecture overview: guides/overview.md
+      - System overview: guides/system-overview.md
+      - Core model: guides/core-model.md
+      - Execution: guides/execution.md
+      - Evaluation: guides/evaluation.md
+      - Search and optimization: guides/search-optimization.md
+      - Grammar enumeration: guides/grammar-enumeration.md
+      - Shape constraints: guides/shape-constraints.md
+      - Architecture integration: guides/architecture-integration.md

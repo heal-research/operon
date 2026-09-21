@@ -131,46 +131,29 @@ jobs:
       run: ctest --output-on-failure -C Release -j 2
 
   docs:
-    # Deploy docs only when builds succeed
     needs: [sanitize, test]
-
     runs-on: ubuntu-latest
-
-    # To enable, first you have to create an orphaned gh-pages branch:
-    #
-    #    git switch --orphan gh-pages
-    #    git commit --allow-empty -m "Initial commit"
-    #    git push -u origin gh-pages
-    #
-    # Edit the <name> placeholder below to your GitHub name, so this action
-    # runs only in your repository and no one else's fork. After these, delete
-    # this comment and the last line in the conditional below.
-    # If you do not wish to use GitHub Pages for deploying documentation, then
-    # simply delete this job similarly to the coverage one.
-    if: github.ref == 'refs/heads/cpp20'
-      && github.event_name == 'push'
-      && github.repository_owner == '<name>'
-      && false
+    permissions:
+      contents: write
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository_owner == 'heal-research'
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
 
-    - uses: actions/setup-python@v2
-      with: { python-version: "3.8" }
+    - uses: actions/setup-python@v5
+      with: { python-version: "3.11" }
 
-    - name: Install m.css dependencies
-      run: pip3 install jinja2 Pygments
-
-    - name: Install Doxygen
-      run: sudo apt-get update -q
-        && sudo apt-get install doxygen -q -y
+    - name: Install documentation dependencies
+      run: pip install mkdocs-material
+        && sudo apt-get update -q
+        && sudo apt-get install graphviz -q -y
 
     - name: Build docs
-      run: cmake -B build -D "CMAKE_PROJECT_INCLUDE=$PWD/cmake/docs.cmake"
+      run: cmake -S . -B build -D BUILD_DOCS=ON
         && cmake --build build --target docs
 
     - name: Deploy docs
-      uses: peaceiris/actions-gh-pages@v3
+      uses: peaceiris/actions-gh-pages@v4
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         publish_dir: build/docs/html

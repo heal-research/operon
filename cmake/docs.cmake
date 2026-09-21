@@ -1,50 +1,63 @@
-# ---- Redefine docs_early_return ----
+# ---- Documentation configuration ----
 
-# This function must be a macro, so the return() takes effect in the calling
-# scope. This prevents other targets from being available and potentially
-# requiring dependencies. This cuts down on the time it takes to generate
-# documentation in CI.
 macro(docs_early_return)
   return()
 endmacro()
 
-# ---- Dependencies ----
-
-include(FetchContent)
-FetchContent_Declare(
-    mcss URL
-    https://github.com/friendlyanon/m.css/releases/download/release-1/mcss.zip
-    URL_MD5 00cd2757ebafb9bcba7f5d399b3bec7f
-    SOURCE_DIR "${PROJECT_BINARY_DIR}/mcss"
-    UPDATE_DISCONNECTED YES
-)
-FetchContent_MakeAvailable(mcss)
-
-find_package(Python3 3.9 REQUIRED)
-
-# ---- Declare documentation target ----
+find_package(Python3 3.9 REQUIRED COMPONENTS Interpreter)
+find_program(MKDOCS_EXECUTABLE NAMES mkdocs REQUIRED)
+find_program(DOT_EXECUTABLE NAMES dot REQUIRED)
 
 set(
-    DOXYGEN_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/docs"
-    CACHE PATH "Path for the generated Doxygen documentation"
+    DOCS_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/docs"
+    CACHE PATH "Path for generated documentation HTML and API material"
+)
+set(MKDOCS_SOURCE_DIRECTORY "${PROJECT_SOURCE_DIR}/docs/mkdocs")
+set(MKDOCS_CONFIG "${MKDOCS_SOURCE_DIRECTORY}/mkdocs.yml")
+set(MKDOCS_HTML_OUTPUT_DIRECTORY "${DOCS_OUTPUT_DIRECTORY}/html")
+
+file(
+    GLOB_RECURSE mkdocs_sources
+    CONFIGURE_DEPENDS
+    "${MKDOCS_SOURCE_DIRECTORY}/docs/*.md"
+    "${MKDOCS_SOURCE_DIRECTORY}/docs/*.css"
 )
 
-set(working_dir "${PROJECT_BINARY_DIR}/docs")
+set(MKDOCS_DIAGRAM_SOURCE_DIRECTORY "${MKDOCS_SOURCE_DIRECTORY}/diagrams")
+set(MKDOCS_DIAGRAM_OUTPUT_DIRECTORY "${MKDOCS_SOURCE_DIRECTORY}/docs/assets/diagrams")
 
-foreach(file IN ITEMS Doxyfile conf.py)
-  configure_file("docs/${file}.in" "${working_dir}/${file}" @ONLY)
+file(MAKE_DIRECTORY "${MKDOCS_DIAGRAM_OUTPUT_DIRECTORY}")
+file(
+    GLOB mkdocs_diagram_sources
+    CONFIGURE_DEPENDS
+    "${MKDOCS_DIAGRAM_SOURCE_DIRECTORY}/*.dot"
+)
+
+set(mkdocs_diagram_outputs)
+foreach(diagram_source IN LISTS mkdocs_diagram_sources)
+  get_filename_component(diagram_name "${diagram_source}" NAME_WE)
+  set(diagram_output "${MKDOCS_DIAGRAM_OUTPUT_DIRECTORY}/${diagram_name}.svg")
+  add_custom_command(
+      OUTPUT "${diagram_output}"
+      COMMAND "${DOT_EXECUTABLE}" -Tsvg -o "${diagram_output}" "${diagram_source}"
+      DEPENDS "${diagram_source}"
+      COMMENT "Rendering ${diagram_name} documentation diagram"
+      VERBATIM
+  )
+  list(APPEND mkdocs_diagram_outputs "${diagram_output}")
 endforeach()
 
-set(mcss_script "${mcss_SOURCE_DIR}/documentation/doxygen.py")
-set(config "${working_dir}/conf.py")
-
-add_custom_target(
-    docs
-    COMMAND "${CMAKE_COMMAND}" -E remove_directory
-    "${DOXYGEN_OUTPUT_DIRECTORY}/html"
-    "${DOXYGEN_OUTPUT_DIRECTORY}/xml"
-    COMMAND "${Python3_EXECUTABLE}" "${mcss_script}" "${config}"
-    COMMENT "Building documentation using Doxygen and m.css"
-    WORKING_DIRECTORY "${working_dir}"
+set(mkdocs_html_index "${MKDOCS_HTML_OUTPUT_DIRECTORY}/index.html")
+add_custom_command(
+    OUTPUT "${mkdocs_html_index}"
+    COMMAND "${CMAKE_COMMAND}" -E remove_directory "${MKDOCS_HTML_OUTPUT_DIRECTORY}"
+    COMMAND "${MKDOCS_EXECUTABLE}" build
+        --strict
+        --config-file "${MKDOCS_CONFIG}"
+        --site-dir "${MKDOCS_HTML_OUTPUT_DIRECTORY}"
+    DEPENDS "${MKDOCS_CONFIG}" ${mkdocs_sources} ${mkdocs_diagram_outputs}
+    COMMENT "Building MkDocs Material documentation"
     VERBATIM
 )
+add_custom_target(docs DEPENDS "${mkdocs_html_index}")
+

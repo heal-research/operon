@@ -47,6 +47,18 @@ After installation of this cmake version you can use it with the following optio
 
 Additional build flags such as ```-DBUILD_CLI_PROGRAMS=ON -DUSE_SINGLE_PRECISION=ON -DUSE_OPENLIBM=ON``` may be added to the command.
 
+### Documentation
+
+From the Nix development shell, configure the documentation-only build and
+build its stable `docs` target:
+
+```sh
+cmake -S . -B build/docs -D BUILD_DOCS=ON
+cmake --build build/docs --target docs
+```
+
+The generated MkDocs site is available at `build/docs/docs/html/index.html`.
+
 ## Install
 
 This project doesn't require any special command-line flags to install to keep
