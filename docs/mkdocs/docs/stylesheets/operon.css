@@ -1,0 +1,11 @@
+:root {
+  --md-primary-fg-color: #4338ca;
+  --md-accent-fg-color: #0891b2;
+}
+
+img.diagram {
+  display: block;
+  max-width: none !important;
+  height: auto;
+  margin: 2rem auto;
+}

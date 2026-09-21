@@ -1,0 +1,23 @@
+digraph core_model {
+  graph [rankdir=TB, bgcolor="transparent", nodesep=0.4, ranksep=0.55, pad=0.1];
+  node [shape=box, style="rounded,filled", fillcolor="#EEF2FF", color="#4F46E5", penwidth=2, fontname="Inter", fontsize=14, fontcolor="#1E1B4B", width=1.5, height=0.65, fixedsize=true];
+  edge [color="#4F46E5", penwidth=1.4, arrowsize=0.7, fontname="Inter", fontsize=10, fontcolor="#312E81"];
+
+  evaluator [label="Evaluator"];
+  problem [label="Problem"];
+  interpreter [label="Interpreter"];
+  creator [label="Creators and\nvariation"];
+  dataset [label="Dataset"];
+  primitive_set [label="PrimitiveSet"];
+  individual [label="Individual\nTree + fitness"];
+
+  evaluator -> problem [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2" BGCOLOR="#EEF2FF"><TR><TD><FONT COLOR="#1E1B4B">uses</FONT></TD></TR></TABLE>>];
+  evaluator -> interpreter [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2" BGCOLOR="#EEF2FF"><TR><TD><FONT COLOR="#1E1B4B">uses</FONT></TD></TR></TABLE>>];
+  evaluator -> individual [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2" BGCOLOR="#EEF2FF"><TR><TD><FONT COLOR="#1E1B4B">scores</FONT></TD></TR></TABLE>>];
+  problem -> dataset [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2" BGCOLOR="#EEF2FF"><TR><TD><FONT COLOR="#1E1B4B">selects ranges</FONT></TD></TR></TABLE>>];
+  problem -> primitive_set [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2" BGCOLOR="#EEF2FF"><TR><TD><FONT COLOR="#1E1B4B">owns vocabulary</FONT></TD></TR></TABLE>>];
+  creator -> primitive_set [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2" BGCOLOR="#EEF2FF"><TR><TD><FONT COLOR="#1E1B4B">uses</FONT></TD></TR></TABLE>>];
+  creator -> individual [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2" BGCOLOR="#EEF2FF"><TR><TD><FONT COLOR="#1E1B4B">constructs</FONT></TD></TR></TABLE>>];
+  interpreter -> dataset [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2" BGCOLOR="#EEF2FF"><TR><TD><FONT COLOR="#1E1B4B">reads</FONT></TD></TR></TABLE>>];
+  interpreter -> individual [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2" BGCOLOR="#EEF2FF"><TR><TD><FONT COLOR="#1E1B4B">executes</FONT></TD></TR></TABLE>>];
+}

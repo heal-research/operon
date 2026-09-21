@@ -6,38 +6,23 @@ cmake_minimum_required(VERSION 3.25)
 
 include(cmake/prelude.cmake)
 
-option(OPERON_DOCS_ONLY "Configure only the documentation build" OFF)
+project(
+    operon
+    VERSION 0.3.1
+    DESCRIPTION "Fast and scalable genetic programming library for symbolic regression."
+    HOMEPAGE_URL "https://heal-research.github.io/operon/"
+    LANGUAGES CXX
+)
 
-if(OPERON_DOCS_ONLY)
-    project(
-        operon
-        VERSION 0.3.1
-        DESCRIPTION "Fast and scalable genetic programming library for symbolic regression."
-        HOMEPAGE_URL "https://heal-research.github.io/operon/"
-        LANGUAGES NONE
-    )
-    include(cmake/docs.cmake)
-else()
-    project(
-        operon
-        VERSION 0.3.1
-        DESCRIPTION "Fast and scalable genetic programming library for symbolic regression."
-        HOMEPAGE_URL "https://heal-research.github.io/operon/"
-        LANGUAGES CXX
-    )
+include(cmake/project-is-top-level.cmake)
 
-    set(CMAKE_CXX_STANDARD 23)
-    set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
-
-    option(BUILD_DOXYGEN_DOCS "Build documentation using Sphinx" OFF)
-    if(BUILD_DOXYGEN_DOCS)
-        include(cmake/docs.cmake)
-    endif()
+option(BUILD_DOCS "Build the documentation site." OFF)
+if(PROJECT_IS_TOP_LEVEL AND BUILD_DOCS)
+  include(cmake/docs.cmake)
 endif()
 
 docs_early_return()
 
-include(cmake/project-is-top-level.cmake)
 include(cmake/variables.cmake)
 
 # ---- Attempt to get revision information from git ----

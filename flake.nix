@@ -186,6 +186,19 @@
             ];
           };
 
+          devShells.docs = pkgs.mkShell {
+            name = "operon-docs";
+            packages = with pkgs; [
+              cmake
+              graphviz
+              (python3.withPackages (
+                ps: with ps; [
+                  mkdocs-material
+                ]
+              ))
+            ];
+          };
+
           devShells.default = stdenv.mkDerivation {
             name = "operon";
 
@@ -195,14 +208,11 @@
                 clang-tools
                 cmake-language-server
                 cppcheck
-                doxygen
                 include-what-you-use
+                graphviz
                 (python3.withPackages (
                   ps: with ps; [
-                    breathe
-                    myst-parser
-                    sphinxImmaterial
-                    sphinx
+                    mkdocs-material
                   ]
                 ))
               ]);
@@ -216,7 +226,6 @@
                   with pkgs;
                   [
                     gdb
-                    graphviz
                     hyperfine
                     perf
                   ]
