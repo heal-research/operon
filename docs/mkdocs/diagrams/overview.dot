@@ -1,16 +1,22 @@
 digraph overview {
-  graph [rankdir=LR, bgcolor="transparent", nodesep=0.35, ranksep=0.5, pad=0.1];
-  node [shape=box, style="rounded,filled", fillcolor="#EEF2FF", color="#4F46E5", penwidth=2, fontname="Inter", fontsize=14, fontcolor="#1E1B4B", width=1.5, height=0.65, fixedsize=true];
-  edge [color="#4F46E5", penwidth=1.6, arrowsize=0.75];
+  graph [rankdir=LR, bgcolor="transparent", nodesep=0.4, ranksep=0.55, pad=0.12];
+  node [shape=box, style="rounded,filled", fillcolor="#EEF2FF", color="#4F46E5", penwidth=2, fontname="Inter", fontsize=13, fontcolor="#1E1B4B", width=1.65, height=0.72];
+  edge [color="#4F46E5", penwidth=1.5, arrowsize=0.75, fontname="Inter", fontsize=10, fontcolor="#312E81"];
 
   dataset [label="Dataset"];
-  population [label="Population\nof trees"];
-  evaluator [label="Evaluator"];
-  objectives [label="Objective\nvalues"];
-  variation [label="Selection and\nvariation"];
+  problem [label="Problem\nranges + vocabulary"];
+  tree [label="Tree\npostfix genotype"];
+  evaluator [label="Evaluator\nvalues → fitness"];
+  population [label="Population\nselection + reinsertion"];
+  optimizer [label="Coefficient\noptimizer"];
 
-  dataset -> evaluator;
-  population -> evaluator;
-  evaluator -> objectives;
-  objectives -> variation;
+  dataset -> problem [label="owns / borrows"];
+  problem -> tree [label="inputs + PrimitiveSet"];
+  tree -> evaluator;
+  problem -> evaluator;
+  evaluator -> population [label="minimize fitness"];
+  population -> tree [label="initialize / vary"];
+  tree -> optimizer [label="optimizable constants"];
+  problem -> optimizer;
+  optimizer -> evaluator [label="refined tree"];
 }

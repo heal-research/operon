@@ -80,3 +80,8 @@ nav:
       - Grammar enumeration: guides/grammar-enumeration.md
       - Shape constraints: guides/shape-constraints.md
       - Architecture integration: guides/architecture-integration.md
+  - API reference:
+      - reference/index.md
+      - Core model: reference/core.md
+      - Execution and evaluation: reference/execution.md
+      - Search and enumeration: reference/search.md

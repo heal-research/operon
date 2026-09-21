@@ -1,19 +1,22 @@
 digraph system_overview {
-  graph [rankdir=TB, bgcolor="transparent", nodesep=0.4, ranksep=0.55, pad=0.1];
-  node [shape=box, style="rounded,filled", fillcolor="#EEF2FF", color="#4F46E5", penwidth=2, fontname="Inter", fontsize=14, fontcolor="#1E1B4B", width=1.5, height=0.65, fixedsize=true];
-  edge [color="#4F46E5", penwidth=1.4, arrowsize=0.7, fontname="Inter", fontsize=10, fontcolor="#312E81"];
+  graph [rankdir=LR, bgcolor="transparent", nodesep=0.42, ranksep=0.55, pad=0.12];
+  node [shape=box, style="rounded,filled", fillcolor="#EEF2FF", color="#4F46E5", penwidth=2, fontname="Inter", fontsize=13, fontcolor="#1E1B4B", width=1.65, height=0.72];
+  edge [color="#4F46E5", penwidth=1.5, arrowsize=0.75, fontname="Inter", fontsize=10, fontcolor="#312E81"];
 
-  entry [label="CLI entry points"];
-  search [label="Search\npopulation"];
-  evaluation [label="Evaluation"];
-  execution [label="Execution and\nbound analysis"];
-  model [label="Core model"];
-  fitting [label="Coefficient\nfit"];
+  entry [label="CLI or library\nassembly"];
+  core [label="Core model\nDataset · Problem · Tree"];
+  execution [label="Execution\nInterpreter · dispatch"];
+  evaluation [label="Evaluation\nobjectives + budget"];
+  search [label="Search\nGP · NSGA-II"];
+  fitting [label="Local fitting\ncoefficients only"];
+  bounds [label="Certification\ninterval / affine"];
 
-  entry -> search;
-  search -> evaluation;
-  evaluation -> execution;
-  execution -> model;
-  search -> fitting [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2" BGCOLOR="#EEF2FF"><TR><TD><FONT COLOR="#1E1B4B">optional</FONT></TD></TR></TABLE>>];
-  fitting -> execution;
+  entry -> core;
+  core -> execution [label="tree + data"];
+  execution -> evaluation [label="sampled values"];
+  evaluation -> search [label="fitness"];
+  search -> fitting [label="optional"];
+  fitting -> execution [label="updated coefficients"];
+  core -> bounds;
+  bounds -> evaluation [label="constraint gate"];
 }
