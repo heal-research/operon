@@ -17,14 +17,15 @@ project(
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
+include(cmake/project-is-top-level.cmake)
+
 option(BUILD_DOCS "Build the documentation site." OFF)
-if(BUILD_DOCS)
+if(PROJECT_IS_TOP_LEVEL AND BUILD_DOCS)
   include(cmake/docs.cmake)
 endif()
 
 docs_early_return()
 
-include(cmake/project-is-top-level.cmake)
 include(cmake/variables.cmake)
 
 # ---- Attempt to get revision information from git ----
