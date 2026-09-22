@@ -7,12 +7,15 @@
 #include "../operon_test.hpp"
 
 #include <cmath>
+#include <set>
+#include <string>
 
 #include "operon/algorithms/enumeration.hpp"
 #include "operon/core/dataset.hpp"
 #include "operon/core/grammar.hpp"
 #include "operon/core/problem.hpp"
 #include "operon/core/pset.hpp"
+#include "operon/interpreter/interpreter.hpp"
 #include "operon/optimizer/optimizer.hpp"
 
 namespace Operon::Test {
@@ -261,6 +264,80 @@ TEST_CASE("EnumerationEngine - unary wraps populate RecurringFactor beyond budge
     }
 }
 
+TEST_CASE("EnumerationEngine - Aq production is gated by PrimitiveSetConfig", "[enumeration]")
+{
+    std::vector<Operon::Hash> const vars{ 10, 20 };
+    Operon::RandomGenerator rng(42);
+    constexpr std::size_t maxComplexity = 12;
+
+    // TypeCoherent doesn't include Aq - no RecurringFactor bucket should ever contain an Aq-rooted tree.
+    {
+        Grammar grammar(PrimitiveSet::TypeCoherent, vars);
+        EnumerationEngine engine(grammar, maxComplexity, rng);
+        engine.Build();
+        for (std::size_t b = 1; b <= maxComplexity; ++b) {
+            for (auto const& t : engine.Bucket(GrammarSymbol::RecurringFactor, b)) {
+                CHECK_FALSE(t.Nodes().back().IsAq());
+            }
+        }
+    }
+
+    // Full includes Aq - at least one Aq-rooted candidate should be reachable within this budget.
+    {
+        Grammar grammar(PrimitiveSet::Full, vars);
+        EnumerationEngine engine(grammar, maxComplexity, rng);
+        engine.Build();
+        bool foundAq = false;
+        for (std::size_t b = 1; b <= maxComplexity && !foundAq; ++b) {
+            for (auto const& t : engine.Bucket(GrammarSymbol::RecurringFactor, b)) {
+                if (t.Nodes().back().IsAq()) { foundAq = true; break; }
+            }
+        }
+        CHECK(foundAq);
+    }
+}
+
+TEST_CASE("EnumerationEngine - Aq's non-commutative self-combine isn't half-dropped by the symmetric skip", "[enumeration]")
+{
+    // Aq (Operands = {SimpleExpr, SimpleExpr}) is a same-symbol production like Term/SimpleTerm's Mul self-combine,
+    // but unlike Mul, aq(a,b) != aq(b,a) - Production::Commutative=false on this production is what keeps
+    // ProcessNonterminal's b0 > b1 redundant-work skip (correct only for a genuinely commutative same-symbol
+    // combine) from applying here. Regression coverage: find two distinct nonempty SimpleExpr budgets and check
+    // both operand-budget orderings actually land in the RecurringFactor bucket - a reintroduced blanket
+    // op0==op1 skip would silently keep only the b0<=b1 direction.
+    std::vector<Operon::Hash> const vars{ 10, 20 };
+    constexpr std::size_t maxComplexity = 14;
+    Grammar grammar(PrimitiveSet::Full, vars);
+    Operon::RandomGenerator rng(42);
+    EnumerationEngine engine(grammar, maxComplexity, rng);
+
+    engine.Build();
+
+    std::size_t b1 = 0;
+    std::size_t b2 = 0;
+    for (std::size_t b = 3; b <= maxComplexity && b2 == 0; ++b) {
+        if (engine.Bucket(GrammarSymbol::SimpleExpr, b).empty()) { continue; }
+        if (b1 == 0) { b1 = b; } else { b2 = b; }
+    }
+    REQUIRE(b1 != 0);
+    REQUIRE(b2 != 0);
+
+    auto const target = 1 + b1 + b2;
+    REQUIRE(target <= maxComplexity);
+
+    auto const size1 = engine.Bucket(GrammarSymbol::SimpleExpr, b1).size();
+    auto const size2 = engine.Bucket(GrammarSymbol::SimpleExpr, b2).size();
+
+    std::size_t aqCount = 0;
+    for (auto const& t : engine.Bucket(GrammarSymbol::RecurringFactor, target)) {
+        if (t.Nodes().back().IsAq()) { ++aqCount; }
+    }
+    // Both the (b1,b2) and (b2,b1) operand-budget splits land at this same target budget (1 + b1 + b2 either way):
+    // size1*size2 candidates from each direction, and aq(a,b) != aq(b,a) so none of them collide/dedup against
+    // each other.
+    CHECK(aqCount == 2 * size1 * size2);
+}
+
 namespace {
     // Problem is non-movable, so this configures one in place rather than
     // returning it - callers construct `Operon::Problem problem(&ds);` and
@@ -290,9 +367,11 @@ TEST_CASE("GrammarEnumerationAlgorithm - Run fits coefficients and tracks best t
     EnumerationConfig config;
     config.MaxComplexity = 4;
     config.TopK = 3;
+    config.Ranking = EnumerationRanking::Objective;
+    config.EvaluationBufferSize = problem.TrainingRange().Size();
 
     Operon::RandomGenerator engineRng(42);
-    GrammarEnumerationAlgorithm algo(config, grammar, &optimizer, &evaluator, engineRng);
+    GrammarEnumerationAlgorithm algo(config, grammar, &optimizer, MakeObjectiveScorer(&evaluator), engineRng);
 
     Operon::RandomGenerator fitRng(42);
     algo.Run(fitRng);
@@ -300,12 +379,12 @@ TEST_CASE("GrammarEnumerationAlgorithm - Run fits coefficients and tracks best t
     auto best = algo.BestTrees();
     REQUIRE_FALSE(best.empty());
     CHECK(best.size() <= config.TopK);
-    for (auto const& [fitness, tree] : best) {
-        CHECK(std::isfinite(fitness));
-        CHECK(SymbolicComplexity(tree) <= config.MaxComplexity);
+    for (auto const& r : best) {
+        CHECK(std::isfinite(r.Score));
+        CHECK(SymbolicComplexity(r.Tree) <= config.MaxComplexity);
     }
     for (std::size_t i = 1; i < best.size(); ++i) {
-        CHECK(best[i - 1].first <= best[i].first); // ascending by fitness (lower = better)
+        CHECK(best[i - 1].Score <= best[i].Score); // ascending by Score (lower = better)
     }
 }
 
@@ -327,9 +406,10 @@ TEST_CASE("GrammarEnumerationAlgorithm - TopK == 0 keeps nothing rather than cra
     EnumerationConfig config;
     config.MaxComplexity = 4;
     config.TopK = 0;
+    config.EvaluationBufferSize = problem.TrainingRange().Size();
 
     Operon::RandomGenerator engineRng(42);
-    GrammarEnumerationAlgorithm algo(config, grammar, &optimizer, &evaluator, engineRng);
+    GrammarEnumerationAlgorithm algo(config, grammar, &optimizer, MakeObjectiveScorer(&evaluator), engineRng);
 
     Operon::RandomGenerator fitRng(42);
     algo.Run(fitRng);
@@ -352,9 +432,10 @@ TEST_CASE("GrammarEnumerationAlgorithm - RequestStop halts Run early", "[enumera
     EnumerationConfig config;
     config.MaxComplexity = 20; // deliberately large, so an early stop is meaningfully "early"
     config.TopK = 3;
+    config.EvaluationBufferSize = problem.TrainingRange().Size();
 
     Operon::RandomGenerator engineRng(42);
-    GrammarEnumerationAlgorithm algo(config, grammar, &optimizer, &evaluator, engineRng);
+    GrammarEnumerationAlgorithm algo(config, grammar, &optimizer, MakeObjectiveScorer(&evaluator), engineRng);
 
     Operon::RandomGenerator fitRng(42);
     int reportCalls = 0;
@@ -403,9 +484,10 @@ TEST_CASE("GrammarEnumerationAlgorithm - recovers a small ground-truth expressio
     EnumerationConfig config;
     config.MaxComplexity = 6;
     config.TopK = 5;
+    config.EvaluationBufferSize = problem.TrainingRange().Size();
 
     Operon::RandomGenerator engineRng(42);
-    GrammarEnumerationAlgorithm algo(config, grammar, &optimizer, &evaluator, engineRng);
+    GrammarEnumerationAlgorithm algo(config, grammar, &optimizer, MakeObjectiveScorer(&evaluator), engineRng);
     Operon::RandomGenerator fitRng(42);
     algo.Run(fitRng);
 
@@ -413,7 +495,362 @@ TEST_CASE("GrammarEnumerationAlgorithm - recovers a small ground-truth expressio
     REQUIRE_FALSE(best.empty());
     // R2's Evaluator convention is -R2Score (lower = better, matching every
     // other Operon ErrorMetric) - a near-perfect fit approaches -1, not 0.
-    CHECK(best.front().first < -0.99); // near-perfect fit for an exactly-representable linear ground truth
+    CHECK(best.front().Score < -0.99); // near-perfect fit for an exactly-representable linear ground truth
+}
+
+TEST_CASE("CanonicalizeEnumerationTree - commutative reordering shares a canonical key", "[enumeration]")
+{
+    Node nx(NodeType::Variable); nx.HashValue = 1;
+    Node ny(NodeType::Variable); ny.HashValue = 2;
+    Tree const xy = Tree({ nx, ny, Util::MakeOp<BuiltinOp::Add>() }).UpdateNodes();
+    Tree const yx = Tree({ ny, nx, Util::MakeOp<BuiltinOp::Add>() }).UpdateNodes();
+    CHECK(CanonicalizeEnumerationTree(xy).Key == CanonicalizeEnumerationTree(yx).Key);
+
+    Tree const xyMul = Tree({ nx, ny, Util::MakeOp<BuiltinOp::Mul>() }).UpdateNodes();
+    Tree const yxMul = Tree({ ny, nx, Util::MakeOp<BuiltinOp::Mul>() }).UpdateNodes();
+    CHECK(CanonicalizeEnumerationTree(xyMul).Key == CanonicalizeEnumerationTree(yxMul).Key);
+}
+
+TEST_CASE("CanonicalizeEnumerationTree - Sub/Div are not commutative", "[enumeration]")
+{
+    Node nx(NodeType::Variable); nx.HashValue = 1;
+    Node ny(NodeType::Variable); ny.HashValue = 2;
+    Tree const xy = Tree({ nx, ny, Util::MakeOp<BuiltinOp::Sub>() }).UpdateNodes();
+    Tree const yx = Tree({ ny, nx, Util::MakeOp<BuiltinOp::Sub>() }).UpdateNodes();
+    CHECK(CanonicalizeEnumerationTree(xy).Key != CanonicalizeEnumerationTree(yx).Key);
+}
+
+TEST_CASE("CanonicalizeEnumerationTree - Square(x) and x*x share a canonical key", "[enumeration]")
+{
+    Node nx(NodeType::Variable); nx.HashValue = 1;
+    Tree const squareForm = Tree({ nx, Util::MakeOp<BuiltinOp::Square>() }).UpdateNodes();
+    Tree const mulForm = Tree({ nx, nx, Util::MakeOp<BuiltinOp::Mul>() }).UpdateNodes();
+    CHECK(CanonicalizeEnumerationTree(squareForm).Key == CanonicalizeEnumerationTree(mulForm).Key);
+}
+
+TEST_CASE("CanonicalizeEnumerationTree - optimizable constants are anonymized, fixed constants are not", "[enumeration]")
+{
+    Node nx(NodeType::Variable); nx.HashValue = 1;
+
+    // 2*x and 99*x, both with an *optimizable* weight - same free-parameter family, same key.
+    Node w2 = Node::Constant(2.0); w2.Optimize = true;
+    Node w99 = Node::Constant(99.0); w99.Optimize = true;
+    Tree const t2 = Tree({ w2, nx, Util::MakeOp<BuiltinOp::Mul>() }).UpdateNodes();
+    Tree const t99 = Tree({ w99, nx, Util::MakeOp<BuiltinOp::Mul>() }).UpdateNodes();
+    CHECK(CanonicalizeEnumerationTree(t2).Key == CanonicalizeEnumerationTree(t99).Key);
+
+    // A *fixed* (non-optimizable) 2*x is a structurally distinct family from a fixed 3*x - their
+    // values are part of the structural identity, not anonymized.
+    Node f2 = Node::Constant(2.0); f2.Optimize = false;
+    Node f3 = Node::Constant(3.0); f3.Optimize = false;
+    Tree const tf2 = Tree({ f2, nx, Util::MakeOp<BuiltinOp::Mul>() }).UpdateNodes();
+    Tree const tf3 = Tree({ f3, nx, Util::MakeOp<BuiltinOp::Mul>() }).UpdateNodes();
+    CHECK(CanonicalizeEnumerationTree(tf2).Key != CanonicalizeEnumerationTree(tf3).Key);
+
+    // ...and a fixed constant never collides with an optimizable one either.
+    CHECK(CanonicalizeEnumerationTree(tf2).Key != CanonicalizeEnumerationTree(t2).Key);
+}
+
+TEST_CASE("CanonicalizeEnumerationTree - domain-distinct functions never share a canonical key", "[enumeration]")
+{
+    Node nx(NodeType::Variable); nx.HashValue = 1;
+    Tree const logForm = Tree({ nx, Util::MakeOp<BuiltinOp::Log>() }).UpdateNodes();
+    Tree const expForm = Tree({ nx, Util::MakeOp<BuiltinOp::Exp>() }).UpdateNodes();
+    Tree const sinForm = Tree({ nx, Util::MakeOp<BuiltinOp::Sin>() }).UpdateNodes();
+    auto logKey = CanonicalizeEnumerationTree(logForm).Key;
+    auto expKey = CanonicalizeEnumerationTree(expForm).Key;
+    auto sinKey = CanonicalizeEnumerationTree(sinForm).Key;
+    CHECK(logKey != expKey);
+    CHECK(logKey != sinKey);
+    CHECK(expKey != sinKey);
+}
+
+TEST_CASE("CanonicalizeEnumerationTree - bounded distribution expands (a+b)*(c+d)", "[enumeration]")
+{
+    Node na(NodeType::Variable); na.HashValue = 1;
+    Node nb(NodeType::Variable); nb.HashValue = 2;
+    Node nc(NodeType::Variable); nc.HashValue = 3;
+    Node nd(NodeType::Variable); nd.HashValue = 4;
+
+    // (a+b)*(c+d)
+    Tree const product = Tree({
+        na, nb, Util::MakeOp<BuiltinOp::Add>(),
+        nc, nd, Util::MakeOp<BuiltinOp::Add>(),
+        Util::MakeOp<BuiltinOp::Mul>(),
+    }).UpdateNodes();
+
+    // a*c + a*d + b*c + b*d, built directly as a flat sum (Add's postfix arity set to 4).
+    auto ac = Util::MakeOp<BuiltinOp::Mul>();
+    auto ad = Util::MakeOp<BuiltinOp::Mul>();
+    auto bc = Util::MakeOp<BuiltinOp::Mul>();
+    auto bd = Util::MakeOp<BuiltinOp::Mul>();
+    auto sum = Util::MakeOp<BuiltinOp::Add>(); sum.Arity = 4;
+    Tree const expanded = Tree({
+        na, nc, ac,
+        na, nd, ad,
+        nb, nc, bc,
+        nb, nd, bd,
+        sum,
+    }).UpdateNodes();
+
+    CHECK(CanonicalizeEnumerationTree(product).Key == CanonicalizeEnumerationTree(expanded).Key);
+}
+
+TEST_CASE("CanonicalizeEnumerationTree - Div/Inv normalize to the same multiplicative-inverse family", "[enumeration]")
+{
+    Node nx(NodeType::Variable); nx.HashValue = 1;
+    Node ny(NodeType::Variable); ny.HashValue = 2;
+    Node nz(NodeType::Variable); nz.HashValue = 3;
+
+    // Div(x, y) == Mul(x, Inv(y)) - binary Div and unary Div (1/x) normalize to the same family.
+    // Operon lays out binary-op children with the semantic first operand at the rightmost position
+    // (immediately preceding the op node - see functions.hpp's Sub/Div/Pow and
+    // pappus_backend.cpp's "operon lays out binary-op children with the semantic LEFT operand at the
+    // higher index" comment), so Div(x, y) = x/y is built as [y, x, Div], not [x, y, Div].
+    auto div2 = Util::MakeOp<BuiltinOp::Div>(); div2.Arity = 2;
+    Tree const binaryDiv = Tree({ ny, nx, div2 }).UpdateNodes();
+    auto invY = Util::MakeOp<BuiltinOp::Div>(); invY.Arity = 1;
+    auto mul = Util::MakeOp<BuiltinOp::Mul>();
+    Tree const mulOfInv = Tree({ ny, invY, nx, mul }).UpdateNodes();
+    CHECK(CanonicalizeEnumerationTree(binaryDiv).Key == CanonicalizeEnumerationTree(mulOfInv).Key);
+
+    // Inv(Inv(x)) == x - double inversion cancels.
+    auto inv1 = Util::MakeOp<BuiltinOp::Div>(); inv1.Arity = 1;
+    auto inv2 = Util::MakeOp<BuiltinOp::Div>(); inv2.Arity = 1;
+    Tree const doubleInv = Tree({ nx, inv1, inv2 }).UpdateNodes();
+    Tree const bare = Tree({ nx }).UpdateNodes();
+    CHECK(CanonicalizeEnumerationTree(doubleInv).Key == CanonicalizeEnumerationTree(bare).Key);
+
+    // Div(x, y*z) == Mul(x, Inv(y*z)) - a multi-factor monomial denominator is still invertible.
+    // x is the numerator (semantic first operand, rightmost), y*z the denominator - pushed first.
+    auto mulYZ = Util::MakeOp<BuiltinOp::Mul>();
+    Tree const divByProduct = Tree({ ny, nz, mulYZ, nx, div2 }).UpdateNodes();
+    auto invYZ = Util::MakeOp<BuiltinOp::Div>(); invYZ.Arity = 1;
+    auto mulYZ2 = Util::MakeOp<BuiltinOp::Mul>();
+    auto mul2 = Util::MakeOp<BuiltinOp::Mul>();
+    Tree const mulOfInvProduct = Tree({ ny, nz, mulYZ2, invYZ, nx, mul2 }).UpdateNodes();
+    CHECK(CanonicalizeEnumerationTree(divByProduct).Key == CanonicalizeEnumerationTree(mulOfInvProduct).Key);
+
+    // A sum denominator (y+z, not a pure monomial) has no closed monomial inverse - falls back to an
+    // opaque representation, which must still differ from the multiplied-out family above.
+    auto addYZ = Util::MakeOp<BuiltinOp::Add>();
+    Tree const divBySum = Tree({ ny, nz, addYZ, nx, div2 }).UpdateNodes();
+    CHECK(CanonicalizeEnumerationTree(divBySum).Key != CanonicalizeEnumerationTree(divByProduct).Key);
+}
+
+TEST_CASE("CanonicalizeEnumerationTree - fixed-exponent Pow folds to repeated multiplication", "[enumeration]")
+{
+    Node nx(NodeType::Variable); nx.HashValue = 1;
+
+    // Cube: Pow(x, 3) with a fixed (non-optimizable) exponent operand == x*x*x. Pow(base, exp) is
+    // built as [exp, base, Pow] - base is the semantic first operand (rightmost).
+    Node exp3 = Node::Constant(3.0); exp3.Optimize = false;
+    Tree const cubeForm = Tree({ exp3, nx, Util::MakeOp<BuiltinOp::Pow>() }).UpdateNodes();
+    auto mulA = Util::MakeOp<BuiltinOp::Mul>();
+    auto mulB = Util::MakeOp<BuiltinOp::Mul>();
+    Tree const cubeDirect = Tree({ nx, nx, mulA, nx, mulB }).UpdateNodes();
+    CHECK(CanonicalizeEnumerationTree(cubeForm).Key == CanonicalizeEnumerationTree(cubeDirect).Key);
+
+    // Pow(x, 2) folds to the same family as Square(x)/x*x.
+    Node exp2 = Node::Constant(2.0); exp2.Optimize = false;
+    Tree const powSquare = Tree({ exp2, nx, Util::MakeOp<BuiltinOp::Pow>() }).UpdateNodes();
+    Tree const square = Tree({ nx, Util::MakeOp<BuiltinOp::Square>() }).UpdateNodes();
+    CHECK(CanonicalizeEnumerationTree(powSquare).Key == CanonicalizeEnumerationTree(square).Key);
+
+    // A general (non-fixed, optimizable) Pow exponent is not foldable - treated opaquely, and must
+    // not collide with the fixed-exponent-3 family above.
+    Node freeExp = Node::Constant(3.0); freeExp.Optimize = true;
+    Tree const opaquePow = Tree({ freeExp, nx, Util::MakeOp<BuiltinOp::Pow>() }).UpdateNodes();
+    CHECK(CanonicalizeEnumerationTree(opaquePow).Key != CanonicalizeEnumerationTree(cubeForm).Key);
+}
+
+TEST_CASE("CanonicalizeEnumerationTree - Sub is additive negation", "[enumeration]")
+{
+    Node na(NodeType::Variable); na.HashValue = 1;
+    Node nb(NodeType::Variable); nb.HashValue = 2;
+
+    // Sub(a, b) == Add(a, -b), where -b is unary Sub(b). Sub(a,b)=a-b is built as [b, a, Sub] - a
+    // (the minuend) is the semantic first operand (rightmost).
+    Tree const sub = Tree({ nb, na, Util::MakeOp<BuiltinOp::Sub>() }).UpdateNodes();
+    auto negB = Util::MakeOp<BuiltinOp::Sub>(); negB.Arity = 1;
+    auto add = Util::MakeOp<BuiltinOp::Add>();
+    Tree const addOfNeg = Tree({ na, nb, negB, add }).UpdateNodes();
+    CHECK(CanonicalizeEnumerationTree(sub).Key == CanonicalizeEnumerationTree(addOfNeg).Key);
+
+    // Unary Sub(a) (negation) == Sub(0, a): a fixed-zero-minuend Sub collapses to the same negated
+    // family as bare unary negation (both anonymize to a plain negated fixed-1 coefficient on `a`).
+    // Sub(0,a)=0-a is built as [a, 0, Sub] - 0 (the minuend) is the semantic first operand (rightmost).
+    auto negA = Util::MakeOp<BuiltinOp::Sub>(); negA.Arity = 1;
+    Tree const unaryNeg = Tree({ na, negA }).UpdateNodes();
+    Node zero = Node::Constant(0.0); zero.Optimize = false;
+    Tree const zeroMinusA = Tree({ na, zero, Util::MakeOp<BuiltinOp::Sub>() }).UpdateNodes();
+    CHECK(CanonicalizeEnumerationTree(unaryNeg).Key == CanonicalizeEnumerationTree(zeroMinusA).Key);
+}
+
+TEST_CASE("CanonicalizeEnumerationTree - ExpansionCap overflow falls back to a sound opaque product", "[enumeration]")
+{
+    // Two sums whose full distribution (17*16 = 272 monomials) exceeds ExpansionCap (256): must not
+    // crash, must still be commutative-safe (reordering the outer Mul's operands - or, equivalently,
+    // building the same two sums in reverse child order - yields the same key), and must not collide
+    // with a smaller/different product that stays under the cap.
+    std::vector<Node> lhsVars;
+    lhsVars.reserve(17);
+    for (Operon::Hash h = 1; h <= 17; ++h) { Node v(NodeType::Variable); v.HashValue = h; lhsVars.push_back(v); }
+    std::vector<Node> rhsVars;
+    rhsVars.reserve(16);
+    for (Operon::Hash h = 101; h <= 116; ++h) { Node v(NodeType::Variable); v.HashValue = h; rhsVars.push_back(v); }
+
+    auto buildFlatSum = [](std::vector<Node> const& vars) {
+        std::vector<Node> nodes(vars.begin(), vars.end());
+        auto add = Util::MakeOp<BuiltinOp::Add>();
+        add.Arity = static_cast<uint16_t>(vars.size());
+        nodes.push_back(add);
+        return nodes;
+    };
+
+    auto lhsSum = buildFlatSum(lhsVars);
+    auto rhsSum = buildFlatSum(rhsVars);
+    std::vector<Node> product{ lhsSum.begin(), lhsSum.end() };
+    product.insert(product.end(), rhsSum.begin(), rhsSum.end());
+    product.push_back(Util::MakeOp<BuiltinOp::Mul>());
+    Tree const overCap = Tree(product).UpdateNodes();
+
+    std::vector<Node> productReversed{ rhsSum.begin(), rhsSum.end() };
+    productReversed.insert(productReversed.end(), lhsSum.begin(), lhsSum.end());
+    productReversed.push_back(Util::MakeOp<BuiltinOp::Mul>());
+    Tree const overCapReversed = Tree(productReversed).UpdateNodes();
+
+    auto key = CanonicalizeEnumerationTree(overCap).Key;
+    CHECK_FALSE(key.empty());
+    CHECK(key == CanonicalizeEnumerationTree(overCapReversed).Key);
+
+    // A structurally different over-cap product (drop the last rhs variable) must not collide.
+    auto rhsShort = std::vector<Node>(rhsVars.begin(), rhsVars.end() - 1);
+    auto rhsShortSum = buildFlatSum(rhsShort);
+    std::vector<Node> shortProduct{ lhsSum.begin(), lhsSum.end() };
+    shortProduct.insert(shortProduct.end(), rhsShortSum.begin(), rhsShortSum.end());
+    shortProduct.push_back(Util::MakeOp<BuiltinOp::Mul>());
+    Tree const differentOverCap = Tree(shortProduct).UpdateNodes();
+    CHECK(key != CanonicalizeEnumerationTree(differentOverCap).Key);
+}
+
+TEST_CASE("GrammarEnumerationAlgorithm - MDL ranking fits exactly one representative per canonical class", "[enumeration]")
+{
+    auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
+    Operon::Problem problem(&ds);
+    ConfigureProblem(ds, problem);
+
+    using DTable = DispatchTable<Operon::Scalar>;
+    DTable dtable;
+    LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{ &dtable, &problem };
+
+    Grammar grammar(PrimitiveSet::Arithmetic, problem.GetInputs());
+    EnumerationConfig config;
+    config.MaxComplexity = 5;
+    config.TopK = 100; // large enough to retain every canonical-class representative found
+    config.Ranking = EnumerationRanking::MinimumDescriptionLength;
+    config.EvaluationBufferSize = problem.TrainingRange().Size();
+
+    Operon::RandomGenerator engineRng(42);
+    auto scorer = MakeMdlScorer<DTable, GaussianLikelihood<Operon::Scalar>>(&problem, &dtable);
+    GrammarEnumerationAlgorithm algo(config, grammar, &optimizer, std::move(scorer), engineRng);
+
+    Operon::RandomGenerator fitRng(42);
+    algo.Run(fitRng);
+
+    auto best = algo.BestTrees();
+    REQUIRE_FALSE(best.empty());
+
+    // Every result's CanonicalKey is unique (one representative per canonical class - see Run's doc
+    // comment) and every MDL component is finite and correctly composed: Score(bits) ==
+    // NegativeLogLikelihood(nats)/ln(2) + ParameterCodeBits + StructureCodeBits.
+    std::set<std::string> seenKeys;
+    for (auto const& r : best) {
+        CHECK(std::isfinite(r.Score));
+        CHECK(std::isfinite(r.NegativeLogLikelihood));
+        CHECK(std::isfinite(r.ParameterCodeBits));
+        CHECK(std::isfinite(r.StructureCodeBits));
+        CHECK(r.StructureCodeBits >= 0.0); // log2 of a bucket size >= 1
+        auto const expectedScore = static_cast<Operon::Scalar>(r.NegativeLogLikelihood / std::log(2.0) + r.ParameterCodeBits + r.StructureCodeBits);
+        CHECK(std::abs(r.Score - expectedScore) < Operon::Scalar{1e-3});
+        auto const [it, inserted] = seenKeys.insert(r.CanonicalKey);
+        CHECK(inserted); // no CanonicalKey repeats across BestTrees()
+    }
+    // ascending by Score
+    for (std::size_t i = 1; i < best.size(); ++i) { CHECK(best[i - 1].Score <= best[i].Score); }
+}
+
+TEST_CASE("GrammarEnumerationAlgorithm - Cube/TenExp productions compute the correct (non-swapped) function", "[enumeration]")
+{
+    // Regression test: ProcessNonterminal's operand-to-postfix-position mapping must match the
+    // interpreter's own convention (the FIRST semantic operand - Pow's base for Cube, Pow's base
+    // for TenExp too - is read from the position immediately preceding the op node, not from
+    // whichever ProductionOperand happens to be pushed first). A prior version of this code pushed
+    // operands in Operands-list order (base then exponent), which silently swapped Cube into
+    // computing 3^x instead of x^3, and TenExp into computing x^10 instead of 10^x - both wrong
+    // functions, undetectable by the two-nonterminal-operand productions (Sub/Div/Pow/Aq) because
+    // those get full symmetric (b0,b1)/(b1,b0) coverage that hides a swap, but fatal for Cube/
+    // TenExp's single fixed+nonterminal-operand shape, which has no such symmetric compensation.
+    auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
+    auto vars = ds.VariableHashes();
+    std::erase(vars, ds.GetVariable("Y").value().Hash);
+    vars.resize(1); // one variable is enough to pin down base vs. exponent unambiguously
+
+    using DTable = DispatchTable<Operon::Scalar>;
+    DTable dtable;
+    Operon::Range const range{ 0, 1 }; // a single row is enough
+    auto const x = ds.GetValues(vars.front())[0];
+
+    // Every SimpleExpr this engine builds for a lone variable is exactly WeightPlaceholder(2.0)*x +
+    // BiasPlaceholder(1.0) = 2x+1 (see enumeration.cpp's WeightPlaceholder/BiasPlaceholder) -
+    // deterministic and known ahead of time, so the expected numeric value is exact, not fitted.
+    auto const simpleExprValue = 2.0 * static_cast<double>(x) + 1.0;
+
+    SECTION("Cube: Pow(SimpleExpr, 3) evaluates to SimpleExpr^3, not 3^SimpleExpr")
+    {
+        Grammar grammar; grammar.SetVariables(vars); grammar.Configure(ToFunctionSet(EnumerationFunction::Cube));
+        Operon::RandomGenerator rng(42);
+        EnumerationEngine engine(grammar, /*maxComplexity=*/6, rng);
+        engine.Build();
+
+        Tree const* cubeTree = nullptr;
+        for (std::size_t b = 1; b <= engine.MaxComplexity() && !cubeTree; ++b) {
+            for (auto const& t : engine.Bucket(GrammarSymbol::RecurringFactor, b)) {
+                if (t.Nodes().back().IsOp<BuiltinOp::Pow>()) { cubeTree = &t; break; }
+            }
+        }
+        REQUIRE(cubeTree != nullptr);
+
+        Interpreter<Operon::Scalar, DTable> interpreter(&dtable, &ds, cubeTree);
+        auto estimated = interpreter.Evaluate(cubeTree->GetCoefficients(), range);
+        auto const expectedCube = std::pow(simpleExprValue, 3.0);
+        auto const expectedSwapped = std::pow(3.0, simpleExprValue);
+        CHECK(std::abs(static_cast<double>(estimated[0]) - expectedCube) < 1e-2);
+        CHECK(std::abs(static_cast<double>(estimated[0]) - expectedSwapped) > 1e-2); // must NOT be the swapped form
+    }
+
+    SECTION("TenExp: Pow(10, SimpleExpr) evaluates to 10^SimpleExpr, not SimpleExpr^10")
+    {
+        Grammar grammar; grammar.SetVariables(vars); grammar.Configure(ToFunctionSet(EnumerationFunction::TenExp));
+        Operon::RandomGenerator rng(42);
+        EnumerationEngine engine(grammar, /*maxComplexity=*/6, rng);
+        engine.Build();
+
+        Tree const* tenExpTree = nullptr;
+        for (std::size_t b = 1; b <= engine.MaxComplexity() && !tenExpTree; ++b) {
+            for (auto const& t : engine.Bucket(GrammarSymbol::RecurringFactor, b)) {
+                if (t.Nodes().back().IsOp<BuiltinOp::Pow>()) { tenExpTree = &t; break; }
+            }
+        }
+        REQUIRE(tenExpTree != nullptr);
+
+        Interpreter<Operon::Scalar, DTable> interpreter(&dtable, &ds, tenExpTree);
+        auto estimated = interpreter.Evaluate(tenExpTree->GetCoefficients(), range);
+        auto const expectedTenExp = std::pow(10.0, simpleExprValue);
+        auto const expectedSwapped = std::pow(simpleExprValue, 10.0);
+        CHECK(std::abs(static_cast<double>(estimated[0]) - expectedTenExp) < 1e-2);
+        CHECK(std::abs(static_cast<double>(estimated[0]) - expectedSwapped) > 1e-2); // must NOT be the swapped form
+    }
 }
 
 } // namespace Operon::Test

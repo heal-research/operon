@@ -359,6 +359,11 @@ auto ParseOptions(cxxopts::Options&& opts, int argc, char** argv) -> cxxopts::Pa
         fmt::print("{}\n", Operon::Version());
         std::exit(EXIT_SUCCESS);
     }
+    // --show-primitives is a "just print primitives/recipes and exit" flag (see PrintPrimitives /
+    // operon_enum's PrintEnumerationFunctions) - it never touches the dataset/target, so it's exempt
+    // from the checks below the same way --help/--version are, rather than forcing every caller to
+    // supply a dataset just to display what primitives are available.
+    if (result.contains("show-primitives")) { return result; }
     if (!result.contains("target")) {
         fmt::print(stderr, "error: no target variable was specified.\n");
         std::exit(EXIT_FAILURE);

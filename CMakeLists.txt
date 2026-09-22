@@ -45,6 +45,7 @@ endif()
 add_library(
     operon_operon
     source/algorithms/enumeration.cpp
+    source/algorithms/enumeration_canonicalizer.cpp
     source/algorithms/gp.cpp
     source/algorithms/nsga2.cpp
     source/algorithms/probes/builtin.cpp
