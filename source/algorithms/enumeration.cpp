@@ -178,7 +178,9 @@ void EnumerationEngine::ProcessNonterminal(GrammarSymbol nt, std::size_t budget)
             // Op-rooted) could need a larger margin - the completeness tests
             // in test/source/implementation/enumeration.cpp are the guard;
             // if a new production is added there, extend those tests first.
-            bool const selfCombineUnweighted = (op0 == op1) && !p.WeightFirstOperand;
+            // op0==op1 alone isn't sufficient: see Production::Commutative. A non-commutative same-symbol Op
+            // (e.g. Aq) must not take this skip - (b0,b1) and (b1,b0) build different trees for it.
+            bool const selfCombineUnweighted = (op0 == op1) && !p.WeightFirstOperand && p.Commutative;
 
             for (std::size_t b0 = min0; b0 <= remaining; ++b0) {
                 if (remaining - b0 < min1) { continue; }

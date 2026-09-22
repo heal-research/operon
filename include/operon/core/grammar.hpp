@@ -27,14 +27,11 @@ namespace Operon {
 // nesting shallow (e.g. no log(sin(...))) - not a restriction on how many
 // weighted terms SimpleExpr itself may sum.
 //
-// Deviates from symreg-cpp in one respect: symreg-cpp's InvFactor/InvExpr/
-// InvTerm (a dedicated 1/x reciprocal wrapper) has no corresponding operon
-// NodeType, and no corresponding production either - this grammar currently
-// only produces Add/Mul (plus the five unary wraps below), so Div/Sub/Pow
-// (and thus 1/x) aren't reachable yet. Production has no way to express a
-// fixed-constant operand (e.g. a Div's numerator) mixed with a nonterminal
-// operand, so adding this isn't a drop-in rule - it's tracked as follow-up
-// work once the current enumeration stack lands.
+// No InvFactor/InvExpr/InvTerm (1/x reciprocal wrapper): no corresponding operon NodeType or production.
+// Productions cover Add/Mul/Aq plus the five unary wraps below; Div/Sub/Pow are unreachable. Production cannot
+// express a fixed-constant operand (e.g. Div's numerator) mixed with a nonterminal operand.
+// Aq (analytic quotient, x/sqrt(1+y^2)): same numerator/denominator shape as Div, no pole (denominator >= 1),
+// fits the existing two-operand production shape.
 enum class GrammarSymbol : uint8_t {
     Expression,      // Constant*Term + Constant | Constant*Term + Expression
     Term,            // RecurringFactor | Term * Term (flattened by Tree::Reduce())
@@ -75,24 +72,24 @@ struct Production {
     // more Add operand. Affects Tree::Length() but not Complexity (constants
     // are excluded from the complexity count - see Grammar::MinComplexity).
     bool TrailingConstant{false};
+    // Whether Op is commutative for a same-symbol two-operand production (Operands[0] == Operands[1]).
+    // ProcessNonterminal skips the b0 > b1 half as redundant work when true. Default true (matches Add, Mul).
+    // MUST be false for a non-commutative same-symbol Op (e.g. Aq: aq(a, b) != aq(b, a)) - otherwise the skip
+    // drops every candidate whose first operand comes from the larger-budget bucket.
+    bool Commutative{true};
 
     [[nodiscard]] auto IsCoercion() const noexcept -> bool { return Op == NoBuiltinOp; }
 };
+
 
 // Queryable, config/dataset-parameterized grammar for exhaustive expression
 // enumeration - plays the same role for the enumeration algorithm that
 // PrimitiveSet plays for stochastic tree generation.
 //
-// Configure()'s PrimitiveSetConfig argument only gates which of the five
-// UnaryWraps (Log/Exp/Sin/Sqrt/Cbrt, see grammar.cpp) get wired onto
-// RecurringFactor - it is not a general "enable any PrimitiveSet function"
-// switch. Enabling PrimitiveSet::TypeCoherent or PrimitiveSet::Full still
-// only makes Log/Exp/Sin (of TypeCoherent's Pow/Exp/Log/Sin/Cos/Square) and
-// Sqrt/Cbrt (of Full's additional Aq/Tan/Tanh/Sqrt/Cbrt) reachable; Pow,
-// Cos, Square, Aq, Tan, Tanh are never produced regardless of config, and
-// neither are Sub/Div (see the GrammarSymbol comment above on why 1/x isn't
-// reachable either). This mirrors symreg-cpp's original operator set, not a
-// PrimitiveSet's full vocabulary.
+// Configure()'s PrimitiveSetConfig gates only Log/Exp/Sin/Sqrt/Cbrt (UnaryWraps, see grammar.cpp) and Aq, all on
+// RecurringFactor - not a general "enable any PrimitiveSet function" switch. TypeCoherent reaches Log/Exp/Sin;
+// Full additionally reaches Sqrt/Cbrt/Aq. Pow, Cos, Square, Tan, Tanh, Sub, Div are never produced regardless
+// of config (see GrammarSymbol comment above).
 class OPERON_EXPORT Grammar {
 public:
     // Equivalent to Grammar(PrimitiveSetConfig{}, {}): Rebuild() still runs, so

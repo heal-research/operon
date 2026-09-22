@@ -261,6 +261,78 @@ TEST_CASE("EnumerationEngine - unary wraps populate RecurringFactor beyond budge
     }
 }
 
+TEST_CASE("EnumerationEngine - Aq production is gated by PrimitiveSetConfig", "[enumeration]")
+{
+    std::vector<Operon::Hash> const vars{ 10, 20 };
+    Operon::RandomGenerator rng(42);
+    constexpr std::size_t maxComplexity = 12;
+
+    // TypeCoherent excludes Aq: no RecurringFactor bucket should contain an Aq-rooted tree.
+    {
+        Grammar grammar(PrimitiveSet::TypeCoherent, vars);
+        EnumerationEngine engine(grammar, maxComplexity, rng);
+        engine.Build();
+        for (std::size_t b = 1; b <= maxComplexity; ++b) {
+            for (auto const& t : engine.Bucket(GrammarSymbol::RecurringFactor, b)) {
+                CHECK_FALSE(t.Nodes().back().IsAq());
+            }
+        }
+    }
+
+    // Full includes Aq: at least one Aq-rooted candidate must be reachable within this budget.
+    {
+        Grammar grammar(PrimitiveSet::Full, vars);
+        EnumerationEngine engine(grammar, maxComplexity, rng);
+        engine.Build();
+        bool foundAq = false;
+        for (std::size_t b = 1; b <= maxComplexity && !foundAq; ++b) {
+            for (auto const& t : engine.Bucket(GrammarSymbol::RecurringFactor, b)) {
+                if (t.Nodes().back().IsAq()) { foundAq = true; break; }
+            }
+        }
+        CHECK(foundAq);
+    }
+}
+
+TEST_CASE("EnumerationEngine - Aq's non-commutative self-combine isn't half-dropped by the symmetric skip", "[enumeration]")
+{
+    // Aq (Operands = {SimpleExpr, SimpleExpr}) is same-symbol like Term/SimpleTerm's Mul self-combine, but
+    // aq(a,b) != aq(b,a). Production::Commutative=false keeps ProcessNonterminal's b0 > b1 skip (valid only
+    // for a commutative same-symbol combine) from applying here. Regression: find two distinct nonempty
+    // SimpleExpr budgets and check both operand-budget orderings land in the RecurringFactor bucket - a
+    // reintroduced blanket op0==op1 skip would keep only the b0<=b1 direction.
+    std::vector<Operon::Hash> const vars{ 10, 20 };
+    constexpr std::size_t maxComplexity = 14;
+    Grammar grammar(PrimitiveSet::Full, vars);
+    Operon::RandomGenerator rng(42);
+    EnumerationEngine engine(grammar, maxComplexity, rng);
+
+    engine.Build();
+
+    std::size_t b1 = 0;
+    std::size_t b2 = 0;
+    for (std::size_t b = 3; b <= maxComplexity && b2 == 0; ++b) {
+        if (engine.Bucket(GrammarSymbol::SimpleExpr, b).empty()) { continue; }
+        if (b1 == 0) { b1 = b; } else { b2 = b; }
+    }
+    REQUIRE(b1 != 0);
+    REQUIRE(b2 != 0);
+
+    auto const target = 1 + b1 + b2;
+    REQUIRE(target <= maxComplexity);
+
+    auto const size1 = engine.Bucket(GrammarSymbol::SimpleExpr, b1).size();
+    auto const size2 = engine.Bucket(GrammarSymbol::SimpleExpr, b2).size();
+
+    std::size_t aqCount = 0;
+    for (auto const& t : engine.Bucket(GrammarSymbol::RecurringFactor, target)) {
+        if (t.Nodes().back().IsAq()) { ++aqCount; }
+    }
+    // Both (b1,b2) and (b2,b1) operand-budget splits land at target budget (1 + b1 + b2 either way):
+    // size1*size2 candidates from each direction; aq(a,b) != aq(b,a) so none collide/dedup.
+    CHECK(aqCount == 2 * size1 * size2);
+}
+
 namespace {
     // Problem is non-movable, so this configures one in place rather than
     // returning it - callers construct `Operon::Problem problem(&ds);` and

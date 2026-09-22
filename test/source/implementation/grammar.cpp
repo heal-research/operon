@@ -55,6 +55,25 @@ TEST_CASE("Grammar - Full config enables Sqrt/Cbrt too", "[grammar]")
     CHECK(HasUnaryProduction(ps, BuiltinOp::Cbrt));
 }
 
+TEST_CASE("Grammar - Full config also enables the Aq production, non-commutative", "[grammar]")
+{
+    Grammar grammar(PrimitiveSet::Full, { 1, 2, 3 });
+    auto ps = grammar.Productions(GrammarSymbol::RecurringFactor);
+
+    auto it = std::ranges::find_if(ps, [](auto const& p) { return p.Op == BuiltinOp::Aq; });
+    REQUIRE(it != ps.end());
+    CHECK(it->Operands == std::vector{ GrammarSymbol::SimpleExpr, GrammarSymbol::SimpleExpr });
+    CHECK_FALSE(it->Commutative);
+    CHECK_FALSE(it->WeightFirstOperand);
+}
+
+TEST_CASE("Grammar - TypeCoherent config doesn't enable Aq", "[grammar]")
+{
+    Grammar grammar(PrimitiveSet::TypeCoherent, { 1, 2, 3 });
+    auto ps = grammar.Productions(GrammarSymbol::RecurringFactor);
+    CHECK_FALSE(HasUnaryProduction(ps, BuiltinOp::Aq));
+}
+
 TEST_CASE("Grammar - Configure is independent of Reconfigure order", "[grammar]")
 {
     Grammar grammar;

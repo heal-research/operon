@@ -48,6 +48,17 @@ void Grammar::Rebuild()
             recurringFactor.push_back(Production{ .Op = op, .Operands = { GrammarSymbol::SimpleExpr } });
         }
     }
+    // Aq (analytic quotient, x/sqrt(1+y^2)): second RecurringFactor production, gated like UnaryWraps but
+    // binary. Operands = {SimpleExpr, SimpleExpr} is same-symbol, but Aq is NOT commutative (aq(a,b) != aq(b,a)).
+    // Commutative = false is required so ProcessNonterminal's b0 > b1 skip (valid only for a commutative
+    // same-symbol Op) doesn't drop half the candidates.
+    if (config_.Test(static_cast<std::size_t>(BuiltinOp::Aq))) {
+        recurringFactor.push_back(Production{
+            .Op = BuiltinOp::Aq,
+            .Operands = { GrammarSymbol::SimpleExpr, GrammarSymbol::SimpleExpr },
+            .Commutative = false,
+        });
+    }
 
     rules_[GrammarSymbols::GetIndex(GrammarSymbol::Term)] = {
         Production{ .Op = NoBuiltinOp, .Operands = { GrammarSymbol::RecurringFactor } }, // coercion
