@@ -99,8 +99,10 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     auto const crossoverInternalProbability = result["crossover-internal-probability"].as<Operon::Scalar>();
     auto const symbolic = result["symbolic"].as<bool>();
 
-    // Apply overrides from parsed options
-    dataset = std::make_unique<Operon::Dataset>(result["dataset"].as<std::string>(), /*hasHeader=*/true);
+    // Apply overrides from parsed options. dataset construction is deferred into the try block below,
+    // after the show-primitives early return - show-primitives never touches the dataset (see
+    // ParseOptions, which exempts it from the --dataset/--target requirement), so requiring one here
+    // unconditionally would crash instead of just printing primitives.
     if (result.contains("seed"))             { config.Seed = result["seed"].as<size_t>(); }
     if (result.contains("train"))            { trainingRange = Operon::ParseRange(result["train"].as<std::string>()); }
     if (result.contains("test"))             { testRange = Operon::ParseRange(result["test"].as<std::string>()); }
@@ -115,6 +117,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             Operon::PrintPrimitives(primitiveSetConfig);
             return EXIT_SUCCESS;
         }
+
+        dataset = std::make_unique<Operon::Dataset>(result["dataset"].as<std::string>(), /*hasHeader=*/true);
 
         // set the target
         auto const target = Operon::ResolveTarget(*dataset, targetName);

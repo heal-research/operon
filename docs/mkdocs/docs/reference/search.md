@@ -38,15 +38,17 @@ The comparison supplied to selectors and reinserters defines the meaning of “b
 Header: [`operon/algorithms/enumeration.hpp`](https://github.com/heal-research/operon/blob/main/include/operon/algorithms/enumeration.hpp)
 
 ```cpp
-EnumerationConfig config { .MaxComplexity = 12, .TopK = 20 };
-GrammarEnumerationAlgorithm algorithm { config, grammar, &optimizer, &evaluator, setupRng };
+EnumerationConfig config { .MaxComplexity = 12, .TopK = 20, .Ranking = EnumerationRanking::MinimumDescriptionLength,
+                            .EvaluationBufferSize = problem.TrainingRange().Size() };
+auto scorer = MakeMdlScorer<DTable, GaussianLikelihood<Operon::Scalar>>(&problem, &dtable);
+GrammarEnumerationAlgorithm algorithm { config, grammar, &optimizer, std::move(scorer), setupRng };
 algorithm.Run(fitRng, report);
-for (auto const& [fitness, tree] : algorithm.BestTrees()) { /* ... */ }
+for (auto const& result : algorithm.BestTrees()) { /* result.Score, result.Tree, result.CanonicalKey, ... */ }
 ```
 
-`EnumerationEngine(grammar, maxComplexity, rng)` builds canonical candidate buckets bottom-up. `Bucket(nonterminal, budget)` returns a read-only view after `Build()`. `SetOnNovelExpression` installs a move-only callback for each unique complete expression. The engine is move-only and `Build()` is not a concurrent candidate-generation API.
+`EnumerationEngine(grammar, maxComplexity, rng)` builds canonical candidate buckets bottom-up. `Bucket(nonterminal, budget)` returns a read-only view after `Build()`. The engine has no per-candidate callback; it only discovers and deduplicates distinct trees per `(nonterminal, budget)`. The engine is move-only and `Build()` is not a concurrent candidate-generation API.
 
-`GrammarEnumerationAlgorithm` fits each novel complete tree, ranks it with the evaluator, and retains `TopK` ascending scores. It is single-shot: construct a fresh object for another run. `optimizer->Iterations()` MUST be greater than zero, because a zero-iteration fit makes ranking tied placeholder coefficients meaningless.
+`GrammarEnumerationAlgorithm` wraps the engine with a group/fit/rank pass: every stored candidate is canonicalized (`CanonicalizeEnumerationTree`) and grouped into canonical classes, one representative per class is fit via `CoefficientOptimizer`, then scored with the caller-supplied `EnumerationScorer` (`MakeMdlScorer` for MDL ranking, `MakeObjectiveScorer` for the pre-existing evaluator-based ranking) and the `TopK` ascending-`Score` results are retained as `EnumerationResult`s, with the canonical key as the strict tie-break on equal score. It is single-shot: construct a fresh object for another run. `optimizer->Iterations()` MUST be greater than zero, because a zero-iteration fit makes ranking tied placeholder coefficients meaningless.
 
 ## Stop control
 
