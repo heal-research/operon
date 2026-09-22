@@ -1,5 +1,5 @@
 digraph overview {
-  graph [rankdir=LR, bgcolor="transparent", nodesep=0.4, ranksep=0.55, pad=0.12];
+  graph [rankdir=TB, bgcolor="transparent", nodesep=0.4, ranksep=0.55, pad=0.12];
   node [shape=box, style="rounded,filled", fillcolor="#EEF2FF", color="#4F46E5", penwidth=2, fontname="Inter", fontsize=13, fontcolor="#1E1B4B", width=1.65, height=0.72];
   edge [color="#4F46E5", penwidth=1.5, arrowsize=0.75, fontname="Inter", fontsize=10, fontcolor="#312E81"];
 
