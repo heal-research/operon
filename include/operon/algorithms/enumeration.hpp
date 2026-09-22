@@ -125,15 +125,24 @@ private:
     // earlier in this level - see the fixed per-level order in Build()).
     //
     // Fans every production's candidate-building loop out across `executor` (one tf::Taskflow, run to completion
-    // before returning) - safe because every read this call makes targets either a strictly lower budget (fully
-    // built by an earlier, completed Build() level) or, for a same-budget coercion, an earlier-in-ProcessingOrder
-    // nonterminal's bucket (also already fully built this level) - and because a self-combine production's own
-    // writes can only "shrink" into complexity budget-1 (WorkingBudgetMargin, see enumeration.cpp), which is
-    // always strictly above every b0/b1 this call itself reads (both bounded by budget - fixedCost - the other
-    // operand's MinComplexity, and fixedCost + MinComplexity >= 2). So no task here ever reads a bucket another
-    // task in the same call is concurrently writing - concurrent *writes* into the same nt's buckets (from
-    // different productions/operand splits landing in the same complexity cell) are still possible and are what
-    // TryInsert's bucketMutex_ guards.
+    // before returning). Every write this call makes lands in nt's own row, at either the nominal `budget` or, for
+    // a self-combine whose Reduce() flattens two already-Op-rooted operands into one, at a smaller realized
+    // complexity - but never smaller than budget-1: any tree whose flattened complexity would drop further is also
+    // reachable one level earlier by peeling a single child off the flattened result (nominal cost (r-m)+m+1 =
+    // r+1, i.e. budget-1 for a realized complexity of budget-2), so it is already present in seen_ by the time
+    // this level runs - TryInsert's dedup check returns novel=false before any push_back, making that write a
+    // no-op. Reads this call makes are: a strictly lower budget (fully built by an earlier, completed Build()
+    // level); or, for a same-budget coercion, an earlier-in-ProcessingOrder nonterminal's bucket (also already
+    // fully built this level); or, for a same-symbol self-combine, nt's own row at b0/b1 <= budget - fixedCost -
+    // MinComplexity(operand) < budget - 1. So every *effective* write (one that actually stores a tree) lands at
+    // budget or budget-1, strictly above every b0/b1 this call itself reads - no task here ever observes a bucket
+    // another task in the same call is concurrently writing. This is a property of dedup-driven no-ops, not a
+    // structural bound on what a single production can nominally compute - a future production must preserve the
+    // same peel-derivation argument (extend the completeness tests in
+    // test/source/implementation/enumeration.cpp first) or this reasoning breaks silently (the bucketMutex_ below
+    // guards concurrent *writes* only; a genuine same-cell read-during-write would be an unguarded data race).
+    // Concurrent *writes* into the same nt's buckets (from different productions/operand splits landing in the
+    // same complexity cell) are still possible and are what TryInsert's bucketMutex_ guards.
     void ProcessNonterminal(tf::Executor& executor, GrammarSymbol nt, std::size_t budget);
 
     // Reduce()+Simplify()s `tree`, computes its realized SymbolicComplexity
@@ -239,10 +248,18 @@ public:
     // onNovelExpression_'s coefficient fit/evaluate/ConsiderBest hook below runs concurrently from every one of
     // `executor`'s workers, keyed off tf::Executor::this_worker_id() for its own per-worker
     // RandomGenerator/scratch-buffer slot, mirroring the per-worker `slots` / per-individual `rngs` pattern
-    // NSGA2::Run uses for its own threaded local search and evaluation. Fixed (seed, executor worker count) stays
-    // reproducible; results are not reproducible *across* different worker counts, since worker interleaving
-    // changes which duplicate derivation of a given tree wins TryInsert's dedup race, and hence which worker's
-    // RNG stream ends up fitting it.
+    // NSGA2::Run uses for its own threaded local search and evaluation.
+    //
+    // Reproducibility depends on `optimizer_`, not just (seed, worker count): every duplicate derivation of a
+    // given tree is structurally identical (built from the same constexpr weight/bias placeholders, see
+    // WeightPlaceholder/BiasPlaceholder), so whichever worker's TryInsert call wins the dedup race, the fitted
+    // tree and its fitness are identical PROVIDED `optimizer_`'s fit doesn't itself consume `rng` (true for
+    // LevenbergMarquardtOptimizer, the CLI's default - `rng` there is unused). With an rng-consuming optimizer
+    // (e.g. LBFGSOptimizer's stochastic batch selection), which worker wins the race genuinely changes the fit,
+    // so results are not reproducible even at a *fixed* thread count, let alone across different ones. Separately,
+    // regardless of optimizer: ConsiderBest breaks exact-fitness ties by arrival order (scheduling-dependent), so
+    // BestTrees()'s ordering - and, for ties landing exactly at the TopK boundary, its content - can vary run to
+    // run at any fixed (seed, worker count) pair.
     void Run(tf::Executor& executor, Operon::RandomGenerator& rng, Operon::ReportCallback report = {});
 
     // Convenience overload: builds and owns a local tf::Executor with `threads` workers (0 =

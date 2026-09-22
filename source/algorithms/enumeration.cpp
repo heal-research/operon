@@ -188,16 +188,16 @@ void EnumerationEngine::ProcessNonterminal(tf::Executor& executor, GrammarSymbol
             // (harmless either way, since TryInsert would just dedup them,
             // but there's no reason to pay for it twice).
             //
-            // WorkingBudgetMargin's value (1) was hand-derived specifically
-            // for the current production table (see Grammar::Rebuild in
-            // grammar.cpp): every flattening self-combine/recursion here has
-            // at most one operand that's already rooted in the combining Op
-            // at a time (see enumeration.hpp's "Budget accounting note").
-            // A future production violating that (e.g. a ternary self-combine,
-            // or one where both operands can simultaneously already be
-            // Op-rooted) could need a larger margin - the completeness tests
-            // in test/source/implementation/enumeration.cpp are the guard;
-            // if a new production is added there, extend those tests first.
+            // WorkingBudgetMargin's value (1) is sufficient for the current production table not because a
+            // flattening self-combine is bounded to one already-Op-rooted operand - BOTH operands can already be
+            // Op-rooted at once (e.g. Mul(Mul(x1,x2), Mul(x3,x4)) flattens to a single 5-node Mul, realized
+            // complexity budget-2 against a nominal budget) - but because any candidate whose realized complexity
+            // would drop further than budget-1 is always also reachable one nominal budget level earlier by
+            // peeling a single child off the flattened result, so it's already in seen_ and the second derivation
+            // is a dedup no-op rather than a genuine store (see enumeration.hpp's ProcessNonterminal doc comment).
+            // A future production violating that peel-derivation property could need a larger margin - the
+            // completeness tests in test/source/implementation/enumeration.cpp are the guard; if a new production
+            // is added there, extend those tests first.
             bool const selfCombineUnweighted = (op0 == op1) && !p.WeightFirstOperand;
 
             for (std::size_t b0 = min0; b0 <= remaining; ++b0) {
@@ -235,7 +235,10 @@ void EnumerationEngine::ProcessNonterminal(tf::Executor& executor, GrammarSymbol
         }
     }
 
-    executor.run(taskflow).wait();
+    // .get() (not .wait()) - .wait() would silently drop an exception thrown by any task, which here would also
+    // leave seen_/buckets_ desynced (the throwing TryInsert call's seen_ insert already landed) - see nsga2.cpp's
+    // identical .get() choice for the same reason.
+    executor.run(taskflow).get();
 }
 
 void EnumerationEngine::Build(tf::Executor& executor, Operon::ReportCallback shouldStop)
