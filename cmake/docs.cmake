@@ -59,3 +59,4 @@ add_custom_command(
     VERBATIM
 )
 add_custom_target(docs DEPENDS "${mkdocs_html_index}")
+
