@@ -31,13 +31,11 @@ static_assert(Operon::NodeTypes::Count == 4,
 // validation on read that the value is a member of the enumerate list.
 // A pre-collapse BEVE Tree/Individual export's old NodeType ordinal
 // (e.g. Sin=22) would decode as `static_cast<NodeType>(22)`, a garbage
-// out-of-range value - CheckpointProxy's Magic/Version fields (bumped
-// below) guard checkpoint loads against this, but ToBeve(Tree)/
-// ToBeve(Individual) exports have no equivalent guard, before or after
-// this change. Do not attempt to load a pre-collapse .beve Tree/Individual
-// export against this code; a dedicated versioned legacy reader (translating
-// old ordinals to the new BuiltinOp/Function representation) would be
-// needed to do so safely - not implemented here.
+// out-of-range value. CheckpointProxy has its own magic/version guard, and
+// current Tree/Individual exports now have the TreeBeveProxy and
+// IndividualBeveProxy guards below. Pre-versioning .beve Tree/Individual
+// exports are intentionally rejected; a dedicated legacy reader translating
+// old ordinals to the new BuiltinOp/Function representation is not implemented.
 template <>
 struct glz::meta<Operon::NodeType> {
     static constexpr auto value = glz::enumerate(
