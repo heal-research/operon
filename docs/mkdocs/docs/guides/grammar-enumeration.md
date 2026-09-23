@@ -12,7 +12,7 @@ The engine visits budgets in increasing order and has no per-candidate callback 
 
 ## Canonical grouping
 
-Distinct-looking candidate trees can represent the same algebraic family (e.g. `x+y` and `y+x`, or `Square(x)` and `x*x`). `CanonicalizeEnumerationTree` (`algorithms/enumeration_canonicalizer.hpp`) computes a deterministic sum-of-monomials `Key` for each tree, sound (never merges two genuinely different families) but not necessarily complete (a bounded distribution cap can leave some equivalent expressions with distinct keys). `GrammarEnumerationAlgorithm::Run` groups every stored candidate by this `Key` and fits/scores exactly one representative per class - see its own doc comment for the exact 3-level representative tie-break.
+Distinct-looking candidate trees can represent the same algebraic family (e.g. `x+y` and `y+x`, or `Square(x)` and `x*x`). `CanonicalizeEnumerationTree` (`algorithms/enumeration_canonicalizer.hpp`) computes a deterministic sum-of-monomials `Key` for each tree, sound (never merges two genuinely different families) but not necessarily complete (a bounded distribution cap can leave some equivalent expressions with distinct keys). `GrammarEnumerationAlgorithm::Run` groups every stored candidate by this `Key` and fits/scores exactly one representative per class. Representatives prefer smaller source buckets, then lower complexity, then a lexicographic comparison of canonical node fields.
 
 ## Top-level algorithm
 
@@ -23,7 +23,7 @@ Distinct-looking candidate trees can represent the same algebraic family (e.g. `
 | `EnumerationConfig::MaxComplexity` | maximum caller-visible structural complexity |
 | `EnumerationConfig::TopK` | number of best scored trees retained |
 | `EnumerationConfig::Ranking` | which ranking the CLI/caller intends (informational - the scorer passed to the constructor is what actually determines ranking behavior) |
-| `EnumerationConfig::EvaluationBufferSize` | per-worker scratch buffer size `Run()` allocates for `scorer`; must be >= the scorer's training range size |
+| `EnumerationConfig::EvaluationBufferSize` | per-worker scratch buffer size `Run()` allocates for `scorer`; callers must set it to at least the scorer's training-range size |
 | `Run(rng, report)` | single-shot build, canonical-group, fit, score, and retain |
 | `RequestStop()` or `report == true` | stops after the current completed build level or fitting batch |
 

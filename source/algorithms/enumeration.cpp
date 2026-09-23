@@ -13,7 +13,6 @@
 #include <taskflow/algorithm/for_each.hpp>
 #include <taskflow/taskflow.hpp>
 
-#include "operon/core/serialization.hpp" // for ToBeve (representative tie-break)
 #include "operon/optimizer/optimizer.hpp" // for FitResult/FitFailure::FinalCost
 
 namespace Operon {
@@ -344,7 +343,16 @@ void GrammarEnumerationAlgorithm::Run(
         if (a.BucketSize != b.BucketSize) {
             return a.BucketSize < b.BucketSize;
         }
-        return a.Complexity < b.Complexity;
+        if (a.Complexity != b.Complexity) {
+            return a.Complexity < b.Complexity;
+        }
+        auto lessNode = [](Node const& lhs, Node const& rhs) {
+            return std::tie(lhs.HashValue, lhs.CalculatedHashValue, lhs.Value, lhs.Arity, lhs.Length, lhs.Depth,
+                       lhs.Level, lhs.Parent, lhs.Type, lhs.IsEnabled, lhs.Optimize, lhs.RefTo)
+                < std::tie(rhs.HashValue, rhs.CalculatedHashValue, rhs.Value, rhs.Arity, rhs.Length, rhs.Depth,
+                       rhs.Level, rhs.Parent, rhs.Type, rhs.IsEnabled, rhs.Optimize, rhs.RefTo);
+        };
+        return std::ranges::lexicographical_compare(a.Candidate.Nodes(), b.Candidate.Nodes(), lessNode);
     };
 
     std::unordered_map<std::string, ClassMember> representatives; // canonical Key -> current best representative

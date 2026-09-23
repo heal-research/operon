@@ -79,7 +79,8 @@ struct EnumerationConfig {
     std::size_t MaxComplexity { 20 };
     std::size_t TopK { 10 }; // how many best-fitness models to retain (see GrammarEnumerationAlgorithm::BestTrees)
     EnumerationRanking Ranking { EnumerationRanking::MinimumDescriptionLength };
-    // Scratch-buffer size required by the scorer.
+    // Scratch-buffer size required by the scorer. Callers must set this to at
+    // least the scorer's training-range size before Run().
     std::size_t EvaluationBufferSize { 0 };
 };
 
