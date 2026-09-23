@@ -27,6 +27,10 @@ OPERON_EXPORT auto TreeFromJson(std::string_view json) -> std::optional<Tree>;
 OPERON_EXPORT auto IndividualFromJson(std::string_view json) -> std::optional<Individual>;
 
 // ---- BEVE (binary) ----
+//
+// Tree and Individual payloads are self-identifying and versioned. Readers reject
+// unversioned or incompatible data instead of attempting a potentially corrupt
+// decode. Use this format for persisted models and enumeration corpora.
 
 OPERON_EXPORT auto ToBeve(Tree const& tree) -> std::string;
 OPERON_EXPORT auto ToBeve(Individual const& individual) -> std::string;
