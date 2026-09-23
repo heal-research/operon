@@ -24,10 +24,11 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     // operon_parse_model) - most of those are GP-specific and don't apply to
     // this non-population-based algorithm. operon_enum only reads dataset/
     // train/test/target/inputs/enable-symbols/disable-symbols/show-primitives/
-    // objective/linear-scaling/iterations/seed from it, plus its own
-    // max-complexity/top-k below; everything else shown in --help is inert
-    // here. Trimming InitOptions itself would mean restructuring a utility
-    // shared by every existing CLI - out of scope for this addition.
+    // objective/linear-scaling/skip-nonfinite/nonfinite-penalty-weight/
+    // iterations/seed/threads from it, plus its own max-complexity/top-k
+    // below; everything else shown in --help is inert here. Trimming
+    // InitOptions itself would mean restructuring a utility shared by every
+    // existing CLI - out of scope for this addition.
     auto opts = Operon::InitOptions("operon_enum", "Exhaustive grammar enumeration symbolic regression");
     opts.add_options()
         ("max-complexity", "Maximum expression complexity (count of all non-Constant nodes)", cxxopts::value<std::size_t>()->default_value("20"))
@@ -105,13 +106,14 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 
         Operon::GrammarEnumerationAlgorithm algo(config, std::move(grammar), &optimizer, evaluator.get(), rng);
 
+        auto const threads = result["threads"].as<std::size_t>();
         algo.Run(rng, [&]() -> bool {
             auto best = algo.BestTrees();
             if (!best.empty()) {
                 fmt::print("best fitness so far: {:.6g}\n", best.front().first);
             }
             return false;
-        });
+        }, threads);
 
         auto best = algo.BestTrees();
         if (best.empty()) {

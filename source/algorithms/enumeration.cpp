@@ -6,6 +6,10 @@
 
 #include <algorithm>
 #include <array>
+#include <thread>
+
+#include <taskflow/algorithm/for_each.hpp>
+#include <taskflow/taskflow.hpp>
 
 #include "operon/optimizer/optimizer.hpp" // for FitResult/FitFailure::FinalCost
 
@@ -78,8 +82,14 @@ EnumerationEngine::EnumerationEngine(Operon::Grammar grammar, std::size_t maxCom
 {
     buckets_.resize(GrammarSymbols::Count);
     seen_.resize(GrammarSymbols::Count);
+    bucketMutex_.resize(GrammarSymbols::Count);
     for (auto& row : buckets_) { row.resize(workingCeiling_ + 1); }
     for (auto& row : seen_) { row.resize(workingCeiling_ + 1); }
+    // std::mutex isn't movable, so this row can't use resize() the way
+    // buckets_/seen_ do (resize() on growth may need to move existing
+    // elements) - each row is constructed once, directly at its final size,
+    // instead.
+    for (auto& row : bucketMutex_) { row = std::vector<std::mutex>(workingCeiling_ + 1); }
 }
 
 auto EnumerationEngine::Bucket(GrammarSymbol nt, std::size_t budget) const -> std::span<Operon::Tree const>
@@ -107,6 +117,9 @@ auto EnumerationEngine::TryInsert(GrammarSymbol nt, Operon::Tree tree) -> bool
         if (nt == GrammarSymbol::Expression && onNovelExpression_) {
             onNovelExpression_(tree); // may fit coefficients in place
         }
+        // Only the append itself needs the lock - onNovelExpression_ above (coefficient fitting for a novel
+        // Expression) can be expensive and must not serialize concurrent TryInsert calls for other trees.
+        std::scoped_lock lock(bucketMutex_[idx][complexity]);
         buckets_[idx][complexity].push_back(std::move(tree));
     }
     return novel;
@@ -124,15 +137,19 @@ void EnumerationEngine::SeedTerminals()
     }
 }
 
-void EnumerationEngine::ProcessNonterminal(GrammarSymbol nt, std::size_t budget)
+void EnumerationEngine::ProcessNonterminal(tf::Executor& executor, GrammarSymbol nt, std::size_t budget)
 {
+    tf::Taskflow taskflow;
+
     for (auto const& p : grammar_.Productions(nt)) {
         if (p.IsCoercion()) {
             // Single operand, no new node appended: same budget as the operand.
             auto operandIdx = GrammarSymbols::GetIndex(p.Operands.front());
-            for (auto const& t : buckets_[operandIdx][budget]) {
-                TryInsert(nt, t);
-            }
+            auto const& bucket = buckets_[operandIdx][budget];
+            if (bucket.empty()) { continue; }
+            taskflow.for_each_index(std::size_t{0}, bucket.size(), std::size_t{1}, [this, nt, &bucket](std::size_t i) {
+                TryInsert(nt, bucket[i]);
+            });
             continue;
         }
 
@@ -144,7 +161,10 @@ void EnumerationEngine::ProcessNonterminal(GrammarSymbol nt, std::size_t budget)
             auto const operand = p.Operands.front();
             if (remaining < grammar_.MinComplexity(operand)) { continue; }
             auto operandIdx = GrammarSymbols::GetIndex(operand);
-            for (auto const& t : buckets_[operandIdx][remaining]) {
+            auto const& bucket = buckets_[operandIdx][remaining];
+            if (bucket.empty()) { continue; }
+            taskflow.for_each_index(std::size_t{0}, bucket.size(), std::size_t{1}, [this, nt, &p, &bucket](std::size_t i) {
+                auto const& t = bucket[i];
                 Operon::Vector<Node> nodes;
                 if (p.WeightFirstOperand) { nodes.push_back(Node::Constant(WeightPlaceholder)); }
                 AppendNodes(nodes, t.Nodes());
@@ -154,7 +174,7 @@ void EnumerationEngine::ProcessNonterminal(GrammarSymbol nt, std::size_t budget)
                 // one more if TrailingConstant appended a Bias sibling.
                 nodes.push_back(Node::Function(static_cast<Hash>(p.Op), p.TrailingConstant ? 2 : 1));
                 TryInsert(nt, Tree(std::move(nodes)).UpdateNodes());
-            }
+            });
         } else {
             auto const op0 = p.Operands[0];
             auto const op1 = p.Operands[1];
@@ -168,16 +188,16 @@ void EnumerationEngine::ProcessNonterminal(GrammarSymbol nt, std::size_t budget)
             // (harmless either way, since TryInsert would just dedup them,
             // but there's no reason to pay for it twice).
             //
-            // WorkingBudgetMargin's value (1) was hand-derived specifically
-            // for the current production table (see Grammar::Rebuild in
-            // grammar.cpp): every flattening self-combine/recursion here has
-            // at most one operand that's already rooted in the combining Op
-            // at a time (see enumeration.hpp's "Budget accounting note").
-            // A future production violating that (e.g. a ternary self-combine,
-            // or one where both operands can simultaneously already be
-            // Op-rooted) could need a larger margin - the completeness tests
-            // in test/source/implementation/enumeration.cpp are the guard;
-            // if a new production is added there, extend those tests first.
+            // WorkingBudgetMargin's value (1) is sufficient for the current production table not because a
+            // flattening self-combine is bounded to one already-Op-rooted operand - BOTH operands can already be
+            // Op-rooted at once (e.g. Mul(Mul(x1,x2), Mul(x3,x4)) flattens to a single 5-node Mul, realized
+            // complexity budget-2 against a nominal budget) - but because any candidate whose realized complexity
+            // would drop further than budget-1 is always also reachable one nominal budget level earlier by
+            // peeling a single child off the flattened result, so it's already in seen_ and the second derivation
+            // is a dedup no-op rather than a genuine store (see enumeration.hpp's ProcessNonterminal doc comment).
+            // A future production violating that peel-derivation property could need a larger margin - the
+            // completeness tests in test/source/implementation/enumeration.cpp are the guard; if a new production
+            // is added there, extend those tests first.
             bool const selfCombineUnweighted = (op0 == op1) && !p.WeightFirstOperand;
 
             for (std::size_t b0 = min0; b0 <= remaining; ++b0) {
@@ -185,26 +205,43 @@ void EnumerationEngine::ProcessNonterminal(GrammarSymbol nt, std::size_t budget)
                 auto const b1 = remaining - b0;
                 if (selfCombineUnweighted && b0 > b1) { continue; }
 
-                for (auto const& t0 : buckets_[idx0][b0]) {
-                    for (auto const& t1 : buckets_[idx1][b1]) {
-                        Operon::Vector<Node> nodes;
-                        if (p.WeightFirstOperand) { nodes.push_back(Node::Constant(WeightPlaceholder)); }
-                        AppendNodes(nodes, t0.Nodes());
-                        if (p.WeightFirstOperand) { nodes.push_back(Node::Function(static_cast<Hash>(BuiltinOp::Mul), 2)); }
-                        AppendNodes(nodes, t1.Nodes());
-                        // Op's direct children: the (possibly Mul-wrapped) first
-                        // operand, plus the second operand - always 2 today (this
-                        // branch handles exactly Operands.size()==2 productions).
-                        nodes.push_back(Node::Function(static_cast<Hash>(p.Op), static_cast<uint16_t>(p.Operands.size())));
-                        TryInsert(nt, Tree(std::move(nodes)).UpdateNodes());
-                    }
-                }
+                auto const& bucket0 = buckets_[idx0][b0];
+                auto const& bucket1 = buckets_[idx1][b1];
+                if (bucket0.empty() || bucket1.empty()) { continue; }
+
+                // Flattened over the full bucket0 x bucket1 cross product, via k = i0*n1 + i1, rather than
+                // parallelizing bucket0's index alone with bucket1 iterated sequentially inside each task - which
+                // operand's bucket is the larger one is production-dependent (e.g. Expression's Add(Term,
+                // Expression) recursion: Term/bucket0 stays small while Expression/bucket1 grows combinatorially
+                // with recursion depth), so a single fixed parallelization axis would starve the executor
+                // whenever that axis is the small one.
+                auto const n0 = bucket0.size();
+                auto const n1 = bucket1.size();
+                taskflow.for_each_index(std::size_t{0}, n0 * n1, std::size_t{1}, [this, nt, &p, &bucket0, &bucket1, n1](std::size_t k) {
+                    auto const& t0 = bucket0[k / n1];
+                    auto const& t1 = bucket1[k % n1];
+                    Operon::Vector<Node> nodes;
+                    if (p.WeightFirstOperand) { nodes.push_back(Node::Constant(WeightPlaceholder)); }
+                    AppendNodes(nodes, t0.Nodes());
+                    if (p.WeightFirstOperand) { nodes.push_back(Node::Function(static_cast<Hash>(BuiltinOp::Mul), 2)); }
+                    AppendNodes(nodes, t1.Nodes());
+                    // Op's direct children: the (possibly Mul-wrapped) first
+                    // operand, plus the second operand - always 2 today (this
+                    // branch handles exactly Operands.size()==2 productions).
+                    nodes.push_back(Node::Function(static_cast<Hash>(p.Op), static_cast<uint16_t>(p.Operands.size())));
+                    TryInsert(nt, Tree(std::move(nodes)).UpdateNodes());
+                });
             }
         }
     }
+
+    // .get() (not .wait()) - .wait() would silently drop an exception thrown by any task, which here would also
+    // leave seen_/buckets_ desynced (the throwing TryInsert call's seen_ insert already landed) - see nsga2.cpp's
+    // identical .get() choice for the same reason.
+    executor.run(taskflow).get();
 }
 
-void EnumerationEngine::Build(Operon::ReportCallback shouldStop)
+void EnumerationEngine::Build(tf::Executor& executor, Operon::ReportCallback shouldStop)
 {
     SeedTerminals();
     // Searches up to workingCeiling_ (> maxComplexity_) so combinations whose
@@ -214,7 +251,7 @@ void EnumerationEngine::Build(Operon::ReportCallback shouldStop)
     // maxComplexity_, so the caller-visible ceiling is unaffected.
     for (std::size_t budget = 1; budget <= workingCeiling_; ++budget) {
         for (auto nt : ProcessingOrder) {
-            ProcessNonterminal(nt, budget);
+            ProcessNonterminal(executor, nt, budget);
         }
         // Checked after this level's own processing (not before), so a
         // caller's progress report reflects this level's results rather than
@@ -227,6 +264,13 @@ void EnumerationEngine::Build(Operon::ReportCallback shouldStop)
         // special-casing out.
         if (shouldStop && shouldStop()) { return; }
     }
+}
+
+void EnumerationEngine::Build(Operon::ReportCallback shouldStop, std::size_t threads)
+{
+    if (threads == 0) { threads = std::thread::hardware_concurrency(); }
+    tf::Executor executor(threads);
+    Build(executor, std::move(shouldStop));
 }
 
 GrammarEnumerationAlgorithm::GrammarEnumerationAlgorithm(EnumerationConfig config, Operon::Grammar grammar, gsl::not_null<Operon::OptimizerBase const*> optimizer, gsl::not_null<Operon::EvaluatorBase const*> evaluator, Operon::RandomGenerator& rng)
@@ -264,7 +308,7 @@ void GrammarEnumerationAlgorithm::ConsiderBest(Operon::Scalar fitness, Operon::T
     if (best_.size() > config_.TopK) { best_.pop_back(); }
 }
 
-void GrammarEnumerationAlgorithm::Run(Operon::RandomGenerator& rng, Operon::ReportCallback report)
+void GrammarEnumerationAlgorithm::Run(tf::Executor& executor, Operon::RandomGenerator& rng, Operon::ReportCallback report)
 {
     // Iterations() == 0 makes CoefficientOptimizer return a default-
     // constructed FitFailure (FinalCost == 0.0) without ever calling
@@ -276,12 +320,36 @@ void GrammarEnumerationAlgorithm::Run(Operon::RandomGenerator& rng, Operon::Repo
     EXPECT(optimizer_->Iterations() > 0);
 
     Operon::CoefficientOptimizer coeffOptimizer{optimizer_};
-    // Reused across every novel Expression rather than letting the 2-arg
-    // evaluator_ overload allocate its own scratch buffer per call (see
-    // EvaluatorBase::operator()) - enumeration can produce thousands of
-    // candidates per run, so a per-candidate heap allocation here adds up.
-    std::vector<Operon::Scalar> evalBuf(evaluator_->GetProblem()->TrainingRange().Size());
+
+    // onNovelExpression_ below runs concurrently from every one of `executor`'s workers (see
+    // EnumerationEngine::ProcessNonterminal), so neither a single shared RandomGenerator nor a single shared
+    // evaluator scratch buffer is safe here - each needs its own per-worker slot, mirroring the per-worker
+    // `slots` / per-individual `rngs` pattern NSGA2::Run uses for its own threaded local search and evaluation.
+    // Seeded once, up front, from `rng` (itself single-threaded at this point) rather than letting workers seed
+    // themselves, so a run stays reproducible for a fixed (seed, executor worker count) pair.
+    auto const numWorkers = executor.num_workers();
+    std::vector<Operon::RandomGenerator> workerRngs;
+    workerRngs.reserve(numWorkers);
+    for (std::size_t i = 0; i < numWorkers; ++i) { workerRngs.emplace_back(rng()); }
+    std::vector<std::vector<Operon::Scalar>> workerBufs(
+        numWorkers, std::vector<Operon::Scalar>(evaluator_->GetProblem()->TrainingRange().Size()));
+
+    // Guards ConsiderBest's best_ mutation - the only other piece of shared mutable state this hook touches
+    // besides the per-worker slots above. Held only around ConsiderBest itself, not the coefficient fit/evaluate
+    // work above it, so concurrent hook invocations only ever serialize on the O(TopK) insertion, not on
+    // LM/evaluator cost.
+    std::mutex bestMutex;
+
     engine_.SetOnNovelExpression([&](Operon::Tree& tree) {
+        // this_worker_id() is -1 when called from outside any worker thread of `executor` - can't happen here
+        // (ProcessNonterminal only ever invokes TryInsert, and hence this hook, from tasks it scheduled on
+        // `executor` itself), but slot 0 is a harmless fallback rather than an out-of-bounds index if that
+        // invariant is ever violated.
+        auto const worker = executor.this_worker_id();
+        auto const slot = worker >= 0 ? static_cast<std::size_t>(worker) : 0UL;
+        auto& localRng = workerRngs[slot];
+        auto& evalBuf = workerBufs[slot];
+
         // Always take the optimizer's resulting tree, regardless of whether
         // the fit outcome was FitResult or FitFailure - mirrors
         // BasicOffspringGenerator's own evaluate step (operators/generator.hpp),
@@ -290,7 +358,7 @@ void GrammarEnumerationAlgorithm::Run(Operon::RandomGenerator& rng, Operon::Repo
         // own cost fields, which reflect whatever internal loss optimizer_
         // happens to minimize (e.g. LM's sum-of-squares), not the
         // user-selected ErrorMetric.
-        tree = std::get<0>(coeffOptimizer(rng, tree));
+        tree = std::get<0>(coeffOptimizer(localRng, tree));
         Operon::Individual ind{1};
         // Copy (not move) here: `tree` is a reference into the engine's own
         // novel-candidate slot (see TryInsert), which moves it into storage
@@ -314,7 +382,8 @@ void GrammarEnumerationAlgorithm::Run(Operon::RandomGenerator& rng, Operon::Repo
         // the variable's contribution itself would be lost.)
         ind.Genotype.Reduce();
         ind.Genotype.Simplify();
-        auto fitness = (*evaluator_)(rng, ind, evalBuf);
+        auto fitness = (*evaluator_)(localRng, ind, evalBuf);
+        std::scoped_lock lock(bestMutex);
         ConsiderBest(fitness.front(), std::move(ind.Genotype));
     });
 
@@ -324,14 +393,20 @@ void GrammarEnumerationAlgorithm::Run(Operon::RandomGenerator& rng, Operon::Repo
         return false;
     };
 
-    engine_.Build(std::move(shouldStop));
+    engine_.Build(executor, std::move(shouldStop));
 
-    // onNovelExpression_ captures coeffOptimizer (and rng) by reference, both
-    // function-locals about to go out of scope - clear the hook so a stale
-    // reference can't be invoked from any future entry point (defensive:
-    // today nothing public can trigger that, since GetEngine() returns a
-    // const& and Build() is non-const, but this shouldn't rely on that).
+    // onNovelExpression_ captures coeffOptimizer/workerRngs/workerBufs/bestMutex, all function-locals about to go
+    // out of scope - clear the hook so a stale reference can't be invoked from any future entry point (defensive:
+    // today nothing public can trigger that, since GetEngine() returns a const& and Build() is non-const, but
+    // this shouldn't rely on that).
     engine_.SetOnNovelExpression(nullptr);
+}
+
+void GrammarEnumerationAlgorithm::Run(Operon::RandomGenerator& rng, Operon::ReportCallback report, std::size_t threads)
+{
+    if (threads == 0) { threads = std::thread::hardware_concurrency(); }
+    tf::Executor executor(threads);
+    Run(executor, rng, std::move(report));
 }
 
 } // namespace Operon

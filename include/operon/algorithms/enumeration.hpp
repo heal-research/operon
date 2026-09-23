@@ -5,7 +5,9 @@
 #ifndef OPERON_ALGORITHMS_ENUMERATION_HPP
 #define OPERON_ALGORITHMS_ENUMERATION_HPP
 
+#include <array>
 #include <functional>
+#include <mutex>
 #include <span>
 #include <utility>
 #include <vector>
@@ -22,6 +24,10 @@
 #include "operon/operators/local_search.hpp" // for CoefficientOptimizer, OptimizerBase/FitResult/FitFailure fwd decls
 #include "operon/operon_export.hpp"
 #include "operon/random/random.hpp"
+
+// forward declaration - keeps taskflow.hpp (heavy) out of this public header; only enumeration.cpp/nsga2.cpp-style
+// .cpp files that actually build a Taskflow need the full definition.
+namespace tf { class Executor; }
 
 namespace Operon {
 
@@ -58,16 +64,14 @@ namespace Operon {
 // adding a distinct node), so the naive per-combination budget overshoots the
 // true complexity by a small constant - see WorkingBudgetMargin in
 // enumeration.cpp for how the DP compensates.
-//
-// Thread-safety: the per-(nonterminal, budget) dedup sets are
-// gtl::parallel_flat_hash_set_m (the same primitive ZobristCache uses for its
-// transposition cache, see hash/zobrist.hpp), so the seen_ check-and-insert
-// itself is safe under concurrent access. This does NOT make TryInsert as a
-// whole thread-safe yet: buckets_'s push_back (see TryInsert) is a plain,
-// unguarded std::vector append - parallelizing the candidate-generation loop
-// is later work, and will need to guard that append too (e.g. per-bucket
-// mutex, or a lock-free append structure), not just reuse seen_'s primitive.
-// Build() only ever runs single-threaded today, so this is moot for now.
+// Thread-safety: the per-(nonterminal, budget) dedup sets are gtl::parallel_flat_hash_set_m (the same primitive
+// ZobristCache uses for its transposition cache, see hash/zobrist.hpp), so the seen_ check-and-insert itself is
+// safe under concurrent access. buckets_'s std::vector::push_back (see TryInsert) is additionally guarded by
+// bucketMutex_ (one per (nonterminal, budget) cell, held only around the append itself - the Reduce()/
+// Simplify()/hash-compute work that dominates TryInsert's cost runs outside the lock). Build(tf::Executor&, ...)
+// fans ProcessNonterminal's candidate generation for one (nonterminal, budget) call out across that executor;
+// nothing about that call's own reads can race its own writes - see ProcessNonterminal's doc comment for why -
+// so the mutex only has to arbitrate concurrent *writes* into the same nonterminal's buckets.
 // Move-only: onNovelExpression_ is a std::move_only_function member, which
 // implicitly deletes this class's copy constructor/assignment. Nothing in
 // the codebase copies an EnumerationEngine today, but this is a real API
@@ -83,7 +87,17 @@ public:
     // fan-out always runs to completion first, so a caller's progress report
     // reflects that level's results rather than the previous one) and stops
     // the construction early if it returns true.
-    void Build(Operon::ReportCallback shouldStop = {});
+    //
+    // `executor` drives each (nonterminal, budget) level's own candidate generation in parallel (see
+    // ProcessNonterminal) - budget levels themselves, and nonterminals within a level, still run strictly in order
+    // (required for correctness, see ProcessNonterminal's doc comment), so this only parallelizes work *within*
+    // one ProcessNonterminal call, not across them.
+    void Build(tf::Executor& executor, Operon::ReportCallback shouldStop = {});
+
+    // Convenience overload: builds and owns a local tf::Executor with `threads` workers (0 =
+    // std::thread::hardware_concurrency(), mirroring NSGA2::Run's analogous convenience overload) for the
+    // duration of this call.
+    void Build(Operon::ReportCallback shouldStop = {}, std::size_t threads = 0);
 
     // Invoked, if set, whenever a genuinely novel Expression-category tree is
     // inserted (i.e. not a duplicate already reached via another derivation) -
@@ -109,7 +123,27 @@ private:
     // from already-completed lower-budget buckets (and, for Term's coercion
     // from RecurringFactor, the same-budget bucket of a nonterminal processed
     // earlier in this level - see the fixed per-level order in Build()).
-    void ProcessNonterminal(GrammarSymbol nt, std::size_t budget);
+    //
+    // Fans every production's candidate-building loop out across `executor` (one tf::Taskflow, run to completion
+    // before returning). Every write this call makes lands in nt's own row, at either the nominal `budget` or, for
+    // a self-combine whose Reduce() flattens two already-Op-rooted operands into one, at a smaller realized
+    // complexity - but never smaller than budget-1: any tree whose flattened complexity would drop further is also
+    // reachable one level earlier by peeling a single child off the flattened result (nominal cost (r-m)+m+1 =
+    // r+1, i.e. budget-1 for a realized complexity of budget-2), so it is already present in seen_ by the time
+    // this level runs - TryInsert's dedup check returns novel=false before any push_back, making that write a
+    // no-op. Reads this call makes are: a strictly lower budget (fully built by an earlier, completed Build()
+    // level); or, for a same-budget coercion, an earlier-in-ProcessingOrder nonterminal's bucket (also already
+    // fully built this level); or, for a same-symbol self-combine, nt's own row at b0/b1 <= budget - fixedCost -
+    // MinComplexity(operand) < budget - 1. So every *effective* write (one that actually stores a tree) lands at
+    // budget or budget-1, strictly above every b0/b1 this call itself reads - no task here ever observes a bucket
+    // another task in the same call is concurrently writing. This is a property of dedup-driven no-ops, not a
+    // structural bound on what a single production can nominally compute - a future production must preserve the
+    // same peel-derivation argument (extend the completeness tests in
+    // test/source/implementation/enumeration.cpp first) or this reasoning breaks silently (the bucketMutex_ below
+    // guards concurrent *writes* only; a genuine same-cell read-during-write would be an unguarded data race).
+    // Concurrent *writes* into the same nt's buckets (from different productions/operand splits landing in the
+    // same complexity cell) are still possible and are what TryInsert's bucketMutex_ guards.
+    void ProcessNonterminal(tf::Executor& executor, GrammarSymbol nt, std::size_t budget);
 
     // Reduce()+Simplify()s `tree`, computes its realized SymbolicComplexity
     // (which can only be <= the budget it was built for - simplification
@@ -144,6 +178,13 @@ private:
     Operon::Zobrist zobrist_;
     std::vector<std::vector<std::vector<Operon::Tree>>> buckets_; // [GrammarSymbol index][budget][candidate]
     std::vector<std::vector<gtl::parallel_flat_hash_set_m<Operon::Hash>>> seen_; // [GrammarSymbol index][budget]
+    // One mutex per (GrammarSymbol, budget) cell, guarding just that cell's buckets_ push_backs - see TryInsert
+    // and the class-level Thread-safety comment. Cell granularity (rather than one mutex per GrammarSymbol shared
+    // across every budget) keeps concurrent inserts into different budget cells of the same nonterminal from
+    // contending on a single lock. Sized/constructed like buckets_/seen_ (see the ctor) - std::mutex isn't
+    // movable, so this can't use vector<vector<mutex>>'s resize() the way buckets_/seen_ do; the ctor
+    // default-constructs each row's mutexes in place at their final size instead.
+    std::vector<std::vector<std::mutex>> bucketMutex_;
     Operon::MoveOnlyFunction<void(Operon::Tree&)> onNovelExpression_;
 };
 
@@ -202,7 +243,29 @@ public:
     // are already populated after the first call). Construct a new
     // GrammarEnumerationAlgorithm for another run, mirroring the one-shot
     // (not warm-restartable) contract already implied by EnumerationEngine.
-    void Run(Operon::RandomGenerator& rng, Operon::ReportCallback report = {});
+    //
+    // `executor` drives EnumerationEngine::Build's parallel candidate generation (see its doc comment) -
+    // onNovelExpression_'s coefficient fit/evaluate/ConsiderBest hook below runs concurrently from every one of
+    // `executor`'s workers, keyed off tf::Executor::this_worker_id() for its own per-worker
+    // RandomGenerator/scratch-buffer slot, mirroring the per-worker `slots` / per-individual `rngs` pattern
+    // NSGA2::Run uses for its own threaded local search and evaluation.
+    //
+    // Reproducibility depends on `optimizer_`, not just (seed, worker count): every duplicate derivation of a
+    // given tree is structurally identical (built from the same constexpr weight/bias placeholders, see
+    // WeightPlaceholder/BiasPlaceholder), so whichever worker's TryInsert call wins the dedup race, the fitted
+    // tree and its fitness are identical PROVIDED `optimizer_`'s fit doesn't itself consume `rng` (true for
+    // LevenbergMarquardtOptimizer, the CLI's default - `rng` there is unused). With an rng-consuming optimizer
+    // (e.g. LBFGSOptimizer's stochastic batch selection), which worker wins the race genuinely changes the fit,
+    // so results are not reproducible even at a *fixed* thread count, let alone across different ones. Separately,
+    // regardless of optimizer: ConsiderBest breaks exact-fitness ties by arrival order (scheduling-dependent), so
+    // BestTrees()'s ordering - and, for ties landing exactly at the TopK boundary, its content - can vary run to
+    // run at any fixed (seed, worker count) pair.
+    void Run(tf::Executor& executor, Operon::RandomGenerator& rng, Operon::ReportCallback report = {});
+
+    // Convenience overload: builds and owns a local tf::Executor with `threads` workers (0 =
+    // std::thread::hardware_concurrency(), mirroring NSGA2::Run's analogous convenience overload) for the
+    // duration of this call.
+    void Run(Operon::RandomGenerator& rng, Operon::ReportCallback report = {}, std::size_t threads = 0);
 
     // StopRequested()/RequestStop() are inherited from StoppableAlgorithm.
 
