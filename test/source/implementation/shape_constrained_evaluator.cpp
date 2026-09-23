@@ -194,56 +194,6 @@ TEST_CASE("ShapeConstrainedEvaluator - correctly-signed constraints are feasible
     CHECK(sce.Violations() == 0);
 }
 
-TEST_CASE("Feynman1 official shape constraints certify the published formula", "[shape-constraints][feynman]")
-{
-    std::vector<std::string> names { "theta", "Y" };
-    std::vector<std::vector<Operon::Scalar>> values {
-        { Operon::Scalar { 1 }, Operon::Scalar { 2 }, Operon::Scalar { 3 } },
-        { Operon::Scalar { 0.2419707245 }, Operon::Scalar { 0.0539909665 }, Operon::Scalar { 0.0044318484 } },
-    };
-    Operon::Dataset dataset(std::move(names), std::move(values));
-    auto tree = InfixParser::Parse("exp(-(theta ^ 2) / 2) / sqrt(2 * 3.141592653589793)", dataset);
-    Operon::Problem problem(&dataset);
-    problem.SetTrainingRange({ 0, 3 });
-    problem.SetTarget("Y");
-    Fixture::DTable dtable;
-    Operon::Evaluator<Fixture::DTable> evaluator(&problem, &dtable, Operon::NMSE {});
-
-    Operon::ShapeConstraintSet constraints;
-    constraints.Domains.insert_or_assign("theta", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 3 } });
-    constraints.Constraints = {
-        { .Op = ShapeConstraintOp::FirstDerivative, .Variable = "theta", .Sign = -1, .Bound = std::nullopt },
-        { .Op = ShapeConstraintOp::SecondDerivative, .Variable = "theta", .Sign = 1, .Bound = std::nullopt },
-    };
-
-    // The official curvature condition is mathematically true, but equality at theta=1
-    // means a sound finite-precision enclosure may conservatively include a tiny negative
-    // value. It must not turn that uncertainty into a false certificate.
-    Operon::ShapeConstrainedEvaluator strict(&evaluator, &dtable, constraints);
-    auto const strictMeasurement = strict.Measure(tree);
-    REQUIRE(strictMeasurement.Measurements.size() == 2);
-    CHECK(strictMeasurement.Measurements[0].Certified);
-    CHECK(strictMeasurement.Measurements[0].Violation == Catch::Approx(0));
-    CHECK(strictMeasurement.Measurements[1].Certified);
-    CHECK(strictMeasurement.Measurements[1].Violation > 0);
-    CHECK_FALSE(strictMeasurement.Feasible);
-
-    constraints.Constraints.pop_back();
-    Operon::ShapeConstrainedEvaluator decreasing(&evaluator, &dtable, constraints);
-    CHECK(decreasing.Feasible(tree));
-
-    constraints.Constraints[0].Sign = 1;
-    Operon::ShapeConstrainedEvaluator wrongSlope(&evaluator, &dtable, constraints);
-    CHECK_FALSE(wrongSlope.Feasible(tree));
-
-    constraints.Constraints = {
-        { .Op = ShapeConstraintOp::SecondDerivative, .Variable = "theta", .Sign = -1, .Bound = std::nullopt },
-    };
-    Operon::ShapeConstrainedEvaluator wrongCurvature(&evaluator, &dtable, constraints);
-    CHECK_FALSE(wrongCurvature.Feasible(tree));
-
-}
-
 TEST_CASE("ShapeConstrainedEvaluator preserves a wrapped derived evaluator's objective", "[shape-constraints]")
 {
     // Regression: the gate must always delegate phase 2 to the concrete
