@@ -53,7 +53,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
                           "keep_duplicates, core_maths, ext_maths, osc_maths, base10_maths, base_e_maths",
             cxxopts::value<std::string>()->default_value("custom"))
         ("ranking", "Ranking criterion: mdl (default, uses --mdl-likelihood) or objective (uses --objective)",
-            cxxopts::value<std::string>()->default_value("mdl"));
+            cxxopts::value<std::string>()->default_value("mdl"))
+        ("dump-all", "Emit every canonical representative instead of only --top-k; intended for external enumeration comparison");
     auto result = Operon::ParseOptions(std::move(opts), argc, argv);
 
     // --- function-set resolution: no dataset access yet, so --show-primitives can exit before any
@@ -151,6 +152,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         Operon::EnumerationConfig config;
         config.MaxComplexity = result["max-complexity"].as<std::size_t>();
         config.TopK = result["top-k"].as<std::size_t>();
+        if (result.contains("dump-all")) { config.TopK = std::numeric_limits<std::size_t>::max(); }
         if (config.TopK == 0) {
             fmt::print(stderr, "error: --top-k must be at least 1\n");
             return EXIT_FAILURE;
@@ -208,12 +210,13 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             return EXIT_FAILURE;
         }
         for (auto const& r : best) {
+            auto const keyPrefix = result.contains("dump-all") ? fmt::format("canonical_key={}\t", r.CanonicalKey) : std::string{};
             if (config.Ranking == Operon::EnumerationRanking::MinimumDescriptionLength) {
                 auto const nllBits = r.NegativeLogLikelihood / std::log(2.0);
-                fmt::print("mdl_bits={:.6g}\tnll_bits={:.6g}\tparameter_bits={:.6g}\tstructure_bits={:.6g}\t{:infix:roundtrip}\n",
-                    r.Score, nllBits, r.ParameterCodeBits, r.StructureCodeBits, Operon::Fmt::WithNames{r.Tree, *problem.GetDataset()});
+                fmt::print("{}mdl_bits={:.6g}\tnll_bits={:.6g}\tparameter_bits={:.6g}\tstructure_bits={:.6g}\t{:infix:roundtrip}\n",
+                    keyPrefix, r.Score, nllBits, r.ParameterCodeBits, r.StructureCodeBits, Operon::Fmt::WithNames{r.Tree, *problem.GetDataset()});
             } else {
-                fmt::print("fitness={:.6g}\t{:infix:roundtrip}\n", r.Score, Operon::Fmt::WithNames{r.Tree, *problem.GetDataset()});
+                fmt::print("{}fitness={:.6g}\t{:infix:roundtrip}\n", keyPrefix, r.Score, Operon::Fmt::WithNames{r.Tree, *problem.GetDataset()});
             }
         }
     } catch (std::exception& e) {
