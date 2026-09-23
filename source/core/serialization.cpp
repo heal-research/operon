@@ -31,13 +31,11 @@ static_assert(Operon::NodeTypes::Count == 4,
 // validation on read that the value is a member of the enumerate list.
 // A pre-collapse BEVE Tree/Individual export's old NodeType ordinal
 // (e.g. Sin=22) would decode as `static_cast<NodeType>(22)`, a garbage
-// out-of-range value - CheckpointProxy's Magic/Version fields (bumped
-// below) guard checkpoint loads against this, but ToBeve(Tree)/
-// ToBeve(Individual) exports have no equivalent guard, before or after
-// this change. Do not attempt to load a pre-collapse .beve Tree/Individual
-// export against this code; a dedicated versioned legacy reader (translating
-// old ordinals to the new BuiltinOp/Function representation) would be
-// needed to do so safely - not implemented here.
+// out-of-range value. CheckpointProxy has its own magic/version guard, and
+// current Tree/Individual exports now have the TreeBeveProxy and
+// IndividualBeveProxy guards below. Pre-versioning .beve Tree/Individual
+// exports are intentionally rejected; a dedicated legacy reader translating
+// old ordinals to the new BuiltinOp/Function representation is not implemented.
 template <>
 struct glz::meta<Operon::NodeType> {
     static constexpr auto value = glz::enumerate(
@@ -92,15 +90,31 @@ struct IndividualProxy {
     Operon::Scalar                 Distance{};
 };
 
-// Bump Version whenever the on-disk layout changes in a backwards-incompatible way.
+// Bump a payload version whenever its matching on-disk layout changes.
 constexpr uint32_t CheckpointMagic   = 0x4F50434BU; // "OPCK"
-// Bumped: NodeType collapse (glz::meta<NodeType> shrank from 33 to 4
-// entries, NodeProxy gained an explicit Arity field) is a breaking,
-// silently-misdecodable format change for BEVE - see the warning above
-// glz::meta<Operon::NodeType>. A version-1 checkpoint will now be cleanly
-// rejected by FromProxy's Magic/Version check below, rather than partially
-// decoding into corrupted trees.
 constexpr uint32_t CheckpointVersion = 2U;
+constexpr uint32_t TreeMagic         = 0x4F505452U; // "OPTR"
+constexpr uint32_t IndividualMagic   = 0x4F50494EU; // "OPIN"
+constexpr uint32_t PopulationMagic   = 0x4F505046U; // "OPPF"
+constexpr uint32_t BevePayloadVersion = 1U;
+
+struct TreeBeveProxy {
+    uint32_t Magic{TreeMagic};
+    uint32_t Version{BevePayloadVersion};
+    TreeProxy Tree;
+};
+
+struct IndividualBeveProxy {
+    uint32_t Magic{IndividualMagic};
+    uint32_t Version{BevePayloadVersion};
+    IndividualProxy Individual;
+};
+
+struct PopulationBeveProxy {
+    uint32_t Magic{PopulationMagic};
+    uint32_t Version{BevePayloadVersion};
+    std::vector<IndividualProxy> Population;
+};
 
 struct CheckpointProxy {
     uint32_t                                 Magic{CheckpointMagic};
@@ -176,6 +190,24 @@ struct glz::meta<IndividualProxy> {
 };
 
 template <>
+struct glz::meta<TreeBeveProxy> {
+    using T = TreeBeveProxy;
+    static constexpr auto value = glz::object("magic", &T::Magic, "version", &T::Version, "tree", &T::Tree);
+};
+
+template <>
+struct glz::meta<IndividualBeveProxy> {
+    using T = IndividualBeveProxy;
+    static constexpr auto value = glz::object("magic", &T::Magic, "version", &T::Version, "individual", &T::Individual);
+};
+
+template <>
+struct glz::meta<PopulationBeveProxy> {
+    using T = PopulationBeveProxy;
+    static constexpr auto value = glz::object("magic", &T::Magic, "version", &T::Version, "population", &T::Population);
+};
+
+template <>
 struct glz::meta<CheckpointProxy> {
     using T = CheckpointProxy;
     static constexpr auto value = glz::object(
@@ -239,45 +271,53 @@ auto IndividualFromJson(std::string_view json) -> std::optional<Individual>
 
 auto ToBeve(Tree const& tree) -> std::string
 {
-    TreeProxy tp{ NodesToProxies(tree.Nodes()) };
-    auto result = glz::write_beve(tp);
+    TreeBeveProxy proxy{ .Tree = { NodesToProxies(tree.Nodes()) } };
+    auto result = glz::write_beve(proxy);
     return result ? std::move(*result) : std::string{};
 }
 
 auto ToBeve(Individual const& individual) -> std::string
 {
-    auto ip = IndividualToProxy(individual);
-    auto result = glz::write_beve(ip);
+    IndividualBeveProxy proxy{ .Individual = IndividualToProxy(individual) };
+    auto result = glz::write_beve(proxy);
     return result ? std::move(*result) : std::string{};
 }
 
 auto ToBeve(std::span<Individual const> front) -> std::string
 {
-    std::vector<IndividualProxy> arr;
-    arr.reserve(front.size());
-    for (auto const& ind : front) { arr.push_back(IndividualToProxy(ind)); }
-    auto result = glz::write_beve(arr);
+    PopulationBeveProxy proxy;
+    proxy.Population.reserve(front.size());
+    for (auto const& ind : front) { proxy.Population.push_back(IndividualToProxy(ind)); }
+    auto result = glz::write_beve(proxy);
     return result ? std::move(*result) : std::string{};
 }
 
 auto TreeFromBeve(std::string_view data) -> std::optional<Tree>
 {
-    TreeProxy tp;
-    if (auto ec = glz::read_beve(tp, data); ec) {
+    TreeBeveProxy proxy;
+    if (auto ec = glz::read_beve(proxy, data); ec) {
         fmt::print(stderr, "serialization error (TreeFromBeve): {}\n", glz::format_error(ec, data));
         return std::nullopt;
     }
-    return ProxiesToTree(tp.Nodes);
+    if (proxy.Magic != TreeMagic || proxy.Version != BevePayloadVersion) {
+        fmt::print(stderr, "error: incompatible tree BEVE format (magic={:#010x}, version={})\n", proxy.Magic, proxy.Version);
+        return std::nullopt;
+    }
+    return ProxiesToTree(proxy.Tree.Nodes);
 }
 
 auto IndividualFromBeve(std::string_view data) -> std::optional<Individual>
 {
-    IndividualProxy ip;
-    if (auto ec = glz::read_beve(ip, data); ec) {
+    IndividualBeveProxy proxy;
+    if (auto ec = glz::read_beve(proxy, data); ec) {
         fmt::print(stderr, "serialization error (IndividualFromBeve): {}\n", glz::format_error(ec, data));
         return std::nullopt;
     }
-    return ProxyToIndividual(ip);
+    if (proxy.Magic != IndividualMagic || proxy.Version != BevePayloadVersion) {
+        fmt::print(stderr, "error: incompatible individual BEVE format (magic={:#010x}, version={})\n", proxy.Magic, proxy.Version);
+        return std::nullopt;
+    }
+    return ProxyToIndividual(proxy.Individual);
 }
 
 // ---- Checkpoint ----

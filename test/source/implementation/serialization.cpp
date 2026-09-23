@@ -151,6 +151,40 @@ TEST_CASE("Individual BEVE round-trip", "[serialization]")
     }
 }
 
+TEST_CASE("Tree BEVE rejects wrong version", "[serialization]")
+{
+    Operon::RandomGenerator rng(3);
+    auto beve = Operon::Serialization::ToBeve(MakeTree(rng));
+    REQUIRE(!beve.empty());
+
+    // TreeMagic = 0x4F505452 is emitted little-endian; the following u32 is
+    // the format version. Corrupting it must reject the payload before any
+    // tree nodes are materialized.
+    constexpr std::array<char, 4> MagicLE{ '\x52', '\x54', '\x50', '\x4F' };
+    auto magicIt = std::search(beve.begin(), beve.end(), MagicLE.begin(), MagicLE.end());
+    REQUIRE(magicIt != beve.end());
+    constexpr std::array<char, 4> VersionLE{ '\x01', '\x00', '\x00', '\x00' };
+    auto versionIt = std::search(magicIt + 4, beve.end(), VersionLE.begin(), VersionLE.end());
+    REQUIRE(versionIt != beve.end());
+    *versionIt = '\x02';
+
+    CHECK(!Operon::Serialization::TreeFromBeve(beve));
+}
+
+TEST_CASE("Tree BEVE rejects wrong magic", "[serialization]")
+{
+    Operon::RandomGenerator rng(3);
+    auto beve = Operon::Serialization::ToBeve(MakeTree(rng));
+    REQUIRE(!beve.empty());
+
+    constexpr std::array<char, 4> MagicLE{ '\x52', '\x54', '\x50', '\x4F' };
+    auto magicIt = std::search(beve.begin(), beve.end(), MagicLE.begin(), MagicLE.end());
+    REQUIRE(magicIt != beve.end());
+    *magicIt ^= static_cast<char>(0xFF);
+
+    CHECK(!Operon::Serialization::TreeFromBeve(beve));
+}
+
 TEST_CASE("Checkpoint BEVE round-trip", "[serialization]")
 {
     Operon::RandomGenerator rng(99);

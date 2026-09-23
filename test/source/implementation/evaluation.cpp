@@ -81,6 +81,7 @@ TEST_CASE("Evaluation correctness", "[interpreter]")
         auto estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(tree.GetCoefficients(), range);
         CHECK(estimatedValues[0] == -2);
     }
+
 }
 
 TEST_CASE("Batch evaluation", "[interpreter]")

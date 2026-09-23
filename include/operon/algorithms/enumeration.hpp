@@ -6,107 +6,49 @@
 #define OPERON_ALGORITHMS_ENUMERATION_HPP
 
 #include <array>
-#include <functional>
+#include <cmath>
 #include <mutex>
 #include <span>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include <gsl/pointers>
 #include <gtl/phmap.hpp>
 
+#include "operon/algorithms/enumeration_canonicalizer.hpp" // for CanonicalizeEnumerationTree
 #include "operon/algorithms/stoppable.hpp" // for Operon::ReportCallback, StoppableAlgorithm
 #include "operon/core/grammar.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/hash/content_hash.hpp"
 #include "operon/hash/zobrist.hpp"
-#include "operon/operators/evaluator.hpp" // for EvaluatorBase, Individual
+#include "operon/information_criteria/minimum_description_length.hpp" // for ParameterDescriptionLength
+#include "operon/operators/evaluator.hpp" // for EvaluatorBase, Individual, detail::ProfileSigma, FitLinearScaling
 #include "operon/operators/local_search.hpp" // for CoefficientOptimizer, OptimizerBase/FitResult/FitFailure fwd decls
 #include "operon/operon_export.hpp"
 #include "operon/random/random.hpp"
 
 // forward declaration - keeps taskflow.hpp (heavy) out of this public header; only enumeration.cpp/nsga2.cpp-style
 // .cpp files that actually build a Taskflow need the full definition.
-namespace tf { class Executor; }
+namespace tf {
+class Executor;
+}
 
 namespace Operon {
 
-// Complexity for grammar enumeration: count of all non-Constant nodes
-// (variables + every operator, unary and n-ary alike). Deviates slightly from
-// symreg-cpp (which excludes bare Add/Mul "glue" from the count) but is
-// simple, well-defined directly on a Tree, and serves the same pruning
-// intent - free-weight/bias Constants (see Grammar's WeightFirstOperand/
-// TrailingConstant) never contribute, since they're optimized values, not
-// distinct structural symbols.
+// Counts all non-Constant nodes.
 [[nodiscard]] OPERON_EXPORT auto SymbolicComplexity(Operon::Tree const& tree) noexcept -> std::size_t;
 
-// Bottom-up dynamic-programming enumeration engine: builds, for each grammar
-// nonterminal and each complexity budget 1..maxComplexity, the set of
-// canonical (Reduce()+Simplify()'d, content-hash-deduplicated) trees
-// derivable as that nonterminal within that budget - by combining
-// already-built, already-deduplicated smaller trees, per Grammar's
-// production table.
-//
-// This phase does NOT fit coefficients (every Constant leaf keeps its
-// construction-time placeholder value, Optimize=true) - CoefficientOptimizer
-// integration and the top-level Run()/stop-condition driver are a separate,
-// later addition (see the project plan). What's here is fully testable on
-// its own: that productions combine into valid Trees, that Reduce/Simplify
-// interact correctly with the budget accounting, and that content-hash dedup
-// collapses duplicates reached via different derivation paths.
-//
-// Budget accounting note: combining two operands' node counts plus a fixed
-// per-Op cost is only an accurate prediction of the *realized* (post-
-// Reduce()) complexity when neither operand's own root is already the same
-// Op being applied. Term/SimpleTerm's Mul self-combine and Expression/
-// SimpleExpr's Add(Term, Expression) recursion both violate this (Reduce()
-// merges the new Op into an operand's pre-existing same-type root instead of
-// adding a distinct node), so the naive per-combination budget overshoots the
-// true complexity by a small constant - see WorkingBudgetMargin in
-// enumeration.cpp for how the DP compensates.
-// Thread-safety: the per-(nonterminal, budget) dedup sets are gtl::parallel_flat_hash_set_m (the same primitive
-// ZobristCache uses for its transposition cache, see hash/zobrist.hpp), so the seen_ check-and-insert itself is
-// safe under concurrent access. buckets_'s std::vector::push_back (see TryInsert) is additionally guarded by
-// bucketMutex_ (one per (nonterminal, budget) cell, held only around the append itself - the Reduce()/
-// Simplify()/hash-compute work that dominates TryInsert's cost runs outside the lock). Build(tf::Executor&, ...)
-// fans ProcessNonterminal's candidate generation for one (nonterminal, budget) call out across that executor;
-// nothing about that call's own reads can race its own writes - see ProcessNonterminal's doc comment for why -
-// so the mutex only has to arbitrate concurrent *writes* into the same nonterminal's buckets.
-// Move-only: onNovelExpression_ is a std::move_only_function member, which
-// implicitly deletes this class's copy constructor/assignment. Nothing in
-// the codebase copies an EnumerationEngine today, but this is a real API
-// surface change worth flagging explicitly rather than leaving the next
-// caller to discover it as a compile error.
+// Bottom-up grammar enumerator. Build deduplicates reduced trees; fitting and ranking occur separately.
 class OPERON_EXPORT EnumerationEngine {
 public:
     EnumerationEngine(Operon::Grammar grammar, std::size_t maxComplexity, Operon::RandomGenerator& rng);
 
-    // Runs the bottom-up construction for budgets 1..maxComplexity in order.
-    // `shouldStop`, if set, is checked once after each budget level finishes
-    // (not per candidate, and not before the level starts - a level's own
-    // fan-out always runs to completion first, so a caller's progress report
-    // reflects that level's results rather than the previous one) and stops
-    // the construction early if it returns true.
-    //
-    // `executor` drives each (nonterminal, budget) level's own candidate generation in parallel (see
-    // ProcessNonterminal) - budget levels themselves, and nonterminals within a level, still run strictly in order
-    // (required for correctness, see ProcessNonterminal's doc comment), so this only parallelizes work *within*
-    // one ProcessNonterminal call, not across them.
+    // Builds ordered budget levels; each level parallelizes candidate construction.
     void Build(tf::Executor& executor, Operon::ReportCallback shouldStop = {});
 
-    // Convenience overload: builds and owns a local tf::Executor with `threads` workers (0 =
-    // std::thread::hardware_concurrency(), mirroring NSGA2::Run's analogous convenience overload) for the
-    // duration of this call.
+    // Uses `threads` workers; zero selects hardware concurrency.
     void Build(Operon::ReportCallback shouldStop = {}, std::size_t threads = 0);
-
-    // Invoked, if set, whenever a genuinely novel Expression-category tree is
-    // inserted (i.e. not a duplicate already reached via another derivation) -
-    // Expression is the only nonterminal meant to represent a complete
-    // candidate model; Term/RecurringFactor/SimpleExpr/SimpleTerm are purely
-    // compositional intermediates. The hook receives a mutable reference so a
-    // caller (GrammarEnumerationAlgorithm) can fit coefficients in place
-    // before the tree is stored.
-    void SetOnNovelExpression(Operon::MoveOnlyFunction<void(Operon::Tree&)> hook) { onNovelExpression_ = std::move(hook); }
 
     [[nodiscard]] auto Bucket(GrammarSymbol nt, std::size_t budget) const -> std::span<Operon::Tree const>;
 
@@ -114,175 +56,143 @@ public:
     [[nodiscard]] auto MaxComplexity() const -> std::size_t { return maxComplexity_; }
 
 private:
-    // Seeds RecurringFactor[1] and SimpleTerm[1] with one Variable-leaf Tree
-    // per Grammar::VariableHashes() entry - the only way either nonterminal
-    // terminates directly (see Grammar::AllowsVariable).
     void SeedTerminals();
-
-    // Applies every Production of `nt` at `budget`, building candidate Trees
-    // from already-completed lower-budget buckets (and, for Term's coercion
-    // from RecurringFactor, the same-budget bucket of a nonterminal processed
-    // earlier in this level - see the fixed per-level order in Build()).
-    //
-    // Fans every production's candidate-building loop out across `executor` (one tf::Taskflow, run to completion
-    // before returning). Every write this call makes lands in nt's own row, at either the nominal `budget` or, for
-    // a self-combine whose Reduce() flattens two already-Op-rooted operands into one, at a smaller realized
-    // complexity - but never smaller than budget-1: any tree whose flattened complexity would drop further is also
-    // reachable one level earlier by peeling a single child off the flattened result (nominal cost (r-m)+m+1 =
-    // r+1, i.e. budget-1 for a realized complexity of budget-2), so it is already present in seen_ by the time
-    // this level runs - TryInsert's dedup check returns novel=false before any push_back, making that write a
-    // no-op. Reads this call makes are: a strictly lower budget (fully built by an earlier, completed Build()
-    // level); or, for a same-budget coercion, an earlier-in-ProcessingOrder nonterminal's bucket (also already
-    // fully built this level); or, for a same-symbol self-combine, nt's own row at b0/b1 <= budget - fixedCost -
-    // MinComplexity(operand) < budget - 1. So every *effective* write (one that actually stores a tree) lands at
-    // budget or budget-1, strictly above every b0/b1 this call itself reads - no task here ever observes a bucket
-    // another task in the same call is concurrently writing. This is a property of dedup-driven no-ops, not a
-    // structural bound on what a single production can nominally compute - a future production must preserve the
-    // same peel-derivation argument (extend the completeness tests in
-    // test/source/implementation/enumeration.cpp first) or this reasoning breaks silently (the bucketMutex_ below
-    // guards concurrent *writes* only; a genuine same-cell read-during-write would be an unguarded data race).
-    // Concurrent *writes* into the same nt's buckets (from different productions/operand splits landing in the
-    // same complexity cell) are still possible and are what TryInsert's bucketMutex_ guards.
     void ProcessNonterminal(tf::Executor& executor, GrammarSymbol nt, std::size_t budget);
-
-    // Reduce()+Simplify()s `tree`, computes its realized SymbolicComplexity
-    // (which can only be <= the budget it was built for - simplification
-    // never adds nodes) and content hash, and inserts it into nt's bucket at
-    // that realized complexity if not already present there. Returns whether
-    // it was novel (i.e. actually inserted).
-    //
-    // This can insert into a bucket at a smaller budget than the one
-    // currently being processed by Build() (a "shrink") - safe because
-    // Build()'s budget loop only ever moves forward: once budget B has been
-    // fully processed, nothing reads bucket[B] again until some later,
-    // larger budget's ProcessNonterminal call does, and any shrink-driven
-    // insertion into bucket[B] happens strictly before that (it's itself
-    // triggered by processing some budget > B). So a late arrival in an
-    // already-"finished" bucket is still visible to every future reader.
-    //
-    // Dedup relies on hash equality alone (seen_ stores only the 64-bit
-    // content hash, not the tree) - a collision would silently drop a
-    // distinct tree. Negligible at 64 bits, and the completeness tests'
-    // exact closed-form bucket counts are evidence none has occurred in
-    // practice, but this isn't a structural guarantee.
     auto TryInsert(GrammarSymbol nt, Operon::Tree tree) -> bool;
 
     Operon::Grammar grammar_;
     std::size_t maxComplexity_;
-    // Internal working budget ceiling, strictly >= maxComplexity_ - see
-    // WorkingBudgetMargin in enumeration.cpp for why the DP needs to search
-    // beyond the caller-visible ceiling. buckets_/seen_ are sized to this,
-    // not to maxComplexity_; rows beyond maxComplexity_ are scratch space
-    // that TryInsert's complexity check guarantees stays empty.
     std::size_t workingCeiling_;
     Operon::Zobrist zobrist_;
-    std::vector<std::vector<std::vector<Operon::Tree>>> buckets_; // [GrammarSymbol index][budget][candidate]
-    std::vector<std::vector<gtl::parallel_flat_hash_set_m<Operon::Hash>>> seen_; // [GrammarSymbol index][budget]
-    // One mutex per (GrammarSymbol, budget) cell, guarding just that cell's buckets_ push_backs - see TryInsert
-    // and the class-level Thread-safety comment. Cell granularity (rather than one mutex per GrammarSymbol shared
-    // across every budget) keeps concurrent inserts into different budget cells of the same nonterminal from
-    // contending on a single lock. Sized/constructed like buckets_/seen_ (see the ctor) - std::mutex isn't
-    // movable, so this can't use vector<vector<mutex>>'s resize() the way buckets_/seen_ do; the ctor
-    // default-constructs each row's mutexes in place at their final size instead.
+    std::vector<std::vector<std::vector<Operon::Tree>>> buckets_;
+    std::vector<std::vector<gtl::parallel_flat_hash_set_m<Operon::Hash>>> seen_;
     std::vector<std::vector<std::mutex>> bucketMutex_;
-    Operon::MoveOnlyFunction<void(Operon::Tree&)> onNovelExpression_;
+};
+
+// Candidate ranking criterion.
+enum class EnumerationRanking : uint8_t {
+    MinimumDescriptionLength,
+    Objective,
 };
 
 struct EnumerationConfig {
-    std::size_t MaxComplexity{20};
-    std::size_t TopK{10}; // how many best-fitness models to retain (see GrammarEnumerationAlgorithm::BestTrees)
+    std::size_t MaxComplexity { 20 };
+    std::size_t TopK { 10 }; // how many best-fitness models to retain (see GrammarEnumerationAlgorithm::BestTrees)
+    EnumerationRanking Ranking { EnumerationRanking::MinimumDescriptionLength };
+    // Scratch-buffer size required by the scorer. Callers must set this to at
+    // least the scorer's training-range size before Run().
+    std::size_t EvaluationBufferSize { 0 };
 };
 
-// Top-level driver: wraps EnumerationEngine with coefficient fitting (via the
-// existing CoefficientOptimizer - this fully replaces symreg-cpp's Ceres
-// dependency with operon's own optimizer stack, no new fitting code needed).
-// Shares its stop-condition/reporting surface (ReportCallback/
-// StopRequested()/RequestStop()) with GeneticAlgorithmBase-derived
-// algorithms via StoppableAlgorithm, even though this doesn't inherit
-// GeneticAlgorithmBase itself - there's no population/generation model
-// here, just a level-by-level DP construction.
-//
-// Coefficient fitting and fitness scoring are deliberately separate
-// concerns, mirroring BasicOffspringGenerator's evaluate step
-// (operators/generator.hpp): `optimizer` only drives CoefficientOptimizer's
-// internal loss (used to fit parameters, e.g. LM's sum-of-squares) and is
-// never itself surfaced as a score; `evaluator` is the user-selectable
-// ErrorMetric (R2/NMSE/MSE/MAE/...) that actually ranks candidates in
-// BestTrees(), same as GP/NSGA2. Always taking the optimizer's resulting
-// tree (regardless of whether the fit outcome was FitResult or FitFailure)
-// and re-scoring it via evaluator - rather than trusting the outcome's own
-// cost fields -
-// keeps this consistent with the rest of the codebase and avoids coupling
-// ranking to whichever internal loss a given OptimizerBase happens to use.
+// Lower scores are better. MDL uses bits; objective mode leaves component fields NaN.
+struct EnumerationScore {
+    Operon::Scalar Score {};
+    double NegativeLogLikelihood { std::numeric_limits<double>::quiet_NaN() };
+    double ParameterCodeBits { std::numeric_limits<double>::quiet_NaN() };
+    double StructureCodeBits { std::numeric_limits<double>::quiet_NaN() };
+};
+
+// Scores one fitted tree. `structureBits` is supplied by the caller.
+using EnumerationScorer
+    = Operon::MoveOnlyFunction<EnumerationScore(Operon::RandomGenerator&, Tree const&, double, Span<Scalar>)>;
+
+// Builds an MDL scorer. Empty sigma profiles Gaussian noise; otherwise sigma is fixed.
+template <typename DTable, Concepts::Likelihood Lik>
+    requires Concepts::HasFisherMatrix<Lik>
+auto MakeMdlScorer(gsl::not_null<Operon::Problem const*> problem, gsl::not_null<DTable const*> dtable,
+    std::vector<Operon::Scalar> sigma = {}) -> EnumerationScorer
+{
+    return [problem, dtable, sigma = std::move(sigma)](Operon::RandomGenerator& /*rng*/, Operon::Tree const& tree,
+               double structureBits, Operon::Span<Operon::Scalar> buf) -> EnumerationScore {
+        auto const trainingRange = problem->TrainingRange();
+        auto const* dataset = problem->GetDataset();
+        auto parameters = tree.GetCoefficients();
+
+        EXPECT(buf.size() >= trainingRange.Size());
+        auto yPred = buf.subspan(0, trainingRange.Size());
+        Operon::Interpreter<Operon::Scalar, DTable> const interpreter { dtable.get(), dataset, &tree };
+        interpreter.Evaluate(parameters, trainingRange, yPred);
+
+        auto yTrue = problem->TargetValues(trainingRange);
+        auto const weights = problem->Weights(trainingRange).value_or(Operon::Span<Operon::Scalar const> {});
+        std::optional<Operon::LinearScaling> scaling {};
+        if (problem->LinearScalingEnabled()) {
+            scaling = Operon::FitLinearScaling(yPred, yTrue, weights, problem->LinearScalingOmitsNonFinite());
+            scaling->ApplyInPlace(yPred);
+        }
+
+        Operon::Scalar profiledSigma {};
+        if (sigma.empty() && Lik::UsesSigma) {
+            profiledSigma = Operon::detail::ProfileSigma(yPred, yTrue);
+        }
+        auto const effectiveSigma = (sigma.empty() && Lik::UsesSigma)
+            ? Operon::Span<Operon::Scalar const> { &profiledSigma, 1 }
+            : Operon::Span<Operon::Scalar const> { sigma };
+
+        Eigen::Matrix<Operon::Scalar, -1, -1> jac = interpreter.JacRev(parameters, trainingRange);
+        if (scaling) {
+            jac *= static_cast<Operon::Scalar>(scaling->Scale);
+        }
+        auto fisherMatrix
+            = Lik::ComputeFisherMatrix(yPred, { jac.data(), static_cast<std::size_t>(jac.size()) }, effectiveSigma);
+        auto fisherDiag = fisherMatrix.diagonal().array();
+        EXPECT(static_cast<std::size_t>(fisherDiag.size()) == parameters.size());
+
+        auto const nllNats = static_cast<double>(Lik::ComputeLikelihood(yPred, yTrue, effectiveSigma));
+        auto const paramNats = Operon::ParameterDescriptionLength(parameters, fisherDiag);
+
+        constexpr double Ln2 = 0.6931471805599453094;
+        auto const paramBits = paramNats / Ln2;
+        auto score = (nllNats / Ln2) + paramBits + structureBits;
+        if (!std::isfinite(score)) {
+            score = static_cast<double>(EvaluatorBase::ErrMax);
+        }
+
+        return EnumerationScore {
+            .Score = static_cast<Operon::Scalar>(score),
+            .NegativeLogLikelihood = nllNats,
+            .ParameterCodeBits = paramBits,
+            .StructureCodeBits = structureBits,
+        };
+    };
+}
+
+// Builds a scalar objective scorer; multi-objective evaluators are rejected.
+[[nodiscard]] OPERON_EXPORT auto MakeObjectiveScorer(gsl::not_null<Operon::EvaluatorBase const*> evaluator)
+    -> EnumerationScorer;
+
+// Ranked canonical representative.
+struct EnumerationResult {
+    Operon::Scalar Score {};
+    double NegativeLogLikelihood { std::numeric_limits<double>::quiet_NaN() };
+    double ParameterCodeBits { std::numeric_limits<double>::quiet_NaN() };
+    double StructureCodeBits { std::numeric_limits<double>::quiet_NaN() };
+    std::string CanonicalKey;
+    Operon::Tree Tree;
+};
+
+// Builds, groups, fits, and ranks grammar-enumerated candidates.
 class OPERON_EXPORT GrammarEnumerationAlgorithm : public StoppableAlgorithm {
 public:
-    // `rng` is used once here to build the engine's Zobrist salt table (see
-    // EnumerationEngine); Run()'s own `rng` argument is independent and used
-    // for coefficient fitting - callers may pass the same generator to both
-    // or different ones.
-    GrammarEnumerationAlgorithm(EnumerationConfig config, Operon::Grammar grammar, gsl::not_null<Operon::OptimizerBase const*> optimizer, gsl::not_null<Operon::EvaluatorBase const*> evaluator, Operon::RandomGenerator& rng);
+    GrammarEnumerationAlgorithm(EnumerationConfig config, Operon::Grammar grammar,
+        gsl::not_null<Operon::OptimizerBase const*> optimizer, EnumerationScorer scorer, Operon::RandomGenerator& rng);
 
-    // Fits coefficients (via CoefficientOptimizer) for every novel Expression
-    // discovered during construction, scores the result via `evaluator`, and
-    // tracks the config.TopK best (lower = better, matching every Operon
-    // ErrorMetric's minimization convention) in BestTrees(). Stops early if
-    // `report` returns true, or if RequestStop() was called.
-    //
-    // Precondition: optimizer->Iterations() > 0 (enforced via an always-on
-    // EXPECT, not stripped under NDEBUG). At Iterations() == 0,
-    // CoefficientOptimizer never calls Optimize() and every candidate ties
-    // at cost 0.0, making the top-K ranking meaningless - callers that
-    // expose `optimizer` configuration to end users (CLIs, language
-    // bindings) must reject or default away iterations == 0 themselves, the
-    // way operon_enum does, rather than let it reach here.
-    //
-    // Single-shot: Run() is not meant to be called more than once on the
-    // same instance - unlike GeneticAlgorithmBase, this class has no
-    // Reset() to clear StopRequested() between runs, and the underlying
-    // EnumerationEngine::Build() is not re-runnable (its buckets/dedup sets
-    // are already populated after the first call). Construct a new
-    // GrammarEnumerationAlgorithm for another run, mirroring the one-shot
-    // (not warm-restartable) contract already implied by EnumerationEngine.
-    //
-    // `executor` drives EnumerationEngine::Build's parallel candidate generation (see its doc comment) -
-    // onNovelExpression_'s coefficient fit/evaluate/ConsiderBest hook below runs concurrently from every one of
-    // `executor`'s workers, keyed off tf::Executor::this_worker_id() for its own per-worker
-    // RandomGenerator/scratch-buffer slot, mirroring the per-worker `slots` / per-individual `rngs` pattern
-    // NSGA2::Run uses for its own threaded local search and evaluation.
-    //
-    // Reproducibility depends on `optimizer_`, not just (seed, worker count): every duplicate derivation of a
-    // given tree is structurally identical (built from the same constexpr weight/bias placeholders, see
-    // WeightPlaceholder/BiasPlaceholder), so whichever worker's TryInsert call wins the dedup race, the fitted
-    // tree and its fitness are identical PROVIDED `optimizer_`'s fit doesn't itself consume `rng` (true for
-    // LevenbergMarquardtOptimizer, the CLI's default - `rng` there is unused). With an rng-consuming optimizer
-    // (e.g. LBFGSOptimizer's stochastic batch selection), which worker wins the race genuinely changes the fit,
-    // so results are not reproducible even at a *fixed* thread count, let alone across different ones. Separately,
-    // regardless of optimizer: ConsiderBest breaks exact-fitness ties by arrival order (scheduling-dependent), so
-    // BestTrees()'s ordering - and, for ties landing exactly at the TopK boundary, its content - can vary run to
-    // run at any fixed (seed, worker count) pair.
     void Run(tf::Executor& executor, Operon::RandomGenerator& rng, Operon::ReportCallback report = {});
-
-    // Convenience overload: builds and owns a local tf::Executor with `threads` workers (0 =
-    // std::thread::hardware_concurrency(), mirroring NSGA2::Run's analogous convenience overload) for the
-    // duration of this call.
     void Run(Operon::RandomGenerator& rng, Operon::ReportCallback report = {}, std::size_t threads = 0);
 
-    // StopRequested()/RequestStop() are inherited from StoppableAlgorithm.
-
-    // Best-fitness Expression trees found so far, sorted ascending by
-    // evaluator score (lower = better), capped at EnumerationConfig::TopK.
-    [[nodiscard]] auto BestTrees() const -> std::span<std::pair<Operon::Scalar, Operon::Tree> const> { return best_; }
+    // Results are sorted by score, then canonical key, and capped at TopK.
+    [[nodiscard]] auto BestTrees() const -> std::span<EnumerationResult const> { return best_; }
 
     [[nodiscard]] auto GetEngine() const -> EnumerationEngine const& { return engine_; }
 
 private:
-    void ConsiderBest(Operon::Scalar fitness, Operon::Tree tree);
+    void ConsiderBest(EnumerationResult result);
 
     EnumerationConfig config_;
     EnumerationEngine engine_;
     gsl::not_null<Operon::OptimizerBase const*> optimizer_;
-    gsl::not_null<Operon::EvaluatorBase const*> evaluator_;
-    std::vector<std::pair<Operon::Scalar, Operon::Tree>> best_; // sorted ascending by .first, size() <= config_.TopK
+    EnumerationScorer scorer_;
+    std::vector<EnumerationResult> best_;
 };
 
 } // namespace Operon
