@@ -240,7 +240,7 @@ void EnumerationEngine::ProcessNonterminal(tf::Executor& executor, GrammarSymbol
         }
     }
 
-    executor.run(taskflow).wait();
+    executor.run(taskflow).get(); // .wait() would silently drop an exception thrown by a TryInsert task
 }
 
 void EnumerationEngine::Build(tf::Executor& executor, Operon::ReportCallback shouldStop)
@@ -329,7 +329,10 @@ void GrammarEnumerationAlgorithm::Run(
         }
         return false;
     };
-    engine_.Build(executor, std::move(shouldStop));
+    engine_.Build(executor, [&]() { return shouldStop(); });
+    if (StopRequested()) {
+        return;
+    }
 
     // Build first, then select one deterministic representative per canonical class.
     struct ClassMember {
@@ -341,10 +344,7 @@ void GrammarEnumerationAlgorithm::Run(
         if (a.BucketSize != b.BucketSize) {
             return a.BucketSize < b.BucketSize;
         }
-        if (a.Complexity != b.Complexity) {
-            return a.Complexity < b.Complexity;
-        }
-        return Operon::Serialization::ToBeve(a.Candidate) < Operon::Serialization::ToBeve(b.Candidate);
+        return a.Complexity < b.Complexity;
     };
 
     std::unordered_map<std::string, ClassMember> representatives; // canonical Key -> current best representative
@@ -355,11 +355,13 @@ void GrammarEnumerationAlgorithm::Run(
         }
         for (auto const& tree : bucket) {
             auto canon = Operon::CanonicalizeEnumerationTree(tree);
-            ClassMember candidate { .Candidate = tree, .Complexity = budget, .BucketSize = bucket.size() };
-            if (auto [it, inserted] = representatives.try_emplace(canon.Key, std::move(candidate)); !inserted) {
+            ClassMember candidate { .Candidate = std::move(canon.Representative), .Complexity = budget, .BucketSize = bucket.size() };
+            if (auto it = representatives.find(canon.Key); it != representatives.end()) {
                 if (better(candidate, it->second)) {
                     it->second = std::move(candidate);
                 }
+            } else {
+                representatives.emplace(std::move(canon.Key), std::move(candidate));
             }
         }
     }
@@ -372,14 +374,14 @@ void GrammarEnumerationAlgorithm::Run(
         std::make_move_iterator(representatives.begin()), std::make_move_iterator(representatives.end()));
     std::ranges::sort(repList, {}, [](auto const& p) { return p.first; });
 
-    // Each worker owns its RNG and evaluation buffer.
+    // Each worker owns its evaluation buffer. Each representative gets a
+    // seed in stable-key order, so task scheduling cannot affect its fit.
     EXPECT(config_.EvaluationBufferSize > 0);
     Operon::CoefficientOptimizer coeffOptimizer { optimizer_ };
     auto const numWorkers = executor.num_workers();
-    std::vector<Operon::RandomGenerator> workerRngs;
-    workerRngs.reserve(numWorkers);
-    for (std::size_t i = 0; i < numWorkers; ++i) {
-        workerRngs.emplace_back(rng());
+    std::vector<Operon::RandomGenerator::result_type> candidateSeeds(repList.size());
+    for (auto& seed : candidateSeeds) {
+        seed = rng();
     }
     std::vector<std::vector<Operon::Scalar>> workerBufs(
         numWorkers, std::vector<Operon::Scalar>(config_.EvaluationBufferSize));
@@ -387,35 +389,48 @@ void GrammarEnumerationAlgorithm::Run(
     // Only TopK maintenance is shared.
     std::mutex bestMutex;
 
-    tf::Taskflow taskflow;
-    taskflow.for_each_index(std::size_t { 0 }, repList.size(), std::size_t { 1 }, [&](std::size_t i) {
-        auto const worker = executor.this_worker_id();
-        // Task bodies must have an assigned worker slot.
-        EXPECT(worker >= 0);
-        auto const slot = static_cast<std::size_t>(worker);
-        auto& localRng = workerRngs[slot];
-        auto& evalBuf = workerBufs[slot];
+    // Report only between taskflow batches, when BestTrees() is coherent. This
+    // bounds the otherwise potentially dominant fitting phase without putting
+    // callback synchronization on every candidate.
+    auto const batchSize = std::max<std::size_t>(numWorkers, 1) * 4;
+    for (std::size_t first = 0; first < repList.size() && !StopRequested(); first += batchSize) {
+        auto const last = std::min(first + batchSize, repList.size());
+        tf::Taskflow taskflow;
+        taskflow.for_each_index(first, last, std::size_t { 1 }, [&](std::size_t i) {
+            if (StopRequested()) {
+                return;
+            }
+            auto const worker = executor.this_worker_id();
+            // Task bodies must have an assigned worker slot.
+            EXPECT(worker >= 0);
+            auto const slot = static_cast<std::size_t>(worker);
+            Operon::RandomGenerator localRng(candidateSeeds[i]);
+            auto& evalBuf = workerBufs[slot];
 
-        auto const& [key, member] = repList[i];
-        // Rank the fitted tree, not the optimizer's internal loss.
-        auto tree = std::get<0>(coeffOptimizer(localRng, member.Candidate));
-        tree.Reduce();
-        tree.Simplify();
-        // The pre-canonical bucket size is the structural code length.
-        auto const structureBits = std::log2(static_cast<double>(member.BucketSize));
-        auto score = scorer_(localRng, tree, structureBits, evalBuf);
+            auto const& [key, member] = repList[i];
+            // Rank the fitted tree, not the optimizer's internal loss.
+            auto tree = std::get<0>(coeffOptimizer(localRng, member.Candidate));
+            tree.Reduce();
+            tree.Simplify();
+            // The pre-canonical bucket size is the structural code length.
+            auto const structureBits = std::log2(static_cast<double>(member.BucketSize));
+            auto score = scorer_(localRng, tree, structureBits, evalBuf);
 
-        std::scoped_lock lock(bestMutex);
-        ConsiderBest(EnumerationResult {
-            .Score = score.Score,
-            .NegativeLogLikelihood = score.NegativeLogLikelihood,
-            .ParameterCodeBits = score.ParameterCodeBits,
-            .StructureCodeBits = score.StructureCodeBits,
-            .CanonicalKey = key,
-            .Tree = std::move(tree),
+            std::scoped_lock lock(bestMutex);
+            ConsiderBest(EnumerationResult {
+                .Score = score.Score,
+                .NegativeLogLikelihood = score.NegativeLogLikelihood,
+                .ParameterCodeBits = score.ParameterCodeBits,
+                .StructureCodeBits = score.StructureCodeBits,
+                .CanonicalKey = key,
+                .Tree = std::move(tree),
+            });
         });
-    });
-    executor.run(taskflow).wait();
+        executor.run(taskflow).get(); // fitting failures must reach the caller
+        if (shouldStop()) {
+            break;
+        }
+    }
 }
 
 void GrammarEnumerationAlgorithm::Run(Operon::RandomGenerator& rng, Operon::ReportCallback report, std::size_t threads)

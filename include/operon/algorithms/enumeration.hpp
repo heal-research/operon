@@ -135,6 +135,7 @@ auto MakeMdlScorer(gsl::not_null<Operon::Problem const*> problem, gsl::not_null<
         auto fisherMatrix
             = Lik::ComputeFisherMatrix(yPred, { jac.data(), static_cast<std::size_t>(jac.size()) }, effectiveSigma);
         auto fisherDiag = fisherMatrix.diagonal().array();
+        EXPECT(static_cast<std::size_t>(fisherDiag.size()) == parameters.size());
 
         auto const nllNats = static_cast<double>(Lik::ComputeLikelihood(yPred, yTrue, effectiveSigma));
         auto const paramNats = Operon::ParameterDescriptionLength(parameters, fisherDiag);

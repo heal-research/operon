@@ -17,6 +17,7 @@
 #include "operon/core/pset.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/optimizer/optimizer.hpp"
+#include "operon/core/serialization.hpp"
 
 namespace Operon::Test {
 
@@ -498,6 +499,90 @@ TEST_CASE("GrammarEnumerationAlgorithm - recovers a small ground-truth expressio
     CHECK(best.front().Score < -0.99); // near-perfect fit for an exactly-representable linear ground truth
 }
 
+TEST_CASE("GrammarEnumerationAlgorithm - threaded runs are reproducible", "[enumeration][determinism]")
+{
+    constexpr auto rows = 50;
+    Operon::RandomGenerator dataRng(1234);
+    std::vector<Operon::Scalar> x1(rows);
+    std::vector<Operon::Scalar> x2(rows);
+    std::vector<Operon::Scalar> y(rows);
+    for (auto i = 0; i < rows; ++i) {
+        x1[i] = Operon::Random::Uniform(dataRng, -1.0F, +1.0F);
+        x2[i] = Operon::Random::Uniform(dataRng, -1.0F, +1.0F);
+        y[i] = 2.0F * x1[i] + 3.0F * x2[i] - 1.0F;
+    }
+    std::vector<std::vector<Operon::Scalar>> cols { x1, x2, y };
+    Operon::Dataset ds(cols);
+    Operon::Problem problem(&ds);
+    std::vector<Operon::Hash> const inputs { ds.GetVariable("X1").value().Hash, ds.GetVariable("X2").value().Hash };
+    problem.SetInputs(inputs);
+    problem.SetTarget("X3");
+    problem.SetTrainingRange({ 0, rows });
+    problem.SetTestRange({ 0, rows });
+
+    using DTable = DispatchTable<Operon::Scalar>;
+    DTable dtable;
+    LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{ &dtable, &problem };
+    Operon::Evaluator<DTable> evaluator{ &problem, &dtable, Operon::R2{} };
+    EnumerationConfig config { .MaxComplexity = 6, .TopK = 5, .Ranking = EnumerationRanking::Objective,
+                               .EvaluationBufferSize = problem.TrainingRange().Size() };
+    auto run = [&]() {
+        Operon::RandomGenerator engineRng(42);
+        GrammarEnumerationAlgorithm algo(config, Grammar(PrimitiveSet::Arithmetic, inputs),
+            &optimizer, MakeObjectiveScorer(&evaluator), engineRng);
+        Operon::RandomGenerator fitRng(42);
+        algo.Run(fitRng, {}, /*threads=*/2);
+        return std::vector<EnumerationResult>(algo.BestTrees().begin(), algo.BestTrees().end());
+    };
+
+    auto const first = run();
+    auto const second = run();
+    REQUIRE(first.size() == second.size());
+    for (std::size_t i = 0; i < first.size(); ++i) {
+        CHECK(first[i].Score == second[i].Score);
+        CHECK(first[i].CanonicalKey == second[i].CanonicalKey);
+        CHECK(Serialization::ToBeve(first[i].Tree) == Serialization::ToBeve(second[i].Tree));
+    }
+}
+
+TEST_CASE("GrammarEnumerationAlgorithm - report can stop fitting batches", "[enumeration]")
+{
+    constexpr auto rows = 50;
+    Operon::RandomGenerator dataRng(1234);
+    std::vector<Operon::Scalar> x1(rows);
+    std::vector<Operon::Scalar> x2(rows);
+    std::vector<Operon::Scalar> y(rows);
+    for (auto i = 0; i < rows; ++i) {
+        x1[i] = Operon::Random::Uniform(dataRng, -1.0F, +1.0F);
+        x2[i] = Operon::Random::Uniform(dataRng, -1.0F, +1.0F);
+        y[i] = 2.0F * x1[i] + 3.0F * x2[i] - 1.0F;
+    }
+    std::vector<std::vector<Operon::Scalar>> cols { x1, x2, y };
+    Operon::Dataset ds(cols);
+    Operon::Problem problem(&ds);
+    std::vector<Operon::Hash> const inputs { ds.GetVariable("X1").value().Hash, ds.GetVariable("X2").value().Hash };
+    problem.SetInputs(inputs);
+    problem.SetTarget("X3");
+    problem.SetTrainingRange({ 0, rows });
+    problem.SetTestRange({ 0, rows });
+
+    using DTable = DispatchTable<Operon::Scalar>;
+    DTable dtable;
+    LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{ &dtable, &problem };
+    Operon::Evaluator<DTable> evaluator{ &problem, &dtable, Operon::R2{} };
+    EnumerationConfig config { .MaxComplexity = 6, .TopK = 100, .Ranking = EnumerationRanking::Objective,
+                               .EvaluationBufferSize = problem.TrainingRange().Size() };
+    Operon::RandomGenerator engineRng(42);
+    GrammarEnumerationAlgorithm algo(config, Grammar(PrimitiveSet::Arithmetic, inputs),
+        &optimizer, MakeObjectiveScorer(&evaluator), engineRng);
+    Operon::RandomGenerator fitRng(42);
+    int calls = 0;
+    algo.Run(fitRng, [&] { return ++calls >= 11; }, /*threads=*/2);
+
+    CHECK(algo.StopRequested());
+    CHECK(calls == 11);
+    CHECK_FALSE(algo.BestTrees().empty());
+}
 TEST_CASE("CanonicalizeEnumerationTree - commutative reordering shares a canonical key", "[enumeration]")
 {
     Node nx(NodeType::Variable); nx.HashValue = 1;

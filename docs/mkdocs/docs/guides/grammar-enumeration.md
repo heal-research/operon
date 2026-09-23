@@ -25,6 +25,6 @@ Distinct-looking candidate trees can represent the same algebraic family (e.g. `
 | `EnumerationConfig::Ranking` | which ranking the CLI/caller intends (informational - the scorer passed to the constructor is what actually determines ranking behavior) |
 | `EnumerationConfig::EvaluationBufferSize` | per-worker scratch buffer size `Run()` allocates for `scorer`; must be >= the scorer's training range size |
 | `Run(rng, report)` | single-shot build, canonical-group, fit, score, and retain |
-| `RequestStop()` or `report == true` | stops after the current completed complexity level |
+| `RequestStop()` or `report == true` | stops after the current completed build level or fitting batch |
 
 `Run()` is intentionally single-shot: buckets and deduplication state are retained, and the engine is not resettable. Construct a new algorithm for another enumeration. Enumeration can grow combinatorially; use it when the grammar and complexity limit are tractable, not as a drop-in replacement for a large population search.
