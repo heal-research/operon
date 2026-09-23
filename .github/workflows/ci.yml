@@ -130,4 +130,30 @@ jobs:
       working-directory: build
       run: ctest --output-on-failure -C Release -j 2
 
+  docs:
+    needs: [sanitize, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository_owner == 'heal-research'
 
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-python@v5
+      with: { python-version: "3.11" }
+
+    - name: Install documentation dependencies
+      run: pip install mkdocs-material
+        && sudo apt-get update -q
+        && sudo apt-get install graphviz -q -y
+
+    - name: Build docs
+      run: cmake -S . -B build -D BUILD_DOCS=ON
+        && cmake --build build --target docs
+
+    - name: Deploy docs
+      uses: peaceiris/actions-gh-pages@v4
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: build/docs/html

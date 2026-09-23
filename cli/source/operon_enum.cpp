@@ -98,8 +98,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         // optimizer only drives CoefficientOptimizer's internal fit - ranking
         // is via evaluator (same --objective option GP/NSGP expose), so
         // --objective actually changes which models are reported here.
-        auto evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable,
-            result["skip-nonfinite"].as<bool>(), result["nonfinite-penalty-weight"].as<double>());
+        auto evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable);
 
         auto seed = result["seed"].as<Operon::RandomGenerator::result_type>();
         if (seed == 0) { seed = std::random_device{}(); }
