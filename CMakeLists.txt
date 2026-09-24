@@ -47,6 +47,7 @@ endif()
 
 add_library(
     operon_operon
+    source/algorithms/domain_pruning.cpp
     source/algorithms/enumeration.cpp
     source/algorithms/enumeration_canonicalizer.cpp
     source/algorithms/gp.cpp

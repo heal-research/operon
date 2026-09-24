@@ -267,7 +267,7 @@ struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public 
 
             // do the minimization loop manually because we want to extract the initial cost
             Eigen::LevenbergMarquardtSpace::Status status = lm.minimizeInit(m);
-            diag.InitialCost = diag.FinalCost = lm.fnorm() * lm.fnorm() * 0.5; // get the initial cost after calling minimizeInit()
+            diag.InitialCost = diag.FinalCost = lm.fnorm() * lm.fnorm() * Operon::Scalar{0.5}; // get the initial cost after calling minimizeInit()
             if (status != Eigen::LevenbergMarquardtSpace::ImproperInputParameters) {
                 do {
                     status = lm.minimizeOneStep(m);
@@ -277,7 +277,7 @@ struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public 
             m0 = m;
         }
         diag.FinalParameters = x0;
-        diag.FinalCost = lm.fnorm() * lm.fnorm() * 0.5;
+        diag.FinalCost = lm.fnorm() * lm.fnorm() * Operon::Scalar{0.5};
         diag.Iterations = static_cast<int>(lm.iterations());
         diag.FunctionEvaluations = static_cast<int>(cf.ResidualCalls());
         diag.JacobianEvaluations = static_cast<int>(cf.JacobianCalls());

@@ -17,6 +17,7 @@
 #include <gtl/phmap.hpp>
 
 #include "operon/algorithms/enumeration_canonicalizer.hpp" // for CanonicalizeEnumerationTree
+#include "operon/algorithms/domain_pruning.hpp"
 #include "operon/algorithms/stoppable.hpp" // for Operon::ReportCallback, StoppableAlgorithm
 #include "operon/core/grammar.hpp"
 #include "operon/core/tree.hpp"
@@ -42,7 +43,8 @@ namespace Operon {
 // Bottom-up grammar enumerator. Build deduplicates reduced trees; fitting and ranking occur separately.
 class OPERON_EXPORT EnumerationEngine {
 public:
-    EnumerationEngine(Operon::Grammar grammar, std::size_t maxComplexity, Operon::RandomGenerator& rng);
+    EnumerationEngine(Operon::Grammar grammar, std::size_t maxComplexity, Operon::RandomGenerator& rng,
+        DomainPruningConfig pruning = {});
 
     // Builds ordered budget levels; each level parallelizes candidate construction.
     void Build(tf::Executor& executor, Operon::ReportCallback shouldStop = {});
@@ -66,6 +68,7 @@ private:
     Operon::Zobrist zobrist_;
     std::vector<std::vector<std::vector<Operon::Tree>>> buckets_;
     std::vector<std::vector<gtl::parallel_flat_hash_set_m<Operon::Hash>>> seen_;
+    DomainPruningConfig pruning_;
     std::vector<std::vector<std::mutex>> bucketMutex_;
 };
 
@@ -82,6 +85,7 @@ struct EnumerationConfig {
     // Scratch-buffer size required by the scorer. Callers must set this to at
     // least the scorer's training-range size before Run().
     std::size_t EvaluationBufferSize { 0 };
+    DomainPruningConfig Pruning {};
 };
 
 // Lower scores are better. MDL uses bits; objective mode leaves component fields NaN.
@@ -92,7 +96,6 @@ struct EnumerationScore {
     double StructureCodeBits { std::numeric_limits<double>::quiet_NaN() };
 };
 
-// Scores one fitted tree. `structureBits` is supplied by the caller.
 using EnumerationScorer
     = Operon::MoveOnlyFunction<EnumerationScore(Operon::RandomGenerator&, Tree const&, double, Span<Scalar>)>;
 

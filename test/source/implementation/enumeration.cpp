@@ -13,6 +13,7 @@
 #include "operon/algorithms/enumeration.hpp"
 #include "operon/core/dataset.hpp"
 #include "operon/core/grammar.hpp"
+#include "operon/algorithms/domain_pruning.hpp"
 #include "operon/core/problem.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/interpreter/interpreter.hpp"
@@ -936,6 +937,60 @@ TEST_CASE("GrammarEnumerationAlgorithm - Cube/TenExp productions compute the cor
         CHECK(std::abs(static_cast<double>(estimated[0]) - expectedTenExp) < 1e-2);
         CHECK(std::abs(static_cast<double>(estimated[0]) - expectedSwapped) > 1e-2); // must NOT be the swapped form
     }
+}
+
+TEST_CASE("Domain analyzer classifies fixed restricted trees and policies", "[enumeration][domain]")
+{
+    auto negative = Node::Constant(-1.0);
+    negative.Optimize = false;
+    Tree negativeLog({ negative, Node::Function(static_cast<Hash>(BuiltinOp::Log), 1) });
+    negativeLog.UpdateNodes();
+    Dataset data({ "x" }, { { 0.F } });
+    DomainContext context(data, Range(0, 1));
+    CHECK(AnalyzeDomain(negativeLog, context, DomainPolicy::AllRowsFinite) == DomainStatus::Invalid);
+    CHECK(AnalyzeDomain(negativeLog, context, DomainPolicy::NoFiniteRows) == DomainStatus::Invalid);
+    auto positive = Node::Constant(1.0);
+    positive.Optimize = false;
+    Tree positiveLog({ positive, Node::Function(static_cast<Hash>(BuiltinOp::Log), 1) });
+    positiveLog.UpdateNodes();
+    CHECK(AnalyzeDomain(positiveLog, context, DomainPolicy::AllRowsFinite) == DomainStatus::Valid);
+    CHECK(AnalyzeDomain(positiveLog, context, DomainPolicy::NoFiniteRows) == DomainStatus::Valid);
+}
+
+TEST_CASE("Domain analyzer folds ordinary children under restricted roots", "[enumeration][domain]")
+{
+    Dataset data({ "x" }, { { -2.F, -3.F } });
+    auto const xHash = data.VariableHashes().front();
+    Node x(NodeType::Variable);
+    x.HashValue = x.CalculatedHashValue = xHash;
+    x.Optimize = false;
+    Dataset mixed({ "x" }, { { -2.F, 2.F } });
+    auto offset = Node::Constant(-1.0);
+    offset.Optimize = false;
+    Tree logTree({ offset, x, Node::Function(static_cast<Hash>(BuiltinOp::Add), 2),
+        Node::Function(static_cast<Hash>(BuiltinOp::Log), 1) });
+    logTree.UpdateNodes();
+    DomainContext context(data, Range(0, 2));
+    CHECK(AnalyzeDomain(logTree, context, DomainPolicy::AllRowsFinite) == DomainStatus::Invalid);
+
+    CHECK(AnalyzeDomain(logTree, DomainContext(mixed, Range(0, 2)), DomainPolicy::AllRowsFinite)
+        == DomainStatus::Invalid);
+    CHECK(AnalyzeDomain(logTree, DomainContext(mixed, Range(0, 2)), DomainPolicy::NoFiniteRows)
+        == DomainStatus::Valid);
+}
+
+TEST_CASE("Domain analyzer retains optimized placeholders as unknown", "[enumeration][domain]")
+{
+    Dataset data({ "x" }, { { -1.F } });
+    auto const x = data.VariableHashes().front();
+    Node variable(NodeType::Variable);
+    variable.HashValue = x;
+    variable.Optimize = false;
+    auto coefficient = Node::Constant(0.0);
+    Tree logTree({ variable, coefficient, Node::Function(static_cast<Hash>(BuiltinOp::Div), 2),
+        Node::Function(static_cast<Hash>(BuiltinOp::Log), 1) });
+    logTree.UpdateNodes();
+    CHECK(AnalyzeDomain(logTree, DomainContext(data, Range(0, 1))) == DomainStatus::Unknown);
 }
 
 } // namespace Operon::Test

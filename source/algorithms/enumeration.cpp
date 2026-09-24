@@ -46,11 +46,13 @@ namespace {
     constexpr std::size_t WorkingBudgetMargin = 2;
 } // namespace
 
-EnumerationEngine::EnumerationEngine(Operon::Grammar grammar, std::size_t maxComplexity, Operon::RandomGenerator& rng)
+EnumerationEngine::EnumerationEngine(Operon::Grammar grammar, std::size_t maxComplexity, Operon::RandomGenerator& rng,
+    DomainPruningConfig pruning)
     : grammar_(std::move(grammar))
     , maxComplexity_(maxComplexity)
     , workingCeiling_(maxComplexity_ + WorkingBudgetMargin)
     , zobrist_(rng, /*maxLength=*/1, grammar_.VariableHashes())
+    , pruning_(pruning)
 {
     buckets_.resize(GrammarSymbols::Count);
     seen_.resize(GrammarSymbols::Count);
@@ -77,10 +79,11 @@ auto EnumerationEngine::TryInsert(GrammarSymbol nt, Operon::Tree tree) -> bool
 {
     tree.Reduce();
     tree.Simplify();
-    auto complexity = SymbolicComplexity(tree);
-    if (complexity == 0 || complexity > maxComplexity_) {
+    if (pruning_.Enabled && pruning_.Context != nullptr
+        && AnalyzeDomain(tree, *pruning_.Context, pruning_.Policy) == DomainStatus::Invalid) {
         return false;
     }
+    auto complexity = SymbolicComplexity(tree);
 
     auto idx = GrammarSymbols::GetIndex(nt);
     auto hash = ComputeContentHash(tree, zobrist_);
@@ -281,7 +284,7 @@ auto MakeObjectiveScorer(gsl::not_null<Operon::EvaluatorBase const*> evaluator) 
 GrammarEnumerationAlgorithm::GrammarEnumerationAlgorithm(EnumerationConfig config, Operon::Grammar grammar,
     gsl::not_null<Operon::OptimizerBase const*> optimizer, EnumerationScorer scorer, Operon::RandomGenerator& rng)
     : config_(config)
-    , engine_(std::move(grammar), config.MaxComplexity, rng)
+    , engine_(std::move(grammar), config.MaxComplexity, rng, config.Pruning)
     , optimizer_(optimizer)
     , scorer_(std::move(scorer))
 {
@@ -289,6 +292,8 @@ GrammarEnumerationAlgorithm::GrammarEnumerationAlgorithm(EnumerationConfig confi
 
 void GrammarEnumerationAlgorithm::ConsiderBest(EnumerationResult result)
 {
+
+
     // TopK == 0 intentionally retains no results.
     if (config_.TopK == 0) {
         return;
