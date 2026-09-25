@@ -27,12 +27,12 @@ struct InfixParseOptions {
 };
 
 struct OPERON_EXPORT InfixParser {
-    static auto TryParse(std::string_view infix, InfixParseOptions options = {}) -> tl::expected<Tree, InfixParseError>;
-    static auto TryParse(std::string_view infix, Dataset const& dataset, InfixParseOptions options = {}) -> tl::expected<Tree, InfixParseError>;
-    static auto Parse(std::string_view infix, InfixParseOptions options = {}) -> Tree;
-    static auto Parse(std::string_view infix, Dataset const& dataset, InfixParseOptions options = {}) -> Tree;
+    static auto Parse(std::string_view infix, InfixParseOptions options = {}) -> tl::expected<Tree, InfixParseError>;
+    static auto Parse(std::string_view infix, Dataset const& dataset, InfixParseOptions options = {}) -> tl::expected<Tree, InfixParseError>;
+    static auto ParseOrThrow(std::string_view infix, InfixParseOptions options = {}) -> Tree;
+    static auto ParseOrThrow(std::string_view infix, Dataset const& dataset, InfixParseOptions options = {}) -> Tree;
     static auto ParseFunctionBody(std::string_view infix, std::span<std::string const> params,
-                                  InfixParseOptions options = {}) -> Tree;
+                                  InfixParseOptions options = {}) -> tl::expected<Tree, InfixParseError>;
 };
 } // namespace Operon
 

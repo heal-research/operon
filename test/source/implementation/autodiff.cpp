@@ -28,7 +28,7 @@ TEST_CASE("Autodiff specific expressions", "[autodiff]") // NOLINT(readability-f
     Operon::Range const range{0, ds.Rows<std::size_t>()};
 
     auto derive = [&](std::string const& expr) -> void {
-        auto tree = Operon::InfixParser::Parse(expr, ds, Operon::InfixParseOptions{.Reduce = true});
+        auto tree = Operon::InfixParser::ParseOrThrow(expr, ds, Operon::InfixParseOptions{.Reduce = true});
         for (auto& n : tree.Nodes()) {
             n.Optimize = n.IsLeaf();
         }
@@ -153,7 +153,7 @@ TEST_CASE("Autodiff variable-wise derivative", "[autodiff]")
 
     // JacRevVariable/JacFwdVariable against hand-derived analytic derivatives.
     auto checkAnalytic = [&](std::string const& expr, Operon::Hash variable, auto analytic) -> void {
-        auto tree = Operon::InfixParser::Parse(expr, ds, Operon::InfixParseOptions{});
+        auto tree = Operon::InfixParser::ParseOrThrow(expr, ds, Operon::InfixParseOptions{});
         auto coeff = tree.GetCoefficients();
         Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter{&dtable, &ds, &tree};
 
@@ -227,7 +227,7 @@ TEST_CASE("Autodiff variable-wise derivative", "[autodiff]")
                               std::vector<std::vector<Operon::Scalar>>{{1.3F, 0.6F, 2.0F}, {0.4F, 1.1F, -0.9F}});
         Operon::Range const rangePos{0, dsPos.Rows<std::size_t>()};
 
-        auto tree = Operon::InfixParser::Parse("log(x) + x * y - sin(y) + exp(x * 0.3)", dsPos, Operon::InfixParseOptions{});
+        auto tree = Operon::InfixParser::ParseOrThrow("log(x) + x * y - sin(y) + exp(x * 0.3)", dsPos, Operon::InfixParseOptions{});
         auto coeff = tree.GetCoefficients();
         Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter{&dtable, &dsPos, &tree};
         auto rev = interpreter.JacRevVariable(coeff, rangePos, xHash);
@@ -258,7 +258,7 @@ TEST_CASE("Autodiff poly-10 expression", "[autodiff]")
     std::string const expr = "((0.78 / ((-1.12) * X8)) / (((((-0.61) * X3) * 0.82) / (((-0.22) * X6) / 1.77)) / (((-0.16) - 0.50) - (((-0.46) * X4) - ((-0.03) * X9)))))";
 
     Operon::Dataset ds("./data/Poly-10.csv", /*hasHeader=*/true);
-    auto tree = InfixParser::Parse(expr, ds);
+    auto tree = InfixParser::ParseOrThrow(expr, ds);
     auto coeff = tree.GetCoefficients();
     Operon::Range range(0, 10); // NOLINT
 
@@ -296,7 +296,7 @@ TEST_CASE("Autodiff: non-unit outer weight (double-weighted-derivative regressio
 
     // expectedY may be omitted (defaults to 0) for unary expressions.
     auto checkWeighted = [&](std::string const& expr, Operon::Scalar expectedX, Operon::Scalar expectedY = Operon::Scalar{0}) {
-        auto tree = Operon::InfixParser::Parse(expr, ds, Operon::InfixParseOptions{});
+        auto tree = Operon::InfixParser::ParseOrThrow(expr, ds, Operon::InfixParseOptions{});
         tree.Nodes().back().Value = 3.7F; // non-unit weight on the outermost op
         auto coeff = tree.GetCoefficients();
         Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter{&dtable, &ds, &tree};
@@ -344,7 +344,7 @@ TEST_CASE("Autodiff: zero outer weight yields exact zero gradient, not NaN", "[a
     auto const yHash = ds.GetVariable("y")->Hash;
 
     auto checkZeroWeighted = [&](std::string const& expr, bool hasY = false) {
-        auto tree = Operon::InfixParser::Parse(expr, ds, Operon::InfixParseOptions{});
+        auto tree = Operon::InfixParser::ParseOrThrow(expr, ds, Operon::InfixParseOptions{});
         tree.Nodes().back().Value = 0.0F; // zero weight on the outermost op
         auto coeff = tree.GetCoefficients();
         Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter{&dtable, &ds, &tree};

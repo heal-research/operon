@@ -73,7 +73,7 @@ auto Prepare(CorpusCase const& c) -> PreparedCase
         values.push_back({ range.first, range.second });
     }
     Operon::Dataset dataset(names, values);
-    auto tree = Operon::InfixParser::Parse(c.expression, dataset);
+    auto tree = Operon::InfixParser::ParseOrThrow(c.expression, dataset);
     DomainMap domains;
     for (auto const& [name, range] : c.domains) {
         domains.emplace(dataset.GetVariable(name)->Hash, range);

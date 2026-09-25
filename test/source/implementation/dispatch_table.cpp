@@ -30,7 +30,7 @@ TEST_CASE("DispatchTable constructors", "[interpreter]")
     Operon::Dataset const ds({x}, {v});
 
     auto check = [&](DT const& dt, std::string const& expr, Operon::Scalar expected) -> void {
-        auto t = InfixParser::Parse(expr);
+        auto t = InfixParser::ParseOrThrow(expr);
         auto p = t.GetCoefficients();
         auto r = Operon::Interpreter<Operon::Scalar, DT>(&dt, &ds, &t).Evaluate(p, Operon::Range(0, 1));
         CHECK(r[0] == Catch::Approx(expected));
@@ -78,17 +78,17 @@ TEST_CASE("DispatchTable evaluation of expressions", "[interpreter]")
     Operon::Dataset const ds({x}, {v});
 
     SECTION("Arithmetic") {
-        auto t = InfixParser::Parse("2 + 3 * 4");
+        auto t = InfixParser::ParseOrThrow("2 + 3 * 4");
         auto r = Interpreter<Operon::Scalar, DT>::Evaluate(t, ds, Range(0, 1));
         CHECK(r[0] == Catch::Approx(14.0F));
     }
 
     SECTION("Transcendental functions") {
-        auto t = InfixParser::Parse("exp(1)");
+        auto t = InfixParser::ParseOrThrow("exp(1)");
         auto r = Interpreter<Operon::Scalar, DT>::Evaluate(t, ds, Range(0, 1));
         CHECK(r[0] == Catch::Approx(std::exp(1.0F)));
 
-        t = InfixParser::Parse("log(exp(1))");
+        t = InfixParser::ParseOrThrow("log(exp(1))");
         r = Interpreter<Operon::Scalar, DT>::Evaluate(t, ds, Range(0, 1));
         CHECK(r[0] == Catch::Approx(1.0F).epsilon(1e-3));
     }
@@ -439,7 +439,7 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
     }
 
     SECTION("PostfixFormatter and DotFormatter use registered built-in names") {
-        auto builtInTree = InfixParser::Parse("sin(x)");
+        auto builtInTree = InfixParser::ParseOrThrow("sin(x)");
 
         auto postfix = fmt::format("{:postfix}", Operon::Fmt::WithNames{builtInTree, ds});
         CHECK(postfix == "((1.00 * x) sin) ");

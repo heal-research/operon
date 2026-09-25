@@ -36,7 +36,7 @@ TEST_CASE("Evaluation correctness", "[interpreter]")
 
     SECTION("X1 + X2 + X3")
     {
-        auto tree = InfixParser::Parse("X1 + X2 + X3", ds);
+        auto tree = InfixParser::ParseOrThrow("X1 + X2 + X3", ds);
         auto coeff = tree.GetCoefficients();
         auto estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(coeff, range);
         CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) -> auto { return std::abs(estimatedValues[i] - (x0[i] + x1[i] + x2[i])) < eps; }));
@@ -44,21 +44,21 @@ TEST_CASE("Evaluation correctness", "[interpreter]")
 
     SECTION("X1 - X2 + X3")
     {
-        auto tree = InfixParser::Parse("X1 - X2 + X3", ds);
+        auto tree = InfixParser::ParseOrThrow("X1 - X2 + X3", ds);
         auto estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(tree.GetCoefficients(), range);
         CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) -> auto { return std::abs(estimatedValues[i] - (x0[i] - x1[i] + x2[i])) < eps; }));
     }
 
     SECTION("log(abs(X1))")
     {
-        auto tree = InfixParser::Parse("log(abs(X1))", ds);
+        auto tree = InfixParser::ParseOrThrow("log(abs(X1))", ds);
         auto estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(tree.GetCoefficients(), range);
         CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) -> auto { return std::abs(estimatedValues[i] - std::log(std::abs(x0[i]))) < eps; }));
     }
 
     SECTION("log of constant")
     {
-        auto tree = InfixParser::Parse("log(0.12485691905021667)", ds);
+        auto tree = InfixParser::ParseOrThrow("log(0.12485691905021667)", ds);
         auto estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(tree.GetCoefficients(), range);
         CHECK(std::abs(estimatedValues[0] - std::log(0.12485691905021667)) < eps);
     }

@@ -125,7 +125,7 @@ void RunExprCase(nb::Bench& bench, ExprCase const& ec)
         data(static_cast<Eigen::Index>(i), static_cast<Eigen::Index>(ncol - 1)) = Operon::Scalar{0};
     }
     Operon::Dataset ds(gsl::not_null{data.data()}, nrow, ncol);
-    auto tree = Operon::InfixParser::Parse(ec.expr, ds);
+    auto tree = Operon::InfixParser::ParseOrThrow(ec.expr, ds);
 
     Operon::Problem problem(&ds);
     problem.SetTrainingRange({0, nrow});

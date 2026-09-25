@@ -50,7 +50,7 @@ struct OptimizerFixture {
             return Operon::Dataset(cols);
         }())
         , tree([&]() -> Tree {
-            auto t = InfixParser::Parse("X1 + X2 + X3", ds);
+            auto t = InfixParser::ParseOrThrow("X1 + X2 + X3", ds);
             for (auto& node : t.Nodes()) {
                 if (node.IsVariable()) {
                     node.Value = static_cast<Operon::Scalar>(0.1);
@@ -347,7 +347,7 @@ struct WeightedOptimizerFixture {
             return Operon::Dataset(cols);
         }())
         , tree([&]() -> Tree {
-            auto t = InfixParser::Parse("X1", ds);
+            auto t = InfixParser::ParseOrThrow("X1", ds);
             for (auto& node : t.Nodes()) {
                 if (node.IsVariable()) {
                     node.Value = static_cast<Operon::Scalar>(0.1);
@@ -606,7 +606,7 @@ struct WeightedOptimizerNonZeroStartFixture {
             return Operon::Dataset(cols);
         }())
         , tree([&]() -> Tree {
-            auto t = InfixParser::Parse("X1", ds);
+            auto t = InfixParser::ParseOrThrow("X1", ds);
             for (auto& node : t.Nodes()) {
                 if (node.IsVariable()) {
                     node.Value = static_cast<Operon::Scalar>(0.1);
@@ -711,8 +711,8 @@ TEST_CASE("PoissonLoss respects a non-zero training range start", "[optimizer]")
     auto ds0 = build(0);
     auto dsPad = build(Npad);
 
-    auto tree0 = InfixParser::Parse("X1", ds0);
-    auto treePad = InfixParser::Parse("X1", dsPad);
+    auto tree0 = InfixParser::ParseOrThrow("X1", ds0);
+    auto treePad = InfixParser::ParseOrThrow("X1", dsPad);
     for (auto* t : { &tree0, &treePad }) {
         for (auto& node : t->Nodes()) {
             if (node.IsVariable()) {

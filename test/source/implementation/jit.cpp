@@ -93,7 +93,7 @@ TEST_CASE("JIT AVX2 correctness", "[jit][avx2]")
 
     auto check = [&](std::string_view expr) {
         INFO("expression: " << expr);
-        auto tree = InfixParser::Parse(std::string(expr), ds);
+        auto tree = InfixParser::ParseOrThrow(std::string(expr), ds);
         auto ref = EvalRef(tree, ds, range);
         auto avx2 = EvalJIT_AVX2(compiler, tree, ds, range);
 
@@ -297,7 +297,7 @@ TEST_CASE("JitEvaluator correctness", "[jit][evaluator]")
 
     auto check = [&](std::string_view expr) {
         INFO("expression: " << expr);
-        auto tree = InfixParser::Parse(std::string(expr), ds);
+        auto tree = InfixParser::ParseOrThrow(std::string(expr), ds);
         Individual refInd(1);
         Individual jitInd(1);
         refInd.Genotype = tree;
@@ -321,7 +321,7 @@ TEST_CASE("JitEvaluator correctness", "[jit][evaluator]")
 
     SECTION("Phase split composes without a second forward pass")
     {
-        auto tree = InfixParser::Parse("X1 * X2 + X3", ds);
+        auto tree = InfixParser::ParseOrThrow("X1 * X2 + X3", ds);
         Individual ind(1);
         ind.Genotype = std::move(tree);
 
@@ -343,7 +343,7 @@ TEST_CASE("JitEvaluator correctness", "[jit][evaluator]")
 
     SECTION("Cache reuse")
     {
-        auto tree = InfixParser::Parse("X1 * X2 + X3", ds);
+        auto tree = InfixParser::ParseOrThrow("X1 * X2 + X3", ds);
         Individual ind(1);
         ind.Genotype = tree;
 
@@ -359,7 +359,7 @@ TEST_CASE("JitEvaluator correctness", "[jit][evaluator]")
         // The length gate rejects the tree before a JIT-cache lookup.
         jitEval.SetMaxLength(1);
 
-        auto tree = InfixParser::Parse("X1 * X2 + X3", ds); // length > 1
+        auto tree = InfixParser::ParseOrThrow("X1 * X2 + X3", ds); // length > 1
         auto const* c = jitEval.GetOrCompile(tree);
         CHECK(c == nullptr);
         CHECK(jitEval.CacheMisses() == 0);
@@ -401,7 +401,7 @@ TEST_CASE("JitEvaluator: oversized buffer matches exact-size buffer", "[jit][eva
     problem.SetInputs(inputs);
 
     RandomGenerator rng(1234);
-    auto tree = InfixParser::Parse("X1 + X2 + X3", ds);
+    auto tree = InfixParser::ParseOrThrow("X1 + X2 + X3", ds);
     Individual ind(1);
     ind.Genotype = tree;
 
@@ -465,8 +465,8 @@ TEST_CASE("Zobrist hash is structural: constant values do not affect the hash", 
     SECTION("same-structure trees with different literal constants get the same hash")
     {
         // "X1 + 1.0" → [Variable(X1), Constant(1.0), Add]
-        auto tree1 = InfixParser::Parse("X1 + 1.0", ds);
-        auto tree2 = InfixParser::Parse("X1 + 1.0", ds);
+        auto tree1 = InfixParser::ParseOrThrow("X1 + 1.0", ds);
+        auto tree2 = InfixParser::ParseOrThrow("X1 + 1.0", ds);
         for (auto& nd : tree2.Nodes()) {
             if (nd.IsConstant()) {
                 nd.Value = 99.0F;
@@ -477,8 +477,8 @@ TEST_CASE("Zobrist hash is structural: constant values do not affect the hash", 
 
     SECTION("same-structure trees with different variable weights get the same hash")
     {
-        auto tree1 = InfixParser::Parse("X1 + X2", ds);
-        auto tree2 = InfixParser::Parse("X1 + X2", ds);
+        auto tree1 = InfixParser::ParseOrThrow("X1 + X2", ds);
+        auto tree2 = InfixParser::ParseOrThrow("X1 + X2", ds);
         for (auto& nd : tree2.Nodes()) {
             if (nd.IsVariable()) {
                 nd.Value = 42.0F;
@@ -489,8 +489,8 @@ TEST_CASE("Zobrist hash is structural: constant values do not affect the hash", 
 
     SECTION("different-structure trees get different hashes")
     {
-        auto tree1 = InfixParser::Parse("X1 + X2", ds);
-        auto tree2 = InfixParser::Parse("X1 * X2 + X3", ds);
+        auto tree1 = InfixParser::ParseOrThrow("X1 + X2", ds);
+        auto tree2 = InfixParser::ParseOrThrow("X1 * X2 + X3", ds);
         CHECK(zobrist.ComputeHash(tree1) != zobrist.ComputeHash(tree2));
     }
 
@@ -508,8 +508,8 @@ TEST_CASE("Zobrist hash is structural: constant values do not affect the hash", 
         JIT::JitEvaluator jitEval(&problem, &zobrist, MSE {});
         jitEval.SetBudget(std::numeric_limits<std::size_t>::max());
 
-        auto tree1 = InfixParser::Parse("X1 + 1.0", ds);
-        auto tree2 = InfixParser::Parse("X1 + 1.0", ds);
+        auto tree1 = InfixParser::ParseOrThrow("X1 + 1.0", ds);
+        auto tree2 = InfixParser::ParseOrThrow("X1 + 1.0", ds);
         for (auto& nd : tree2.Nodes()) {
             if (nd.IsConstant()) {
                 nd.Value = 7.0F;
@@ -955,7 +955,7 @@ TEST_CASE("JitLMCostFunction residuals vs interpreter", "[jit][lm]")
     auto checkCostFn = [&](std::string_view exprStr, std::vector<Operon::Scalar> evalCoeff) {
         INFO("expression: " << exprStr);
 
-        auto tree = InfixParser::Parse(std::string(exprStr), ds);
+        auto tree = InfixParser::ParseOrThrow(std::string(exprStr), ds);
         for (auto& nd : tree.Nodes()) {
             nd.Optimize = nd.IsConstant();
         }
@@ -1062,7 +1062,7 @@ TEST_CASE("JitLMCostFunction respects consts parameter", "[jit][lm]")
     DTable dtable;
 
     // Build tree: a * X1 + b, tree stores a=1.0, b=0.0
-    auto tree = InfixParser::Parse("1.0 * X1 + 0.0", ds);
+    auto tree = InfixParser::ParseOrThrow("1.0 * X1 + 0.0", ds);
     for (auto& nd : tree.Nodes()) {
         nd.Optimize = nd.IsConstant();
     }
@@ -1161,7 +1161,7 @@ TEST_CASE("JitLMCostFunction residuals only (no Jacobian)", "[jit][lm]")
     auto const target = problem.TargetValues(range);
     DTable dtable;
 
-    auto tree = InfixParser::Parse("1.5 * X1 + 2.0 * X2 + 0.5", ds);
+    auto tree = InfixParser::ParseOrThrow("1.5 * X1 + 2.0 * X2 + 0.5", ds);
     for (auto& nd : tree.Nodes()) {
         nd.Optimize = nd.IsConstant();
     }
@@ -1232,7 +1232,7 @@ TEST_CASE("JitLMCostFunction TinySolver convergence", "[jit][lm]")
     DTable dtable;
 
     // Tree: a * X1 + b  (a starts at 1, b starts at 0)
-    auto tree = InfixParser::Parse("1.0 * X1 + 0.0", ds);
+    auto tree = InfixParser::ParseOrThrow("1.0 * X1 + 0.0", ds);
     for (auto& nd : tree.Nodes()) {
         nd.Optimize = nd.IsConstant();
     }
@@ -1299,10 +1299,10 @@ TEST_CASE("JIT compiler CodeHolder reuse replay", "[jit][repro]")
         SKIP("AVX2 not available");
     }
 
-    auto first = InfixParser::Parse("((((((-5) * X4) + 1) - sin(2)) * (((2 * X5) - ((-3) * X3)) + ((-1) / (1 * X3)))) "
+    auto first = InfixParser::ParseOrThrow("((((((-5) * X4) + 1) - sin(2)) * (((2 * X5) - ((-3) * X3)) + ((-1) / (1 * X3)))) "
                                     "+ ((((3 * X8) / 4) / (2 - ((-4) * X8))) / ((3 - ((-5) * X9)) + sin((0 * X8)))))",
         ds);
-    auto second = InfixParser::Parse(
+    auto second = InfixParser::ParseOrThrow(
         "sin((((((((2 * X10) * (0 * X1)) + sin(((-4) * X2))) + ((0 * X8) + ((-5) * X8))) * ((((-2) * X7) + ((-3) * "
         "X3)) / (3 * 0))) - sin(sin((1 + 2)))) - sin(sin(sin(((-1) / (2 * X10)))))))",
         ds);
