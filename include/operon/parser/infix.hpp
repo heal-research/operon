@@ -15,26 +15,24 @@
 #include "operon/core/types.hpp"
 
 namespace Operon {
-
 struct InfixParseError {
     std::string Message;
 };
 
+struct InfixParseOptions {
+    bool Reduce{false};
+    // Fold constant * variable products into Operon variable weights.
+    // Disabled by default; function and compound-subtree weights remain explicit.
+    bool FoldVariableWeights{false};
+};
+
 struct OPERON_EXPORT InfixParser {
-    static auto TryParse(std::string_view infix, bool reduce = false) -> tl::expected<Tree, InfixParseError>;
-    static auto TryParse(std::string_view infix, Dataset const& dataset, bool reduce = false) -> tl::expected<Tree, InfixParseError>;
-
-    static auto Parse(std::string_view infix, bool reduce = false) -> Tree;
-    static auto Parse(std::string_view infix, Dataset const& dataset, bool reduce = false) -> Tree;
-
-    // Parses a composed-function body: bare identifiers matching `params`
-    // become formal-parameter leaves (see Node.hpp's ParamHash), any other
-    // bare identifier throws (no dataset to resolve it against), and every
-    // parameter must be referenced at least once. v1 only recognizes
-    // built-in function names in the body (the fixed lexy grammar) — no
-    // recursive composition. `params.size()` must not exceed
-    // kMaxComposedFunctionArity.
-    static auto ParseFunctionBody(std::string_view infix, std::span<std::string const> params) -> Tree;
+    static auto TryParse(std::string_view infix, InfixParseOptions options = {}) -> tl::expected<Tree, InfixParseError>;
+    static auto TryParse(std::string_view infix, Dataset const& dataset, InfixParseOptions options = {}) -> tl::expected<Tree, InfixParseError>;
+    static auto Parse(std::string_view infix, InfixParseOptions options = {}) -> Tree;
+    static auto Parse(std::string_view infix, Dataset const& dataset, InfixParseOptions options = {}) -> Tree;
+    static auto ParseFunctionBody(std::string_view infix, std::span<std::string const> params,
+                                  InfixParseOptions options = {}) -> Tree;
 };
 } // namespace Operon
 

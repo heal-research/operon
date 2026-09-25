@@ -1016,7 +1016,7 @@ TEST_CASE("BuildHessianDag correctness vs JAX ground truth", "[tree_diff][hessia
         INFO("Expression: " << tc.Expr);
         auto const p = tc.Coeffs.size();
 
-        auto tree = InfixParser::Parse(tc.Expr, ds, /*reduce=*/false);
+        auto tree = InfixParser::Parse(tc.Expr, ds, Operon::InfixParseOptions{});
         for (auto& n : tree.Nodes()) {
             n.Optimize = n.IsConstant();
         }

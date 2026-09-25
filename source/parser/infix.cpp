@@ -7,7 +7,9 @@
 #include <array>
 #include <fmt/format.h>
 #include <iterator>
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "operon/parser/infix.hpp"
 #include "operon/core/dataset.hpp"
@@ -59,14 +61,21 @@ constexpr auto MakeBuiltinOpMap()
 }
 
 constexpr auto node_type_map = MakeBuiltinOpMap();
+struct ParsedSubtree {
+    infix_parser::expression Nodes;
+    std::optional<Operon::Scalar> VariableWeight;
+};
 
-auto ToOperonNode(infix_parser::node const& a) -> tl::expected<Operon::Node, Operon::InfixParseError>
+auto ToOperonNode(infix_parser::node const& a, std::optional<Operon::Scalar> variableWeight = {})
+    -> tl::expected<Operon::Node, Operon::InfixParseError>
 {
     if (a.type == infix_parser::node_type::constant) {
         return Operon::Node::Constant(a.value);
     }
     if (a.type == infix_parser::node_type::variable) {
-        return Operon::Node(Operon::NodeType::Variable, Operon::Hasher{}(a.name));
+        auto node = Operon::Node(Operon::NodeType::Variable, Operon::Hasher{}(a.name));
+        node.Value = variableWeight.value_or(Operon::Scalar{1});
+        return node;
     }
     auto const op = node_type_map.at(static_cast<std::size_t>(a.type));
     if (op == Operon::NoBuiltinOp) {
@@ -75,37 +84,89 @@ auto ToOperonNode(infix_parser::node const& a) -> tl::expected<Operon::Node, Ope
     }
     return Operon::Node::Function(static_cast<Operon::Hash>(op), a.arity);
 }
+auto MaterializeWeight(ParsedSubtree& subtree) -> void
+{
+    if (!subtree.VariableWeight) { return; }
+    subtree.Nodes.push_back(infix_parser::node::constant(static_cast<double>(*subtree.VariableWeight)));
+    subtree.Nodes.push_back(infix_parser::node::function(infix_parser::node_type::mul, 2));
+    subtree.VariableWeight.reset();
+}
+
+auto FoldWeightedProducts(infix_parser::expression const& expr, bool enabled) -> std::vector<ParsedSubtree>
+{
+    using infix_parser::node_type;
+    std::vector<ParsedSubtree> stack;
+    stack.reserve(expr.size());
+    for (auto const& item : expr) {
+        if (item.arity == 0) {
+            stack.push_back({{item}, std::nullopt});
+            continue;
+        }
+        if (item.type == node_type::mul && item.arity == 2 && stack.size() >= 2) {
+            auto lhs = std::move(stack.back()); stack.pop_back();
+            auto rhs = std::move(stack.back()); stack.pop_back();
+            auto fold = [&](ParsedSubtree& target, ParsedSubtree const& coefficient) {
+                if (!enabled || coefficient.Nodes.size() != 1 || coefficient.Nodes[0].type != node_type::constant
+                    || target.Nodes.size() != 1 || target.Nodes[0].type != node_type::variable) { return false; }
+                target.VariableWeight = target.VariableWeight.value_or(Operon::Scalar{1})
+                    * static_cast<Operon::Scalar>(coefficient.Nodes[0].value);
+                stack.push_back(std::move(target));
+                return true;
+            };
+            if (fold(lhs, rhs) || fold(rhs, lhs)) { continue; }
+            MaterializeWeight(rhs);
+            MaterializeWeight(lhs);
+            rhs.Nodes.insert(rhs.Nodes.end(), std::make_move_iterator(lhs.Nodes.begin()), std::make_move_iterator(lhs.Nodes.end()));
+            rhs.Nodes.push_back(item);
+            stack.push_back(std::move(rhs));
+            continue;
+        }
+        std::vector<ParsedSubtree> children;
+        children.reserve(item.arity);
+        for (std::size_t child = 0; child < item.arity; ++child) {
+            children.push_back(std::move(stack.back()));
+            stack.pop_back();
+        }
+        auto merged = ParsedSubtree{};
+        for (auto it = children.rbegin(); it != children.rend(); ++it) {
+            MaterializeWeight(*it);
+            merged.Nodes.insert(merged.Nodes.end(), std::make_move_iterator(it->Nodes.begin()), std::make_move_iterator(it->Nodes.end()));
+        }
+        merged.Nodes.push_back(item);
+        stack.push_back(std::move(merged));
+    }
+    return stack;
+}
+
 
 } // anonymous namespace
-
 namespace Operon {
 
-auto InfixParser::TryParse(std::string_view infix, bool reduce) -> tl::expected<Tree, InfixParseError>
+auto InfixParser::TryParse(std::string_view infix, InfixParseOptions options) -> tl::expected<Tree, InfixParseError>
 {
     auto result = infix_parser::parse(infix);
     if (auto const* err = std::get_if<infix_parser::parse_error>(&result)) {
         return tl::unexpected(InfixParseError{
             fmt::format("parse error at position {}: {}", err->position, err->message)});
     }
-    auto const& expr = std::get<infix_parser::expression>(result);
-
+    auto subtrees = FoldWeightedProducts(std::get<infix_parser::expression>(result), options.FoldVariableWeights);
     Operon::Vector<Operon::Node> nodes;
-    nodes.reserve(expr.size());
-    for (auto const& a : expr) {
-        auto node = ToOperonNode(a);
-        if (!node) { return tl::unexpected(std::move(node.error())); }
-        nodes.push_back(std::move(*node));
+    for (auto& subtree : subtrees) {
+        for (std::size_t i = 0; i < subtree.Nodes.size(); ++i) {
+            auto weight = i + 1 == subtree.Nodes.size() ? subtree.VariableWeight : std::optional<Operon::Scalar>{};
+            auto node = ToOperonNode(subtree.Nodes[i], weight);
+            if (!node) { return tl::unexpected(std::move(node.error())); }
+            nodes.push_back(std::move(*node));
+        }
     }
-
     Operon::Tree tree{nodes};
     tree.UpdateNodes();
-    if (reduce) { tree.Reduce(); }
+    if (options.Reduce) { tree.Reduce(); }
     return tree;
 }
-
-auto InfixParser::TryParse(std::string_view infix, Dataset const& dataset, bool reduce) -> tl::expected<Tree, InfixParseError>
+auto InfixParser::TryParse(std::string_view infix, Dataset const& dataset, InfixParseOptions options) -> tl::expected<Tree, InfixParseError>
 {
-    auto tree = TryParse(infix, reduce);
+    auto tree = TryParse(infix, options);
     if (!tree) { return tl::unexpected(tree.error()); }
     for (auto const& node : tree->Nodes()) {
         if (node.IsVariable() && !dataset.GetVariable(node.HashValue).has_value()) {
@@ -116,21 +177,22 @@ auto InfixParser::TryParse(std::string_view infix, Dataset const& dataset, bool 
     return tree;
 }
 
-auto InfixParser::Parse(std::string_view infix, bool reduce) -> Tree
+auto InfixParser::Parse(std::string_view infix, InfixParseOptions options) -> Tree
 {
-    auto tree = TryParse(infix, reduce);
+    auto tree = TryParse(infix, options);
     if (!tree) { throw std::invalid_argument(tree.error().Message); }
     return std::move(*tree);
 }
 
-auto InfixParser::Parse(std::string_view infix, Dataset const& dataset, bool reduce) -> Tree
+auto InfixParser::Parse(std::string_view infix, Dataset const& dataset, InfixParseOptions options) -> Tree
 {
-    auto tree = TryParse(infix, dataset, reduce);
+    auto tree = TryParse(infix, dataset, options);
     if (!tree) { throw std::invalid_argument(tree.error().Message); }
     return std::move(*tree);
 }
 
-auto InfixParser::ParseFunctionBody(std::string_view infix, std::span<std::string const> params) -> Tree
+auto InfixParser::ParseFunctionBody(std::string_view infix, std::span<std::string const> params,
+                                    InfixParseOptions options) -> Tree
 {
     if (params.size() > Operon::kMaxComposedFunctionArity) {
         throw std::invalid_argument(fmt::format(
@@ -138,12 +200,7 @@ auto InfixParser::ParseFunctionBody(std::string_view infix, std::span<std::strin
             params.size(), Operon::kMaxComposedFunctionArity));
     }
 
-    // No dataset in scope for a function body — Parse still resolves bare
-    // identifiers to hashed Variable nodes and built-in calls normally; the
-    // param-remap/undeclared-identifier pass below mirrors the dataset
-    // overload's post-hoc validation pass above, just against `params`
-    // instead of a Dataset.
-    auto tree = Parse(infix, /*reduce=*/false);
+    auto tree = Parse(infix, options);
 
     Operon::Vector<Operon::Hash> paramHashes(params.size());
     std::ranges::transform(params, paramHashes.begin(), [](auto const& name) { return Operon::Hasher{}(name); });
@@ -151,10 +208,6 @@ auto InfixParser::ParseFunctionBody(std::string_view infix, std::span<std::strin
 
     for (auto& node : tree.Nodes()) {
         if (node.Type == Operon::NodeType::Constant) {
-            // Body-internal constants are never coefficient-optimized —
-            // they'd otherwise desync the outer tree's coefficient stream.
-            // A user wanting a tunable body constant exposes it as an
-            // extra formal parameter instead.
             node.Optimize = false;
             continue;
         }
@@ -173,7 +226,6 @@ auto InfixParser::ParseFunctionBody(std::string_view infix, std::span<std::strin
             throw std::invalid_argument(fmt::format("unused parameter '{}' in composed function body", params[i]));
         }
     }
-
     tree.UpdateNodes();
     return tree;
 }
