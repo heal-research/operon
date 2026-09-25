@@ -373,4 +373,50 @@ TEST_CASE("Autodiff: zero outer weight yields exact zero gradient, not NaN", "[a
     SECTION("aq(x, y)")         { checkZeroWeighted("aq(x, y)", /*hasY=*/true); }
 }
 
+// An optimized zero constant remains a differentiable parameter. Reverse
+// mode must seed d(a * r) / da with one directly instead of recovering it
+// as primal(a) / a, which is 0 / 0 when a is zero.
+TEST_CASE("Autodiff: zero optimized coefficient retains finite Jacobian", "[autodiff]")
+{
+    Operon::Dataset ds(std::vector<std::string>{"r"},
+                       std::vector<std::vector<Operon::Scalar>>{{-2.0F, 0.5F, 3.0F}});
+    Operon::DispatchTable<Operon::Scalar> dtable;
+    Operon::Range const range{0, ds.Rows<std::size_t>()};
+    auto const rHash = ds.GetVariable("r")->Hash;
+
+    auto checkCoefficientJacobian = [&](Operon::Scalar coefficient) {
+        auto constant = Operon::Node::Constant(coefficient);
+        constant.Optimize = true;
+        Operon::Node variable(Operon::NodeType::Variable);
+        variable.HashValue = variable.CalculatedHashValue = rHash;
+        variable.Value = 1.0F;
+        variable.Optimize = false;
+        auto product = Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Mul), 2);
+        product.Value = 2.5F; // weighted function: d(2.5 * a * r) / da = 2.5 * r
+        Operon::Tree tree{constant, variable, product};
+        tree.UpdateNodes();
+
+        auto const coeff = tree.GetCoefficients();
+        REQUIRE(coeff.size() == 1);
+        REQUIRE(coeff[0] == coefficient);
+
+        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter{&dtable, &ds, &tree};
+        auto const jac = interpreter.TryJacRev(coeff, range);
+        REQUIRE(jac.has_value());
+        REQUIRE(jac->rows() == static_cast<Eigen::Index>(range.Size()));
+        REQUIRE(jac->cols() == 1);
+
+        auto const rs = ds.GetValues("r");
+        for (std::size_t row = 0; row < range.Size(); ++row) {
+            auto const derivative = (*jac)(static_cast<Eigen::Index>(row), 0);
+            CHECK(std::isfinite(derivative));
+            CHECK(derivative == Catch::Approx(2.5F * rs[row]).margin(1e-5));
+        }
+    };
+
+
+    SECTION("zero constant coefficient") { checkCoefficientJacobian(0.0F); }
+    SECTION("nonzero constant coefficient") { checkCoefficientJacobian(-1.75F); }
+}
+
 } // namespace Operon::Test

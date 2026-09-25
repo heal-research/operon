@@ -195,7 +195,19 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
         // exactly once (Accumulate=false, plain `=`).
         for (auto row = 0L; row < len; row += S) {
             ForwardPass(range, row, /*trace=*/true);
-            ReverseTraceGeneric<false>(range, row, cols.colOf, [](std::size_t i, auto const& primal, T w) { return primal.col(static_cast<Eigen::Index>(i)) / w; }, jac);
+            ReverseTraceGeneric<false>(range, row, cols.colOf, [&](std::size_t i, auto const& primal, T w) -> Eigen::Array<T, S, 1> {
+                if (nodes[i].IsConstant()) {
+                    return Eigen::Array<T, S, 1>::Ones();
+                }
+                if (nodes[i].IsVariable() && w == T { 0 }) {
+                    Eigen::Array<T, S, 1> values = Eigen::Array<T, S, 1>::Zero();
+                    auto const input = dataset_->GetValues(nodes[i].HashValue).subspan(range.Start() + static_cast<std::size_t>(row));
+                    auto const count = std::min<std::size_t>(S, input.size());
+                    std::copy_n(input.data(), count, values.data());
+                    return values;
+                }
+                return primal.col(static_cast<Eigen::Index>(i)) / w;
+            }, jac);
         }
         return {};
     }
@@ -239,7 +251,19 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
 
         for (int row = 0; row < nRows; row += BatchSize) {
             ForwardPass(range, row, /*trace=*/true);
-            ForwardTraceGeneric<false>(range, row, cols.seeds, [](std::size_t i, auto const& primal, T w) { return primal.col(static_cast<Eigen::Index>(i)) / w; }, jac);
+            ForwardTraceGeneric<false>(range, row, cols.seeds, [&](std::size_t i, auto const& primal, T w) -> Eigen::Array<T, BatchSize, 1> {
+                if (nodes[i].IsConstant()) {
+                    return Eigen::Array<T, BatchSize, 1>::Ones();
+                }
+                if (nodes[i].IsVariable() && w == T { 0 }) {
+                    Eigen::Array<T, BatchSize, 1> values = Eigen::Array<T, BatchSize, 1>::Zero();
+                    auto const input = dataset_->GetValues(nodes[i].HashValue).subspan(range.Start() + static_cast<std::size_t>(row));
+                    auto const count = std::min<std::size_t>(BatchSize, input.size());
+                    std::copy_n(input.data(), count, values.data());
+                    return values;
+                }
+                return primal.col(static_cast<Eigen::Index>(i)) / w;
+            }, jac);
         }
     }
 

@@ -32,19 +32,17 @@ namespace detail {
         Col(trace, j).setConstant(T{1});
     }
 
-    // Every node's forward pass multiplies its result by the node's own
-    // weight w, so primal[i] equals w * f(children), not f(children) alone.
-    // This function must return the derivative of f(children) alone,
-    // without w — something else multiplies by w again later. Dividing
-    // primal[i] by w here gives that unweighted derivative.
+    // Each child is already weighted by its own node weight. The partial of a
+    // product with respect to one child is the product of every other child.
+    // Computing it explicitly avoids the invalid primal[i] / (w * child)
+    // shortcut for a valid zero child coefficient.
     template<typename T, std::size_t S>
     auto Mul(Operon::Vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T, S> trace, std::integral auto i, std::integral auto j) {
-        auto const w = static_cast<T>(nodes[i].Value);
-        // If w is 0, primal[i] is 0 too, so the shortcut below computes 0/0,
-        // which is not a number. The correct derivative here is exactly 0.
-        // Returning 0 directly avoids the 0/0 case.
-        if (w == T{0}) { Col(trace, j).setZero(); return; }
-        Col(trace, j) = Col(primal, i) / (w * Col(primal, j));
+        auto derivative = Col(trace, j);
+        derivative.setOnes();
+        for (auto k : Tree::Indices(nodes, i)) {
+            if (k != static_cast<std::size_t>(j)) { derivative *= Col(primal, k); }
+        }
     }
 
     template<typename T, std::size_t S>

@@ -5,6 +5,7 @@
 #ifndef OPERON_BACKEND_EVE_DERIVATIVES_HPP
 #define OPERON_BACKEND_EVE_DERIVATIVES_HPP
 
+#include "operon/core/tree.hpp"
 #include "functions.hpp"
 
 namespace Operon::Backend {
@@ -31,26 +32,21 @@ namespace detail {
         std::ranges::fill_n(Ptr(trace, j), S, T{1});
     }
 
-    // Every node's forward pass multiplies its result by the node's own
-    // weight w, so primal[i] equals w * f(children), not f(children) alone.
-    // This function must return the derivative of f(children) alone,
-    // without w — something else multiplies by w again later. Dividing
-    // primal[i] by w here gives that unweighted derivative.
+    // Each child is already weighted by its own node weight. The partial of a
+    // product with respect to one child is therefore the product of every
+    // other child. Computing it explicitly avoids the primal[i] / (w * child)
+    // shortcut, which becomes 0 / 0 for a valid zero child coefficient.
     template<typename T, std::size_t S>
     auto Mul(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         using W = eve::wide<T>;
         auto constexpr L = W::size();
-        auto const w = static_cast<T>(nodes[i].Value);
         auto* res = Ptr(trace, j);
-        // If w is 0, primal[i] is 0 too, so the shortcut below computes 0/0,
-        // which is not a number. The correct derivative here is exactly 0.
-        // Returning 0 directly avoids the 0/0 case.
-        if (w == T{0}) { std::fill_n(res, S, T{0}); return; }
-        auto const* pi = Ptr(primal, i);
-        auto const* pj = Ptr(primal, j);
-
-        for(auto s = 0UL; s < S; s += L) {
-            eve::store(W{pi+s} / (w * W{pj+s}), res+s);
+        for (auto s = 0UL; s < S; s += L) {
+            auto derivative = W{T{1}};
+            for (auto k : Tree::Indices(nodes, i)) {
+                if (k != static_cast<std::size_t>(j)) { derivative *= W{Ptr(primal, k) + s}; }
+            }
+            eve::store(derivative, res + s);
         }
     }
 

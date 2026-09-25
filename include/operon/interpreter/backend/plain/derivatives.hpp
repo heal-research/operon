@@ -6,6 +6,7 @@
 #define OPERON_BACKEND_PLAIN_DERIVATIVES_HPP
 
 #include "operon/core/node.hpp"
+#include "operon/core/tree.hpp"
 #include "functions.hpp"
 
 namespace Operon::Backend {
@@ -37,22 +38,20 @@ namespace detail {
         std::ranges::fill_n(Ptr(trace, j), S, T{1});
     }
 
-    // Every node's forward pass multiplies its result by the node's own
-    // weight w, so primal[i] equals w * f(children), not f(children) alone.
-    // This function must return the derivative of f(children) alone,
-    // without w — something else multiplies by w again later. Dividing
-    // primal[i] by w here gives that unweighted derivative.
+    // Each child is already weighted by its own node weight. The partial of a
+    // product with respect to one child is the product of every other child.
+    // Computing it explicitly avoids the invalid primal[i] / (w * child)
+    // shortcut for a valid zero child coefficient.
     template<typename T, std::size_t S>
     auto Mul(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
-        auto const w = static_cast<T>(nodes[i].Value);
-        auto *res = Ptr(trace, j);
-        // If w is 0, primal[i] is 0 too, so the shortcut below computes 0/0,
-        // which is not a number. The correct derivative here is exactly 0.
-        // Returning 0 directly avoids the 0/0 case.
-        if (w == T{0}) { std::ranges::fill_n(res, S, T{0}); return; }
-        auto const* pi = Ptr(primal, i);
-        auto const* pj = Ptr(primal, j);
-        std::transform(pi, pi+S, pj, res, [w](auto x, auto y) { return x / (w * y); });
+        auto* res = Ptr(trace, j);
+        std::fill_n(res, S, T{1});
+        for (auto k : Tree::Indices(nodes, i)) {
+            if (k != static_cast<std::size_t>(j)) {
+                auto const* child = Ptr(primal, k);
+                std::transform(res, res + S, child, res, std::multiplies<>{});
+            }
+        }
     }
 
     template<typename T, std::size_t S>
