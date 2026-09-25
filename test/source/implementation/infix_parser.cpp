@@ -3,6 +3,7 @@
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers.hpp>
 #include <catch2/catch_approx.hpp>
 
 #include "../operon_test.hpp"
@@ -159,6 +160,46 @@ TEST_CASE("TryParse reports failures as expected values instead of throwing", "[
         CHECK(result->Length() > 0);
         CHECK(result->Validate());
     }
+}
+
+TEST_CASE("Parser folds printed weighted variables only when requested", "[parser]")
+{
+    auto ordinary = InfixParser::Parse("2.5 * x");
+    CHECK(ordinary.Length() == 3);
+
+    auto variable = InfixParser::Parse("2.5 * x", InfixParseOptions{.FoldVariableWeights = true});
+    REQUIRE(variable.Length() == 1);
+    CHECK(variable.Nodes().front().IsVariable());
+    CHECK(variable.Nodes().front().Value == Catch::Approx(2.5));
+
+    auto zero = InfixParser::Parse("0 * x", InfixParseOptions{.FoldVariableWeights = true});
+    REQUIRE(zero.Length() == 1);
+    CHECK(zero.Nodes().front().Value == Catch::Approx(0.0));
+
+    auto chained = InfixParser::Parse("x * 2.5 * 3", InfixParseOptions{.FoldVariableWeights = true});
+    REQUIRE(chained.Length() == 1);
+    CHECK(chained.Nodes().front().Value == Catch::Approx(7.5));
+
+    auto function = InfixParser::Parse("2.5 * sin(x)");
+    CHECK(function.Length() == 4);
+}
+TEST_CASE("Parser folding preserves numerical semantics", "[parser]")
+{
+    Dataset ds({"x", "y"}, {{2.0F}, {3.0F}});
+    using DTable = DispatchTable<Operon::Scalar>;
+    DTable const dtable;
+    Range const range{0, 1};
+    auto evaluate = [&](std::string_view expression, InfixParseOptions options) {
+        auto tree = InfixParser::Parse(expression, ds, options);
+        return Interpreter<Operon::Scalar, DTable>::Evaluate(tree, ds, range)[0];
+    };
+    auto const expected = evaluate("2.5 * x + y", {});
+    CHECK(evaluate("2.5 * x + y", {.FoldVariableWeights = true}) == Catch::Approx(expected));
+    CHECK(evaluate("0 * x", {.FoldVariableWeights = true}) == Catch::Approx(0.0));
+    CHECK(evaluate("x * 2.5 * 3", {.FoldVariableWeights = true}) == Catch::Approx(15.0));
+    CHECK(evaluate("sin(x * 3)", {.FoldVariableWeights = true}) == Catch::Approx(std::sin(6.0F)));
+    CHECK(evaluate("(x * 2) * (y * 3)", {.FoldVariableWeights = true}) == Catch::Approx(36.0F));
+    CHECK(evaluate("0 * x + y", {.FoldVariableWeights = true}) == Catch::Approx(3.0F));
 }
 
 TEST_CASE("Formatter output", "[parser]")
