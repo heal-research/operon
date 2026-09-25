@@ -272,7 +272,7 @@ auto RunCase(Case const& c) -> bool
     INFO("case: " << c.label);
 
     auto ds = MakeDataset(c.vars);
-    auto tree = InfixParser::Parse(c.model, ds);
+    auto tree = InfixParser::ParseOrThrow(c.model, ds);
     auto const coeffs = tree.GetCoefficients();
 
     // Variable names -> hashes (via the dataset's Variable lookup).

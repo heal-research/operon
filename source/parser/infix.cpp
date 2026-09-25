@@ -142,7 +142,7 @@ auto FoldWeightedProducts(infix_parser::expression const& expr, bool enabled) ->
 } // anonymous namespace
 namespace Operon {
 
-auto InfixParser::TryParse(std::string_view infix, InfixParseOptions options) -> tl::expected<Tree, InfixParseError>
+auto InfixParser::Parse(std::string_view infix, InfixParseOptions options) -> tl::expected<Tree, InfixParseError>
 {
     auto result = infix_parser::parse(infix);
     if (auto const* err = std::get_if<infix_parser::parse_error>(&result)) {
@@ -164,9 +164,10 @@ auto InfixParser::TryParse(std::string_view infix, InfixParseOptions options) ->
     if (options.Reduce) { tree.Reduce(); }
     return tree;
 }
-auto InfixParser::TryParse(std::string_view infix, Dataset const& dataset, InfixParseOptions options) -> tl::expected<Tree, InfixParseError>
+
+auto InfixParser::Parse(std::string_view infix, Dataset const& dataset, InfixParseOptions options) -> tl::expected<Tree, InfixParseError>
 {
-    auto tree = TryParse(infix, options);
+    auto tree = Parse(infix, options);
     if (!tree) { return tl::unexpected(tree.error()); }
     for (auto const& node : tree->Nodes()) {
         if (node.IsVariable() && !dataset.GetVariable(node.HashValue).has_value()) {
@@ -177,30 +178,32 @@ auto InfixParser::TryParse(std::string_view infix, Dataset const& dataset, Infix
     return tree;
 }
 
-auto InfixParser::Parse(std::string_view infix, InfixParseOptions options) -> Tree
+auto InfixParser::ParseOrThrow(std::string_view infix, InfixParseOptions options) -> Tree
 {
-    auto tree = TryParse(infix, options);
+    auto tree = Parse(infix, options);
     if (!tree) { throw std::invalid_argument(tree.error().Message); }
     return std::move(*tree);
 }
 
-auto InfixParser::Parse(std::string_view infix, Dataset const& dataset, InfixParseOptions options) -> Tree
+auto InfixParser::ParseOrThrow(std::string_view infix, Dataset const& dataset, InfixParseOptions options) -> Tree
 {
-    auto tree = TryParse(infix, dataset, options);
+    auto tree = Parse(infix, dataset, options);
     if (!tree) { throw std::invalid_argument(tree.error().Message); }
     return std::move(*tree);
 }
 
 auto InfixParser::ParseFunctionBody(std::string_view infix, std::span<std::string const> params,
-                                    InfixParseOptions options) -> Tree
+                                    InfixParseOptions options) -> tl::expected<Tree, InfixParseError>
 {
     if (params.size() > Operon::kMaxComposedFunctionArity) {
-        throw std::invalid_argument(fmt::format(
+        return tl::unexpected(InfixParseError{fmt::format(
             "composed function has {} parameters, exceeding the v1 cap of {}",
-            params.size(), Operon::kMaxComposedFunctionArity));
+            params.size(), Operon::kMaxComposedFunctionArity)});
     }
 
-    auto tree = Parse(infix, options);
+    auto treeResult = Parse(infix, options);
+    if (!treeResult) { return tl::unexpected(std::move(treeResult.error())); }
+    auto tree = std::move(*treeResult);
 
     Operon::Vector<Operon::Hash> paramHashes(params.size());
     std::ranges::transform(params, paramHashes.begin(), [](auto const& name) { return Operon::Hasher{}(name); });
@@ -214,7 +217,7 @@ auto InfixParser::ParseFunctionBody(std::string_view infix, std::span<std::strin
         if (!node.IsVariable()) { continue; }
         auto it = std::ranges::find(paramHashes, node.HashValue);
         if (it == paramHashes.end()) {
-            throw std::invalid_argument(fmt::format("undeclared identifier in function body (hash {})", node.HashValue));
+            return tl::unexpected(InfixParseError{fmt::format("undeclared identifier in function body (hash {})", node.HashValue)});
         }
         auto const idx = static_cast<std::size_t>(std::distance(paramHashes.begin(), it));
         node.HashValue = node.CalculatedHashValue = Operon::ParamHash(idx);
@@ -223,7 +226,7 @@ auto InfixParser::ParseFunctionBody(std::string_view infix, std::span<std::strin
 
     for (std::size_t i = 0; i < params.size(); ++i) {
         if (!used[i]) {
-            throw std::invalid_argument(fmt::format("unused parameter '{}' in composed function body", params[i]));
+            return tl::unexpected(InfixParseError{fmt::format("unused parameter '{}' in composed function body", params[i])});
         }
     }
     tree.UpdateNodes();

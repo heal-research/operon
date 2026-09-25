@@ -40,7 +40,7 @@ TEST_CASE("Parser roundtrip correctness", "[parser]")
     Operon::Vector<Operon::Tree> parsedTrees;
     parsedTrees.reserve(nTrees);
     std::transform(trees.begin(), trees.end(), std::back_inserter(parsedTrees), [&](const auto& tree) -> auto {
-        auto parsed = InfixParser::Parse(fmt::format("{:infix:50}", Operon::Fmt::WithNames{tree, ds}), ds);
+        auto parsed = InfixParser::ParseOrThrow(fmt::format("{:infix:50}", Operon::Fmt::WithNames{tree, ds}), ds);
         CHECK(parsed.Validate());
         return parsed;
     });
@@ -87,7 +87,7 @@ TEST_CASE("Parse specific expressions", "[parser]")
 {
     SECTION("Nested unary functions") {
         const auto* str = "sin((sqrt(abs(square(sin(((-0.00191) * X6))))) - sqrt(abs(((-0.96224) / (-0.40567))))))";
-        auto tree = Operon::InfixParser::Parse(str);
+        auto tree = Operon::InfixParser::ParseOrThrow(str);
         CHECK(tree.Length() > 0);
         CHECK(tree.Validate());
     }
@@ -104,7 +104,7 @@ TEST_CASE("Parse specific expressions", "[parser]")
 
         Dataset const ds("./data/Poly-10.csv", true);
         auto s1 = fmt::format("{:infix:5}", Operon::Fmt::WithNames{t, ds});
-        auto t2 = InfixParser::Parse(s1);
+        auto t2 = InfixParser::ParseOrThrow(s1);
 
         // Roundtrip: same number of nodes
         CHECK(t.Length() == t2.Length());
@@ -112,14 +112,14 @@ TEST_CASE("Parse specific expressions", "[parser]")
 
     SECTION("Analytical quotient") {
         std::string const expr{"aq(3, 5)"};
-        auto tree = InfixParser::Parse(expr);
+        auto tree = InfixParser::ParseOrThrow(expr);
         CHECK(tree.Length() > 0);
         CHECK(tree.Validate());
     }
 
     SECTION("Multiple additions") {
         const auto* modelStr = "1 + 2 + 3 + 4";
-        auto tree = Operon::InfixParser::Parse(modelStr);
+        auto tree = Operon::InfixParser::ParseOrThrow(modelStr);
 
         using DTable = DispatchTable<Operon::Scalar>;
         DTable const dtable;
@@ -132,30 +132,30 @@ TEST_CASE("Parse specific expressions", "[parser]")
     }
 }
 
-TEST_CASE("TryParse reports failures as expected values instead of throwing", "[parser]")
+TEST_CASE("Parse reports failures as expected values instead of throwing", "[parser]")
 {
     SECTION("Malformed syntax returns an unexpected result") {
-        auto const result = Operon::InfixParser::TryParse("1 + * 2");
+        auto const result = Operon::InfixParser::Parse("1 + * 2");
         CHECK_FALSE(result);
         CHECK(result.error().Message.find("parse error at position") != std::string::npos);
     }
 
     SECTION("Unknown dataset variable returns an unexpected result") {
         Operon::Dataset const ds({"x"}, {{1.0F}});
-        auto const result = Operon::InfixParser::TryParse("x + nope", ds);
+        auto const result = Operon::InfixParser::Parse("x + nope", ds);
         CHECK_FALSE(result);
         CHECK(result.error().Message.find("not found in dataset") != std::string::npos);
     }
 
     SECTION("Unsupported expression nodes return an unexpected result") {
-        auto const result = Operon::InfixParser::TryParse("erf(1)");
+        auto const result = Operon::InfixParser::Parse("erf(1)");
         CHECK_FALSE(result);
         CHECK(result.error().Message.starts_with("unsupported expression node type:"));
     }
 
     SECTION("Valid input yields a tree") {
         Operon::Dataset const ds({"x"}, {{2.0F}});
-        auto const result = Operon::InfixParser::TryParse("x + 1", ds);
+        auto const result = Operon::InfixParser::Parse("x + 1", ds);
         REQUIRE(result);
         CHECK(result->Length() > 0);
         CHECK(result->Validate());
@@ -164,23 +164,23 @@ TEST_CASE("TryParse reports failures as expected values instead of throwing", "[
 
 TEST_CASE("Parser folds printed weighted variables only when requested", "[parser]")
 {
-    auto ordinary = InfixParser::Parse("2.5 * x");
+    auto ordinary = InfixParser::ParseOrThrow("2.5 * x");
     CHECK(ordinary.Length() == 3);
 
-    auto variable = InfixParser::Parse("2.5 * x", InfixParseOptions{.FoldVariableWeights = true});
+    auto variable = InfixParser::ParseOrThrow("2.5 * x", InfixParseOptions{.FoldVariableWeights = true});
     REQUIRE(variable.Length() == 1);
     CHECK(variable.Nodes().front().IsVariable());
     CHECK(variable.Nodes().front().Value == Catch::Approx(2.5));
 
-    auto zero = InfixParser::Parse("0 * x", InfixParseOptions{.FoldVariableWeights = true});
+    auto zero = InfixParser::ParseOrThrow("0 * x", InfixParseOptions{.FoldVariableWeights = true});
     REQUIRE(zero.Length() == 1);
     CHECK(zero.Nodes().front().Value == Catch::Approx(0.0));
 
-    auto chained = InfixParser::Parse("x * 2.5 * 3", InfixParseOptions{.FoldVariableWeights = true});
+    auto chained = InfixParser::ParseOrThrow("x * 2.5 * 3", InfixParseOptions{.FoldVariableWeights = true});
     REQUIRE(chained.Length() == 1);
     CHECK(chained.Nodes().front().Value == Catch::Approx(7.5));
 
-    auto function = InfixParser::Parse("2.5 * sin(x)");
+    auto function = InfixParser::ParseOrThrow("2.5 * sin(x)");
     CHECK(function.Length() == 4);
 }
 TEST_CASE("Parser folding preserves numerical semantics", "[parser]")
@@ -190,7 +190,7 @@ TEST_CASE("Parser folding preserves numerical semantics", "[parser]")
     DTable const dtable;
     Range const range{0, 1};
     auto evaluate = [&](std::string_view expression, InfixParseOptions options) {
-        auto tree = InfixParser::Parse(expression, ds, options);
+        auto tree = InfixParser::ParseOrThrow(expression, ds, options);
         return Interpreter<Operon::Scalar, DTable>::Evaluate(tree, ds, range)[0];
     };
     auto const expected = evaluate("2.5 * x + y", {});
@@ -260,7 +260,7 @@ TEST_CASE("Formatter output", "[parser]")
         // ref(x)) -- a formatter that follows i-1 instead of RefTo would
         // wrap the mul node again and never mention y a second time nor
         // produce a string that round-trips to the tree's actual value.
-        auto const reparsed = InfixParser::Parse(s, ds2);
+        auto const reparsed = InfixParser::ParseOrThrow(s, ds2);
         Operon::Range const rg(0, 1);
         auto const original = Interpreter<Operon::Scalar, DTable>::Evaluate(tree, ds2, rg);
         auto const roundtrip = Interpreter<Operon::Scalar, DTable>::Evaluate(reparsed, ds2, rg);
@@ -352,7 +352,7 @@ TEST_CASE("ParseFunctionBody", "[parser]")
 {
     SECTION("Unary body: param resolves, arity accepted") {
         std::vector<std::string> const params{"x"};
-        auto tree = InfixParser::ParseFunctionBody("1 / (1 + exp(-x))", params);
+        auto tree = InfixParser::ParseFunctionBody("1 / (1 + exp(-x))", params).value();
         CHECK(tree.Length() > 0);
         for (auto const& n : tree.Nodes()) {
             if (n.IsVariable()) {
@@ -363,7 +363,7 @@ TEST_CASE("ParseFunctionBody", "[parser]")
 
     SECTION("Binary body: both params resolve to distinct reserved hashes") {
         std::vector<std::string> const params{"a", "b"};
-        auto tree = InfixParser::ParseFunctionBody("a * exp(-b)", params);
+        auto tree = InfixParser::ParseFunctionBody("a * exp(-b)", params).value();
         bool sawA = false;
         bool sawB = false;
         for (auto const& n : tree.Nodes()) {
@@ -375,24 +375,30 @@ TEST_CASE("ParseFunctionBody", "[parser]")
         CHECK(sawB);
     }
 
-    SECTION("Undeclared identifier throws") {
+    SECTION("Undeclared identifier returns an unexpected result") {
         std::vector<std::string> const params{"x"};
-        CHECK_THROWS_AS(InfixParser::ParseFunctionBody("x + y", params), std::invalid_argument);
+        auto const result = InfixParser::ParseFunctionBody("x + y", params);
+        CHECK_FALSE(result);
+        CHECK(result.error().Message.find("undeclared identifier in function body") != std::string::npos);
     }
 
-    SECTION("Unused parameter throws") {
+    SECTION("Unused parameter returns an unexpected result") {
         std::vector<std::string> const params{"x", "y"};
-        CHECK_THROWS_AS(InfixParser::ParseFunctionBody("sin(x)", params), std::invalid_argument);
+        auto const result = InfixParser::ParseFunctionBody("sin(x)", params);
+        CHECK_FALSE(result);
+        CHECK(result.error().Message.find("unused parameter") != std::string::npos);
     }
 
-    SECTION("Arity above the v1 cap throws") {
+    SECTION("Arity above the v1 cap returns an unexpected result") {
         std::vector<std::string> const params{"a", "b", "c"};
-        CHECK_THROWS_AS(InfixParser::ParseFunctionBody("a + b + c", params), std::invalid_argument);
+        auto const result = InfixParser::ParseFunctionBody("a + b + c", params);
+        CHECK_FALSE(result);
+        CHECK(result.error().Message.find("exceeding the v1 cap") != std::string::npos);
     }
 
     SECTION("Body-internal constants are forced Optimize=false") {
         std::vector<std::string> const params{"x"};
-        auto tree = InfixParser::ParseFunctionBody("2.5 * x", params);
+        auto tree = InfixParser::ParseFunctionBody("2.5 * x", params).value();
         for (auto const& n : tree.Nodes()) {
             if (n.Type == Operon::NodeType::Constant) {
                 CHECK_FALSE(n.Optimize);
@@ -405,14 +411,16 @@ TEST_CASE("ParseFunctionBody", "[parser]")
     // matched by any body identifier and trips the unused-parameter check —
     // duplicates are rejected, just via that check's message rather than a
     // dedicated "duplicate parameter name" one.
-    SECTION("Duplicate parameter names throw (via unused-parameter check)") {
+    SECTION("Duplicate parameter names are rejected (via unused-parameter check)") {
         std::vector<std::string> const params{"x", "x"};
-        CHECK_THROWS_AS(InfixParser::ParseFunctionBody("sin(x)", params), std::invalid_argument);
+        auto const result = InfixParser::ParseFunctionBody("sin(x)", params);
+        CHECK_FALSE(result);
+        CHECK(result.error().Message.find("unused parameter") != std::string::npos);
     }
 
     SECTION("Zero-parameter body (built-ins/constants only) is accepted") {
         std::vector<std::string> const params{};
-        auto tree = InfixParser::ParseFunctionBody("sin(1.0) + exp(2.0)", params);
+        auto tree = InfixParser::ParseFunctionBody("sin(1.0) + exp(2.0)", params).value();
         CHECK(tree.Length() > 0);
         for (auto const& n : tree.Nodes()) {
             CHECK_FALSE(n.IsVariable());

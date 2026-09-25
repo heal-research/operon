@@ -67,7 +67,7 @@ TEST_CASE("Composed function: Callable derivation", "[composed-function]")
     auto const yHash = ds.GetVariable("y")->Hash;
 
     SECTION("Unary body: numeric eval matches the manually-expanded expression") {
-        auto body = InfixParser::ParseFunctionBody("1 / (1 + exp(-x))", std::vector<std::string>{"x"});
+        auto body = InfixParser::ParseFunctionBody("1 / (1 + exp(-x))", std::vector<std::string>{"x"}).value();
         auto callable = MakeComposedCallable<Operon::DispatchTable<Operon::Scalar>, Operon::Scalar>(dtable, body, 1);
         auto composedNode = MakeComposedNode("logistic", 1);
         dtable.RegisterFunction<Operon::Scalar>(composedNode.HashValue, callable);
@@ -91,7 +91,7 @@ TEST_CASE("Composed function: Callable derivation", "[composed-function]")
     SECTION("Binary body: argument order matches Tree::Indices binding (order-sensitive op)") {
         // Sub is order-sensitive — this would fail silently (wrong sign/value)
         // if BindArgIndices bound params in the wrong order.
-        auto body = InfixParser::ParseFunctionBody("a - b", std::vector<std::string>{"a", "b"});
+        auto body = InfixParser::ParseFunctionBody("a - b", std::vector<std::string>{"a", "b"}).value();
         auto callable = MakeComposedCallable<Operon::DispatchTable<Operon::Scalar>, Operon::Scalar>(dtable, body, 2);
         auto composedNode = MakeComposedNode("sub2", 2);
         dtable.RegisterFunction<Operon::Scalar>(composedNode.HashValue, callable);
@@ -118,7 +118,7 @@ TEST_CASE("Composed function: Callable derivation", "[composed-function]")
     }
 
     SECTION("Composed node's own weight is applied once (not baked into the body)") {
-        auto body = InfixParser::ParseFunctionBody("sin(x)", std::vector<std::string>{"x"});
+        auto body = InfixParser::ParseFunctionBody("sin(x)", std::vector<std::string>{"x"}).value();
         auto callable = MakeComposedCallable<Operon::DispatchTable<Operon::Scalar>, Operon::Scalar>(dtable, body, 1);
         auto composedNode = MakeComposedNode("sinComposed", 1);
         composedNode.Value = 3.7F;
@@ -150,7 +150,7 @@ TEST_CASE("Composed function: CallableDiff derivation", "[composed-function]")
     auto const xHash = ds.GetVariable("x")->Hash;
 
     SECTION("Weighted composed node: d/dx(w*sin(x)) = w*cos(x) — the exact case the double-weighting bug would break") {
-        auto body = InfixParser::ParseFunctionBody("sin(x)", std::vector<std::string>{"x"});
+        auto body = InfixParser::ParseFunctionBody("sin(x)", std::vector<std::string>{"x"}).value();
         auto callable = MakeComposedCallable<Operon::DispatchTable<Operon::Scalar>, Operon::Scalar>(dtable, body, 1);
         auto diff = MakeComposedCallableDiff<Operon::DispatchTable<Operon::Scalar>, Operon::Scalar>(dtable, body, 1);
         auto composedNode = MakeComposedNode("sinComposedW", 1);
@@ -177,7 +177,7 @@ TEST_CASE("Composed function: CallableDiff derivation", "[composed-function]")
     }
 
     SECTION("Repeated parameter occurrence, nonzero derivative: d/dx(x + x) = 2") {
-        auto body = InfixParser::ParseFunctionBody("x + x", std::vector<std::string>{"x"});
+        auto body = InfixParser::ParseFunctionBody("x + x", std::vector<std::string>{"x"}).value();
         auto callable = MakeComposedCallable<Operon::DispatchTable<Operon::Scalar>, Operon::Scalar>(dtable, body, 1);
         auto diff = MakeComposedCallableDiff<Operon::DispatchTable<Operon::Scalar>, Operon::Scalar>(dtable, body, 1);
         auto composedNode = MakeComposedNode("doubleX", 1);
@@ -201,7 +201,7 @@ TEST_CASE("Composed function: CallableDiff derivation", "[composed-function]")
     }
 
     SECTION("Repeated parameter occurrence, cancelling derivative: d/dx(x - x) = 0") {
-        auto body = InfixParser::ParseFunctionBody("x - x", std::vector<std::string>{"x"});
+        auto body = InfixParser::ParseFunctionBody("x - x", std::vector<std::string>{"x"}).value();
         auto callable = MakeComposedCallable<Operon::DispatchTable<Operon::Scalar>, Operon::Scalar>(dtable, body, 1);
         auto diff = MakeComposedCallableDiff<Operon::DispatchTable<Operon::Scalar>, Operon::Scalar>(dtable, body, 1);
         auto composedNode = MakeComposedNode("zeroX", 1);
@@ -228,27 +228,27 @@ TEST_CASE("Composed function: CallableDiff derivation", "[composed-function]")
 TEST_CASE("Composed function: symbolic-diff coverage validation", "[composed-function]")
 {
     SECTION("Body using only fully-covered built-ins passes") {
-        auto body = InfixParser::ParseFunctionBody("1 / (1 + exp(-x))", std::vector<std::string>{"x"});
+        auto body = InfixParser::ParseFunctionBody("1 / (1 + exp(-x))", std::vector<std::string>{"x"}).value();
         CHECK_NOTHROW(Operon::ValidateSymbolicDiffCoverage(body));
     }
 
     SECTION("Unary non-diff built-in (abs) is rejected") {
-        auto body = InfixParser::ParseFunctionBody("abs(x)", std::vector<std::string>{"x"});
+        auto body = InfixParser::ParseFunctionBody("abs(x)", std::vector<std::string>{"x"}).value();
         CHECK_THROWS_AS(Operon::ValidateSymbolicDiffCoverage(body), std::invalid_argument);
     }
 
     SECTION("Binary non-diff built-in (fmin, spelled 'min' in the parser vocabulary) is rejected") {
-        auto body = InfixParser::ParseFunctionBody("min(x, y)", std::vector<std::string>{"x", "y"});
+        auto body = InfixParser::ParseFunctionBody("min(x, y)", std::vector<std::string>{"x", "y"}).value();
         CHECK_THROWS_AS(Operon::ValidateSymbolicDiffCoverage(body), std::invalid_argument);
     }
 
     SECTION("Binary non-diff built-in (aq) is rejected") {
-        auto body = InfixParser::ParseFunctionBody("aq(x, y)", std::vector<std::string>{"x", "y"});
+        auto body = InfixParser::ParseFunctionBody("aq(x, y)", std::vector<std::string>{"x", "y"}).value();
         CHECK_THROWS_AS(Operon::ValidateSymbolicDiffCoverage(body), std::invalid_argument);
     }
 
     SECTION("Hardcoded arity>=2 ops (add/mul/sub/div/pow) are accepted") {
-        auto body = InfixParser::ParseFunctionBody("(x + y) * (x - y) / x ^ 2", std::vector<std::string>{"x", "y"});
+        auto body = InfixParser::ParseFunctionBody("(x + y) * (x - y) / x ^ 2", std::vector<std::string>{"x", "y"}).value();
         CHECK_NOTHROW(Operon::ValidateSymbolicDiffCoverage(body));
     }
 }
@@ -256,7 +256,7 @@ TEST_CASE("Composed function: symbolic-diff coverage validation", "[composed-fun
 TEST_CASE("Composed function: structural invariants (no Ref, arity <= 2, valid ParamHash)", "[composed-function]")
 {
     SECTION("A normal ParseFunctionBody output passes") {
-        auto body = InfixParser::ParseFunctionBody("1 / (1 + exp(-x))", std::vector<std::string>{"x"});
+        auto body = InfixParser::ParseFunctionBody("1 / (1 + exp(-x))", std::vector<std::string>{"x"}).value();
         CHECK_NOTHROW(Operon::ValidateBodyStructuralInvariants(body, 1));
     }
 
@@ -264,7 +264,7 @@ TEST_CASE("Composed function: structural invariants (no Ref, arity <= 2, valid P
         // Fabricate a Ref where ParseFunctionBody would never emit one, to
         // exercise the guard directly rather than relying on ever finding a
         // real code path that produces one.
-        auto body = InfixParser::ParseFunctionBody("x + x", std::vector<std::string>{"x"});
+        auto body = InfixParser::ParseFunctionBody("x + x", std::vector<std::string>{"x"}).value();
         auto nodes = body.Nodes();
         nodes.back() = Operon::Node::Ref(0);
         Operon::Tree refBody{nodes};
@@ -274,7 +274,7 @@ TEST_CASE("Composed function: structural invariants (no Ref, arity <= 2, valid P
     SECTION("A body containing an arity>2 Function node is rejected") {
         // Same fabrication approach: v1's grammar never emits arity>2, so
         // force it to exercise the guard.
-        auto body = InfixParser::ParseFunctionBody("x + x", std::vector<std::string>{"x"});
+        auto body = InfixParser::ParseFunctionBody("x + x", std::vector<std::string>{"x"}).value();
         auto nodes = body.Nodes();
         nodes.back().Arity = 3;
         Operon::Tree arity3Body{nodes};
@@ -286,7 +286,7 @@ TEST_CASE("Composed function: structural invariants (no Ref, arity <= 2, valid P
         // arity=0 here means "no declared parameters," so that same leaf is
         // now out of band — exercises the pIdx < arity check directly
         // without needing to fabricate a bogus hash by hand.
-        auto body = InfixParser::ParseFunctionBody("x", std::vector<std::string>{"x"});
+        auto body = InfixParser::ParseFunctionBody("x", std::vector<std::string>{"x"}).value();
         CHECK_THROWS_AS(Operon::ValidateBodyStructuralInvariants(body, 0), std::invalid_argument);
     }
 }
@@ -312,7 +312,7 @@ TEST_CASE("Composed function: unary symbolic-diff rule (JIT/BuildJacobianDag pat
     Operon::Range const range{0, ds.Rows<std::size_t>()};
 
     SECTION("d/dc logistic(c) = logistic(c) * (1 - logistic(c))") {
-        auto body = InfixParser::ParseFunctionBody("1 / (1 + exp(-x))", std::vector<std::string>{"x"});
+        auto body = InfixParser::ParseFunctionBody("1 / (1 + exp(-x))", std::vector<std::string>{"x"}).value();
         auto composedNode = MakeComposedNode("logisticJit", 1);
         dtable.RegisterFunction<Operon::Scalar>(
             composedNode.HashValue,
@@ -335,7 +335,7 @@ TEST_CASE("Composed function: unary symbolic-diff rule (JIT/BuildJacobianDag pat
     }
 
     SECTION("d/dc sin_composed(c) = cos(c)") {
-        auto body = InfixParser::ParseFunctionBody("sin(x)", std::vector<std::string>{"x"});
+        auto body = InfixParser::ParseFunctionBody("sin(x)", std::vector<std::string>{"x"}).value();
         auto composedNode = MakeComposedNode("sinJit", 1);
         dtable.RegisterFunction<Operon::Scalar>(
             composedNode.HashValue,
@@ -362,7 +362,7 @@ TEST_CASE("Composed function: unary interval/affine mini-evaluator", "[composed-
     auto const xHash = Operon::Hasher{}("x");
 
     SECTION("Interval: logistic(x) encloses within (0,1) for a wide domain") {
-        auto body = InfixParser::ParseFunctionBody("1 / (1 + exp(-x))", std::vector<std::string>{"x"});
+        auto body = InfixParser::ParseFunctionBody("1 / (1 + exp(-x))", std::vector<std::string>{"x"}).value();
         auto composedNode = MakeComposedNode("logisticInterval", 1);
         Operon::RegisterUnaryInterval<Operon::Scalar>(composedNode.HashValue, Operon::MakeComposedIntervalUnaryFn(body));
 
@@ -395,7 +395,7 @@ TEST_CASE("Composed function: unary interval/affine mini-evaluator", "[composed-
         // required to actually exercise this: node0 is the one real "x"
         // leaf; node1 is a Ref to it, feeding identity() the *same*
         // affine_form object (same symbols) that node0 itself carries.
-        auto body = InfixParser::ParseFunctionBody("x", std::vector<std::string>{"x"});
+        auto body = InfixParser::ParseFunctionBody("x", std::vector<std::string>{"x"}).value();
         auto composedNode = MakeComposedNode("identityAffine", 1);
         Operon::RegisterUnaryAffine<Operon::Scalar>(composedNode.HashValue, Operon::MakeComposedAffineUnaryFn(body));
 
@@ -432,7 +432,7 @@ TEST_CASE("Composed function: chained-Add symbolic diff (hash-consing regression
     Operon::DispatchTable<Operon::Scalar> dtable;
     Operon::Range const range{0, ds.Rows<std::size_t>()};
 
-    auto body = InfixParser::ParseFunctionBody("exp(x + x + x)", std::vector<std::string>{"x"});
+    auto body = InfixParser::ParseFunctionBody("exp(x + x + x)", std::vector<std::string>{"x"}).value();
     auto composedNode = MakeComposedNode("chainedAddExp", 1);
     dtable.RegisterFunction<Operon::Scalar>(
         composedNode.HashValue,
@@ -460,7 +460,7 @@ TEST_CASE("Composed function: chained-Sub symbolic diff (x - x - x)", "[composed
     Operon::DispatchTable<Operon::Scalar> dtable;
     Operon::Range const range{0, ds.Rows<std::size_t>()};
 
-    auto body = InfixParser::ParseFunctionBody("x - x - x", std::vector<std::string>{"x"});
+    auto body = InfixParser::ParseFunctionBody("x - x - x", std::vector<std::string>{"x"}).value();
     auto composedNode = MakeComposedNode("chainedSub", 1);
     dtable.RegisterFunction<Operon::Scalar>(
         composedNode.HashValue,
@@ -501,7 +501,7 @@ TEST_CASE("Composed function: CompileAVX2/CompileJacobian degrade to nullptr, do
     Operon::JIT::TreeCompiler compiler{&compilerPool};
     if (!compiler.HasAVX2()) { return; }
 
-    auto body = InfixParser::ParseFunctionBody("sin(x)", std::vector<std::string>{"x"});
+    auto body = InfixParser::ParseFunctionBody("sin(x)", std::vector<std::string>{"x"}).value();
     Operon::DispatchTable<Operon::Scalar> dtable;
     auto composedNode = MakeComposedNode("jitProbeComposed", 1);
     dtable.RegisterFunction<Operon::Scalar>(
@@ -560,7 +560,7 @@ TEST_CASE("Composed function: binary symbolic-diff rule (JIT/BuildJacobianDag pa
     Operon::DispatchTable<Operon::Scalar> dtable;
     Operon::Range const range{0, ds.Rows<std::size_t>()};
 
-    auto body = InfixParser::ParseFunctionBody("a - exp(b)", std::vector<std::string>{"a", "b"});
+    auto body = InfixParser::ParseFunctionBody("a - exp(b)", std::vector<std::string>{"a", "b"}).value();
     auto composedNode = MakeComposedNode("subExpBinary", 2);
     dtable.RegisterFunction<Operon::Scalar>(
         composedNode.HashValue,
@@ -598,7 +598,7 @@ TEST_CASE("Composed function: binary interval/affine mini-evaluator (arity-2, st
     auto const yHash = Operon::Hasher{}("y");
 
     SECTION("Interval: a - b, order-sensitive, matches Tree::Indices/param binding") {
-        auto body = InfixParser::ParseFunctionBody("a - b", std::vector<std::string>{"a", "b"});
+        auto body = InfixParser::ParseFunctionBody("a - b", std::vector<std::string>{"a", "b"}).value();
         auto composedNode = MakeComposedNode("subIntervalBinary", 2);
         Operon::RegisterBinaryInterval<Operon::Scalar>(composedNode.HashValue, Operon::MakeComposedIntervalBinaryFn(body));
 
@@ -629,7 +629,7 @@ TEST_CASE("Composed function: binary interval/affine mini-evaluator (arity-2, st
         // matching the arity-1 correlation test's shape but for two
         // independently-bound param slots that happen to receive the same
         // underlying affine form.
-        auto body = InfixParser::ParseFunctionBody("a - b", std::vector<std::string>{"a", "b"});
+        auto body = InfixParser::ParseFunctionBody("a - b", std::vector<std::string>{"a", "b"}).value();
         auto composedNode = MakeComposedNode("sameAffineBinary", 2);
         Operon::RegisterBinaryAffine<Operon::Scalar>(composedNode.HashValue, Operon::MakeComposedAffineBinaryFn(body));
 

@@ -137,7 +137,7 @@ TEST_CASE("Feynman benchmark suite - TightenRange/TightenRangeBisected soundness
             p.vars.size(), std::vector<Operon::Scalar>(1, Operon::Scalar{1}));
         Dataset const ds(names, dummyData);
 
-        auto tree = Operon::InfixParser::Parse(p.formula, ds);
+        auto tree = Operon::InfixParser::ParseOrThrow(p.formula, ds);
         auto const coeff = tree.GetCoefficients();
 
         IntervalEvaluator<Operon::Scalar>::DomainMap domains;

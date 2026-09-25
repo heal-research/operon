@@ -52,14 +52,14 @@ struct EvaluatorFixture {
             return Operon::Dataset(gsl::not_null{data.data()}, Nrow, Ncol);
         }())
         , tree([&]() -> Tree {
-            auto t = InfixParser::Parse("X1 + X2 + X3", ds);
+            auto t = InfixParser::ParseOrThrow("X1 + X2 + X3", ds);
             for (auto& node : t.Nodes()) {
                 if (node.IsVariable()) { node.Value = static_cast<Operon::Scalar>(0.1); }
             }
             return t;
         }())
         , perfectTree([&]() -> Tree {
-            auto t = InfixParser::Parse("X1 + X2 + X3", ds);
+            auto t = InfixParser::ParseOrThrow("X1 + X2 + X3", ds);
             for (auto& node : t.Nodes()) {
                 if (node.IsVariable()) { node.Value = static_cast<Operon::Scalar>(1.0); }
             }
@@ -543,7 +543,7 @@ TEST_CASE("Weighted evaluator", "[evaluator]")
 
     // single-variable expression; all variable nodes get the same coefficient (fine here, X1 only)
     auto makeInd = [&](Operon::Dataset const& ds, float varWeight) -> Operon::Individual {
-        auto t = InfixParser::Parse("X1", ds);
+        auto t = InfixParser::ParseOrThrow("X1", ds);
         for (auto& node : t.Nodes()) {
             if (node.IsVariable()) { node.Value = varWeight; }
         }
@@ -683,7 +683,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
 
     SECTION("partial non-finite tree: default clamps to ErrMax, skip mode gives a graded score") {
         EvaluatorFixture fix;
-        auto t = InfixParser::Parse("log(X1)", *fix.problem.GetDataset());
+        auto t = InfixParser::ParseOrThrow("log(X1)", *fix.problem.GetDataset());
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
 
@@ -699,7 +699,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
 
     SECTION("penalty weight scales monotonically with the non-finite fraction's contribution") {
         EvaluatorFixture fix;
-        auto t = InfixParser::Parse("log(X1)", *fix.problem.GetDataset());
+        auto t = InfixParser::ParseOrThrow("log(X1)", *fix.problem.GetDataset());
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
 
@@ -715,7 +715,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
 
     SECTION("NMSE also supports skipNonFinite_") {
         EvaluatorFixture fix;
-        auto t = InfixParser::Parse("log(X1)", *fix.problem.GetDataset());
+        auto t = InfixParser::ParseOrThrow("log(X1)", *fix.problem.GetDataset());
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
 
@@ -764,7 +764,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         // different penalty weights must differ by exactly
         // (weightHi - weightLo) * variance(target) * (nonFiniteCount / N).
         EvaluatorFixture fix;
-        auto t = InfixParser::Parse("log(X1)", *fix.problem.GetDataset());
+        auto t = InfixParser::ParseOrThrow("log(X1)", *fix.problem.GetDataset());
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
 
@@ -790,7 +790,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
 
     SECTION("RMSE/MAE penalty is scaled by target stddev, not variance (regression: both are linear-error-unit metrics, variance is a squared-error-unit scale)") {
         EvaluatorFixture fix;
-        auto t = InfixParser::Parse("log(X1)", *fix.problem.GetDataset());
+        auto t = InfixParser::ParseOrThrow("log(X1)", *fix.problem.GetDataset());
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
 
@@ -816,7 +816,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
 
     SECTION("SSE penalty is scaled by variance * finite-point-count, not variance alone (regression: SSE is a sum, not an average, of squared errors)") {
         EvaluatorFixture fix;
-        auto t = InfixParser::Parse("log(X1)", *fix.problem.GetDataset());
+        auto t = InfixParser::ParseOrThrow("log(X1)", *fix.problem.GetDataset());
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
 
@@ -840,7 +840,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
 
     SECTION("SSE/RMSE/MAE also support skipNonFinite_") {
         EvaluatorFixture fix;
-        auto t = InfixParser::Parse("log(X1)", *fix.problem.GetDataset());
+        auto t = InfixParser::ParseOrThrow("log(X1)", *fix.problem.GetDataset());
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
 
@@ -854,7 +854,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
 
     SECTION("all non-finite predictions are clamped instead of scoring as perfect SSE") {
         EvaluatorFixture fix;
-        auto t = InfixParser::Parse("log(X1 - X1 - 1)", *fix.problem.GetDataset());
+        auto t = InfixParser::ParseOrThrow("log(X1 - X1 - 1)", *fix.problem.GetDataset());
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
 
@@ -866,7 +866,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
     SECTION("non-finite target values do not poison skip-mode penalty variance") {
         EvaluatorFixture fix;
         fix.data(0, EvaluatorFixture::Ncol - 1) = std::numeric_limits<Operon::Scalar>::quiet_NaN();
-        auto t = InfixParser::Parse("log(X1)", *fix.problem.GetDataset());
+        auto t = InfixParser::ParseOrThrow("log(X1)", *fix.problem.GetDataset());
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
 
@@ -965,7 +965,7 @@ TEST_CASE("BIC and AIC honor Problem linear scaling flag", "[evaluator][informat
     EvaluatorFixture fix;
     using DTable = EvaluatorFixture::DTable;
 
-    auto tree = InfixParser::Parse("X1", *fix.problem.GetDataset());
+    auto tree = InfixParser::ParseOrThrow("X1", *fix.problem.GetDataset());
     for (auto& node : tree.Nodes()) {
         if (node.IsVariable()) { node.Value = static_cast<Operon::Scalar>(0.1); }
     }
@@ -1133,7 +1133,7 @@ TEST_CASE("Evaluator two-phase contract edge cases", "[evaluator]")
     SECTION("CallCount increments even when Evaluate fails") {
         // X99 is not in fix.ds; Evaluate will fail with a missing-variable error.
         Evaluator<DTable> const ev{&fix.problem, &fix.dtable};
-        auto ind = EvaluatorFixture::MakeIndividual(Operon::InfixParser::Parse("X1", fix.ds));
+        auto ind = EvaluatorFixture::MakeIndividual(Operon::InfixParser::ParseOrThrow("X1", fix.ds));
         // Corrupt the variable hash so the dispatch table lookup fails at runtime.
         ind.Genotype.Nodes().front().HashValue = static_cast<Operon::Hash>(0xDEADBEEFDEADBEEFULL);
 
@@ -1159,7 +1159,7 @@ TEST_CASE("Evaluator two-phase contract edge cases", "[evaluator]")
 
         // X1 * X1 -- always non-decreasing in X1 on [1,5], violates Sign=-1.
         auto ind = EvaluatorFixture::MakeIndividual(
-            Operon::InfixParser::Parse("X1 * X1", fix.ds));
+            Operon::InfixParser::ParseOrThrow("X1 * X1", fix.ds));
 
         // Populate the feasibility cache via Prepare.
         sce.Prepare(std::span<Operon::Individual const>{&ind, 1});

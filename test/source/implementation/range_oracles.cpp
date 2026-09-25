@@ -116,7 +116,7 @@ namespace {
         names.push_back("Y");
         values.push_back({ S { 0 } });
         Dataset dataset(std::move(names), std::move(values));
-        auto tree = InfixParser::Parse(oracle.expression, dataset);
+        auto tree = InfixParser::ParseOrThrow(oracle.expression, dataset);
         IE::DomainMap domains;
         for (auto const& domain : oracle.domains) {
             domains.emplace(dataset.GetVariable(domain.name)->Hash, std::pair { domain.lo, domain.hi });

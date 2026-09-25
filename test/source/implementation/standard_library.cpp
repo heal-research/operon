@@ -86,7 +86,7 @@ TEST_CASE("StandardLibrary populates dispatch tables and node names consistently
         };
 
         for (auto const& expr : exprs) {
-            auto t = InfixParser::Parse(expr);
+            auto t = InfixParser::ParseOrThrow(expr);
             auto rDefault = Interpreter<Scalar, DT>(&dtDefault, &ds, &t).Evaluate(t.GetCoefficients(), Operon::Range(0, v.size()));
             auto rRuntime = Interpreter<Scalar, DT>(&dtRuntime, &ds, &t).Evaluate(t.GetCoefficients(), Operon::Range(0, v.size()));
 

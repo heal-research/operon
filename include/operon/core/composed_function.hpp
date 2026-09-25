@@ -935,8 +935,9 @@ void RegisterComposedFunction(
             "RegisterComposedFunction: '{}' is already registered", info.Name));
     }
 
-    std::vector<std::string> const paramVec(params.begin(), params.end());
-    auto body = InfixParser::ParseFunctionBody(bodyInfix, paramVec);
+    auto bodyResult = InfixParser::ParseFunctionBody(bodyInfix, params);
+    if (!bodyResult) { throw std::invalid_argument(bodyResult.error().Message); }
+    auto body = std::move(*bodyResult);
     ValidateSymbolicDiffCoverage(body);
     ValidateBodyStructuralInvariants(body, params.size());
 
