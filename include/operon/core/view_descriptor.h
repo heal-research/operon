@@ -52,10 +52,14 @@ enum OperonViewStatus {
     OPERON_VIEW_ERR_RANK = 3,        /* rank is zero or exceeds OPERON_VIEW_MAX_RANK */
     OPERON_VIEW_ERR_SCALAR = 4,      /* scalar_code/element_size mismatch or unknown */
     OPERON_VIEW_ERR_NULL_DATA = 5,   /* data is null with a nonzero logical extent */
-    OPERON_VIEW_ERR_EXTENT = 6,      /* an extent is zero in a rank slot below `rank` -- must be expressed as a valid empty view, not a garbage trailing dimension */
+    OPERON_VIEW_ERR_EXTENT = 6,      /* reserved: extent == 0 describes a valid empty view (any rank slot),
+                                         so this is never returned by operon_view_validate; kept for wire
+                                         numbering stability across future descriptor versions */
     OPERON_VIEW_ERR_STRIDE = 7,      /* a byte stride is not a multiple of element_size */
     OPERON_VIEW_ERR_ALIGNMENT = 8,   /* data pointer is not aligned to element_size */
-    OPERON_VIEW_ERR_OVERFLOW = 9,    /* extents/strides overflow size_t/ptrdiff_t bounds */
+    OPERON_VIEW_ERR_OVERFLOW = 9,    /* extents/strides overflow size_t/ptrdiff_t bounds, including a stride
+                                         of PTRDIFF_MIN (unrepresentable as a positive magnitude) or a
+                                         per-axis or total reachable byte span that would overflow */
     OPERON_VIEW_ERR_WRITABLE = 10    /* a writable view was requested against a read-only descriptor */
 };
 
@@ -83,12 +87,28 @@ struct OperonViewDescriptor {
     ptrdiff_t byte_strides[OPERON_VIEW_MAX_RANK];
 };
 
+/* Freeze the wire layout for 64-bit targets (Operon's x86-64-v3 build
+ * floor): a producer and consumer must agree on every field's size,
+ * alignment, and offset, not merely the struct's total size -- two ABIs
+ * could both satisfy sizeof(...) == 72 while placing fields differently.
+ * Widening or reordering this layout is a wire-format break and requires
+ * bumping OPERON_VIEW_DESCRIPTOR_VERSION. */
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 _Static_assert(sizeof(void*) == 8, "OperonViewDescriptor layout is frozen for 64-bit targets only");
+_Static_assert(sizeof(size_t) == 8, "OperonViewDescriptor layout is frozen for 64-bit targets only");
+_Static_assert(sizeof(ptrdiff_t) == 8, "OperonViewDescriptor layout is frozen for 64-bit targets only");
 _Static_assert(sizeof(struct OperonViewDescriptor) == 72, "OperonViewDescriptor layout changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
+_Static_assert(offsetof(struct OperonViewDescriptor, data) == 32, "OperonViewDescriptor field offsets changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
+_Static_assert(offsetof(struct OperonViewDescriptor, extents) == 40, "OperonViewDescriptor field offsets changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
+_Static_assert(offsetof(struct OperonViewDescriptor, byte_strides) == 56, "OperonViewDescriptor field offsets changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
 #elif defined(__cplusplus)
 static_assert(sizeof(void*) == 8, "OperonViewDescriptor layout is frozen for 64-bit targets only");
+static_assert(sizeof(size_t) == 8, "OperonViewDescriptor layout is frozen for 64-bit targets only");
+static_assert(sizeof(ptrdiff_t) == 8, "OperonViewDescriptor layout is frozen for 64-bit targets only");
 static_assert(sizeof(struct OperonViewDescriptor) == 72, "OperonViewDescriptor layout changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
+static_assert(offsetof(struct OperonViewDescriptor, data) == 32, "OperonViewDescriptor field offsets changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
+static_assert(offsetof(struct OperonViewDescriptor, extents) == 40, "OperonViewDescriptor field offsets changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
+static_assert(offsetof(struct OperonViewDescriptor, byte_strides) == 56, "OperonViewDescriptor field offsets changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
 #endif
 
 /*
@@ -96,6 +116,19 @@ static_assert(sizeof(struct OperonViewDescriptor) == 72, "OperonViewDescriptor l
  * null/zero rules, stride divisibility, alignment, and overflow. Does not
  * dereference `data` beyond a null check; bounds beyond the descriptor's own
  * fields are the caller's responsibility once a view is constructed.
+ *
+ * A zero extent in any rank slot describes a valid, empty view: `data` may
+ * then be null and no alignment check is performed, since nothing will ever
+ * be dereferenced through it. A nonzero logical extent still requires a
+ * non-null, correctly-aligned `data`.
+ *
+ * `byte_strides` may be negative (reversed axes) as far as this validator is
+ * concerned; it only checks each stride's divisibility by `element_size`,
+ * that it is representable (not `PTRDIFF_MIN`), and that the maximum byte
+ * offset reachable via each axis, and their sum, does not overflow `size_t`
+ * or exceed `PTRDIFF_MAX`. Whether a *particular* view-construction API
+ * built on top of this descriptor supports negative strides is that API's
+ * own contract, not this function's -- see view_descriptor.hpp.
  *
  * `require_writable` is nonzero when the caller intends to construct a
  * mutable view; validation then rejects a descriptor carrying
@@ -107,6 +140,7 @@ static inline enum OperonViewStatus operon_view_validate(struct OperonViewDescri
 {
     size_t k;
     size_t logical_extent;
+    size_t max_byte_offset;
 
     if (desc == NULL) {
         return OPERON_VIEW_ERR_NULL_DATA;
@@ -141,22 +175,56 @@ static inline enum OperonViewStatus operon_view_validate(struct OperonViewDescri
     }
 
     logical_extent = 1;
+    max_byte_offset = 0;
     for (k = 0; k < desc->rank; ++k) {
-        size_t extent = desc->extents[k];
-        ptrdiff_t stride = desc->byte_strides[k];
-        ptrdiff_t abs_stride = stride < 0 ? -stride : stride;
+        size_t const extent = desc->extents[k];
+        ptrdiff_t const stride = desc->byte_strides[k];
+        size_t abs_stride;
 
-        if (extent == 0U) {
-            return OPERON_VIEW_ERR_EXTENT;
-        }
-        if ((size_t)abs_stride % desc->element_size != 0U) {
-            return OPERON_VIEW_ERR_STRIDE;
-        }
-        /* overflow check: logical_extent * extent must not wrap size_t */
-        if (extent != 0U && logical_extent > (SIZE_MAX / extent)) {
+        /* PTRDIFF_MIN has no representable positive negation; reject it
+         * outright rather than risk signed-overflow UB computing |stride|. */
+        if (stride == PTRDIFF_MIN) {
             return OPERON_VIEW_ERR_OVERFLOW;
         }
-        logical_extent *= extent;
+        abs_stride = (size_t)(stride < 0 ? -stride : stride);
+
+        if (abs_stride % desc->element_size != 0U) {
+            return OPERON_VIEW_ERR_STRIDE;
+        }
+
+        /* extent == 0 is a valid empty axis (the whole view is then empty);
+         * it contributes nothing to either the element-count or byte-span
+         * checks below, and must not underflow `extent - 1`. */
+        if (extent > 0U) {
+            if (logical_extent > (SIZE_MAX / extent)) {
+                return OPERON_VIEW_ERR_OVERFLOW;
+            }
+            logical_extent *= extent;
+
+            if (abs_stride != 0U) {
+                size_t const max_index = extent - 1U;
+                size_t contribution;
+                if (max_index > (SIZE_MAX / abs_stride)) {
+                    return OPERON_VIEW_ERR_OVERFLOW;
+                }
+                contribution = max_index * abs_stride;
+                if (max_byte_offset > (SIZE_MAX - contribution)) {
+                    return OPERON_VIEW_ERR_OVERFLOW;
+                }
+                max_byte_offset += contribution;
+            }
+        } else {
+            logical_extent = 0U;
+        }
+    }
+    if (max_byte_offset > (size_t)PTRDIFF_MAX) {
+        return OPERON_VIEW_ERR_OVERFLOW;
+    }
+
+    if (logical_extent == 0U) {
+        /* Empty view: nothing will ever be dereferenced through `data`, so
+         * neither a null-check nor an alignment check applies. */
+        return OPERON_VIEW_OK;
     }
 
     if (desc->data == NULL) {

@@ -111,16 +111,34 @@ add_executable(memory_view_consumer source/memory_view_consumer.cpp)
 target_link_libraries(memory_view_consumer PRIVATE operon::operon)
 target_compile_features(memory_view_consumer PRIVATE cxx_std_23)
 add_test(NAME memory_view_consumer COMMAND memory_view_consumer)
+windows_set_path(memory_view_consumer operon::operon)
 add_dependencies(operon_test memory_view_consumer)
 
 # view_descriptor.h is deliberately plain C11 with no C++ dependency, so its
 # consumer fixture is compiled as C and does not link operon::operon -- it
-# only needs the header's own include path.
+# only needs the header's own include path. C is enabled here, scoped to
+# this directory, rather than on the root project: enabling it globally
+# would impose a C-compiler prerequisite on every consumer that only wants
+# the (C++-only) library. `enable_language()` works whether this file is
+# add_subdirectory()'d from the root build or configured as its own
+# standalone top-level project (PROJECT_IS_TOP_LEVEL above), so both paths
+# get a C compiler for this one fixture.
+enable_language(C)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED TRUE)
 add_executable(view_descriptor_consumer source/view_descriptor_consumer.c)
 target_include_directories(view_descriptor_consumer PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../include")
 set_target_properties(view_descriptor_consumer PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES)
 add_test(NAME view_descriptor_consumer COMMAND view_descriptor_consumer)
 add_dependencies(operon_test view_descriptor_consumer)
+
+# Building this target guarantees every ctest fixture registered above is
+# present, independent of which specific target a build invocation names
+# (e.g. CI's `--target operon_test` alone already covers it transitively via
+# the add_dependencies() calls above; this target additionally documents
+# and covers a plain `cmake --build . --target build_all_tests` invocation).
+add_custom_target(build_all_tests)
+add_dependencies(build_all_tests operon_test memory_view_consumer view_descriptor_consumer)
 
 # ---- Installed-package-consumer contract (package-consumer) ----
 # Exercises the install -> relocate -> find_package(operon CONFIG) -> build

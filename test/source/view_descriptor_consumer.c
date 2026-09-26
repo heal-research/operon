@@ -51,11 +51,21 @@ int main(void)
     desc.flags = 0;
 
     desc.extents[1] = 0;
-    failures += check("zero extent rejected", operon_view_validate(&desc, 0), OPERON_VIEW_ERR_EXTENT);
+    failures += check("zero extent is a valid empty view", operon_view_validate(&desc, 0), OPERON_VIEW_OK);
     desc.extents[1] = 2;
 
+    desc.byte_strides[1] = PTRDIFF_MIN;
+    failures += check("PTRDIFF_MIN stride rejected, not negated into UB", operon_view_validate(&desc, 0), OPERON_VIEW_ERR_OVERFLOW);
+    desc.byte_strides[1] = (ptrdiff_t)sizeof(float);
+
     desc.data = NULL;
-    failures += check("null data rejected", operon_view_validate(&desc, 0), OPERON_VIEW_ERR_NULL_DATA);
+    failures += check("null data rejected with nonzero extent", operon_view_validate(&desc, 0), OPERON_VIEW_ERR_NULL_DATA);
+    desc.data = data;
+
+    desc.extents[0] = 0;
+    desc.data = NULL;
+    failures += check("zero extent tolerates null data", operon_view_validate(&desc, 0), OPERON_VIEW_OK);
+    desc.extents[0] = 2;
     desc.data = data;
 
     if (failures == 0) {
