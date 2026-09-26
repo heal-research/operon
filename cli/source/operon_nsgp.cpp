@@ -98,10 +98,14 @@ auto main(int argc, char** argv) -> int
     auto maxLength = result["maxlength"].as<size_t>();
     auto maxDepth = result["maxdepth"].as<size_t>();
     auto crossoverInternalProbability = result["crossover-internal-probability"].as<Operon::Scalar>();
+    Operon::ShapeBoundOptions shapeBoundOptions{};
 
     auto symbolic = result["symbolic"].as<bool>();
-
     try {
+        auto const shapeBoundModeConfig = Operon::ParseShapeBoundModeConfig(result["shape-bound-mode"].as<std::string>());
+        shapeBoundOptions.BisectionDepth = result["shape-bisection-depth"].as<int>();
+        if (shapeBoundModeConfig.BisectionDepth) { shapeBoundOptions.BisectionDepth = *shapeBoundModeConfig.BisectionDepth; }
+        Operon::ValidateShapeBoundOptions(shapeBoundOptions);
         for (const auto& kv : result.arguments()) {
             const auto& key = kv.key();
             const auto& value = kv.value();
@@ -334,12 +338,13 @@ auto main(int argc, char** argv) -> int
                 .PenaltyWeight = static_cast<Operon::Scalar>(penaltyWeight),
             };
             if (auto error = Operon::ValidatePolicy(policy, /*isNsga2=*/true)) { throw std::invalid_argument(*error); }
-            auto const boundMode = Operon::ParseShapeBoundMode(result["shape-bound-mode"].as<std::string>());
+            auto const boundMode = shapeBoundModeConfig.Mode;
 
             if (Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::Penalty)) {
                 shapePenaltyStorage = std::make_unique<Operon::ShapeViolationEvaluator>(
                     &problem, &dtable, *shapeConstraints, static_cast<Operon::Scalar>(penaltyWeight), static_cast<Operon::Scalar>(unknownViolation));
                 shapePenaltyStorage->SetBoundMode(boundMode);
+                shapePenaltyStorage->SetBoundOptions(shapeBoundOptions);
                 penalizedErrorStorage = std::make_unique<Operon::MultiEvaluator>(&problem);
                 penalizedErrorStorage->Add(errorEvaluator.get());
                 penalizedErrorStorage->Add(shapePenaltyStorage.get());
@@ -350,6 +355,7 @@ auto main(int argc, char** argv) -> int
                 shapeExtraObjectiveStorage = std::make_unique<Operon::ShapeViolationEvaluator>(
                     &problem, &dtable, *shapeConstraints, Operon::Scalar{1}, static_cast<Operon::Scalar>(unknownViolation));
                 shapeExtraObjectiveStorage->SetBoundMode(boundMode);
+                shapeExtraObjectiveStorage->SetBoundOptions(shapeBoundOptions);
             }
         }
 
@@ -361,13 +367,12 @@ auto main(int argc, char** argv) -> int
         // evaluator.Add(&entropyEvaluator);
 
         // Optional shape-constraint wrapper (see operon_gp.cpp for the same
-        // pattern/rationale) — wraps the whole MultiEvaluator, so an
-        // infeasible individual gets WorstValue() on every objective.
         std::unique_ptr<Operon::ShapeConstrainedEvaluator> shapeConstrainedStorage;
         if (shapeConstraints && Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::HardReject)) {
             shapeConstrainedStorage = std::make_unique<Operon::ShapeConstrainedEvaluator>(&evaluator, &dtable, *shapeConstraints);
             shapeConstrainedStorage->SetWorstValue(result["shape-worst-value"].as<double>());
-            shapeConstrainedStorage->SetBoundMode(Operon::ParseShapeBoundMode(result["shape-bound-mode"].as<std::string>()));
+            shapeConstrainedStorage->SetBoundMode(shapeBoundModeConfig.Mode);
+            shapeConstrainedStorage->SetBoundOptions(shapeBoundOptions);
         }
         Operon::EvaluatorBase* activeEvaluator = shapeConstrainedStorage ? static_cast<Operon::EvaluatorBase*>(shapeConstrainedStorage.get()) : static_cast<Operon::EvaluatorBase*>(&evaluator);
 

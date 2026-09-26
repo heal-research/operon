@@ -99,6 +99,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     auto const crossoverInternalProbability = result["crossover-internal-probability"].as<Operon::Scalar>();
     auto const symbolic = result["symbolic"].as<bool>();
 
+    Operon::ShapeBoundOptions shapeBoundOptions{};
+
     // Apply overrides from parsed options
     dataset = std::make_unique<Operon::Dataset>(result["dataset"].as<std::string>(), /*hasHeader=*/true);
     if (result.contains("seed"))             { config.Seed = result["seed"].as<size_t>(); }
@@ -111,6 +113,10 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     if (result.contains("show-primitives"))  { showPrimitiveSet = true; }
 
     try {
+        auto const shapeBoundModeConfig = Operon::ParseShapeBoundModeConfig(result["shape-bound-mode"].as<std::string>());
+        shapeBoundOptions.BisectionDepth = result["shape-bisection-depth"].as<int>();
+        if (shapeBoundModeConfig.BisectionDepth) { shapeBoundOptions.BisectionDepth = *shapeBoundModeConfig.BisectionDepth; }
+        Operon::ValidateShapeBoundOptions(shapeBoundOptions);
         if (showPrimitiveSet) {
             Operon::PrintPrimitives(primitiveSetConfig);
             return EXIT_SUCCESS;
@@ -286,17 +292,18 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
                 .PenaltyWeight = static_cast<Operon::Scalar>(penaltyWeight),
             };
             if (auto error = Operon::ValidatePolicy(policy, /*isNsga2=*/false)) { throw std::invalid_argument(*error); }
-
-            auto const boundMode = Operon::ParseShapeBoundMode(result["shape-bound-mode"].as<std::string>());
+            auto const boundMode = shapeBoundModeConfig.Mode;
             if (Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::HardReject)) {
                 shapeConstrainedStorage = std::make_unique<Operon::ShapeConstrainedEvaluator>(evaluator.get(), &dtable, *shapeConstraints);
                 shapeConstrainedStorage->SetWorstValue(worstValue);
                 shapeConstrainedStorage->SetBoundMode(boundMode);
+                shapeConstrainedStorage->SetBoundOptions(shapeBoundOptions);
                 activeEvaluator = shapeConstrainedStorage.get();
             } else if (Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::Penalty)) {
                 shapeViolationStorage = std::make_unique<Operon::ShapeViolationEvaluator>(
                     &problem, &dtable, *shapeConstraints, static_cast<Operon::Scalar>(penaltyWeight), static_cast<Operon::Scalar>(unknownViolation));
                 shapeViolationStorage->SetBoundMode(boundMode);
+                shapeViolationStorage->SetBoundOptions(shapeBoundOptions);
                 shapePenaltyAggregateStorage = std::make_unique<Operon::MultiEvaluator>(&problem);
                 shapePenaltyAggregateStorage->SetBudget(config.Evaluations);
                 shapePenaltyAggregateStorage->Add(evaluator.get());
@@ -333,7 +340,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
                     auto const unknownViolation = result["shape-unknown-violation"].as<double>();
                     shapeViolationStorage = std::make_unique<Operon::ShapeViolationEvaluator>(
                         &problem, &dtable, *shapeConstraints, Operon::Scalar{1}, static_cast<Operon::Scalar>(unknownViolation));
-                    shapeViolationStorage->SetBoundMode(Operon::ParseShapeBoundMode(result["shape-bound-mode"].as<std::string>()));
+                    shapeViolationStorage->SetBoundMode(shapeBoundModeConfig.Mode);
+                    shapeViolationStorage->SetBoundOptions(shapeBoundOptions);
                 }
                 comp = Operon::FeasibilityFirstComparison(
                     [ptr = shapeViolationStorage.get()](Operon::Tree const& t) { return ptr->Measure(t).Feasible; });

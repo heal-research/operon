@@ -60,7 +60,7 @@ Use `--shape-enforcement` to select a comma-separated combination supported by t
 
 - `combined`: affine arithmetic with an interval fallback;
 - `affine`: affine arithmetic only;
-- `bisected`: interval arithmetic over subdivided boxes, specified together with `interval`.
+- `bisected` or `bisected:N`: interval arithmetic over subdivided boxes. Bare `bisected` uses the separate `--shape-bisection-depth` option (default `3`), while `bisected:N` carries an explicit depth `N` (0–20). An empty suffix (`bisected:`) is invalid.
 
 A successful run means that the returned model was scored under the selected enforcement policy. Check the final `shape-constraints:` status line when a certificate is required: a model can be printed after an infeasible hard-reject search if no feasible individual was found.
 

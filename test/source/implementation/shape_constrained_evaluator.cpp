@@ -287,16 +287,71 @@ TEST_CASE("ShapeConstrainedEvaluator - value bound constraint", "[shape-constrai
     CHECK_FALSE(narrow.Feasible(fx.tree));
 }
 
-TEST_CASE("ParseShapeBoundMode parses flags and rejects invalid combinations", "[shape-constraints]")
+TEST_CASE("ParseShapeBoundMode parses flags and bisected depths", "[shape-constraints]")
 {
     CHECK(Operon::ParseShapeBoundMode("combined") == ShapeBoundMode::Combined);
     CHECK(Operon::ParseShapeBoundMode("interval") == ShapeBoundMode::Interval);
     CHECK(Operon::ParseShapeBoundMode("affine") == ShapeBoundMode::Affine);
-    CHECK(Operon::ParseShapeBoundMode("interval,bisected") == (ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
+    CHECK(Operon::ParseShapeBoundMode("bisected") == (ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
+    auto const bare = Operon::ParseShapeBoundModeConfig("bisected");
+    CHECK(bare.Mode == (ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
+    CHECK_FALSE(bare.BisectionDepth.has_value());
+    auto const explicitDepth = Operon::ParseShapeBoundModeConfig("bisected:7");
+    CHECK(explicitDepth.Mode == (ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
+    CHECK(explicitDepth.BisectionDepth == 7);
     CHECK_THROWS_AS(Operon::ParseShapeBoundMode("not-a-mode"), std::invalid_argument);
     CHECK_THROWS_AS(Operon::ParseShapeBoundMode("interval,affine"), std::invalid_argument);
-    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("bisected"), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("bisected:"), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("bisected:-1"), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("bisected:21"), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("bisected:x"), std::invalid_argument);
     CHECK_THROWS_AS(Operon::ParseShapeBoundMode("affine,bisected"), std::invalid_argument);
+}
+
+TEST_CASE("ParseShapeBoundMode rejects duplicate bisected tokens", "[shape-constraints]")
+{
+    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("bisected:7,bisected"), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("bisected,bisected:7"), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("bisected:3,bisected:9"), std::invalid_argument);
+}
+
+TEST_CASE("ParseShapeBoundModeConfig accepts combined alongside an explicit bisected depth", "[shape-constraints]")
+{
+    // "combined" sets no bits of its own (ShapeBoundMode::Combined == 0), so
+    // pairing it with bisected:N is a valid, redundant-but-harmless
+    // combination equivalent to bisected:N alone -- not a duplicate-bisected
+    // rejection and not an interval/affine conflict.
+    auto const cfg = Operon::ParseShapeBoundModeConfig("combined,bisected:5");
+    CHECK(cfg.Mode == (ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
+    REQUIRE(cfg.BisectionDepth.has_value());
+    CHECK(*cfg.BisectionDepth == 5);
+}
+
+TEST_CASE("CLI bisection-depth precedence: explicit bisected:N overrides --shape-bisection-depth", "[shape-constraints]")
+{
+    // Mirrors the precedence pattern each CLI (operon_gp, operon_nsgp,
+    // operon_parse_model) applies after parsing --shape-bound-mode and
+    // --shape-bisection-depth: seed ShapeBoundOptions::BisectionDepth from
+    // the CLI's depth option, then let an explicit bisected:N win before
+    // SetBoundOptions(). See e.g. cli/source/operon_gp.cpp.
+    auto const applyPrecedence = [](std::string const& modeStr, int cliDepthOption) -> Operon::ShapeBoundOptions {
+        auto const config = Operon::ParseShapeBoundModeConfig(modeStr);
+        Operon::ShapeBoundOptions options {};
+        options.BisectionDepth = cliDepthOption;
+        if (config.BisectionDepth) { options.BisectionDepth = *config.BisectionDepth; }
+        Operon::ValidateShapeBoundOptions(options);
+        return options;
+    };
+
+    // Bare `bisected` has no depth of its own: the CLI's
+    // --shape-bisection-depth value is what reaches ShapeBoundOptions.
+    CHECK(applyPrecedence("bisected", 4).BisectionDepth == 4);
+    // An explicit bisected:N overrides that CLI default...
+    CHECK(applyPrecedence("bisected:9", 4).BisectionDepth == 9);
+    // ...in both directions (explicit depth lower or higher than the
+    // CLI default), and even for depth 0.
+    CHECK(applyPrecedence("bisected:0", 15).BisectionDepth == 0);
+    CHECK(applyPrecedence("bisected:15", 0).BisectionDepth == 15);
 }
 
 TEST_CASE("SetBoundMode rejects invalid combinations the same way ParseShapeBoundMode does", "[shape-constraints]")
