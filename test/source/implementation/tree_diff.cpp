@@ -507,7 +507,7 @@ TEST_CASE("BuildJacobianDag performance vs JacRev", "[tree_diff][performance]")
             auto dag = BuildJacobianDag(trees[i]);
             Tree t{dag.Nodes};
             Interp const interp{&dtable, &ds, &t};
-            nb::doNotOptimizeAway(interp.EvaluateRoots(coeff, range, dag.Roots));
+            nb::doNotOptimizeAway(interp.EvaluateRoots(coeff, range, dag.Roots).value());
         }
     });
 
@@ -518,7 +518,7 @@ TEST_CASE("BuildJacobianDag performance vs JacRev", "[tree_diff][performance]")
             if (coeff.empty()) { continue; }
             Tree t{dags[i].Nodes};
             Interp const interp{&dtable, &ds, &t};
-            nb::doNotOptimizeAway(interp.EvaluateRoots(coeff, range, dags[i].Roots));
+            nb::doNotOptimizeAway(interp.EvaluateRoots(coeff, range, dags[i].Roots).value());
         }
     });
 
@@ -880,7 +880,9 @@ auto EvalDagRoots(
 {
     Tree t{dagNodes};
     Interp const interp{&dtable, &ds, &t};
-    return interp.EvaluateRoots(coeff, range, roots);
+    auto result = interp.EvaluateRoots(coeff, range, roots);
+    if (!result) { throw std::runtime_error(Operon::FormatInterpreterError(result.error())); }
+    return std::move(*result);
 }
 
 // Evaluate a single DAG root via EvalDagRoots (convenience wrapper).

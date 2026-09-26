@@ -33,6 +33,7 @@ struct InterpreterError {
         MissingDerivative,
         InvalidOutputSize,
         InvalidCoefficientSize,
+        InvalidRootIndex,
 
     };
 
@@ -49,6 +50,7 @@ struct InterpreterError {
     case InterpreterError::Code::MissingDerivative: return fmt::format("missing derivative for primitive with hash {}", error.Hash);
     case InterpreterError::Code::InvalidOutputSize: return fmt::format("invalid output size: expected {}, got {}", error.ExpectedSize, error.ActualSize);
     case InterpreterError::Code::InvalidCoefficientSize: return fmt::format("invalid coefficient size: expected {}, got {}", error.ExpectedSize, error.ActualSize);
+    case InterpreterError::Code::InvalidRootIndex: return fmt::format("invalid root index: expected less than {}, got {}", error.ExpectedSize, error.ActualSize);
     }
     std::unreachable();
 }
@@ -302,11 +304,21 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
     }
 
     // Evaluates the full tree and extracts values at multiple node indices; roots set to SIZE_MAX produce zero columns.
-    auto EvaluateRoots(Operon::Span<T const> coeff, Operon::Range range,
-        Operon::Span<std::size_t const> roots) const -> Eigen::Array<T, -1, -1>
+    [[nodiscard]] auto EvaluateRoots(Operon::Span<T const> coeff, Operon::Range range,
+        Operon::Span<std::size_t const> roots) const -> tl::expected<Eigen::Array<T, -1, -1>, InterpreterError>
     {
-        InitContext(coeff, range);
-
+        if (auto valid = ValidateCoefficients(coeff); !valid) { return tl::unexpected(std::move(valid.error())); }
+        if (context_.empty() || range_ != range) {
+            auto bound = BindTree(range);
+            if (!bound) { return tl::unexpected(std::move(bound.error())); }
+        }
+        auto const nNodes = static_cast<std::size_t>(tree_->Nodes().size());
+        for (auto root : roots) {
+            if (root != NoIndex && root >= nNodes) {
+                return tl::unexpected(InterpreterError { InterpreterError::Code::InvalidRootIndex, {}, nNodes, root });
+            }
+        }
+        UpdateCoefficients(coeff);
         auto const len = static_cast<int64_t>(range.Size());
         auto const nRoots = static_cast<Eigen::Index>(roots.size());
         constexpr int64_t S = BatchSize;
@@ -318,11 +330,6 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
             if (roots[k] == NoIndex) {
                 result.col(k).setZero();
             }
-        }
-
-        auto const nNodes = static_cast<std::size_t>(tree_->Nodes().size());
-        for (Eigen::Index k = 0; k < nRoots; ++k) {
-            EXPECT(roots[k] == NoIndex || roots[k] < nNodes);
         }
 
         for (auto row = 0L; row < len; row += S) {
@@ -597,15 +604,6 @@ private:
             if (!coeff.empty() && n.Optimize) { std::get<0>(context_[i]) = T { coeff[j++] }; }
             if (n.IsConstant()) { Backend::Fill<T, S>(primal_, i, std::get<0>(context_[i])); }
         }
-    }
-
-    auto InitContext(Operon::Span<T const> coeff, Operon::Range range) const
-    {
-        if (context_.empty() || range_ != range) {
-            auto bound = BindTree(range);
-            if (!bound) { throw std::runtime_error(FormatInterpreterError(bound.error())); }
-        }
-        UpdateCoefficients(coeff);
     }
 };
 

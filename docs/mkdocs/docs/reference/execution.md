@@ -18,6 +18,8 @@ auto jacobian = interpreter.JacRev(tree.GetCoefficients(), range);
 
 All fallible `Interpreter` operations return `tl::expected`; inspect the result before using its value.
 
+This API change is a deliberate breaking boundary for the next Operon API epoch: `InterpreterBase` virtual return types use `tl::expected`, and the former virtual `Try*` methods are removed. Downstream bindings and consumers must rebuild and migrate together; binaries built against the previous virtual interface are not ABI-compatible.
+
 ## `EvaluatorBase`
 
 Header: [`operon/operators/evaluator.hpp`](https://github.com/heal-research/operon/blob/main/include/operon/operators/evaluator.hpp)
