@@ -111,6 +111,7 @@ add_executable(memory_view_consumer source/memory_view_consumer.cpp)
 target_link_libraries(memory_view_consumer PRIVATE operon::operon)
 target_compile_features(memory_view_consumer PRIVATE cxx_std_23)
 add_test(NAME memory_view_consumer COMMAND memory_view_consumer)
+add_dependencies(operon_test memory_view_consumer)
 
 # view_descriptor.h is deliberately plain C11 with no C++ dependency, so its
 # consumer fixture is compiled as C and does not link operon::operon -- it
@@ -119,6 +120,7 @@ add_executable(view_descriptor_consumer source/view_descriptor_consumer.c)
 target_include_directories(view_descriptor_consumer PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../include")
 set_target_properties(view_descriptor_consumer PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES)
 add_test(NAME view_descriptor_consumer COMMAND view_descriptor_consumer)
+add_dependencies(operon_test view_descriptor_consumer)
 
 # ---- Installed-package-consumer contract (package-consumer) ----
 # Exercises the install -> relocate -> find_package(operon CONFIG) -> build
