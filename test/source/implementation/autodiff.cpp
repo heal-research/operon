@@ -5,9 +5,10 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 
+#include <array>
 #include <cmath>
+#include <limits>
 #include <random>
-
 #include "../operon_test.hpp"
 
 #include "operon/core/pset.hpp"
@@ -85,6 +86,42 @@ TEST_CASE("Autodiff APIs report missing derivatives", "[autodiff]")
     CHECK(interpreter.JacFwd(coeff, range).error().Kind == Operon::InterpreterError::Code::MissingDerivative);
     CHECK(interpreter.JacRevVariable(coeff, range, ds.GetVariable("x")->Hash).error().Kind == Operon::InterpreterError::Code::MissingDerivative);
     CHECK(interpreter.JacFwdVariable(coeff, range, ds.GetVariable("x")->Hash).error().Kind == Operon::InterpreterError::Code::MissingDerivative);
+}
+
+TEST_CASE("Interpreter reports invalid coefficient, output, and root sizes", "[autodiff]")
+{
+    Operon::Dataset ds({"x"}, {{1.0F, 2.0F}});
+    Operon::DispatchTable<Operon::Scalar> dtable;
+    auto tree = Operon::InfixParser::ParseOrThrow("2 * x", ds);
+    for (auto& node : tree.Nodes()) {
+        if (node.IsConstant()) { node.Optimize = true; break; }
+    }
+    tree.UpdateNodes();
+    Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> interpreter{&dtable, &ds, &tree};
+    Operon::Range const range{0, 2};
+    auto const coeff = tree.GetCoefficients();
+    Operon::Vector<Operon::Scalar> wrongCoeff(coeff.size() + 1, 1.0F);
+    auto const invalidCoeff = interpreter.Evaluate(wrongCoeff, range);
+    REQUIRE_FALSE(invalidCoeff);
+    CHECK(invalidCoeff.error().Kind == Operon::InterpreterError::Code::InvalidCoefficientSize);
+
+    Operon::Vector<Operon::Scalar> output(1);
+    auto const invalidOutput = interpreter.Evaluate(coeff, range, output);
+    REQUIRE_FALSE(invalidOutput);
+    Operon::Vector<Operon::Scalar> jacobian(range.Size() * coeff.size());
+    auto const invalidJacobian = interpreter.JacRev(coeff, range, Operon::Span<Operon::Scalar>{jacobian.data() + 1, jacobian.size() - 1});
+    REQUIRE_FALSE(invalidJacobian);
+    CHECK(invalidJacobian.error().Kind == Operon::InterpreterError::Code::InvalidOutputSize);
+
+    std::array<std::size_t, 2> roots{0, std::numeric_limits<std::size_t>::max()};
+    auto const evaluatedRoots = interpreter.EvaluateRoots(coeff, range, roots);
+    REQUIRE(evaluatedRoots);
+    CHECK(evaluatedRoots->col(1).isZero());
+
+    std::array<std::size_t, 1> invalidRoots{tree.Nodes().size()};
+    auto const invalidRoot = interpreter.EvaluateRoots(coeff, range, invalidRoots);
+    REQUIRE_FALSE(invalidRoot);
+    CHECK(invalidRoot.error().Kind == Operon::InterpreterError::Code::InvalidRootIndex);
 }
 
 TEST_CASE("Autodiff forward vs reverse consistency", "[autodiff]")

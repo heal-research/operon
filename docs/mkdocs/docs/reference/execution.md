@@ -39,6 +39,8 @@ The three-argument `operator()` is final. It calls `Evaluate`, then `Score`, and
 
 `ObjectiveCount()` defaults to one; override it for vector objectives. `Prepare(population)` is a pre-evaluation hook. `SetBudget`, `BudgetExhausted`, and atomic counter accessors expose the evaluation budget and accounting. Built-in `Evaluator<DTable>` accepts an `ErrorMetric`; `SSE`, `MSE`, `NMSE`, `RMSE`, `MAE`, `R2`, and `C2` are available metric types.
 
+
+Evaluator failures are converted to the evaluator's worst-score sentinel rather than escaping through the optimization loop. In particular, `MinimumDescriptionLengthEvaluator::Score` returns `EvaluatorBase::ErrMax` when Jacobian evaluation fails, preserving the evaluator's fixed fitness arity and allowing population comparisons to continue safely.
 ## Shape constraints
 
 Header: [`operon/operators/shape_constrained_evaluator.hpp`](https://github.com/heal-research/operon/blob/main/include/operon/operators/shape_constrained_evaluator.hpp)

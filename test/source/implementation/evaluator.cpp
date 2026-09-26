@@ -352,6 +352,7 @@ TEST_CASE("MDL evaluator", "[evaluator][information-criteria]")
             {estimTrain.data(), estimTrain.size()}, targetTrain, {sigmaArr.data(), sigmaArr.size()}));
         auto jac = interp.JacRev(coeffs, trainingRange);
         INFO("JacRev error: " << (jac ? "none" : Operon::FormatInterpreterError(jac.error())));
+        REQUIRE(jac);
         auto jacobian = std::move(*jac);
         jacobian *= scale; // same scaled-Jacobian step used by pareto_front.cpp's MDL export
         auto const fisherMatrix = GaussianLikelihood<Operon::Scalar>::ComputeFisherMatrix(
