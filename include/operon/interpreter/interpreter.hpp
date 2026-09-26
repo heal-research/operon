@@ -491,7 +491,9 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
             }
 
             auto const w = std::get<0>(context_[c]);
-            auto const contribution = dot.col(nNodes - 1).head(remainingRows) * factor(c, primal, w).head(remainingRows);
+            Eigen::Array<T, S, 1> const factorValues = factor(c, primal, w);
+            Eigen::Array<T, S, 1> const contribution =
+                (dot.col(nNodes - 1).head(remainingRows) * factorValues.head(remainingRows)).eval();
             if constexpr (Accumulate) {
                 jac.col(static_cast<Eigen::Index>(col)).segment(row, remainingRows) += contribution;
             } else {
@@ -517,7 +519,9 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
             auto w = std::get<0>(context_[i]);
 
             if (auto const col = colOf[static_cast<std::size_t>(i)]; col != NoIndex) {
-                auto const contribution = trace.col(i).head(remainingRows) * factor(static_cast<std::size_t>(i), primal, w).head(remainingRows);
+                Eigen::Array<T, S, 1> const factorValues = factor(static_cast<std::size_t>(i), primal, w);
+                Eigen::Array<T, S, 1> const contribution =
+                    (trace.col(i).head(remainingRows) * factorValues.head(remainingRows)).eval();
                 if constexpr (Accumulate) {
                     jac.col(static_cast<Eigen::Index>(col)).segment(row, remainingRows) += contribution;
                 } else {
