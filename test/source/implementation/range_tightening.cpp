@@ -332,7 +332,7 @@ TEST_CASE("TightenRangeBisected - never looser than TightenRange, soundness agai
         }
         Dataset const pointDs(names, pointData);
         Range const range{0, nPoints};
-        auto const values = Interp{&dtable, &pointDs, &tree}.Evaluate(coeff, range);
+        auto const values = Interp{&dtable, &pointDs, &tree}.Evaluate(coeff, range).value();
 
         for (auto v : values) {
             if (!std::isfinite(v)) { continue; }
@@ -433,7 +433,7 @@ TEST_CASE("TightenRange - soundness against random point samples on random trees
         }
         Dataset const pointDs(names, pointData);
         Range const range{0, nPoints};
-        auto const values = Interp{&dtable, &pointDs, &tree}.Evaluate(coeff, range);
+        auto const values = Interp{&dtable, &pointDs, &tree}.Evaluate(coeff, range).value();
 
         for (auto v : values) {
             if (!std::isfinite(v)) { continue; } // domain edge in the original function itself

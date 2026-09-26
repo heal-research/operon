@@ -152,13 +152,17 @@ public:
         auto evaluate = tf.emplace([&](tf::Subflow& sf) {
             sf.emplace([&]() {
                 Interpreter interpreter{dtable, dataset, &best_.Genotype};
-                estimatedTrain = interpreter.Evaluate(best_.Genotype.GetCoefficients(), trainingRange);
+                auto trainResult = interpreter.Evaluate(best_.Genotype.GetCoefficients(), trainingRange);
+                if (!trainResult) { throw std::runtime_error(Operon::FormatInterpreterError(trainResult.error())); }
+                estimatedTrain = std::move(*trainResult);
                 ENSURE(trainingRange.Size() > 0 && estimatedTrain.size() == trainingRange.Size());
             }).name("eval train");
 
             sf.emplace([&]() {
                 Interpreter interpreter{dtable, dataset, &best_.Genotype};
-                estimatedTest = interpreter.Evaluate(best_.Genotype.GetCoefficients(), testRange);
+                auto testResult = interpreter.Evaluate(best_.Genotype.GetCoefficients(), testRange);
+                if (!testResult) { throw std::runtime_error(Operon::FormatInterpreterError(testResult.error())); }
+                estimatedTest = std::move(*testResult);
                 ENSURE(testRange.Size() > 0 && estimatedTest.size() == testRange.Size());
             }).name("eval test");
         });

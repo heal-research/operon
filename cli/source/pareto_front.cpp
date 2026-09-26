@@ -65,8 +65,12 @@ auto WriteParetoFront(std::string const& path,
     for (auto i = 0UL; i < front.size(); ++i) {
         auto const* ind = front[i];
         Interpreter<Scalar, ScalarDispatch> const interp{&dtable, ds, &ind->Genotype};
-        auto estimTrain = interp.Evaluate(ind->Genotype.GetCoefficients(), trainRange);
-        auto estimTest  = interp.Evaluate(ind->Genotype.GetCoefficients(), testRange);
+        auto estimTrainResult = interp.Evaluate(ind->Genotype.GetCoefficients(), trainRange);
+        if (!estimTrainResult) { throw std::runtime_error(FormatInterpreterError(estimTrainResult.error())); }
+        auto estimTrain = std::move(*estimTrainResult);
+        auto estimTestResult = interp.Evaluate(ind->Genotype.GetCoefficients(), testRange);
+        if (!estimTestResult) { throw std::runtime_error(FormatInterpreterError(estimTestResult.error())); }
+        auto estimTest = std::move(*estimTestResult);
 
         // Scale factor for the raw tree's Jacobian: the reported model is
         // y = a * tree(x; coeffs) + b when linear scaling is on, so
@@ -103,8 +107,10 @@ auto WriteParetoFront(std::string const& path,
         auto const fbf = FractionalBayesFactor(ind->Genotype, n, nll);
 
         auto const coeffs  = ind->Genotype.GetCoefficients();
-        auto jac           = interp.JacRev(coeffs, trainRange);
-        jac *= scale; // d(a*tree)/d(coeffs) = a * d(tree)/d(coeffs); scale == 1 when linearScaling is off
+        auto jacResult = interp.JacRev(coeffs, trainRange);
+        if (!jacResult) { throw std::runtime_error(FormatInterpreterError(jacResult.error())); }
+        auto jac = std::move(*jacResult);
+        jac *= scale;
         auto fisherMatrix  = GaussianLikelihood<Scalar>::ComputeFisherMatrix(
                                   {estimTrain.data(), estimTrain.size()},
                                   {jac.data(), static_cast<std::size_t>(jac.size())},

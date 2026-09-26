@@ -41,7 +41,9 @@ inline auto GradientImportance(Operon::Tree const& tree, Operon::Dataset const& 
     std::vector<std::pair<Operon::Hash, double>> result;
     result.reserve(vars.size());
     for (auto const variable : vars) {
-        auto const derivative = interpreter.JacRevVariable(coeff, range, variable);
+        auto derivativeResult = interpreter.JacRevVariable(coeff, range, variable);
+        if (!derivativeResult) { throw std::runtime_error(FormatInterpreterError(derivativeResult.error())); }
+        auto const& derivative = *derivativeResult;
         auto const sum = std::transform_reduce(derivative.begin(), derivative.end(), Operon::Scalar{0}, std::plus<>{},
             [](Operon::Scalar d) -> Operon::Scalar { return std::abs(d); });
         result.emplace_back(variable, static_cast<double>(sum) / static_cast<double>(derivative.size()));

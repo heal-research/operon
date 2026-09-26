@@ -18,7 +18,7 @@ namespace Operon {
         using INT = Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>;
 
         taskflow.for_each_index(size_t{0}, size_t{trees.size()}, size_t{1}, [&](size_t i) -> void {
-            auto evaluated = INT{&dtable, dataset, &trees[i]}.TryEvaluate({}, range);
+            auto evaluated = INT{&dtable, dataset, &trees[i]}.Evaluate({}, range);
             if (evaluated) {
                 result[i] = std::move(*evaluated);
             } else {
@@ -51,7 +51,7 @@ namespace Operon {
 
         taskflow.for_each_index(size_t{0}, size_t{trees.size()}, size_t{1}, [&](size_t i) -> void {
             auto output = result.subspan(i * range.Size(), range.Size());
-            auto evaluated = INT{&dtable, dataset, &trees[i]}.TryEvaluate({}, range, output);
+            auto evaluated = INT{&dtable, dataset, &trees[i]}.Evaluate({}, range, output);
             if (!evaluated) { errors[i] = std::move(evaluated.error()); }
         });
         executor.run(taskflow).get();

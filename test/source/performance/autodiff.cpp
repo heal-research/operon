@@ -45,7 +45,7 @@ TEST_CASE("Autodiff performance", "[performance]")
             a = std::transform_reduce(trees.begin(), trees.end(), double{0}, std::plus{}, [](auto const& t) -> auto { return t.CoefficientsCount(); }) / static_cast<double>(n);
             auto bl = std::transform_reduce(trees.begin(), trees.end(), 0UL, std::plus{}, [](auto const& t) -> auto { return t.Length(); });
             bench.batch(trees.size()).run(fmt::format("{};{};{}", prefix, a, static_cast<double>(bl) / static_cast<double>(n)), [&]() -> void {
-                for (auto const& tree : trees) { f(ds, tree, range); }
+                for (auto const& tree : trees) { static_cast<void>(f(ds, tree, range)); }
             });
             z += 10; // NOLINT
         } while (a < s); // NOLINT
@@ -120,7 +120,7 @@ TEST_CASE("Reverse mode performance", "[performance]")
     b.batch(numtrees).run("rev", [&]() -> void {
         for (auto const& tree : trees) {
             auto coeff{tree.GetCoefficients()};
-            INT{&dtable, &ds, &tree}.JacRev(coeff, range);
+            static_cast<void>(INT{&dtable, &ds, &tree}.JacRev(coeff, range));
         }
     });
 }
@@ -167,7 +167,7 @@ TEST_CASE("Primitive performance", "[performance]")
             auto sum = 0.;
             for (auto const& tree : trees) {
                 auto coeff = tree.GetCoefficients();
-                Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>(&dt, &ds, &tree).Evaluate(coeff, rg, out);
+                static_cast<void>(Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>(&dt, &ds, &tree).Evaluate(coeff, rg, out));
                 sum += std::reduce(out.begin(), out.end());
             }
             return sum;
@@ -191,7 +191,7 @@ TEST_CASE("Primitive performance", "[performance]")
             auto sum = 0.;
             for (auto const& tree : trees) {
                 auto coeff = tree.GetCoefficients();
-                Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>(&dt, &ds, &tree).JacRev(coeff, rg, jac);
+                static_cast<void>(Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>(&dt, &ds, &tree).JacRev(coeff, rg, jac));
                 sum += std::reduce(jac.begin(), jac.end());
             }
             return sum;

@@ -69,7 +69,7 @@ namespace {
     {
         DTable dtable;
         auto coeff = tree.GetCoefficients();
-        auto result = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(coeff, range);
+        auto result = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(coeff, range).value();
         return { result.begin(), result.end() };
     }
 
@@ -732,7 +732,7 @@ TEST_CASE("CompileJacobian correctness vs JacRev - random trees", "[jit][jacobia
 
         // Reference: JacRev via interpreter
         Interpreter<Operon::Scalar, DTable> const interp { &dtable, &ds, &tree };
-        auto const jrev = interp.JacRev(coeff, range);
+        auto const jrev = interp.JacRev(coeff, range).value();
 
         // JIT Jacobian
         auto const dag = BuildJacobianDag(tree);
@@ -808,7 +808,7 @@ TEST_CASE("CompileJacobian correctness - variable weights", "[jit][jacobian]")
         }
 
         Interpreter<Operon::Scalar, DTable> const interp { &dtable, &ds, &tree };
-        auto const jrev = interp.JacRev(coeff, range);
+        auto const jrev = interp.JacRev(coeff, range).value();
 
         auto const dag = BuildJacobianDag(tree);
         auto compiled = compiler.CompileJacobian(dag);
@@ -903,8 +903,7 @@ TEST_CASE("CompileJacobian performance vs JacRev", "[jit][jacobian][performance]
             if (coeffs[i].empty()) {
                 continue;
             }
-            nb::doNotOptimizeAway(
-                Interpreter<Operon::Scalar, DTable> { &dtable, &ds, &trees[i] }.JacRev(coeffs[i], range));
+            static_cast<void>(Interpreter<Operon::Scalar, DTable> { &dtable, &ds, &trees[i] }.JacRev(coeffs[i], range));
         }
     });
 
@@ -1000,13 +999,13 @@ TEST_CASE("JitLMCostFunction residuals vs interpreter", "[jit][lm]")
         REQUIRE(ok);
 
         // Reference residuals: interpreter predict - target
-        auto predVec = interp.Evaluate(evalCoeff, range);
+        auto predVec = interp.Evaluate(evalCoeff, range).value();
         Eigen::Map<const Eigen::Array<Operon::Scalar, -1, 1>> tgtArr(target.data(), nRes);
         Eigen::Map<const Eigen::Array<Operon::Scalar, -1, 1>> predArr(predVec.data(), nRes);
         Eigen::Array<Operon::Scalar, -1, 1> refResiduals = predArr - tgtArr;
 
         // Reference Jacobian: (nRes, nPar) col-major
-        auto refJac = interp.JacRev(evalCoeff, range);
+        auto refJac = interp.JacRev(evalCoeff, range).value();
         REQUIRE(refJac.rows() == nRes);
         REQUIRE(refJac.cols() == nPar);
 
@@ -1113,8 +1112,8 @@ TEST_CASE("JitLMCostFunction respects consts parameter", "[jit][lm]")
     // Verify each set against the interpreter
     auto check = [&](std::vector<Operon::Scalar>& p, std::vector<Operon::Scalar>& res,
                      std::vector<Operon::Scalar>& jac) {
-        auto predVec = interp.Evaluate(p, range);
-        auto refJac = interp.JacRev(p, range);
+        auto predVec = interp.Evaluate(p, range).value();
+        auto refJac = interp.JacRev(p, range).value();
 
         Eigen::Map<const Eigen::Array<Operon::Scalar, -1, 1>> tgtArr(target.data(), static_cast<Eigen::Index>(nRes));
         Eigen::Map<const Eigen::Array<Operon::Scalar, -1, 1>> predArr(predVec.data(), static_cast<Eigen::Index>(nRes));
@@ -1187,7 +1186,7 @@ TEST_CASE("JitLMCostFunction residuals only (no Jacobian)", "[jit][lm]")
     bool ok = cf.Evaluate(evalCoeff.data(), jitResiduals.data(), nullptr);
     REQUIRE(ok);
 
-    auto predVec = interp.Evaluate(evalCoeff, range);
+    auto predVec = interp.Evaluate(evalCoeff, range).value();
     Eigen::Map<const Eigen::Array<Operon::Scalar, -1, 1>> tgtArr(target.data(), static_cast<Eigen::Index>(nRes));
     Eigen::Map<const Eigen::Array<Operon::Scalar, -1, 1>> predArr(predVec.data(), static_cast<Eigen::Index>(nRes));
     auto refRes = (predArr - tgtArr).eval();
@@ -1281,7 +1280,7 @@ TEST_CASE("JitLMCostFunction TinySolver convergence", "[jit][lm]")
 
     // Verify by evaluating the expression with the optimized coefficients.
     m0 = p.template cast<Operon::Scalar>(); // already done above, but be explicit
-    auto predVec = interp.Evaluate(x0, range);
+    auto predVec = interp.Evaluate(x0, range).value();
     for (int i = 0; i < NRows; ++i) {
         INFO("row " << i);
         CHECK(predVec[i] == Catch::Approx(y[i]).epsilon(1e-3F));

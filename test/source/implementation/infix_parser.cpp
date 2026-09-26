@@ -55,8 +55,8 @@ TEST_CASE("Parser roundtrip correctness", "[parser]")
         for (int i = 0; i < nTrees; ++i) {
             auto const& t1 = trees[i];
             auto const& t2 = parsedTrees[i];
-            auto v1 = Interpreter<Operon::Scalar, DTable>::Evaluate(t1, ds, range)[0];
-            auto v2 = Interpreter<Operon::Scalar, DTable>::Evaluate(t2, ds, range)[0];
+            auto v1 = Interpreter<Operon::Scalar, DTable>::Evaluate(t1, ds, range).value()[0];
+            auto v2 = Interpreter<Operon::Scalar, DTable>::Evaluate(t2, ds, range).value()[0];
             if (std::isfinite(v1)) {
                 count += static_cast<size_t>(!std::isfinite(v2) || std::abs(v1 - v2) > eps);
             }
@@ -126,7 +126,7 @@ TEST_CASE("Parse specific expressions", "[parser]")
         std::string const x{"x"};
         std::vector<Operon::Scalar> const v{0};
         Operon::Dataset const ds({x}, {v});
-        auto result = Interpreter<Operon::Scalar, DTable>::Evaluate(tree, ds, Range(0, 1));
+        auto result = Interpreter<Operon::Scalar, DTable>::Evaluate(tree, ds, Range(0, 1)).value();
         CHECK(tree.Validate());
         CHECK(result[0] == Catch::Approx(10.0F));
     }
@@ -191,7 +191,7 @@ TEST_CASE("Parser folding preserves numerical semantics", "[parser]")
     Range const range{0, 1};
     auto evaluate = [&](std::string_view expression, InfixParseOptions options) {
         auto tree = InfixParser::ParseOrThrow(expression, ds, options);
-        return Interpreter<Operon::Scalar, DTable>::Evaluate(tree, ds, range)[0];
+        return Interpreter<Operon::Scalar, DTable>::Evaluate(tree, ds, range).value()[0];
     };
     auto const expected = evaluate("2.5 * x + y", {});
     CHECK(evaluate("2.5 * x + y", {.FoldVariableWeights = true}) == Catch::Approx(expected));
@@ -262,8 +262,8 @@ TEST_CASE("Formatter output", "[parser]")
         // produce a string that round-trips to the tree's actual value.
         auto const reparsed = InfixParser::ParseOrThrow(s, ds2);
         Operon::Range const rg(0, 1);
-        auto const original = Interpreter<Operon::Scalar, DTable>::Evaluate(tree, ds2, rg);
-        auto const roundtrip = Interpreter<Operon::Scalar, DTable>::Evaluate(reparsed, ds2, rg);
+        auto const original = Interpreter<Operon::Scalar, DTable>::Evaluate(tree, ds2, rg).value();
+        auto const roundtrip = Interpreter<Operon::Scalar, DTable>::Evaluate(reparsed, ds2, rg).value();
         CHECK(original[0] == Catch::Approx(8.0F)); // x*y + x = 2*3 + 2
         CHECK(roundtrip[0] == Catch::Approx(original[0]));
     }

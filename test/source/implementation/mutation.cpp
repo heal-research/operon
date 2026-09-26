@@ -59,7 +59,7 @@ namespace {
     auto Evaluate(Tree const& tree, Dataset const& dataset) -> std::vector<Scalar>
     {
         using DTable = DispatchTable<Scalar>;
-        return Interpreter<Scalar, DTable>::Evaluate(tree, dataset, Range{0, dataset.Rows<std::size_t>()});
+        return Interpreter<Scalar, DTable>::Evaluate(tree, dataset, Range{0, dataset.Rows<std::size_t>()}).value();
     }
 
     void CheckFinite(std::vector<Scalar> const& values)

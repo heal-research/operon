@@ -8,8 +8,8 @@
 #include <cmath>
 #include <functional>
 #include <numeric>
+#include <stdexcept>
 #include <vector>
-
 #include "operon/analyzers/detail/variables_used_in.hpp"
 #include "operon/core/contracts.hpp"
 #include "operon/core/dataset.hpp"
@@ -57,7 +57,9 @@ inline auto PermutationImportance(Operon::Tree const& tree, Operon::Dataset cons
     // directly against a `range`-sized prediction silently misaligns rows
     // whenever range.Start() != 0.
     auto const actual = dataset.GetValues(target).subspan(range.Start(), range.Size());
-    auto const predicted = Interp::Evaluate(tree, dataset, range);
+    auto predictedResult = Interp::Evaluate(tree, dataset, range);
+    if (!predictedResult) { throw std::runtime_error(Operon::FormatInterpreterError(predictedResult.error())); }
+    auto predicted = std::move(*predictedResult);
     Operon::Span<Operon::Scalar const> const predictedSpan{ predicted.data(), predicted.size() };
     auto const baseline = Operon::R2Score(predictedSpan, actual);
 
@@ -82,7 +84,9 @@ inline auto PermutationImportance(Operon::Tree const& tree, Operon::Dataset cons
             std::shuffle(shuffled.begin(), shuffled.end(), rng);
             workingCopy.SetValues(variable, range, { shuffled.data(), shuffled.size() });
 
-            auto const perturbedPredicted = Interp::Evaluate(tree, workingCopy, range);
+            auto perturbedResult = Interp::Evaluate(tree, workingCopy, range);
+            if (!perturbedResult) { throw std::runtime_error(Operon::FormatInterpreterError(perturbedResult.error())); }
+            auto perturbedPredicted = std::move(*perturbedResult);
             Operon::Span<Operon::Scalar const> const perturbedSpan{ perturbedPredicted.data(), perturbedPredicted.size() };
             auto const perturbedR2 = Operon::R2Score(perturbedSpan, actual);
 

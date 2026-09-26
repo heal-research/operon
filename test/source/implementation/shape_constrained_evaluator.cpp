@@ -59,7 +59,7 @@ namespace {
                 data.col(Ncol - 1) = data.col(0) - data.col(1);
                 return Operon::Dataset(gsl::not_null { data.data() }, Nrow, Ncol);
             }())
-            , tree(InfixParser::Parse("X1 - X2", ds))
+            , tree(InfixParser::ParseOrThrow("X1 - X2", ds))
             , problem(&ds)
             , nmse(&problem, &dtable, Operon::NMSE {})
         {
@@ -341,7 +341,7 @@ TEST_CASE("ShapeConstrainedEvaluator - bisected interval tightens a dependency-p
         data(static_cast<Eigen::Index>(i), 1) = data(static_cast<Eigen::Index>(i), 0);
     }
     Operon::Dataset ds(gsl::not_null { data.data() }, nrow, ncol);
-    auto tree = InfixParser::Parse("(X1 - 1) * (X1 - 1)", ds);
+    auto tree = InfixParser::ParseOrThrow("(X1 - 1) * (X1 - 1)", ds);
     Operon::Problem problem(&ds);
     problem.SetTrainingRange({ 0, nrow });
     problem.SetTestRange({ 0, nrow });
@@ -408,7 +408,7 @@ TEST_CASE("ShapeConstrainedEvaluator - bisected interval accepts a model naive i
         data(static_cast<Eigen::Index>(i), 1) = data(static_cast<Eigen::Index>(i), 0);
     }
     Operon::Dataset ds(gsl::not_null { data.data() }, nrow, ncol);
-    auto tree = InfixParser::Parse("(X1 - 1) * (X1 - 1)", ds);
+    auto tree = InfixParser::ParseOrThrow("(X1 - 1) * (X1 - 1)", ds);
     Operon::Problem problem(&ds);
     problem.SetTrainingRange({ 0, nrow });
     problem.SetTestRange({ 0, nrow });
@@ -559,7 +559,7 @@ TEST_CASE("Wide interval evaluator preserves packed tree lanes", "[shape-constra
     Eigen::Array<S, -1, -1> data(2, 3);
     data << S { -5 }, S { -5 }, S { 0 }, S { 5 }, S { 5 }, S { 0 };
     Operon::Dataset ds(gsl::not_null { data.data() }, 2, 3);
-    auto tree = Operon::InfixParser::Parse("sin(X1) + cos(X1) * X1 ^ 2 + X2", ds);
+    auto tree = Operon::InfixParser::ParseOrThrow("sin(X1) + cos(X1) * X1 ^ 2 + X2", ds);
     auto const x1 = ds.GetVariable("X1").value().Hash;
     auto const x2 = ds.GetVariable("X2").value().Hash;
     WI::DomainMap domains { { x1, { S { -5 }, S { 5 } } }, { x2, { S { -5 }, S { 5 } } } };
@@ -612,7 +612,7 @@ TEST_CASE("Bisected interval bound agrees with a scalar leaf-by-leaf reference",
             data(static_cast<Eigen::Index>(i), static_cast<Eigen::Index>(ncol - 1)) = Operon::Scalar { 0 };
         }
         Operon::Dataset ds(gsl::not_null { data.data() }, nrow, ncol);
-        auto tree = Operon::InfixParser::Parse(ec.expr, ds);
+        auto tree = Operon::InfixParser::ParseOrThrow(ec.expr, ds);
 
         Operon::Problem problem(&ds);
         problem.SetTrainingRange({ 0, nrow });
@@ -676,7 +676,7 @@ TEST_CASE("Bisected interval endpoints enclose the split domain", "[shape-constr
         data(static_cast<Eigen::Index>(i), 1) = Operon::Scalar { 0 };
     }
     Operon::Dataset ds(gsl::not_null { data.data() }, nrow, ncol);
-    auto tree = InfixParser::Parse("X1", ds);
+    auto tree = InfixParser::ParseOrThrow("X1", ds);
 
     Operon::Problem problem(&ds);
     problem.SetTrainingRange({ 0, nrow });
@@ -728,7 +728,7 @@ TEST_CASE("Bisected interval falls back to the direct bound when a sub-box is ou
         data(static_cast<Eigen::Index>(i), 1) = Operon::Scalar { 0 };
     }
     Operon::Dataset ds(gsl::not_null { data.data() }, nrow, ncol);
-    auto tree = InfixParser::Parse("sqrt(X1) + X1", ds);
+    auto tree = InfixParser::ParseOrThrow("sqrt(X1) + X1", ds);
 
     Operon::Problem problem(&ds);
     problem.SetTrainingRange({ 0, nrow });
@@ -779,7 +779,7 @@ TEST_CASE(
         data(static_cast<Eigen::Index>(i), 1) = Operon::Scalar { 0 };
     }
     Operon::Dataset ds(gsl::not_null { data.data() }, nrow, ncol);
-    auto tree = InfixParser::Parse("1 / X1", ds);
+    auto tree = InfixParser::ParseOrThrow("1 / X1", ds);
 
     Operon::Problem problem(&ds);
     problem.SetTrainingRange({ 0, nrow });
@@ -894,7 +894,7 @@ TEST_CASE("SetBoundOptions validates bisection depths and invalidates cached mea
         data(static_cast<Eigen::Index>(i), 1) = Operon::Scalar { 0 };
     }
     Operon::Dataset ds(gsl::not_null { data.data() }, nrow, ncol);
-    auto tree = InfixParser::Parse("X1 - X1", ds); // plain interval: [-8, 8]; bisected depth d: [-h, h], h = 8/2^d
+    auto tree = InfixParser::ParseOrThrow("X1 - X1", ds); // plain interval: [-8, 8]; bisected depth d: [-h, h], h = 8/2^d
 
     Operon::Problem problem(&ds);
     problem.SetTrainingRange({ 0, nrow });
@@ -957,7 +957,7 @@ TEST_CASE("ShapeConstrainedEvaluator - balanced bisection resolves multi-axis de
         data(static_cast<Eigen::Index>(i), 2) = Operon::Scalar { 0 };
     }
     Operon::Dataset ds(gsl::not_null { data.data() }, nrow, ncol);
-    auto tree = InfixParser::Parse("X1 * X2 - X1 * X2", ds);
+    auto tree = InfixParser::ParseOrThrow("X1 * X2 - X1 * X2", ds);
     Operon::Problem problem(&ds);
     problem.SetTrainingRange({ 0, nrow });
     problem.SetTestRange({ 0, nrow });
@@ -1009,7 +1009,7 @@ TEST_CASE("Shape cache memo key includes a reference target", "[shape-constraint
 TEST_CASE("ShapeConstrainedEvaluator - negative linear scale flips derivative constraints", "[shape-constraints]")
 {
     Fixture fx;
-    auto negated = InfixParser::Parse("X2 - X1", fx.ds);
+    auto negated = InfixParser::ParseOrThrow("X2 - X1", fx.ds);
 
     auto scaling = Operon::FitLinearScaling(negated, fx.problem, fx.dtable, fx.problem.TrainingRange());
     REQUIRE(scaling);
@@ -1033,7 +1033,7 @@ TEST_CASE("ShapeConstrainedEvaluator - negative linear scale flips derivative co
 TEST_CASE("ShapeConstrainedEvaluator - negative linear scale swaps derivative bound endpoints", "[shape-constraints]")
 {
     Fixture fx;
-    auto negated = InfixParser::Parse("X2 - X1", fx.ds);
+    auto negated = InfixParser::ParseOrThrow("X2 - X1", fx.ds);
 
     auto scaling = Operon::FitLinearScaling(negated, fx.problem, fx.dtable, fx.problem.TrainingRange());
     REQUIRE(scaling);
@@ -1074,7 +1074,7 @@ TEST_CASE("ShapeConstrainedEvaluator - offset shifts identity bound constraints"
         data(static_cast<Eigen::Index>(i), 1) = data(static_cast<Eigen::Index>(i), 0) + Operon::Scalar { 10 };
     }
     Operon::Dataset ds(gsl::not_null { data.data() }, nrow, ncol);
-    auto tree = InfixParser::Parse("X1", ds);
+    auto tree = InfixParser::ParseOrThrow("X1", ds);
     Operon::Problem problem(&ds);
     problem.SetTrainingRange({ 0, nrow });
     problem.SetTestRange({ 0, nrow });
@@ -1106,7 +1106,7 @@ TEST_CASE(
     "ShapeConstrainedEvaluator and ShapeViolationEvaluator report directly fitted scaled bounds", "[shape-constraints]")
 {
     Fixture fx;
-    auto tree = InfixParser::Parse("2 * (X1 - X2) + 3", fx.ds);
+    auto tree = InfixParser::ParseOrThrow("2 * (X1 - X2) + 3", fx.ds);
     auto scaling = Operon::FitLinearScaling(tree, fx.problem, fx.dtable, fx.problem.TrainingRange());
     REQUIRE(scaling);
 
@@ -1147,7 +1147,7 @@ TEST_CASE(
     // that fallback is sound for LM coefficient fitting but not for a
     // feasibility certificate (a real, previously-latent soundness gap).
     Fixture fx;
-    auto tree = InfixParser::Parse("abs(X1)", fx.ds);
+    auto tree = InfixParser::ParseOrThrow("abs(X1)", fx.ds);
 
     Operon::ShapeConstraintSet cs;
     cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
@@ -1166,7 +1166,7 @@ TEST_CASE("ShapeConstrainedEvaluator - identically-zero derivative satisfies eit
     // AffineEvaluator call needed for it), which must satisfy a
     // non-decreasing (0 >= 0) or non-increasing (0 <= 0) constraint.
     Fixture fx;
-    auto tree = InfixParser::Parse("X2", fx.ds);
+    auto tree = InfixParser::ParseOrThrow("X2", fx.ds);
 
     Operon::ShapeConstraintSet cs;
     cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
@@ -1226,7 +1226,7 @@ TEST_CASE("ShapeConstrainedEvaluator - domain error (e.g. division by zero-conta
     // like this constantly, so Feasible() must swallow it as "can't be
     // certified feasible" rather than letting a run crash.
     Fixture fx;
-    auto tree = InfixParser::Parse("1 / X1", fx.ds);
+    auto tree = InfixParser::ParseOrThrow("1 / X1", fx.ds);
 
     Operon::ShapeConstraintSet cs;
     cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { -1 }, Operon::Scalar { 1 } });
@@ -1340,7 +1340,7 @@ TEST_CASE("ShapeConstrainedEvaluator - certifies constant integer powers of a ne
     // a materially different fitted Scale/Offset on macOS vs Linux, flipping
     // Feasible). Skip the fit so this checks the one thing it's meant to.
     fx.problem.SetLinearScalingEnabled(false);
-    auto tree = InfixParser::Parse("(-0.91) ^ 2", fx.ds);
+    auto tree = InfixParser::ParseOrThrow("(-0.91) ^ 2", fx.ds);
 
     Operon::ShapeConstraintSet cs;
     cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
@@ -1393,7 +1393,7 @@ TEST_CASE("ShapeConstrainedEvaluator - a NaN bound endpoint (Scale==0 times an u
     DTable dtable;
     Operon::Evaluator<DTable> nmse(&problem, &dtable, Operon::NMSE {});
 
-    auto tree = InfixParser::Parse("exp(X1)", ds);
+    auto tree = InfixParser::ParseOrThrow("exp(X1)", ds);
     auto const scaling = Operon::FitLinearScaling(tree, problem, dtable, problem.TrainingRange());
     REQUIRE(scaling.has_value());
     CHECK(scaling->Scale == Operon::Scalar { 0 }); // exact zero, not a fallback
@@ -1559,7 +1559,7 @@ TEST_CASE("Shape constraint CLI-adjacent composition works for representative en
             [&violation](Operon::Tree const& t) { return violation.Measure(t).Feasible; });
         auto feasible = Fixture::MakeIndividual(fx.tree);
         feasible.Fitness = { 10.0F };
-        auto infeasible = Fixture::MakeIndividual(InfixParser::Parse("X2 - X1", fx.ds));
+        auto infeasible = Fixture::MakeIndividual(InfixParser::ParseOrThrow("X2 - X1", fx.ds));
         infeasible.Fitness = { 0.1F };
         CHECK(comp(feasible, infeasible));
     }
@@ -1597,7 +1597,7 @@ TEST_CASE("ShapeViolationEvaluator - sign constraint violation magnitudes", "[sh
     cs.Constraints.push_back(
         { .Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt });
 
-    auto bad = InfixParser::Parse("X2 - X1", fx.ds);
+    auto bad = InfixParser::ParseOrThrow("X2 - X1", fx.ds);
     Operon::ShapeViolationEvaluator sve(&fx.problem, &fx.dtable, cs, Operon::Scalar { 3 });
     auto m = sve.Measure(bad);
     REQUIRE(m.Measurements.size() == 1);
@@ -1665,7 +1665,7 @@ TEST_CASE(
     CHECK(m.Measurements[1].Certified);
     CHECK(m.Measurements[2].Certified);
 
-    auto square = InfixParser::Parse("X1 * X1", fx.ds);
+    auto square = InfixParser::ParseOrThrow("X1 * X1", fx.ds);
     Operon::ShapeConstraintSet secondDerivativeOnly;
     secondDerivativeOnly.Domains = cs.Domains;
     secondDerivativeOnly.Constraints.push_back(
@@ -1714,7 +1714,7 @@ TEST_CASE("ShapeViolationEvaluator - Measure() uses stable cached results across
 TEST_CASE("ShapeViolationEvaluator - unknown violation and empty constraint set", "[shape-constraints]")
 {
     Fixture fx;
-    auto unknownTree = InfixParser::Parse("abs(X1)", fx.ds);
+    auto unknownTree = InfixParser::ParseOrThrow("abs(X1)", fx.ds);
 
     Operon::ShapeConstraintSet cs;
     cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
@@ -1794,7 +1794,7 @@ TEST_CASE("FeasibilityFirstComparison - feasible precedes infeasible regardless 
     auto feasibleWorseFit = Fixture::MakeIndividual(fx.tree); // satisfies the constraint
     feasibleWorseFit.Fitness = { 10.0F };
 
-    auto infeasibleBetterFit = InfixParser::Parse("X2 - X1", fx.ds); // violates: non-increasing in X1
+    auto infeasibleBetterFit = InfixParser::ParseOrThrow("X2 - X1", fx.ds); // violates: non-increasing in X1
     auto infeasibleInd = Fixture::MakeIndividual(infeasibleBetterFit);
     infeasibleInd.Fitness = { 0.01F };
 
@@ -1827,7 +1827,7 @@ TEST_CASE("ShapeConstrainedEvaluator - Prepare() populates the feasibility cache
     fx.problem.SetLinearScalingEnabled(false);
     Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
 
-    auto infeasibleTree = InfixParser::Parse("X2 - X1", fx.ds); // false: non-increasing in X1
+    auto infeasibleTree = InfixParser::ParseOrThrow("X2 - X1", fx.ds); // false: non-increasing in X1
     std::vector<Operon::Individual> pop { Fixture::MakeIndividual(fx.tree), Fixture::MakeIndividual(infeasibleTree) };
     sce.Prepare(pop);
 
@@ -1838,7 +1838,7 @@ TEST_CASE("ShapeConstrainedEvaluator - Prepare() populates the feasibility cache
     // the cache; trees from the first population must still resolve
     // correctly afterward (Feasible() computes fresh on a miss, doesn't
     // require having been in the most recent Prepare() call).
-    auto other = InfixParser::Parse("X1", fx.ds);
+    auto other = InfixParser::ParseOrThrow("X1", fx.ds);
     std::vector<Operon::Individual> pop2 { Fixture::MakeIndividual(other) };
     sce.Prepare(pop2);
     CHECK(sce.Feasible(other));
@@ -1866,7 +1866,7 @@ TEST_CASE("SCRATCH pappus-fix false-feasibility repro", "[.][shape-constraints-s
         DTable dtable;
         Operon::Evaluator<DTable> nmse(&problem, &dtable, Operon::NMSE {});
 
-        auto tree = InfixParser::Parse(model, ds);
+        auto tree = InfixParser::ParseOrThrow(model, ds);
         Operon::ShapeConstrainedEvaluator sce(&nmse, &dtable, loaded);
         auto feasible = sce.Feasible(tree);
         WARN(label << " Feasible()=" << feasible << " (expected false -- independent check found a real violation)");
@@ -1958,7 +1958,7 @@ TEST_CASE("SCRATCH ind333 sign-wrong derivative bound repro", "[.][shape-constra
         = "(exp((((0.903161883 * n) * (4.700151443 * alpha)) * ((((-4.018970013) * Ef) * (4.741394520 * epsilon)) + "
           "(((2.177207947 * n) * (2.639619350 * alpha)) * (((-1.325337768) * Ef) * (1.827161431 * epsilon)))))) + "
           "(((-4.018970013) * Ef) * ((0.903161883 * n) * (4.700151443 * alpha))))";
-    auto tree = InfixParser::Parse(model, ds);
+    auto tree = InfixParser::ParseOrThrow(model, ds);
 
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
@@ -2017,7 +2017,7 @@ TEST_CASE("SCRATCH ind431/ind450 affine-vs-interval bound comparison", "[.][shap
     };
 
     for (auto const& c : cases) {
-        auto tree = InfixParser::Parse(c.model, ds);
+        auto tree = InfixParser::ParseOrThrow(c.model, ds);
         auto const nHash = ds.GetVariable("n")->Hash;
         auto const dag = Operon::BuildVariableGradientDag(tree, tree.GetCoefficients());
         auto it = std::ranges::find(dag.Variables, nHash);

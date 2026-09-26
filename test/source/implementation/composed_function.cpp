@@ -53,7 +53,7 @@ namespace {
         Operon::Vector<Operon::Node> subnodes(dag.Nodes.cbegin(), dag.Nodes.cbegin() + static_cast<std::ptrdiff_t>(r) + 1);
         Operon::Tree t{std::move(subnodes)};
         Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interp{&dtable, &ds, &t};
-        return interp.Evaluate(coeff, range);
+        return interp.Evaluate(coeff, range).value();
     }
 } // namespace
 
@@ -80,7 +80,7 @@ TEST_CASE("Composed function: Callable derivation", "[composed-function]")
 
         auto coeff = tree.GetCoefficients();
         Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter{&dtable, &ds, &tree};
-        auto result = interpreter.Evaluate(coeff, range);
+        auto result = interpreter.Evaluate(coeff, range).value();
         auto const xs = ds.GetValues("x");
         for (std::size_t i = 0; i < range.Size(); ++i) {
             auto const expected = 1.0 / (1.0 + std::exp(-static_cast<double>(xs[i])));
@@ -109,7 +109,7 @@ TEST_CASE("Composed function: Callable derivation", "[composed-function]")
 
         auto coeff = tree.GetCoefficients();
         Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter{&dtable, &ds, &tree};
-        auto result = interpreter.Evaluate(coeff, range);
+        auto result = interpreter.Evaluate(coeff, range).value();
         auto const xs = ds.GetValues("x");
         auto const ys = ds.GetValues("y");
         for (std::size_t i = 0; i < range.Size(); ++i) {
@@ -132,7 +132,7 @@ TEST_CASE("Composed function: Callable derivation", "[composed-function]")
 
         auto coeff = tree.GetCoefficients();
         Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter{&dtable, &ds, &tree};
-        auto result = interpreter.Evaluate(coeff, range);
+        auto result = interpreter.Evaluate(coeff, range).value();
         auto const xs = ds.GetValues("x");
         for (std::size_t i = 0; i < range.Size(); ++i) {
             auto const expected = 3.7 * std::sin(static_cast<double>(xs[i]));
@@ -165,8 +165,8 @@ TEST_CASE("Composed function: CallableDiff derivation", "[composed-function]")
 
         auto coeff = tree.GetCoefficients();
         Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter{&dtable, &ds, &tree};
-        auto rev = interpreter.JacRevVariable(coeff, range, xHash);
-        auto fwd = interpreter.JacFwdVariable(coeff, range, xHash);
+        auto rev = interpreter.JacRevVariable(coeff, range, xHash).value();
+        auto fwd = interpreter.JacFwdVariable(coeff, range, xHash).value();
 
         auto const xs = ds.GetValues("x");
         for (std::size_t i = 0; i < range.Size(); ++i) {
@@ -191,8 +191,8 @@ TEST_CASE("Composed function: CallableDiff derivation", "[composed-function]")
 
         auto coeff = tree.GetCoefficients();
         Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter{&dtable, &ds, &tree};
-        auto rev = interpreter.JacRevVariable(coeff, range, xHash);
-        auto fwd = interpreter.JacFwdVariable(coeff, range, xHash);
+        auto rev = interpreter.JacRevVariable(coeff, range, xHash).value();
+        auto fwd = interpreter.JacFwdVariable(coeff, range, xHash).value();
 
         for (std::size_t i = 0; i < range.Size(); ++i) {
             CHECK(static_cast<double>(rev[i]) == Catch::Approx(2.0).margin(1e-4));
@@ -215,8 +215,8 @@ TEST_CASE("Composed function: CallableDiff derivation", "[composed-function]")
 
         auto coeff = tree.GetCoefficients();
         Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter{&dtable, &ds, &tree};
-        auto rev = interpreter.JacRevVariable(coeff, range, xHash);
-        auto fwd = interpreter.JacFwdVariable(coeff, range, xHash);
+        auto rev = interpreter.JacRevVariable(coeff, range, xHash).value();
+        auto fwd = interpreter.JacFwdVariable(coeff, range, xHash).value();
 
         for (std::size_t i = 0; i < range.Size(); ++i) {
             CHECK(static_cast<double>(rev[i]) == Catch::Approx(0.0).margin(1e-4));
@@ -474,7 +474,7 @@ TEST_CASE("Composed function: chained-Sub symbolic diff (x - x - x)", "[composed
     // Sanity: numeric value should also be c - c - c = -c.
     auto coeffEval = tree.GetCoefficients();
     Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interp{&dtable, &ds, &tree};
-    auto val = interp.Evaluate(coeffEval, range);
+    auto val = interp.Evaluate(coeffEval, range).value();
     CHECK(static_cast<double>(val[0]) == Catch::Approx(-1.3).margin(1e-4));
 
     auto coeff = tree.GetCoefficients();
@@ -575,7 +575,7 @@ TEST_CASE("Composed function: binary symbolic-diff rule (JIT/BuildJacobianDag pa
     // Sanity: numeric value should be a - exp(b).
     auto coeffEval = tree.GetCoefficients();
     Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interp{&dtable, &ds, &tree};
-    auto val = interp.Evaluate(coeffEval, range);
+    auto val = interp.Evaluate(coeffEval, range).value();
     CHECK(static_cast<double>(val[0]) == Catch::Approx(2.1 - std::exp(0.7)).margin(1e-4));
 
     auto coeff = tree.GetCoefficients();
@@ -680,7 +680,7 @@ TEST_CASE("Composed function: RegisterComposedFunction orchestrator (end-to-end)
         vx.Optimize = false;
         Operon::Tree tree{Operon::Vector<Operon::Node>{vx, composedNode}};
         Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interp{&dtable, &ds, &tree};
-        auto val = interp.Evaluate(tree.GetCoefficients(), range);
+        auto val = interp.Evaluate(tree.GetCoefficients(), range).value();
         auto const xs = ds.GetValues("x");
         for (std::size_t i = 0; i < range.Size(); ++i) {
             auto const expected = 1.0 / (1.0 + std::exp(-static_cast<double>(xs[i])));
@@ -726,7 +726,7 @@ TEST_CASE("Composed function: RegisterComposedFunction orchestrator (end-to-end)
         vy.Optimize = false;
         Operon::Tree tree{Operon::Vector<Operon::Node>{vx, vy, composedNode}};
         Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interp{&dtable, &ds, &tree};
-        auto val = interp.Evaluate(tree.GetCoefficients(), range);
+        auto val = interp.Evaluate(tree.GetCoefficients(), range).value();
         auto const xs = ds.GetValues("x");
         auto const ys = ds.GetValues("y");
         for (std::size_t i = 0; i < range.Size(); ++i) {
@@ -778,7 +778,7 @@ TEST_CASE("Composed function: RegisterComposedFunction orchestrator (end-to-end)
         vx.Optimize = false;
         Operon::Tree tree{Operon::Vector<Operon::Node>{vx, composedNode}};
         Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interp{&dtable, &ds, &tree};
-        auto val = interp.Evaluate(tree.GetCoefficients(), range);
+        auto val = interp.Evaluate(tree.GetCoefficients(), range).value();
         auto const xs = ds.GetValues("x");
         for (std::size_t i = 0; i < range.Size(); ++i) {
             CHECK(static_cast<double>(val[i]) == Catch::Approx(std::sin(static_cast<double>(xs[i]))).margin(1e-5));
@@ -823,7 +823,7 @@ TEST_CASE("Usage example: recip(x) = 1/x via RegisterComposedFunction", "[compos
 
     // Numeric eval.
     Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interp{&dtable, &ds, &tree};
-    auto val = interp.Evaluate(tree.GetCoefficients(), range);
+    auto val = interp.Evaluate(tree.GetCoefficients(), range).value();
     auto const xs = ds.GetValues("x");
     for (std::size_t i = 0; i < range.Size(); ++i) {
         CHECK(static_cast<double>(val[i]) == Catch::Approx(1.0 / static_cast<double>(xs[i])).margin(1e-4));

@@ -157,7 +157,7 @@ auto OPERON_EXPORT Evaluator<ScalarDispatch>::Evaluate(Operon::Individual const&
     auto estimatedValues = buf.subspan(0, trainingRange.Size());
     auto coeff = tree.GetCoefficients();
     ++ResidualEvaluations;
-    if (auto const evaluated = interpreter.TryEvaluate(coeff, trainingRange, estimatedValues); !evaluated) {
+    if (auto const evaluated = interpreter.Evaluate(coeff, trainingRange, estimatedValues); !evaluated) {
         return tl::unexpected(std::move(evaluated.error()));
     }
     return std::optional<EvaluatedBuffer> { MarkEvaluated(ind, estimatedValues) };

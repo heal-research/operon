@@ -32,7 +32,7 @@ TEST_CASE("DispatchTable constructors", "[interpreter]")
     auto check = [&](DT const& dt, std::string const& expr, Operon::Scalar expected) -> void {
         auto t = InfixParser::ParseOrThrow(expr);
         auto p = t.GetCoefficients();
-        auto r = Operon::Interpreter<Operon::Scalar, DT>(&dt, &ds, &t).Evaluate(p, Operon::Range(0, 1));
+        auto r = Operon::Interpreter<Operon::Scalar, DT>(&dt, &ds, &t).Evaluate(p, Operon::Range(0, 1)).value();
         CHECK(r[0] == Catch::Approx(expected));
     };
 
@@ -79,17 +79,17 @@ TEST_CASE("DispatchTable evaluation of expressions", "[interpreter]")
 
     SECTION("Arithmetic") {
         auto t = InfixParser::ParseOrThrow("2 + 3 * 4");
-        auto r = Interpreter<Operon::Scalar, DT>::Evaluate(t, ds, Range(0, 1));
+        auto r = Interpreter<Operon::Scalar, DT>::Evaluate(t, ds, Range(0, 1)).value();
         CHECK(r[0] == Catch::Approx(14.0F));
     }
 
     SECTION("Transcendental functions") {
         auto t = InfixParser::ParseOrThrow("exp(1)");
-        auto r = Interpreter<Operon::Scalar, DT>::Evaluate(t, ds, Range(0, 1));
+        auto r = Interpreter<Operon::Scalar, DT>::Evaluate(t, ds, Range(0, 1)).value();
         CHECK(r[0] == Catch::Approx(std::exp(1.0F)));
 
         t = InfixParser::ParseOrThrow("log(exp(1))");
-        r = Interpreter<Operon::Scalar, DT>::Evaluate(t, ds, Range(0, 1));
+        r = Interpreter<Operon::Scalar, DT>::Evaluate(t, ds, Range(0, 1)).value();
         CHECK(r[0] == Catch::Approx(1.0F).epsilon(1e-3));
     }
 }
@@ -142,7 +142,7 @@ TEST_CASE("RegisterFunction - user-defined symbol", "[interpreter]") // NOLINT(r
         Operon::Tree const tree({ varNode, dynNode });
         auto coeff = tree.GetCoefficients();
 
-        auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 10));
+        auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 10)).value();
 
         REQUIRE(std::ssize(r) == 10);
         for (auto i = 0; i < 10; ++i) {
@@ -179,7 +179,7 @@ TEST_CASE("RegisterUnary - scalar lambda adapter", "[interpreter]") // NOLINT(re
 
         Operon::Tree const tree({ varNode, dynNode });
         auto coeff = tree.GetCoefficients();
-        auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 10));
+        auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 10)).value();
 
         REQUIRE(std::ssize(r) == 10);
         for (auto i = 0; i < 10; ++i) {
@@ -199,7 +199,7 @@ TEST_CASE("RegisterUnary - scalar lambda adapter", "[interpreter]") // NOLINT(re
 
         Operon::Tree const tree({ varNode, dynNode });
         auto coeff = tree.GetCoefficients();
-        auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 10));
+        auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 10)).value();
 
         REQUIRE(std::ssize(r) == 10);
         for (auto i = 0; i < 10; ++i) {
@@ -245,7 +245,7 @@ TEST_CASE("RegisterBinary - scalar lambda adapter", "[interpreter]")
 
         Operon::Tree const tree({ varX, varY, dynNode });
         auto coeff = tree.GetCoefficients();
-        auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 10));
+        auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 10)).value();
 
         REQUIRE(std::ssize(r) == 10);
         for (auto i = 0; i < 10; ++i) {
@@ -345,20 +345,20 @@ TEST_CASE("Auto-diff fallback via Jet<T,1>", "[interpreter]") // NOLINT(readabil
     Operon::Interpreter<Scalar, DT> const interpExplicit(&dt, &ds, &tExplicit);
 
     SECTION("JacRev: auto-diff matches explicit derivative") {
-        auto jacAuto     = interpAuto.JacRev(coeff, range);
-        auto jacExplicit = interpExplicit.JacRev(coeff, range);
+        auto jacAuto     = interpAuto.JacRev(coeff, range).value();
+        auto jacExplicit = interpExplicit.JacRev(coeff, range).value();
         CHECK(jacAuto.isApprox(jacExplicit, 1e-4F));
     }
 
     SECTION("JacFwd: auto-diff matches explicit derivative") {
-        auto jacAuto     = interpAuto.JacFwd(coeff, range);
-        auto jacExplicit = interpExplicit.JacFwd(coeff, range);
+        auto jacAuto     = interpAuto.JacFwd(coeff, range).value();
+        auto jacExplicit = interpExplicit.JacFwd(coeff, range).value();
         CHECK(jacAuto.isApprox(jacExplicit, 1e-4F));
     }
 
     SECTION("JacRev matches expected analytic values") {
         // output = f(w*x),  d/dw at w=1 = x * f'(x) = x*(cos(x)-sin(x))
-        auto jac = interpAuto.JacRev(coeff, range);
+        auto jac = interpAuto.JacRev(coeff, range).value();
         REQUIRE(jac.rows() == 10);
         for (auto i = 0; i < 10; ++i) {
             auto expected = xvals[i] * (std::cos(xvals[i]) - std::sin(xvals[i]));
@@ -417,7 +417,7 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
 
         Operon::Tree const tree({ varNode, dynNode });
         auto coeff = tree.GetCoefficients();
-        auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 5));
+        auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 5)).value();
 
         REQUIRE(std::ssize(r) == 5);
         for (auto i = 0; i < 5; ++i) {

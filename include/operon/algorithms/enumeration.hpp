@@ -114,7 +114,8 @@ auto MakeMdlScorer(gsl::not_null<Operon::Problem const*> problem, gsl::not_null<
         EXPECT(buf.size() >= trainingRange.Size());
         auto yPred = buf.subspan(0, trainingRange.Size());
         Operon::Interpreter<Operon::Scalar, DTable> const interpreter { dtable.get(), dataset, &tree };
-        interpreter.Evaluate(parameters, trainingRange, yPred);
+        auto evaluated = interpreter.Evaluate(parameters, trainingRange, yPred);
+        if (!evaluated) { throw std::runtime_error(FormatInterpreterError(evaluated.error())); }
 
         auto yTrue = problem->TargetValues(trainingRange);
         auto const weights = problem->Weights(trainingRange).value_or(Operon::Span<Operon::Scalar const> {});
@@ -132,7 +133,9 @@ auto MakeMdlScorer(gsl::not_null<Operon::Problem const*> problem, gsl::not_null<
             ? Operon::Span<Operon::Scalar const> { &profiledSigma, 1 }
             : Operon::Span<Operon::Scalar const> { sigma };
 
-        Eigen::Matrix<Operon::Scalar, -1, -1> jac = interpreter.JacRev(parameters, trainingRange);
+        auto jacobian = interpreter.JacRev(parameters, trainingRange);
+        if (!jacobian) { throw std::runtime_error(FormatInterpreterError(jacobian.error())); }
+        Eigen::Matrix<Operon::Scalar, -1, -1> jac = std::move(*jacobian);
         if (scaling) {
             jac *= static_cast<Operon::Scalar>(scaling->Scale);
         }

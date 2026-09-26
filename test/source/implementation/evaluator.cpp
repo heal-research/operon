@@ -330,7 +330,7 @@ TEST_CASE("MDL evaluator", "[evaluator][information-criteria]")
         auto const trainingRange = fix.problem.TrainingRange();
         Operon::Interpreter<Operon::Scalar, DTable> const interp{&fix.dtable, &fix.ds, &ind.Genotype};
         auto const coeffs = ind.Genotype.GetCoefficients();
-        auto estimTrain = interp.Evaluate(coeffs, trainingRange);
+        auto estimTrain = interp.Evaluate(coeffs, trainingRange).value();
 
         auto scale = Operon::Scalar{1};
         auto const scaling = Operon::FitLinearScaling(ind.Genotype, fix.problem, fix.dtable, trainingRange);
@@ -350,16 +350,21 @@ TEST_CASE("MDL evaluator", "[evaluator][information-criteria]")
         auto const sigmaArr = std::array<Operon::Scalar, 1>{sigma};
         auto const nll = static_cast<double>(GaussianLikelihood<Operon::Scalar>::ComputeLikelihood(
             {estimTrain.data(), estimTrain.size()}, targetTrain, {sigmaArr.data(), sigmaArr.size()}));
-
         auto jac = interp.JacRev(coeffs, trainingRange);
-        jac *= scale; // same scaled-Jacobian step used by pareto_front.cpp's MDL export
+        INFO("JacRev error: " << (jac ? "none" : Operon::FormatInterpreterError(jac.error())));
+        auto jacobian = std::move(*jac);
+        jacobian *= scale; // same scaled-Jacobian step used by pareto_front.cpp's MDL export
         auto const fisherMatrix = GaussianLikelihood<Operon::Scalar>::ComputeFisherMatrix(
             {estimTrain.data(), estimTrain.size()},
-            {jac.data(), static_cast<std::size_t>(jac.size())},
+            {jacobian.data(), static_cast<std::size_t>(jacobian.size())},
             {sigmaArr.data(), sigmaArr.size()});
         auto const expected = Operon::MinimumDescriptionLength(ind.Genotype, coeffs, fisherMatrix.diagonal().array(), nll);
 
-        CHECK(result[0] == Catch::Approx(expected));
+        if (std::isfinite(expected)) {
+            CHECK(result[0] == Catch::Approx(expected));
+        } else {
+            CHECK(result[0] == Operon::EvaluatorBase::ErrMax);
+        }
     }
 }
 

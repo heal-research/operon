@@ -6,18 +6,17 @@ Header: [`operon/interpreter/interpreter.hpp`](https://github.com/heal-research/
 
 ```cpp
 Interpreter<Scalar, ScalarDispatch> interpreter { &dispatch, &dataset, &tree };
-auto values = interpreter.TryEvaluate(tree.GetCoefficients(), range);
-auto jacobian = interpreter.TryJacRev(tree.GetCoefficients(), range);
+auto values = interpreter.Evaluate(tree.GetCoefficients(), range);
+auto jacobian = interpreter.JacRev(tree.GetCoefficients(), range);
 ```
 
 | Method family | Result |
 | --- | --- |
-| `TryEvaluate(coeff, range[, output])` | model values or `InterpreterError` |
-| `Evaluate(...)` | same work; throws `runtime_error` on an interpreter error |
-| `TryJacRev` / `JacRev` / `JacFwd` | coefficient Jacobian; rows are observations, columns are optimizable constants |
-| `JacRevVariable` / `JacFwdVariable` | derivative of output with respect to one input variable hash |
+| `Evaluate(coeff, range[, output])` | model values or `InterpreterError` |
+| `JacRev` / `JacFwd` | coefficient Jacobian or `InterpreterError`; rows are observations, columns are optimizable constants |
+| `JacRevVariable` / `JacFwdVariable` | derivative of output with respect to one input variable hash, or `InterpreterError` |
 
-`InterpreterError::Code` distinguishes missing dataset variables, primitive implementations, derivatives, and output-span size mismatch. An interpreter reuses mutable binding and trace buffers; it is not thread-safe. Create one per concurrent worker.
+All fallible `Interpreter` operations return `tl::expected`; inspect the result before using its value.
 
 ## `EvaluatorBase`
 

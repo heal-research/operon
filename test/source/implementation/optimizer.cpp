@@ -457,11 +457,11 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
         auto const weights = *problem.Weights(range);
         Operon::Interpreter<Operon::Scalar, DTable> interpreter { &dtable, &fix.ds, &tree };
 
-        auto const pred0 = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { summary->InitialParameters }, range);
+        auto const pred0 = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { summary->InitialParameters }, range).value();
         auto const expectedInitialCost = 0.5 * Operon::SumOfSquaredErrors(pred0.begin(), pred0.end(), target.begin(), weights.begin());
         CHECK_THAT(static_cast<double>(summary->InitialCost), Catch::Matchers::WithinRel(expectedInitialCost, 1e-3));
 
-        auto const pred1 = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { summary->FinalParameters }, range);
+        auto const pred1 = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { summary->FinalParameters }, range).value();
         auto const expectedFinalCost = 0.5 * Operon::SumOfSquaredErrors(pred1.begin(), pred1.end(), target.begin(), weights.begin());
         CHECK_THAT(static_cast<double>(summary->FinalCost), Catch::Matchers::WithinRel(expectedFinalCost, 1e-3));
     }
@@ -482,11 +482,11 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
         auto const weights = *problem.Weights(range);
         Operon::Interpreter<Operon::Scalar, DTable> interpreter { &dtable, &fix.ds, &tree };
 
-        auto const pred0 = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { summary->InitialParameters }, range);
+        auto const pred0 = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { summary->InitialParameters }, range).value();
         auto const expectedInitialCost = 0.5 * Operon::SumOfSquaredErrors(pred0.begin(), pred0.end(), target.begin(), weights.begin());
         CHECK_THAT(static_cast<double>(summary->InitialCost), Catch::Matchers::WithinRel(expectedInitialCost, 1e-3));
 
-        auto const pred1 = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { summary->FinalParameters }, range);
+        auto const pred1 = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { summary->FinalParameters }, range).value();
         auto const expectedFinalCost = 0.5 * Operon::SumOfSquaredErrors(pred1.begin(), pred1.end(), target.begin(), weights.begin());
         CHECK_THAT(static_cast<double>(summary->FinalCost), Catch::Matchers::WithinRel(expectedFinalCost, 1e-3));
     }

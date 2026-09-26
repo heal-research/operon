@@ -178,7 +178,7 @@ TEST_CASE("Feynman benchmark suite - TightenRange/TightenRangeBisected soundness
         }
         Dataset const pointDs(names, pointData);
         Range const range{0, nSamples};
-        auto const values = Interp::Evaluate(tree, pointDs, range, Operon::Span<Operon::Scalar const>(coeff));
+        auto const values = Interp::Evaluate(tree, pointDs, range, Operon::Span<Operon::Scalar const>(coeff)).value();
 
         for (auto v : values) {
             if (!std::isfinite(v)) { continue; }

@@ -908,7 +908,7 @@ TEST_CASE("GrammarEnumerationAlgorithm - Cube/TenExp productions compute the cor
         REQUIRE(cubeTree != nullptr);
 
         Interpreter<Operon::Scalar, DTable> interpreter(&dtable, &ds, cubeTree);
-        auto estimated = interpreter.Evaluate(cubeTree->GetCoefficients(), range);
+        auto estimated = interpreter.Evaluate(cubeTree->GetCoefficients(), range).value();
         auto const expectedCube = std::pow(simpleExprValue, 3.0);
         auto const expectedSwapped = std::pow(3.0, simpleExprValue);
         CHECK(std::abs(static_cast<double>(estimated[0]) - expectedCube) < 1e-2);
@@ -931,7 +931,7 @@ TEST_CASE("GrammarEnumerationAlgorithm - Cube/TenExp productions compute the cor
         REQUIRE(tenExpTree != nullptr);
 
         Interpreter<Operon::Scalar, DTable> interpreter(&dtable, &ds, tenExpTree);
-        auto estimated = interpreter.Evaluate(tenExpTree->GetCoefficients(), range);
+        auto estimated = interpreter.Evaluate(tenExpTree->GetCoefficients(), range).value();
         auto const expectedTenExp = std::pow(10.0, simpleExprValue);
         auto const expectedSwapped = std::pow(simpleExprValue, 10.0);
         CHECK(std::abs(static_cast<double>(estimated[0]) - expectedTenExp) < 1e-2);

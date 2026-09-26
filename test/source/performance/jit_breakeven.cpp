@@ -178,7 +178,7 @@ TEST_CASE("JIT vs interpreter break-even", "[performance][jit][breakeven]")
             bench.run(fmt::format("interp sz={:02d} rows={:06d}", sz, rows), [&] {
                 int const i = idx % POOL_SIZE;
                 Operon::Span<Operon::Scalar const> cs{poolCoeffs[i].data(), poolCoeffs[i].size()};
-                interps[i].Evaluate(cs, range, buf);
+                static_cast<void>(interps[i].Evaluate(cs, range, buf));
                 nb::doNotOptimizeAway(buf.data());
             });
 
@@ -285,7 +285,7 @@ TEST_CASE("JIT vs interpreter Jacobian break-even", "[performance][jit][breakeve
                 int const i = idx % POOL_SIZE;
                 Operon::Span<Operon::Scalar const> cs{ poolCoeffs[i].data(), poolCoeffs[i].size() };
                 Operon::Span<Operon::Scalar> jac{ jacBufInterp.data(), jacBufInterp.size() };
-                interps[i].JacRev(cs, range, jac);
+                static_cast<void>(interps[i].JacRev(cs, range, jac));
                 nb::doNotOptimizeAway(jacBufInterp.data());
             });
 

@@ -56,7 +56,7 @@ namespace {
         taskflow.for_each_index(size_t{0}, trees.size(), size_t{1}, [&](auto i) -> auto {
             auto& res = results[executor.this_worker_id()];
             auto coeff = trees[i].GetCoefficients();
-            Operon::Interpreter<T, DTable>{&dt, &ds, &trees[i]}.Evaluate({coeff}, range, {res});
+            static_cast<void>(Operon::Interpreter<T, DTable>{&dt, &ds, &trees[i]}.Evaluate({coeff}, range, {res}));
         });
         executor.run(taskflow).wait();
     }
