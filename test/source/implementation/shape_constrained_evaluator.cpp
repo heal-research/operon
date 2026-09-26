@@ -287,15 +287,24 @@ TEST_CASE("ShapeConstrainedEvaluator - value bound constraint", "[shape-constrai
     CHECK_FALSE(narrow.Feasible(fx.tree));
 }
 
-TEST_CASE("ParseShapeBoundMode parses flags and rejects invalid combinations", "[shape-constraints]")
+TEST_CASE("ParseShapeBoundMode parses flags and bisected depths", "[shape-constraints]")
 {
     CHECK(Operon::ParseShapeBoundMode("combined") == ShapeBoundMode::Combined);
     CHECK(Operon::ParseShapeBoundMode("interval") == ShapeBoundMode::Interval);
     CHECK(Operon::ParseShapeBoundMode("affine") == ShapeBoundMode::Affine);
-    CHECK(Operon::ParseShapeBoundMode("interval,bisected") == (ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
+    CHECK(Operon::ParseShapeBoundMode("bisected") == (ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
+    auto const bare = Operon::ParseShapeBoundModeConfig("bisected");
+    CHECK(bare.Mode == (ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
+    CHECK_FALSE(bare.BisectionDepth.has_value());
+    auto const explicitDepth = Operon::ParseShapeBoundModeConfig("bisected:7");
+    CHECK(explicitDepth.Mode == (ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
+    CHECK(explicitDepth.BisectionDepth == 7);
     CHECK_THROWS_AS(Operon::ParseShapeBoundMode("not-a-mode"), std::invalid_argument);
     CHECK_THROWS_AS(Operon::ParseShapeBoundMode("interval,affine"), std::invalid_argument);
-    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("bisected"), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("bisected:"), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("bisected:-1"), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("bisected:21"), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("bisected:x"), std::invalid_argument);
     CHECK_THROWS_AS(Operon::ParseShapeBoundMode("affine,bisected"), std::invalid_argument);
 }
 

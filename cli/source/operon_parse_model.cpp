@@ -55,8 +55,9 @@ namespace {
             ("likelihood", "Optimizer loss function (gaussian, poisson)", cxxopts::value<std::string>()->default_value("gaussian"))
             ("iterations", "Optimizer iterations (0 disables refitting; reported stats are the model's own coefficients as given)", cxxopts::value<int>()->default_value("0"))
             ("shape-constraints-config", "Path to a JSON shape-constraints config; when set with --target, also prints affine-certified feasibility for the parsed model", cxxopts::value<std::string>())
-            ("shape-bound-mode", "Comma-separated bound backend flags: interval (default), combined, affine, bisected (only with interval)", cxxopts::value<std::string>()->default_value("interval"))
+            ("shape-bisection-depth", "Maximum domain bisection depth for shape bounds (0-20)", cxxopts::value<int>()->default_value("3"))
             ("tighten-range", "With --shape-constraints-config, also print TightenRange's mean-value-form bound alongside the naive one, per constraint", cxxopts::value<bool>()->default_value("false"))
+            ("shape-bound-mode", "Shape bound backend: interval (default), combined, affine, bisected or bisected:N (depth 0-20)", cxxopts::value<std::string>()->default_value("interval"))
             ("sample-check", "With --shape-constraints-config, also Monte-Carlo sample N points from the domain box per constraint and print the observed [min:max], as an independent soundness cross-check on the printed bound", cxxopts::value<std::size_t>())
             ("dump-tree-json", "Write the parsed model tree (exact structure, via Operon::Serialization::ToJson) to this path before any other processing", cxxopts::value<std::string>())
             ("debug", "Show some debugging information", cxxopts::value<bool>()->default_value("false"))
@@ -287,7 +288,13 @@ namespace {
         if (constraints) {
             Operon::Evaluator<Operon::ScalarDispatch> eval{&problem, &dtable, Operon::NMSE{}};
             Operon::ShapeConstrainedEvaluator shapeEval{&eval, &dtable, *constraints};
-            shapeEval.SetBoundMode(Operon::ParseShapeBoundMode(result["shape-bound-mode"].as<std::string>()));
+            auto const shapeBoundModeConfig = Operon::ParseShapeBoundModeConfig(result["shape-bound-mode"].as<std::string>());
+            auto shapeBoundOptions = Operon::ShapeBoundOptions{};
+            shapeBoundOptions.BisectionDepth = result["shape-bisection-depth"].as<int>();
+            if (shapeBoundModeConfig.BisectionDepth) { shapeBoundOptions.BisectionDepth = *shapeBoundModeConfig.BisectionDepth; }
+            Operon::ValidateShapeBoundOptions(shapeBoundOptions);
+            shapeEval.SetBoundMode(shapeBoundModeConfig.Mode);
+            shapeEval.SetBoundOptions(shapeBoundOptions);
             auto const summary = shapeEval.Measure(model);
             fmt::print("shape_feasible {} shape_violation {}\n", summary.Feasible, summary.Violation);
 

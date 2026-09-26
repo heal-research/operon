@@ -120,12 +120,18 @@ inline void ValidateShapeBoundOptions(ShapeBoundOptions const& options)
 [[nodiscard]] OPERON_EXPORT auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2)
     -> std::optional<std::string>;
 [[nodiscard]] OPERON_EXPORT auto ParseShapeEnforcement(std::string const& str) -> ShapeConstraintEnforcement;
-// Rejects Interval+Affine together, or Bisected without Interval. Shared by
-// ParseShapeBoundMode and both SetBoundMode setters below so a
-// programmatically-constructed mode is held to the same contract as a
-// string-parsed one -- constructing ShapeBoundMode values directly (not
-// through the parser) previously bypassed this check entirely.
+// Parsed shape-bound backend and optional bisection depth. A bare bisected
+// mode leaves the depth unset so callers can honor their explicit CLI option;
+// `bisected:N` supplies an explicit depth.
+struct ShapeBoundModeConfig {
+    ShapeBoundMode Mode { ShapeBoundMode::Combined };
+    std::optional<int> BisectionDepth;
+};
+// Rejects Interval+Affine, or Bisected without Interval. Shared by the
+// parser and SetBoundMode setters so programmatic modes obey the same rules.
 [[nodiscard]] OPERON_EXPORT auto ValidateShapeBoundMode(ShapeBoundMode mode) -> std::optional<std::string>;
+[[nodiscard]] OPERON_EXPORT auto ParseShapeBoundModeConfig(std::string const& str) -> ShapeBoundModeConfig;
+// Compatibility wrapper for callers that only need the backend flags.
 [[nodiscard]] OPERON_EXPORT auto ParseShapeBoundMode(std::string const& str) -> ShapeBoundMode;
 
 // Wraps an inner EvaluatorBase (typically NMSE-with-linear-scaling) with the shape-constraint check from

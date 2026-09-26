@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <string_view>
 #include <vector>
 
 #include <fmt/format.h>
@@ -810,21 +811,45 @@ auto ValidateShapeBoundMode(ShapeBoundMode mode) -> std::optional<std::string>
     return std::nullopt;
 }
 
-auto ParseShapeBoundMode(std::string const& str) -> ShapeBoundMode
+auto ParseShapeBoundModeConfig(std::string const& str) -> ShapeBoundModeConfig
 {
-    auto result = ShapeBoundMode::Combined;
+    ShapeBoundModeConfig config{};
     std::size_t pos = 0;
+    bool sawBisected = false;
     while (pos <= str.size()) {
         auto const next = str.find(',', pos);
         auto const token = str.substr(pos, next == std::string::npos ? std::string::npos : next - pos);
         if (token == "combined") {
             // no bits to set
         } else if (token == "interval") {
-            result = result | ShapeBoundMode::Interval;
+            config.Mode = config.Mode | ShapeBoundMode::Interval;
         } else if (token == "affine") {
-            result = result | ShapeBoundMode::Affine;
-        } else if (token == "bisected") {
-            result = result | ShapeBoundMode::Bisected;
+            config.Mode = config.Mode | ShapeBoundMode::Affine;
+        } else if (token == "bisected" || token.starts_with("bisected:")) {
+            if (sawBisected) {
+                throw std::invalid_argument("shape-bound-mode: bisected specified more than once");
+            }
+            sawBisected = true;
+            config.Mode = config.Mode | ShapeBoundMode::Interval | ShapeBoundMode::Bisected;
+            if (token == "bisected") {
+                // Leave the optional unset so an explicit CLI depth wins.
+            } else {
+                auto const depthText = token.substr(std::string_view{"bisected:"}.size());
+                if (depthText.empty()) {
+                    throw std::invalid_argument("shape-bound-mode: bisected: requires a depth");
+                }
+                std::size_t consumed = 0;
+                int depth = 0;
+                try {
+                    depth = std::stoi(depthText, &consumed);
+                } catch (std::exception const&) {
+                    throw std::invalid_argument(fmt::format("unable to parse shape-bound-mode depth '{}'", depthText));
+                }
+                if (consumed != depthText.size() || depth < 0 || depth > 20) {
+                    throw std::invalid_argument(fmt::format("shape-bound-mode bisection depth must be in [0, 20] (got '{}')", depthText));
+                }
+                config.BisectionDepth = depth;
+            }
         } else {
             throw std::invalid_argument(fmt::format("unable to parse shape-bound-mode argument '{}'", token));
         }
@@ -833,10 +858,15 @@ auto ParseShapeBoundMode(std::string const& str) -> ShapeBoundMode
         }
         pos = next + 1;
     }
-    if (auto err = ValidateShapeBoundMode(result)) {
+    if (auto err = ValidateShapeBoundMode(config.Mode)) {
         throw std::invalid_argument(*err);
     }
-    return result;
+    return config;
+}
+
+auto ParseShapeBoundMode(std::string const& str) -> ShapeBoundMode
+{
+    return ParseShapeBoundModeConfig(str).Mode;
 }
 
 auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2) -> std::optional<std::string>

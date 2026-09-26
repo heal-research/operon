@@ -204,7 +204,8 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         ("shape-penalty-weight", "Penalty weight applied to summed shape-constraint violation in penalty mode (finite, non-negative)", cxxopts::value<double>()->default_value("1.0"))
         ("shape-unknown-violation", "Violation magnitude assigned to each uncertified shape constraint in penalty/extra-objective modes (finite, non-negative)", cxxopts::value<double>()->default_value("1.0"))
         ("shape-worst-value", "Fitness value assigned by hard-reject shape enforcement to infeasible individuals (finite)", cxxopts::value<double>()->default_value("1.0"))
-        ("shape-bound-mode", "Comma-separated shape-constraint bound backend flags: interval (default), combined, affine, bisected (only with interval)", cxxopts::value<std::string>()->default_value("interval"))
+        ("shape-bisection-depth", "Maximum domain bisection depth for shape bounds (0-20)", cxxopts::value<int>()->default_value("3"))
+        ("shape-bound-mode", "Shape-constraint bound backend: interval (default), combined, affine, bisected or bisected:N (depth 0-20)", cxxopts::value<std::string>()->default_value("interval"))
         ("debug", "Debug mode (more information displayed)")
         ("help", "Print help")
         ("version", "Print version and program information");
