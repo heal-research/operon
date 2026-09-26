@@ -62,7 +62,7 @@ auto EvalDagJacobian(
         );
         Tree t{std::move(subnodes)};
         Interp const interp{&dtable, &ds, &t};
-        auto col = interp.Evaluate(coeff, range);
+        auto col = interp.Evaluate(coeff, range).value();
         jac.col(k) = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>>(col.data(), nRows);
     }
     return jac;
@@ -350,7 +350,7 @@ TEST_CASE("BuildJacobianDag correctness vs JacRev - random trees", "[tree_diff]"
         if (coeff.empty()) { continue; } // tree has no constants
 
         Interp const interp{&dtable, &ds, &tree};
-        auto const jrev = interp.JacRev(coeff, range);
+        auto const jrev = interp.JacRev(coeff, range).value();
 
         auto const dag  = BuildJacobianDag(tree);
         auto const jdag = EvalDagJacobian(dag, coeff, ds, range, dtable);
@@ -403,7 +403,7 @@ TEST_CASE("BuildJacobianDag correctness vs JacRev - weighted Function nodes", "[
         if (coeff.empty()) { continue; }
 
         Interp const interp{&dtable, &ds, &tree};
-        auto const jrev = interp.JacRev(coeff, range);
+        auto const jrev = interp.JacRev(coeff, range).value();
 
         auto const dag  = BuildJacobianDag(tree);
         auto const jdag = EvalDagJacobian(dag, coeff, ds, range, dtable);
@@ -507,7 +507,7 @@ TEST_CASE("BuildJacobianDag performance vs JacRev", "[tree_diff][performance]")
             auto dag = BuildJacobianDag(trees[i]);
             Tree t{dag.Nodes};
             Interp const interp{&dtable, &ds, &t};
-            nb::doNotOptimizeAway(interp.EvaluateRoots(coeff, range, dag.Roots));
+            nb::doNotOptimizeAway(interp.EvaluateRoots(coeff, range, dag.Roots).value());
         }
     });
 
@@ -518,7 +518,7 @@ TEST_CASE("BuildJacobianDag performance vs JacRev", "[tree_diff][performance]")
             if (coeff.empty()) { continue; }
             Tree t{dags[i].Nodes};
             Interp const interp{&dtable, &ds, &t};
-            nb::doNotOptimizeAway(interp.EvaluateRoots(coeff, range, dags[i].Roots));
+            nb::doNotOptimizeAway(interp.EvaluateRoots(coeff, range, dags[i].Roots).value());
         }
     });
 
@@ -554,7 +554,7 @@ auto EvalDagVariableGradient(
             dag.Nodes.cbegin(), dag.Nodes.cbegin() + static_cast<std::ptrdiff_t>(r) + 1);
         Tree t{std::move(subnodes)};
         Interp const interp{&dtable, &ds, &t};
-        auto col = interp.Evaluate(coeff, range);
+        auto col = interp.Evaluate(coeff, range).value();
         grad.col(k) = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>>(col.data(), nRows);
     }
     return grad;
@@ -738,8 +738,8 @@ TEST_CASE("BuildVariableGradientDag correctness vs finite differences - random t
             Dataset const dsPlus(names, dataPlus);
             Dataset const dsMinus(names, dataMinus);
 
-            auto const yPlus  = Interp::Evaluate(tree, dsPlus, range, Operon::Span<Operon::Scalar const>(coeff));
-            auto const yMinus = Interp::Evaluate(tree, dsMinus, range, Operon::Span<Operon::Scalar const>(coeff));
+            auto const yPlus  = Interp::Evaluate(tree, dsPlus, range, Operon::Span<Operon::Scalar const>(coeff)).value();
+            auto const yMinus = Interp::Evaluate(tree, dsMinus, range, Operon::Span<Operon::Scalar const>(coeff)).value();
 
             Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> yp(yPlus.data(), static_cast<Eigen::Index>(yPlus.size()));
             Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> ym(yMinus.data(), static_cast<Eigen::Index>(yMinus.size()));
@@ -807,7 +807,7 @@ TEST_CASE("BuildHessianDag - square(c) Hessian is 2", "[tree_diff][hessian]")
     );
     Tree ht{std::move(subnodes)};
     Interp const interp{&dtable, &ds, &ht};
-    auto col = interp.Evaluate(coeff, range);
+    auto col = interp.Evaluate(coeff, range).value();
     CHECK(col[0] == Catch::Approx(2.0F).margin(1e-4F));
 }
 
@@ -857,7 +857,7 @@ TEST_CASE("BuildHessianDag - Mul(c1,c2) mixed partial is 1", "[tree_diff][hessia
     );
     Tree ht{std::move(subnodes)};
     Interp const interp{&dtable, &ds, &ht};
-    auto col = interp.Evaluate(coeff, range);
+    auto col = interp.Evaluate(coeff, range).value();
     CHECK(col[0] == Catch::Approx(1.0F).margin(1e-4F));
 }
 
@@ -880,7 +880,9 @@ auto EvalDagRoots(
 {
     Tree t{dagNodes};
     Interp const interp{&dtable, &ds, &t};
-    return interp.EvaluateRoots(coeff, range, roots);
+    auto result = interp.EvaluateRoots(coeff, range, roots);
+    if (!result) { throw std::runtime_error(Operon::FormatInterpreterError(result.error())); }
+    return std::move(*result);
 }
 
 // Evaluate a single DAG root via EvalDagRoots (convenience wrapper).
@@ -1050,7 +1052,7 @@ TEST_CASE("BuildHessianDag correctness vs JAX ground truth", "[tree_diff][hessia
             );
             Tree ft{std::move(subnodes)};
             Interp const interp{&dtable, &ds, &ft};
-            auto fvals = interp.Evaluate(coeffSpan, range);
+            auto fvals = interp.Evaluate(coeffSpan, range).value();
             bool resOk = true;
             for (int r = 0; r < gt.Nrows; ++r) {
                 auto expected = static_cast<Operon::Scalar>(tc.Residuals[r]);
@@ -1168,8 +1170,8 @@ TEST_CASE("BuildHessianDag correctness vs finite differences - random trees", "[
                 treePlus.SetCoefficients({coeffPlus.data(), coeffPlus.size()});
                 treeMinus.SetCoefficients({coeffMinus.data(), coeffMinus.size()});
 
-                auto jacPlus = Interp{&dtable, &ds, &treePlus}.JacRev(coeffPlus, range);
-                auto jacMinus = Interp{&dtable, &ds, &treeMinus}.JacRev(coeffMinus, range);
+                auto jacPlus = Interp{&dtable, &ds, &treePlus}.JacRev(coeffPlus, range).value();
+                auto jacMinus = Interp{&dtable, &ds, &treeMinus}.JacRev(coeffMinus, range).value();
 
                 auto fdCol = (jacPlus.col(static_cast<Eigen::Index>(i))
                             - jacMinus.col(static_cast<Eigen::Index>(i)))
@@ -1239,8 +1241,8 @@ TEST_CASE("BuildHessianDag correctness vs finite differences - weighted Function
                 treePlus.SetCoefficients({coeffPlus.data(), coeffPlus.size()});
                 treeMinus.SetCoefficients({coeffMinus.data(), coeffMinus.size()});
 
-                auto jacPlus = Interp{&dtable, &ds, &treePlus}.JacRev(coeffPlus, range);
-                auto jacMinus = Interp{&dtable, &ds, &treeMinus}.JacRev(coeffMinus, range);
+                auto jacPlus = Interp{&dtable, &ds, &treePlus}.JacRev(coeffPlus, range).value();
+                auto jacMinus = Interp{&dtable, &ds, &treeMinus}.JacRev(coeffMinus, range).value();
 
                 auto fdCol = (jacPlus.col(static_cast<Eigen::Index>(i))
                             - jacMinus.col(static_cast<Eigen::Index>(i)))
@@ -1310,8 +1312,8 @@ TEST_CASE("BuildHessianDag performance vs JacRev FD", "[tree_diff][hessian][perf
                 auto tMinus = trees[ti];
                 tPlus.SetCoefficients({cPlus.data(), cPlus.size()});
                 tMinus.SetCoefficients({cMinus.data(), cMinus.size()});
-                auto jPlus = Interp{&dtable, &ds, &tPlus}.JacRev(cPlus, range);
-                auto jMinus = Interp{&dtable, &ds, &tMinus}.JacRev(cMinus, range);
+                auto jPlus = Interp{&dtable, &ds, &tPlus}.JacRev(cPlus, range).value();
+                auto jMinus = Interp{&dtable, &ds, &tMinus}.JacRev(cMinus, range).value();
                 nb::doNotOptimizeAway((jPlus - jMinus).eval());
             }
         }
@@ -1442,7 +1444,7 @@ TEST_CASE("BuildVariableGradientDag - repeated occurrences sum via chain rule", 
 
     Operon::ScalarDispatch dtable;
     Interpreter<Operon::Scalar, Operon::ScalarDispatch> interp(&dtable, &ds, &derivTree);
-    auto result = interp.Evaluate(derivTree.GetCoefficients(), Range{0, 1});
+    auto result = interp.Evaluate(derivTree.GetCoefficients(), Range{0, 1}).value();
     CHECK(result[0] == Catch::Approx(2.0));
 }
 
@@ -1465,7 +1467,7 @@ TEST_CASE("BuildVariableGradientDag - Sin(Square(X)) correctness end-to-end", "[
 
     Operon::ScalarDispatch dtable;
     Interpreter<Operon::Scalar, Operon::ScalarDispatch> interp(&dtable, &ds, &derivTree);
-    auto result = interp.Evaluate(derivTree.GetCoefficients(), Range{0, 1});
+    auto result = interp.Evaluate(derivTree.GetCoefficients(), Range{0, 1}).value();
 
     auto const expected = 2.0 * 2.0 * std::cos(2.0 * 2.0);
     CHECK(result[0] == Catch::Approx(expected).epsilon(1e-4));
@@ -1495,7 +1497,7 @@ TEST_CASE("BuildVariableGradientDag - second order via re-differentiating the sl
 
     Operon::ScalarDispatch dtable;
     Interpreter<Operon::Scalar, Operon::ScalarDispatch> interp(&dtable, &ds, &derivTree2);
-    auto result = interp.Evaluate(derivTree2.GetCoefficients(), Range{0, 1});
+    auto result = interp.Evaluate(derivTree2.GetCoefficients(), Range{0, 1}).value();
     CHECK(result[0] == Catch::Approx(12.0).epsilon(1e-3));
 }
 

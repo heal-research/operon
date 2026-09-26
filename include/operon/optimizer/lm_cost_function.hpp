@@ -47,7 +47,7 @@ struct LMCostFunction : public LMCostFunctionBase<LMCostFunction<T, StorageOrder
         if (jacobian != nullptr) {
             ++this->jacobianCallCount_;
             Operon::Span<Operon::Scalar> jac { jacobian, this->numResiduals_ * this->numParameters_ };
-            auto result = interpreter_->TryJacRev(params, range_, jac);
+            auto result = interpreter_->JacRev(params, range_, jac);
             if (!result) {
                 return Fail(std::move(result.error()), jacobian, jac.size());
             }
@@ -57,7 +57,7 @@ struct LMCostFunction : public LMCostFunctionBase<LMCostFunction<T, StorageOrder
         if (residuals != nullptr) {
             ++this->residualCallCount_;
             Operon::Span<Operon::Scalar> res { residuals, this->numResiduals_ };
-            auto result = interpreter_->TryEvaluate(params, range_, res);
+            auto result = interpreter_->Evaluate(params, range_, res);
             if (!result) {
                 return Fail(std::move(result.error()), residuals, res.size());
             }

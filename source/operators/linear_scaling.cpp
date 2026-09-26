@@ -150,7 +150,7 @@ void LinearScaling::ApplyInPlace(Operon::Span<Operon::Scalar> values) const noex
         estimated = Operon::Span<Operon::Scalar>(owned);
     }
 
-    auto evaluated = interpreter.TryEvaluate(coeff, range, estimated);
+    auto evaluated = interpreter.Evaluate(coeff, range, estimated);
     if (!evaluated) {
         throw std::runtime_error(FormatInterpreterError(evaluated.error()));
     }

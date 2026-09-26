@@ -105,7 +105,7 @@ struct JitLMCostFunction : public LMCostFunctionBase<JitLMCostFunction<T, Storag
                 }
             } else {
                 Operon::Span<Operon::Scalar> jac { jacobian, this->numResiduals_ * this->numParameters_ };
-                auto result = interpreter_->TryJacRev(params, range_, jac);
+                auto result = interpreter_->JacRev(params, range_, jac);
                 if (!result) {
                     return Fail(std::move(result.error()), jacobian, jac.size());
                 }
@@ -123,7 +123,7 @@ struct JitLMCostFunction : public LMCostFunctionBase<JitLMCostFunction<T, Storag
                 std::copy_n(scratchResiduals_.data(), this->numResiduals_, residuals);
             } else {
                 Operon::Span<Operon::Scalar const> params { parameters, this->numParameters_ };
-                auto result = interpreter_->TryEvaluate(params, range_, res);
+                auto result = interpreter_->Evaluate(params, range_, res);
                 if (!result) {
                     return Fail(std::move(result.error()), residuals, res.size());
                 }

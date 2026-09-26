@@ -48,8 +48,8 @@ TEST_CASE("Minimum description length reflects Jacobian scale", "[information-cr
     using Interp = Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>>;
     Interp const interpreter{&dtable, &ds, &tree};
 
-    auto pred = interpreter.Evaluate(coeffs, range);
-    auto jac  = interpreter.JacRev(coeffs, range); // d(tree)/d(coeffs), unscaled
+    auto pred = interpreter.Evaluate(coeffs, range).value();
+    auto jac  = interpreter.JacRev(coeffs, range).value(); // d(tree)/d(coeffs), unscaled
 
     // Trivial fit (target == prediction) so nll is identical whether or not
     // the Jacobian is scaled — isolates the effect on the Fisher/parameter

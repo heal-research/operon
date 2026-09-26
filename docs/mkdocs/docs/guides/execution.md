@@ -4,12 +4,12 @@
 
 ## Execution paths
 
-`Interpreter<T, DTable>` binds a tree, dataset, dispatch table, and row range. `TryEvaluate(coefficients, range, output)` is the non-throwing path: it returns `tl::expected` with `InterpreterError` for a missing variable/function or an incorrectly sized output span. The throwing `Evaluate` overloads format and throw that error.
+`Interpreter<T, DTable>` binds a tree, dataset, dispatch table, and row range. Its fallible evaluation and differentiation operations return `tl::expected` with `InterpreterError` for a missing variable/function, derivative, or incorrectly sized output span.
 
 | Need | API |
 | --- | --- |
-| sampled model values | `TryEvaluate` / `Evaluate` |
-| coefficient Jacobian for local fitting | `TryJacRev`, `JacRev`, `JacFwd`, `JacFwd` |
+| sampled model values | `Evaluate` |
+| coefficient Jacobian for local fitting | `JacRev` / `JacFwd` |
 | derivative with respect to an input column | `JacRevVariable` / `JacFwdVariable` |
 | enclosure over a domain box | `IntervalEvaluator` or `AffineEvaluator` |
 

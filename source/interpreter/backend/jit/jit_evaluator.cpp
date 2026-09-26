@@ -188,7 +188,7 @@ auto JitEvaluator::Evaluate(Individual const& ind, Span<Scalar> buf) const
         tree.GetCoefficients(coeffBuf);
         Interpreter<Scalar, ScalarDispatch> const interp { &fallbackDtable, dataset, &tree };
         if (auto const evaluated
-            = interp.TryEvaluate(Span<Scalar const>(coeffBuf.data(), coeffBuf.size()), range, estimatedValues);
+            = interp.Evaluate(Span<Scalar const>(coeffBuf.data(), coeffBuf.size()), range, estimatedValues);
             !evaluated) {
             return tl::unexpected(std::move(evaluated.error()));
         }

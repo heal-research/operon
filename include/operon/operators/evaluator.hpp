@@ -572,7 +572,9 @@ public:
 
         ++Base::JacobianEvaluations;
         Operon::Interpreter<Operon::Scalar, DTable> const interpreter { dtable, dataset, &tree };
-        Eigen::Matrix<Operon::Scalar, -1, -1> jac = interpreter.JacRev(parameters, trainingRange); // jacobian
+        auto jacobian = interpreter.JacRev(parameters, trainingRange);
+        if (!jacobian) { return typename EvaluatorBase::ReturnType { EvaluatorBase::ErrMax }; }
+        Eigen::Matrix<Operon::Scalar, -1, -1> jac = std::move(*jacobian);
         if (scaling) {
             jac *= static_cast<Operon::Scalar>(scaling->Scale); // d(a*tree)/d(coeffs) = a * d(tree)/d(coeffs)
         }

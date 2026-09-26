@@ -251,7 +251,11 @@ namespace {
         }
 
         using Interpreter = Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>;
-        auto est = Interpreter::Evaluate(model, ds, range);
+        auto estResult = Interpreter::Evaluate(model, ds, range);
+        if (!estResult) {
+            return tl::unexpected(Operon::Cli::Error{Operon::Cli::ErrorCode::Runtime, "evaluate", Operon::FormatInterpreterError(estResult.error())});
+        }
+        auto est = std::move(*estResult);
 
         auto [a, b] = FitScale(result, model, problem, dtable, range);
         std::ranges::transform(est, est.begin(), [&](auto v) -> auto { return (v * a) + b; });
@@ -351,7 +355,11 @@ namespace {
                 if (sampleCheck) {
                     if (auto const& ctree = ctreeStorage) {
                         using Interpreter = Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>;
-                        auto vals = Interpreter::Evaluate(*ctree, *sampleDs, sampleRange);
+                        auto valsResult = Interpreter::Evaluate(*ctree, *sampleDs, sampleRange);
+                        if (!valsResult) {
+                            return tl::unexpected(Operon::Cli::Error{Operon::Cli::ErrorCode::Runtime, "sample evaluate", Operon::FormatInterpreterError(valsResult.error())});
+                        }
+                        auto vals = std::move(*valsResult);
                         auto const nNonFinite = std::ranges::count_if(vals, [](auto v) { return !std::isfinite(v); });
                         if (nNonFinite == static_cast<std::ptrdiff_t>(vals.size())) {
                             fmt::print(" sampled all-non-finite (n={})", nSamples);
@@ -410,7 +418,7 @@ auto Run(int argc, char** argv) -> int
 
     Operon::Dataset ds(result["dataset"].as<std::string>(), /*hasHeader=*/true);
     auto infix = result.unmatched().front();
-    auto parsed = Operon::InfixParser::TryParse(infix, ds);
+    auto parsed = Operon::InfixParser::Parse(infix, ds);
     if (!parsed) {
         return Operon::Cli::Report({
             Operon::Cli::ErrorCode::Input,
@@ -450,7 +458,12 @@ auto Run(int argc, char** argv) -> int
         if (!analysis) { return Operon::Cli::Report(analysis.error()); }
     } else {
         using Interpreter = Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>;
-        auto est = Interpreter::Evaluate(model, ds, range);
+        auto estResult = Interpreter::Evaluate(model, ds, range);
+        if (!estResult) {
+            fmt::print(stderr, "error: evaluate: {}\n", Operon::FormatInterpreterError(estResult.error()));
+            return EXIT_FAILURE;
+        }
+        auto est = std::move(*estResult);
         std::string out{};
         for (auto v : est) {
             fmt::format_to(std::back_inserter(out), fmt::runtime(fmt::format("{{{}}}\n", format)), v);

@@ -151,7 +151,7 @@ struct PoissonLoss : public LikelihoodBase<T> {
         auto const* interpreter = this->GetInterpreter();
         Operon::Span<Operon::Scalar const> c { x.data(), static_cast<std::size_t>(x.size()) };
         auto const r = SelectBatch();
-        auto p = interpreter->TryEvaluate(c, r);
+        auto p = interpreter->Evaluate(c, r);
         if (!p) {
             return this->Fail(std::move(p.error()), g);
         }
@@ -161,7 +161,7 @@ struct PoissonLoss : public LikelihoodBase<T> {
         auto tmap = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(t.data(), std::ssize(t));
         if (g.size() != 0) {
             ++jeval_;
-            auto result = interpreter->TryJacRev(c, r, { jac_.data(), numParameters_ * batchSize_ });
+            auto result = interpreter->JacRev(c, r, { jac_.data(), numParameters_ * batchSize_ });
             if (!result) {
                 return this->Fail(std::move(result.error()), g);
             }

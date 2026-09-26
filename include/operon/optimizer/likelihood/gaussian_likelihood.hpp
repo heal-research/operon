@@ -157,7 +157,7 @@ struct GaussianLoss : public LikelihoodBase<T> {
         auto const& interpreter = this->GetInterpreter();
         Operon::Span<Operon::Scalar const> c { x.data(), static_cast<std::size_t>(x.size()) };
         auto const batch = SelectBatch();
-        auto primal = interpreter->TryEvaluate(c, batch);
+        auto primal = interpreter->Evaluate(c, batch);
         if (!primal) {
             return this->Fail(std::move(primal.error()), grad);
         }
@@ -169,7 +169,7 @@ struct GaussianLoss : public LikelihoodBase<T> {
             if (grad.size() != 0) {
                 assert(grad.size() == x.size());
                 ++jeval_;
-                auto result = interpreter->TryJacRev(c, batch, { jac_.data(), np_ * bs_ });
+                auto result = interpreter->JacRev(c, batch, { jac_.data(), np_ * bs_ });
                 if (!result) {
                     return this->Fail(std::move(result.error()), grad);
                 }
@@ -186,7 +186,7 @@ struct GaussianLoss : public LikelihoodBase<T> {
         if (grad.size() != 0) {
             assert(grad.size() == x.size());
             ++jeval_;
-            auto result = interpreter->TryJacRev(c, batch, { jac_.data(), np_ * bs_ });
+            auto result = interpreter->JacRev(c, batch, { jac_.data(), np_ * bs_ });
             if (!result) {
                 return this->Fail(std::move(result.error()), grad);
             }

@@ -6,8 +6,8 @@
 
 #include <algorithm>
 #include <numeric>
+#include <stdexcept>
 #include <vector>
-
 #include "operon/core/contracts.hpp"
 #include "operon/core/dataset.hpp"
 #include "operon/core/node.hpp"
@@ -49,7 +49,9 @@ inline auto NodeImpact(Operon::Tree const& tree, Operon::Dataset const& dataset,
     // directly against a `range`-sized prediction silently misaligns rows
     // whenever range.Start() != 0.
     auto const actual = dataset.GetValues(target).subspan(range.Start(), range.Size());
-    auto const predicted = Interp::Evaluate(tree, dataset, range);
+    auto predictedResult = Interp::Evaluate(tree, dataset, range);
+    if (!predictedResult) { throw std::runtime_error(Operon::FormatInterpreterError(predictedResult.error())); }
+    auto predicted = std::move(*predictedResult);
     Operon::Span<Operon::Scalar const> const predictedSpan{ predicted.data(), predicted.size() };
     auto const baseline = Operon::R2Score(predictedSpan, actual);
 
@@ -58,8 +60,10 @@ inline auto NodeImpact(Operon::Tree const& tree, Operon::Dataset const& dataset,
 
     for (size_t i = 0; i < nodes.size(); ++i) {
         auto const subtree = tree.Splice(i);
-        auto const subtreeValues = Interp::Evaluate(subtree, dataset, range);
-        EXPECT(!subtreeValues.empty()); // guaranteed by the range.Size() > 0 check above
+        auto subtreeResult = Interp::Evaluate(subtree, dataset, range);
+        if (!subtreeResult) { throw std::runtime_error(Operon::FormatInterpreterError(subtreeResult.error())); }
+        auto subtreeValues = std::move(*subtreeResult);
+        EXPECT(!subtreeValues.empty());
         auto const mean = std::reduce(subtreeValues.begin(), subtreeValues.end(), Operon::Scalar{0}) / static_cast<Operon::Scalar>(subtreeValues.size());
 
         auto replacedNodes = nodes;
@@ -69,7 +73,9 @@ inline auto NodeImpact(Operon::Tree const& tree, Operon::Dataset const& dataset,
         replacedNodes.insert(replacedNodes.begin() + static_cast<std::ptrdiff_t>(i - nodes[i].Length), Operon::Node::Constant(mean));
 
         auto replacedTree = Operon::Tree(std::move(replacedNodes)).UpdateNodes();
-        auto const replacedPredicted = Interp::Evaluate(replacedTree, dataset, range);
+        auto replacedResult = Interp::Evaluate(replacedTree, dataset, range);
+        if (!replacedResult) { throw std::runtime_error(Operon::FormatInterpreterError(replacedResult.error())); }
+        auto replacedPredicted = std::move(*replacedResult);
         Operon::Span<Operon::Scalar const> const replacedSpan{ replacedPredicted.data(), replacedPredicted.size() };
         auto const replacedR2 = Operon::R2Score(replacedSpan, actual);
 

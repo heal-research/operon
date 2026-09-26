@@ -49,7 +49,7 @@ TEST_CASE("User-defined function via registries: recip(x) = 1/x", "[registry][us
 
     Dataset const ds(std::vector<std::string>{ "dummy" }, std::vector<std::vector<Operon::Scalar>>{ { 0.0F } });
     Interpreter<Operon::Scalar, Operon::ScalarDispatch> interp(&dtable, &ds, &tree);
-    auto result = interp.Evaluate(tree.GetCoefficients(), Range{ 0, 1 });
+    auto result = interp.Evaluate(tree.GetCoefficients(), Range{ 0, 1 }).value();
     CHECK(result[0] == Catch::Approx(0.5).epsilon(1e-5)); // 1/2
 
     // 2. Symbolic differentiation — RegisterUnarySymbolicDeriv. d(1/x)/dx =
@@ -79,7 +79,7 @@ TEST_CASE("User-defined function via registries: recip(x) = 1/x", "[registry][us
     derivTree.UpdateNodes();
     auto derivCoeff = derivTree.GetCoefficients(); // the constant's Optimize flag was preserved from the original tree
     Interpreter<Operon::Scalar, Operon::ScalarDispatch> derivInterp(&dtable, &ds, &derivTree);
-    auto derivResult = derivInterp.Evaluate(derivCoeff, Range{ 0, 1 });
+    auto derivResult = derivInterp.Evaluate(derivCoeff, Range{ 0, 1 }).value();
     CHECK(derivResult[0] == Catch::Approx(-0.25).epsilon(1e-4)); // -1/2^2
 
     // 3. Interval bound propagation — RegisterUnaryInterval.
@@ -163,7 +163,7 @@ TEST_CASE("User-defined function via registries: recip(x) = 1/x", "[registry][us
             auto jitTree = Tree({ var, Node::Function(hash, 1) }).UpdateNodes();
 
             Interpreter<Operon::Scalar, Operon::ScalarDispatch> refInterp(&dtable, &jitDs, &jitTree);
-            auto ref = refInterp.Evaluate(jitTree.GetCoefficients(), Range{ 0, jitDs.Rows<std::size_t>() });
+            auto ref = refInterp.Evaluate(jitTree.GetCoefficients(), Range{ 0, jitDs.Rows<std::size_t>() }).value();
 
             JIT::TreeCompiler compiler(&pool);
             auto compiled = compiler.CompileAVX2(jitTree);

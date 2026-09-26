@@ -236,7 +236,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         names.reserve(inputs.size());
         for (auto h : inputs) { names.push_back(dataset.GetVariable(h)->Name); }
         Operon::Dataset const sampleDs(names, pointData);
-        auto const values = Interp::Evaluate(tree, sampleDs, Operon::Range{0, nSamples}, Operon::Span<Operon::Scalar const>(coeff));
+        auto const values = Interp::Evaluate(tree, sampleDs, Operon::Range{0, nSamples}, Operon::Span<Operon::Scalar const>(coeff)).value();
 
         for (auto v : values) {
             if (!std::isfinite(v)) { continue; }

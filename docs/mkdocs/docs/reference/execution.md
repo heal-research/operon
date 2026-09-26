@@ -6,18 +6,19 @@ Header: [`operon/interpreter/interpreter.hpp`](https://github.com/heal-research/
 
 ```cpp
 Interpreter<Scalar, ScalarDispatch> interpreter { &dispatch, &dataset, &tree };
-auto values = interpreter.TryEvaluate(tree.GetCoefficients(), range);
-auto jacobian = interpreter.TryJacRev(tree.GetCoefficients(), range);
+auto values = interpreter.Evaluate(tree.GetCoefficients(), range);
+auto jacobian = interpreter.JacRev(tree.GetCoefficients(), range);
 ```
 
 | Method family | Result |
 | --- | --- |
-| `TryEvaluate(coeff, range[, output])` | model values or `InterpreterError` |
-| `Evaluate(...)` | same work; throws `runtime_error` on an interpreter error |
-| `TryJacRev` / `JacRev` / `JacFwd` | coefficient Jacobian; rows are observations, columns are optimizable constants |
-| `JacRevVariable` / `JacFwdVariable` | derivative of output with respect to one input variable hash |
+| `Evaluate(coeff, range[, output])` | model values or `InterpreterError` |
+| `JacRev` / `JacFwd` | coefficient Jacobian or `InterpreterError`; rows are observations, columns are optimizable constants |
+| `JacRevVariable` / `JacFwdVariable` | derivative of output with respect to one input variable hash, or `InterpreterError` |
 
-`InterpreterError::Code` distinguishes missing dataset variables, primitive implementations, derivatives, and output-span size mismatch. An interpreter reuses mutable binding and trace buffers; it is not thread-safe. Create one per concurrent worker.
+All fallible `Interpreter` operations return `tl::expected`; inspect the result before using its value.
+
+This API change is a deliberate breaking boundary for the next Operon API epoch: `InterpreterBase` virtual return types use `tl::expected`, and the former virtual `Try*` methods are removed. Downstream bindings and consumers must rebuild and migrate together; binaries built against the previous virtual interface are not ABI-compatible.
 
 ## `EvaluatorBase`
 
@@ -38,6 +39,8 @@ The three-argument `operator()` is final. It calls `Evaluate`, then `Score`, and
 
 `ObjectiveCount()` defaults to one; override it for vector objectives. `Prepare(population)` is a pre-evaluation hook. `SetBudget`, `BudgetExhausted`, and atomic counter accessors expose the evaluation budget and accounting. Built-in `Evaluator<DTable>` accepts an `ErrorMetric`; `SSE`, `MSE`, `NMSE`, `RMSE`, `MAE`, `R2`, and `C2` are available metric types.
 
+
+Evaluator failures are converted to the evaluator's worst-score sentinel rather than escaping through the optimization loop. In particular, `MinimumDescriptionLengthEvaluator::Score` returns `EvaluatorBase::ErrMax` when Jacobian evaluation fails, preserving the evaluator's fixed fitness arity and allowing population comparisons to continue safely.
 ## Shape constraints
 
 Header: [`operon/operators/shape_constrained_evaluator.hpp`](https://github.com/heal-research/operon/blob/main/include/operon/operators/shape_constrained_evaluator.hpp)

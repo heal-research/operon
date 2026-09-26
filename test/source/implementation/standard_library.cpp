@@ -87,8 +87,8 @@ TEST_CASE("StandardLibrary populates dispatch tables and node names consistently
 
         for (auto const& expr : exprs) {
             auto t = InfixParser::ParseOrThrow(expr);
-            auto rDefault = Interpreter<Scalar, DT>(&dtDefault, &ds, &t).Evaluate(t.GetCoefficients(), Operon::Range(0, v.size()));
-            auto rRuntime = Interpreter<Scalar, DT>(&dtRuntime, &ds, &t).Evaluate(t.GetCoefficients(), Operon::Range(0, v.size()));
+            auto rDefault = Interpreter<Scalar, DT>(&dtDefault, &ds, &t).Evaluate(t.GetCoefficients(), Operon::Range(0, v.size())).value();
+            auto rRuntime = Interpreter<Scalar, DT>(&dtRuntime, &ds, &t).Evaluate(t.GetCoefficients(), Operon::Range(0, v.size())).value();
 
             REQUIRE(rDefault.size() == rRuntime.size());
             for (size_t i = 0; i < rDefault.size(); ++i) {
@@ -205,7 +205,7 @@ TEST_CASE("RegisterNaryFunction registers a variable-arity function end-to-end",
         std::string const x{"x"};
         Operon::Dataset const ds({x}, {std::vector<Scalar>{0.0}});
         auto coeff = tree.GetCoefficients();
-        auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 1));
+        auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 1)).value();
 
         REQUIRE(std::ssize(r) == 1);
         CHECK(r[0] == Catch::Approx(6.0).epsilon(1e-6)); // (1 + 2) + 3
@@ -217,7 +217,7 @@ TEST_CASE("RegisterNaryFunction registers a variable-arity function end-to-end",
         std::string const x{"x"};
         Operon::Dataset const ds({x}, {std::vector<Scalar>{0.0}});
         auto coeff = tree.GetCoefficients();
-        auto jac = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).JacFwd(coeff, Operon::Range(0, 1));
+        auto jac = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).JacFwd(coeff, Operon::Range(0, 1)).value();
 
         REQUIRE(jac.rows() == 1);
         REQUIRE(jac.cols() == 3);
@@ -256,7 +256,7 @@ TEST_CASE("RegisterNaryFunction registers a variable-arity function end-to-end",
         std::string const x{"x"};
         Operon::Dataset const ds({x}, {std::vector<Scalar>{0.0}});
         auto coeff = tree.GetCoefficients();
-        auto jac = Operon::Interpreter<Scalar, DT>(&dtProd, &ds, &tree).JacFwd(coeff, Operon::Range(0, 1));
+        auto jac = Operon::Interpreter<Scalar, DT>(&dtProd, &ds, &tree).JacFwd(coeff, Operon::Range(0, 1)).value();
 
         REQUIRE(jac.rows() == 1);
         REQUIRE(jac.cols() == 3);

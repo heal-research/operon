@@ -334,7 +334,7 @@ struct LBFGSOptimizer final : public OptimizerBase {
         LossFunction loss { &rng, &interpreter, problem->TargetValues(), range, batchSize, dataset->Weights().value_or(Operon::Span<Operon::Scalar const> {}) };
 
         auto cost = [&](auto const& coeff) -> tl::expected<Operon::Scalar, InterpreterError> {
-            auto pred = interpreter.TryEvaluate(coeff, range);
+            auto pred = interpreter.Evaluate(coeff, range);
             if (!pred) {
                 return tl::unexpected(std::move(pred.error()));
             }
@@ -453,7 +453,7 @@ struct SGDOptimizer final : public OptimizerBase {
         LossFunction loss { &rng, &interpreter, problem->TargetValues(), range, batchSize, dataset->Weights().value_or(Operon::Span<Operon::Scalar const> {}) };
 
         auto cost = [&](auto const& coeff) -> tl::expected<Operon::Scalar, InterpreterError> {
-            auto pred = interpreter.TryEvaluate(coeff, range);
+            auto pred = interpreter.Evaluate(coeff, range);
             if (!pred) {
                 return tl::unexpected(std::move(pred.error()));
             }
@@ -574,7 +574,7 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
             diag.FinalParameters = x0;
             return detail::MakeFitConfigurationError(validWeights.error(), std::move(diag));
         }
-        auto bound = interpreter.TryBindTree(range);
+        auto bound = interpreter.BindTree(range);
         if (!bound) {
             diag.FinalParameters = x0;
             return detail::MakeFitEvaluationError(std::move(bound.error()), std::move(diag));

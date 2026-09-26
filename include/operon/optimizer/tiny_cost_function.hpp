@@ -7,7 +7,7 @@
 
 #include <Eigen/Core>
 #include <gsl/pointers>
-
+#include <limits>
 #include "operon/interpreter/interpreter.hpp"
 
 namespace Operon {
@@ -38,12 +38,20 @@ struct CostFunction {
 
         if (jacobian != nullptr) {
             Operon::Span<Operon::Scalar> jac{jacobian, static_cast<size_t>(numResiduals_ * numParameters_)};
-            interpreter_->JacRev(params, range_, jac);
+            auto result = interpreter_->JacRev(params, range_, jac);
+            if (!result) {
+                std::fill_n(jacobian, jac.size(), std::numeric_limits<Scalar>::quiet_NaN());
+                return false;
+            }
         }
 
         if (residuals != nullptr) {
-            Operon::Span<Operon::Scalar> res{ residuals, static_cast<size_t>(numResiduals_) };
-            interpreter_->Evaluate(params, range_, res);
+            Operon::Span<Operon::Scalar> res{residuals, static_cast<size_t>(numResiduals_)};
+            auto result = interpreter_->Evaluate(params, range_, res);
+            if (!result) {
+                std::fill_n(residuals, res.size(), std::numeric_limits<Scalar>::quiet_NaN());
+                return false;
+            }
             Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> x(residuals, numResiduals_);
             Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> y(target_.data(), numResiduals_);
             x -= y;
