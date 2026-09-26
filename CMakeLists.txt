@@ -11,11 +11,15 @@ project(
     VERSION 0.3.1
     DESCRIPTION "Fast and scalable genetic programming library for symbolic regression."
     HOMEPAGE_URL "https://heal-research.github.io/operon/"
-    LANGUAGES CXX
+    LANGUAGES CXX C
 )
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
+# Only used by the tiny standalone C11 consumer that proves
+# include/operon/core/view_descriptor.h is valid, self-contained C11.
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED TRUE)
 
 include(cmake/project-is-top-level.cmake)
 

@@ -74,6 +74,8 @@ add_executable(operon_test
     source/implementation/pappus_nsgp.cpp
     source/implementation/registry_coverage.cpp
     source/implementation/user_defined_registries.cpp
+    source/implementation/memory_view.cpp
+    source/implementation/view_descriptor.cpp
     source/implementation/subtree.cpp
     source/implementation/composed_function.cpp
     )
@@ -100,6 +102,23 @@ endif()
 
 add_test(NAME operon_test COMMAND operon_test "~[performance]" WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 windows_set_path(operon_test operon::operon)
+
+# ---- Stage 1 memory-layout-plan consumer fixtures ----
+# Standalone smoke executables (not linked into operon_test) proving the
+# canonical view headers are usable in isolation by a minimal external
+# consumer. See OPERON_MEMORY_LAYOUT_PLAN.md, Stage 1.
+add_executable(memory_view_consumer source/memory_view_consumer.cpp)
+target_link_libraries(memory_view_consumer PRIVATE operon::operon)
+target_compile_features(memory_view_consumer PRIVATE cxx_std_23)
+add_test(NAME memory_view_consumer COMMAND memory_view_consumer)
+
+# view_descriptor.h is deliberately plain C11 with no C++ dependency, so its
+# consumer fixture is compiled as C and does not link operon::operon -- it
+# only needs the header's own include path.
+add_executable(view_descriptor_consumer source/view_descriptor_consumer.c)
+target_include_directories(view_descriptor_consumer PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../include")
+set_target_properties(view_descriptor_consumer PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES)
+add_test(NAME view_descriptor_consumer COMMAND view_descriptor_consumer)
 
 # ---- Installed-package-consumer contract (package-consumer) ----
 # Exercises the install -> relocate -> find_package(operon CONFIG) -> build
