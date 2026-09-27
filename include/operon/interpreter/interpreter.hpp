@@ -6,6 +6,7 @@
 #define OPERON_INTERPRETER_HPP
 
 #include <algorithm>
+#include <Eigen/Core>
 #include <gsl/pointers>
 #include <optional>
 #include <span>

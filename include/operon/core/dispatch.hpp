@@ -5,7 +5,6 @@
 #ifndef OPERON_EVAL_DETAIL
 #define OPERON_EVAL_DETAIL
 
-#include <Eigen/Dense>
 #include <fmt/format.h>
 #include <cstddef>
 #include <tuple>
