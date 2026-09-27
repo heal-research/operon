@@ -80,6 +80,71 @@ struct LeastSquaresDiagnostics {
     double GradientNorm { std::numeric_limits<double>::quiet_NaN() };
 };
 
+/**
+ * Computes Cost = 0.5 * sum(w_i * r_i^2) and writes gradient = J^T (w .* r).
+ * weights is empty (unweighted), size 1 (uniform), or residuals.size()
+ * (per-row); values must be finite and nonnegative. jacobian must have
+ * residuals.size() rows; gradient must have jacobian's column count.
+ * Returns InvalidShape for a dimension mismatch, NonFiniteEvaluation for a
+ * non-finite input or accumulated result, NumericalFailure if an
+ * accumulated component does not narrow to a finite Scalar.
+ */
+[[nodiscard]] inline auto ComputeGradient(
+    ConstScalarSpan residuals,
+    ConstScalarMatrixView jacobian,
+    ScalarSpan gradient,
+    ConstScalarSpan weights = {})
+    -> tl::expected<AccumulationScalar, LeastSquaresError>
+{
+    auto const n = residuals.size();
+    auto const p = jacobian.extent(1);
+    if (jacobian.extent(0) != n) {
+        return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape, .Expected = n, .Actual = jacobian.extent(0) });
+    }
+    if (gradient.size() != p) {
+        return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape, .Expected = p, .Actual = gradient.size() });
+    }
+    if (!weights.empty() && weights.size() != 1 && weights.size() != n) {
+        return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape, .Expected = n, .Actual = weights.size() });
+    }
+    if (!detail::AllFinite(residuals, false) || !detail::AllFinite(weights, true)) {
+        return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::NonFiniteEvaluation });
+    }
+
+    auto const weightAt = [&weights](std::size_t i) -> AccumulationScalar {
+        if (weights.empty()) { return AccumulationScalar { 1 }; }
+        return static_cast<AccumulationScalar>(weights.size() == 1 ? weights[0] : weights[i]);
+    };
+
+    std::vector<AccumulationScalar> accum(p, AccumulationScalar { 0 });
+    AccumulationScalar cost {0};
+    for (std::size_t i = 0; i < n; ++i) {
+        auto const r = static_cast<AccumulationScalar>(residuals[i]);
+        auto const w = weightAt(i);
+        cost += 0.5 * w * r * r;
+        auto const wr = w * r;
+        for (std::size_t j = 0; j < p; ++j) {
+            accum[j] += wr * static_cast<AccumulationScalar>(At(jacobian, i, j));
+        }
+    }
+
+    if (!std::isfinite(cost)) {
+        return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::NonFiniteEvaluation });
+    }
+    for (std::size_t j = 0; j < p; ++j) {
+        if (!std::isfinite(accum[j])) {
+            return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::NonFiniteEvaluation, .Column = j });
+        }
+        auto const value = static_cast<Scalar>(accum[j]);
+        if (!std::isfinite(static_cast<double>(value))) {
+            return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::NumericalFailure, .Column = j });
+        }
+        gradient[j] = value;
+    }
+
+    return cost;
+}
+
 /** Cost = 0.5 * sum(w_i * r_i^2); GradientNorm = ||J^T (w .* r)||_2 when jacobian is supplied. */
 [[nodiscard]] inline auto ComputeDiagnostics(
     ConstScalarSpan residuals,
@@ -98,39 +163,43 @@ struct LeastSquaresDiagnostics {
         return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::NonFiniteEvaluation });
     }
 
-    auto const weightAt = [&weights](std::size_t i) -> AccumulationScalar {
-        if (weights.empty()) { return AccumulationScalar { 1 }; }
-        return static_cast<AccumulationScalar>(weights.size() == 1 ? weights[0] : weights[i]);
-    };
-
-    AccumulationScalar cost {0};
     AccumulationScalar sumSquares {0};
-    for (std::size_t i = 0; i < n; ++i) {
-        auto const r = static_cast<AccumulationScalar>(residuals[i]);
-        cost += 0.5 * weightAt(i) * r * r;
-        sumSquares += r * r;
+    for (auto const r : residuals) {
+        auto const rr = static_cast<AccumulationScalar>(r);
+        sumSquares += rr * rr;
     }
 
     LeastSquaresDiagnostics diagnostics;
-    diagnostics.Cost = cost;
     diagnostics.ResidualNorm = std::sqrt(sumSquares);
 
     if (jacobian) {
         auto const p = jacobian->extent(1);
-        std::vector<AccumulationScalar> gradient(p, AccumulationScalar { 0 });
-        for (std::size_t i = 0; i < n; ++i) {
-            auto const wr = weightAt(i) * static_cast<AccumulationScalar>(residuals[i]);
-            for (std::size_t j = 0; j < p; ++j) {
-                gradient[j] += wr * static_cast<AccumulationScalar>(At(*jacobian, i, j));
-            }
+        std::vector<Scalar> gradient(p);
+        auto result = ComputeGradient(residuals, *jacobian, gradient, weights);
+        if (!result) {
+            return tl::unexpected(result.error());
         }
+        diagnostics.Cost = *result;
         AccumulationScalar gradientSumSquares {0};
-        for (auto const g : gradient) { gradientSumSquares += g * g; }
+        for (auto const g : gradient) {
+            auto const gg = static_cast<AccumulationScalar>(g);
+            gradientSumSquares += gg * gg;
+        }
         diagnostics.GradientNorm = std::sqrt(gradientSumSquares);
+    } else {
+        auto const weightAt = [&weights](std::size_t i) -> AccumulationScalar {
+            if (weights.empty()) { return AccumulationScalar { 1 }; }
+            return static_cast<AccumulationScalar>(weights.size() == 1 ? weights[0] : weights[i]);
+        };
+        AccumulationScalar cost {0};
+        for (std::size_t i = 0; i < n; ++i) {
+            auto const r = static_cast<AccumulationScalar>(residuals[i]);
+            cost += 0.5 * weightAt(i) * r * r;
+        }
+        diagnostics.Cost = cost;
     }
 
-    if (!std::isfinite(diagnostics.Cost) || !std::isfinite(diagnostics.ResidualNorm)
-        || (jacobian && !std::isfinite(diagnostics.GradientNorm))) {
+    if (!std::isfinite(diagnostics.Cost) || !std::isfinite(diagnostics.ResidualNorm)) {
         return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::NonFiniteEvaluation });
     }
 

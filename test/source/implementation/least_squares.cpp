@@ -291,6 +291,156 @@ TEST_CASE("ComputeDiagnostics: shape and finiteness errors", "[least-squares][di
     }
 }
 
+TEST_CASE("ComputeGradient: unweighted, scalar, and per-row weighted reductions", "[least-squares][gradient]")
+{
+    // r = [1, -2, 3], J = [[1,0],[0,1],[1,1]] -> unweighted grad = J^T r = [1+3, -2+3] = [4, 1]
+    std::vector<Operon::Scalar> residuals { 1, -2, 3 };
+    std::array<Operon::Scalar, 6> jacBuffer { 1, 0, 0, 1, 1, 1 };
+    Operon::ConstScalarMatrixView jac { jacBuffer.data(), Mapping { Extents { 3, 2 }, std::array<std::size_t, 2> { 2, 1 } } };
+
+    SECTION("unweighted") {
+        std::array<Operon::Scalar, 2> gradient {};
+        auto cost = Operon::ComputeGradient(residuals, jac, gradient, {});
+        REQUIRE(cost.has_value());
+        CHECK_THAT(*cost, Catch::Matchers::WithinAbs(0.5 * (1.0 + 4.0 + 9.0), 1e-9));
+        CHECK_THAT(static_cast<double>(gradient[0]), Catch::Matchers::WithinAbs(4.0, 1e-6));
+        CHECK_THAT(static_cast<double>(gradient[1]), Catch::Matchers::WithinAbs(1.0, 1e-6));
+    }
+
+    SECTION("scalar weight scales cost and gradient") {
+        std::vector<Operon::Scalar> weight { 2 };
+        std::array<Operon::Scalar, 2> gradient {};
+        auto cost = Operon::ComputeGradient(residuals, jac, gradient, weight);
+        REQUIRE(cost.has_value());
+        CHECK_THAT(*cost, Catch::Matchers::WithinAbs(2.0 * 0.5 * (1.0 + 4.0 + 9.0), 1e-9));
+        CHECK_THAT(static_cast<double>(gradient[0]), Catch::Matchers::WithinAbs(8.0, 1e-6));
+        CHECK_THAT(static_cast<double>(gradient[1]), Catch::Matchers::WithinAbs(2.0, 1e-6));
+    }
+
+    SECTION("per-row weight matches manual accumulation") {
+        std::vector<Operon::Scalar> weights { 1, 2, 0.5 };
+        std::array<Operon::Scalar, 2> gradient {};
+        auto cost = Operon::ComputeGradient(residuals, jac, gradient, weights);
+        REQUIRE(cost.has_value());
+        // grad = sum(w_i * r_i * J_i) = 1*1*[1,0] + 2*-2*[0,1] + 0.5*3*[1,1] = [1+1.5, -4+1.5] = [2.5, -2.5]
+        CHECK_THAT(static_cast<double>(gradient[0]), Catch::Matchers::WithinAbs(2.5, 1e-6));
+        CHECK_THAT(static_cast<double>(gradient[1]), Catch::Matchers::WithinAbs(-2.5, 1e-6));
+    }
+}
+
+TEST_CASE("ComputeGradient: invalid shapes are rejected", "[least-squares][gradient]")
+{
+    std::vector<Operon::Scalar> residuals { 1, 2, 3 };
+    std::array<Operon::Scalar, 6> jacBuffer {};
+    Operon::ConstScalarMatrixView jac { jacBuffer.data(), Mapping { Extents { 3, 2 }, std::array<std::size_t, 2> { 2, 1 } } };
+
+    SECTION("jacobian row count mismatch") {
+        std::array<Operon::Scalar, 4> smallJacBuffer {};
+        Operon::ConstScalarMatrixView badJac { smallJacBuffer.data(), Mapping { Extents { 2, 2 }, std::array<std::size_t, 2> { 2, 1 } } };
+        std::array<Operon::Scalar, 2> gradient {};
+        auto result = Operon::ComputeGradient(residuals, badJac, gradient, {});
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error().Code == Operon::LeastSquaresErrorCode::InvalidShape);
+    }
+
+    SECTION("gradient size mismatch") {
+        std::array<Operon::Scalar, 3> gradient {};
+        auto result = Operon::ComputeGradient(residuals, jac, gradient, {});
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error().Code == Operon::LeastSquaresErrorCode::InvalidShape);
+    }
+
+    SECTION("weights size mismatch") {
+        std::vector<Operon::Scalar> weights { 1, 2 };
+        std::array<Operon::Scalar, 2> gradient {};
+        auto result = Operon::ComputeGradient(residuals, jac, gradient, weights);
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error().Code == Operon::LeastSquaresErrorCode::InvalidShape);
+    }
+}
+
+TEST_CASE("ComputeGradient: non-finite residual, Jacobian, or weight is rejected", "[least-squares][gradient]")
+{
+    std::array<Operon::Scalar, 2> gradient {};
+
+    SECTION("non-finite residual") {
+        std::vector<Operon::Scalar> residuals { 1, std::numeric_limits<Operon::Scalar>::quiet_NaN() };
+        std::array<Operon::Scalar, 4> jacBuffer { 1, 0, 0, 1 };
+        Operon::ConstScalarMatrixView jac { jacBuffer.data(), Mapping { Extents { 2, 2 }, std::array<std::size_t, 2> { 2, 1 } } };
+        auto result = Operon::ComputeGradient(residuals, jac, gradient, {});
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error().Code == Operon::LeastSquaresErrorCode::NonFiniteEvaluation);
+    }
+
+    SECTION("negative weight") {
+        std::vector<Operon::Scalar> residuals { 1, 2 };
+        std::vector<Operon::Scalar> weights { 1, -1 };
+        std::array<Operon::Scalar, 4> jacBuffer { 1, 0, 0, 1 };
+        Operon::ConstScalarMatrixView jac { jacBuffer.data(), Mapping { Extents { 2, 2 }, std::array<std::size_t, 2> { 2, 1 } } };
+        auto result = Operon::ComputeGradient(residuals, jac, gradient, weights);
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error().Code == Operon::LeastSquaresErrorCode::NonFiniteEvaluation);
+    }
+}
+
+TEST_CASE("ComputeGradient: matches finite-difference gradient of a fitted linear model", "[least-squares][gradient]")
+{
+    auto cost = MakeLinearFixture(15, Operon::Scalar { 0.4 }, Operon::Scalar { -1.1 });
+    std::array<Operon::Scalar, 2> params { 0.05, 0.05 };
+    auto const n = cost.NumResiduals();
+    auto const p = cost.NumParameters();
+
+    std::vector<Operon::Scalar> residuals(n);
+    std::vector<Operon::Scalar> jacBuffer(n * p);
+    Operon::ScalarMatrixView jac { jacBuffer.data(), Mapping { Extents { n, p }, std::array<std::size_t, 2> { p, 1 } } };
+    REQUIRE(cost.Evaluate(params, residuals, jac).has_value());
+
+    std::array<Operon::Scalar, 2> gradient {};
+    auto costValue = Operon::ComputeGradient(residuals, jac, gradient, {});
+    REQUIRE(costValue.has_value());
+
+    constexpr double eps = 1e-3;
+    for (std::size_t j = 0; j < p; ++j) {
+        auto plus = params;
+        auto minus = params;
+        plus.at(j) = static_cast<Operon::Scalar>(plus.at(j) + eps);
+        minus.at(j) = static_cast<Operon::Scalar>(minus.at(j) - eps);
+        std::vector<Operon::Scalar> rPlus(n);
+        std::vector<Operon::Scalar> rMinus(n);
+        REQUIRE(cost.Evaluate(plus, rPlus, std::nullopt).has_value());
+        REQUIRE(cost.Evaluate(minus, rMinus, std::nullopt).has_value());
+        auto costPlus = Operon::ComputeDiagnostics(rPlus, std::nullopt, {});
+        auto costMinus = Operon::ComputeDiagnostics(rMinus, std::nullopt, {});
+        REQUIRE(costPlus.has_value());
+        REQUIRE(costMinus.has_value());
+        auto const fd = (costPlus->Cost - costMinus->Cost) / (2.0 * eps);
+        CHECK_THAT(fd, Catch::Matchers::WithinAbs(static_cast<double>(gradient.at(j)), 1e-2));
+    }
+}
+
+TEST_CASE("ComputeGradient and ComputeDiagnostics report the same cost and gradient norm", "[least-squares][gradient]")
+{
+    auto cost = MakeLinearFixture(9, Operon::Scalar { 1.2 }, Operon::Scalar { 0.3 });
+    std::array<Operon::Scalar, 2> params { 0.1, -0.2 };
+    auto const n = cost.NumResiduals();
+    auto const p = cost.NumParameters();
+    std::vector<Operon::Scalar> residuals(n);
+    std::vector<Operon::Scalar> jacBuffer(n * p);
+    Operon::ScalarMatrixView jac { jacBuffer.data(), Mapping { Extents { n, p }, std::array<std::size_t, 2> { p, 1 } } };
+    REQUIRE(cost.Evaluate(params, residuals, jac).has_value());
+
+    std::array<Operon::Scalar, 2> gradient {};
+    auto gradResult = Operon::ComputeGradient(residuals, jac, gradient, {});
+    REQUIRE(gradResult.has_value());
+    auto diagResult = Operon::ComputeDiagnostics(residuals, jac, {});
+    REQUIRE(diagResult.has_value());
+
+    CHECK_THAT(diagResult->Cost, Catch::Matchers::WithinAbs(*gradResult, 1e-9));
+    auto const gradNormSquared = (static_cast<double>(gradient[0]) * static_cast<double>(gradient[0]))
+        + (static_cast<double>(gradient[1]) * static_cast<double>(gradient[1]));
+    CHECK_THAT(diagResult->GradientNorm, Catch::Matchers::WithinAbs(std::sqrt(gradNormSquared), 1e-6));
+}
+
 namespace {
 
 // Row-major Jacobian view with unused padding per row (left NaN, so a stride bug reads it).
