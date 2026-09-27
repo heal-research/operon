@@ -302,57 +302,57 @@ namespace {
             return IntervalBound();
         }
 
-        try {
-            ae.SetTree(&tree);
-            auto affine = ae.Evaluate(tree.GetCoefficients());
-            // Catastrophic cancellation can make this float32 enclosure unsound: an intermediate center orders
-            // of magnitude larger than the result implies a rounding-error floor exceeding the tracked radius.
-            // Treat as uncertified rather than trusting a possibly-wrong interval.
-            constexpr auto eps = std::numeric_limits<Operon::Scalar>::epsilon();
-            auto const impliedErrorFloor = ae.MaxAbsCenter() * eps;
-            // A zero radius means every noise symbol cancelled (e.g. x - x): structurally sound, not an
-            // underestimate, so only judge forms that track real variable uncertainty.
-            auto const r = affine.radius();
-            if (r > 0 && impliedErrorFloor > opts.AffineIllConditionedThreshold * r) {
-                auto bound = IntervalBound();
-                if (bound) {
-                    return bound;
-                }
-                return tl::unexpected(fmt::format("ill-conditioned: intermediate magnitude implies rounding error {} "
-                                                  "exceeds result radius {}; interval fallback failed: {}",
-                    impliedErrorFloor, affine.radius(), bound.error()));
-            }
-            auto const bound = affine.to_interval();
-            if (!std::isfinite(bound.inf()) || !std::isfinite(bound.sup())) {
-                return IntervalBound();
-            }
-            // Affine's linearization of nonlinear ops (each Mul needs its own error term for the cross-product
-            // it can't represent exactly; likewise exp/log) can make it looser than plain interval arithmetic on
-            // the same tree, even though affine is tighter in the common case. Empirically confirmed on
-            // correlated coeff*x*coeff*y chains (operon-publications shape-constraints-reproduction). Both
-            // bounds are sound enclosures of the same quantity, so their intersection is sound and at least as
-            // tight as either alone -- take it whenever the interval fallback succeeds and doesn't contradict
-            // affine (a non-overlapping result means one bound is unsound, not that the intersection is empty --
-            // fall back to the affine bound alone).
-            if (HasFlag(mode, ShapeBoundMode::Affine)) {
-                return bound;
-            }
-            if (auto ibound = IntervalBound(); ibound) {
-                auto const lo = std::max(bound.inf(), ibound->inf());
-                auto const hi = std::min(bound.sup(), ibound->sup());
-                if (lo <= hi) {
-                    return Interval(lo, hi);
-                }
-            }
-            return bound;
-        } catch (std::exception const& e) {
+        ae.SetTree(&tree);
+        auto affineResult = ae.TryEvaluate(tree.GetCoefficients());
+        if (!affineResult) {
             auto bound = IntervalBound();
             if (bound) {
                 return bound;
             }
             return tl::unexpected(
-                fmt::format("affine evaluation failed: {}; interval fallback failed: {}", e.what(), bound.error()));
+                fmt::format("affine evaluation failed: {}; interval fallback failed: {}", affineResult.error(), bound.error()));
         }
+        auto const& affine = *affineResult;
+        // Catastrophic cancellation can make this float32 enclosure unsound: an intermediate center orders
+        // of magnitude larger than the result implies a rounding-error floor exceeding the tracked radius.
+        // Treat as uncertified rather than trusting a possibly-wrong interval.
+        constexpr auto eps = std::numeric_limits<Operon::Scalar>::epsilon();
+        auto const impliedErrorFloor = ae.MaxAbsCenter() * eps;
+        // A zero radius means every noise symbol cancelled (e.g. x - x): structurally sound, not an
+        // underestimate, so only judge forms that track real variable uncertainty.
+        auto const r = affine.radius();
+        if (r > 0 && impliedErrorFloor > opts.AffineIllConditionedThreshold * r) {
+            auto bound = IntervalBound();
+            if (bound) {
+                return bound;
+            }
+            return tl::unexpected(fmt::format("ill-conditioned: intermediate magnitude implies rounding error {} "
+                                              "exceeds result radius {}; interval fallback failed: {}",
+                impliedErrorFloor, affine.radius(), bound.error()));
+        }
+        auto const bound = affine.to_interval();
+        if (!std::isfinite(bound.inf()) || !std::isfinite(bound.sup())) {
+            return IntervalBound();
+        }
+        // Affine's linearization of nonlinear ops (each Mul needs its own error term for the cross-product
+        // it can't represent exactly; likewise exp/log) can make it looser than plain interval arithmetic on
+        // the same tree, even though affine is tighter in the common case. Empirically confirmed on
+        // correlated coeff*x*coeff*y chains (operon-publications shape-constraints-reproduction). Both
+        // bounds are sound enclosures of the same quantity, so their intersection is sound and at least as
+        // tight as either alone -- take it whenever the interval fallback succeeds and doesn't contradict
+        // affine (a non-overlapping result means one bound is unsound, not that the intersection is empty --
+        // fall back to the affine bound alone).
+        if (HasFlag(mode, ShapeBoundMode::Affine)) {
+            return bound;
+        }
+        if (auto ibound = IntervalBound(); ibound) {
+            auto const lo = std::max(bound.inf(), ibound->inf());
+            auto const hi = std::min(bound.sup(), ibound->sup());
+            if (lo <= hi) {
+                return Interval(lo, hi);
+            }
+        }
+        return bound;
     }
 
     // Bounded-depth domain bisection, used only as a last resort when TryAffineBoundDirect fails on the whole

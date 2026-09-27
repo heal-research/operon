@@ -54,9 +54,9 @@ namespace Operon {
 // PAPPUS_DEFINE_UNARY_OP is the only one either evaluator ever calls (the
 // bare affine_form<T>-only overload, without a context, is never used
 // here).
-template<typename T> using AffineUnaryFn  = std::function<pappus::affine_form<T>(
+template<typename T> using AffineUnaryFn  = std::function<tl::expected<pappus::affine_form<T>, std::string>(
     pappus::ops::affine_context<T> const&, pappus::affine_form<T> const&)>;
-template<typename T> using AffineBinaryFn = std::function<pappus::affine_form<T>(
+template<typename T> using AffineBinaryFn = std::function<tl::expected<pappus::affine_form<T>, std::string>(
     pappus::ops::affine_context<T> const&,
     pappus::affine_form<T> const&, pappus::affine_form<T> const&)>;
 
@@ -387,14 +387,18 @@ public:
                     // throw rather than only guarding against 1-vs-2.
                     if (node.Arity == 1) {
                         if (auto const* unary = AffineUnaryRules<Scalar>().TryGet(node.HashValue)) {
-                            emit((*unary)(ctx_, primal_[i - 1]), v);
+                            auto result = (*unary)(ctx_, primal_[i - 1]);
+                            if (!result) { return tl::unexpected(std::move(result.error())); }
+                            emit(std::move(*result), v);
                             break;
                         }
                     } else if (node.Arity == 2) {
                         if (auto const* binary = AffineBinaryRules<Scalar>().TryGet(node.HashValue)) {
                             auto const j = static_cast<std::size_t>(i - 1);
                             auto const k = j - (nodes[j].Length + 1);
-                            emit((*binary)(ctx_, primal_[j], primal_[k]), v);
+                            auto result = (*binary)(ctx_, primal_[j], primal_[k]);
+                            if (!result) { return tl::unexpected(std::move(result.error())); }
+                            emit(std::move(*result), v);
                             break;
                         }
                     }

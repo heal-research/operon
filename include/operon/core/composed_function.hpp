@@ -724,8 +724,8 @@ namespace detail {
         static auto Max(Context const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::max<Scalar>(a, b); }
         static auto Neg(Context const& /*ctx*/, Value const& a) -> Value { return pappus::ops::neg<Scalar>(a); }
         static auto Inv(Context const& /*ctx*/, Value const& a) -> Value { return pappus::ops::inv<Scalar>(a); }
-        static auto CallUnary(Context const& /*ctx*/, IntervalUnaryFn<Scalar> const& fn, Value const& a) -> Value { return fn(a); }
-        static auto CallBinary(Context const& /*ctx*/, IntervalBinaryFn<Scalar> const& fn, Value const& a, Value const& b) -> Value { return fn(a, b); }
+        static auto CallUnary(Context const& /*ctx*/, IntervalUnaryFn<Scalar> const& fn, Value const& a) -> tl::expected<Value, std::string> { return fn(a); }
+        static auto CallBinary(Context const& /*ctx*/, IntervalBinaryFn<Scalar> const& fn, Value const& a, Value const& b) -> tl::expected<Value, std::string> { return fn(a, b); }
         // Skip the scale entirely when v == 1 (exact in IEEE) -- matches AffineEvaluator::emit's identical fast path.
         static auto Scale(Value value, Scalar s) -> Value { return s == Scalar{1} ? std::move(value) : value * s; }
     };
@@ -760,8 +760,8 @@ namespace detail {
         static auto Max(Context const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::max<Scalar>(ctx, a, b); }
         static auto Neg(Context const& /*ctx*/, Value const& a) -> Value { return pappus::ops::neg<Scalar>(a); }
         static auto Inv(Context const& ctx, Value const& a) -> Value { return pappus::ops::inv<Scalar>(ctx, a); }
-        static auto CallUnary(Context const& ctx, AffineUnaryFn<Scalar> const& fn, Value const& a) -> Value { return fn(ctx, a); }
-        static auto CallBinary(Context const& ctx, AffineBinaryFn<Scalar> const& fn, Value const& a, Value const& b) -> Value { return fn(ctx, a, b); }
+        static auto CallUnary(Context const& ctx, AffineUnaryFn<Scalar> const& fn, Value const& a) -> tl::expected<Value, std::string> { return fn(ctx, a); }
+        static auto CallBinary(Context const& ctx, AffineBinaryFn<Scalar> const& fn, Value const& a, Value const& b) -> tl::expected<Value, std::string> { return fn(ctx, a, b); }
         // Skip the scale entirely when v == 1 (exact in IEEE) -- matches AffineEvaluator::emit's identical fast path.
         // Not just a redundant-copy avoidance: Value::operator* copies then runs operator*=, which loops every term
         // (FMA-based exact error tracking) even though a v==1 scale changes nothing.
@@ -777,7 +777,7 @@ namespace detail {
     // through the shared n-ary folds and registry dispatch.
     template<typename Policy>
     auto EvaluateComposedBody(Operon::Vector<Node> const& bodyNodes, typename Policy::Context const& ctx,
-        std::array<typename Policy::Value const*, kMaxComposedFunctionArity> const& args) -> typename Policy::Value
+        std::array<typename Policy::Value const*, kMaxComposedFunctionArity> const& args) -> tl::expected<typename Policy::Value, std::string>
     {
         using Value = typename Policy::Value;
         using Scalar = typename Policy::Scalar;
@@ -794,11 +794,7 @@ namespace detail {
         };
 
         std::vector<Value> primal;
-        auto result = detail::EvaluatePostOrder<Policy>(bodyNodes, primal, ctx, weight, bindLeaf);
-        if (!result) {
-            throw std::runtime_error(std::move(result.error()));
-        }
-        return std::move(*result);
+        return detail::EvaluatePostOrder<Policy>(bodyNodes, primal, ctx, weight, bindLeaf);
     }
 } // namespace detail
 
@@ -808,7 +804,7 @@ namespace detail {
 inline auto MakeComposedIntervalUnaryFn(Tree const& body) -> IntervalUnaryFn<Operon::Scalar>
 {
     auto const& bodyNodes = body.Nodes();
-    return [bodyNodes](pappus::interval<Operon::Scalar> const& arg) -> pappus::interval<Operon::Scalar> {
+    return [bodyNodes](pappus::interval<Operon::Scalar> const& arg) -> tl::expected<pappus::interval<Operon::Scalar>, std::string> {
         using Value = pappus::interval<Operon::Scalar>;
         std::array<Value const*, kMaxComposedFunctionArity> const args{&arg, nullptr};
         return detail::EvaluateComposedBody<detail::IntervalPolicy>(bodyNodes, detail::NoAffineContext{}, args);
@@ -824,7 +820,7 @@ inline auto MakeComposedIntervalBinaryFn(Tree const& body) -> IntervalBinaryFn<O
 {
     auto const& bodyNodes = body.Nodes();
     return [bodyNodes](pappus::interval<Operon::Scalar> const& argJ, pappus::interval<Operon::Scalar> const& argK)
-               -> pappus::interval<Operon::Scalar> {
+               -> tl::expected<pappus::interval<Operon::Scalar>, std::string> {
         using Value = pappus::interval<Operon::Scalar>;
         std::array<Value const*, kMaxComposedFunctionArity> const args{&argK, &argJ}; // args[paramIdx]
         return detail::EvaluateComposedBody<detail::IntervalPolicy>(bodyNodes, detail::NoAffineContext{}, args);
@@ -844,7 +840,7 @@ inline auto MakeComposedAffineUnaryFn(Tree const& body) -> AffineUnaryFn<Operon:
 {
     auto const& bodyNodes = body.Nodes();
     return [bodyNodes](pappus::ops::affine_context<Operon::Scalar> const& ctx, pappus::affine_form<Operon::Scalar> const& arg)
-               -> pappus::affine_form<Operon::Scalar> {
+               -> tl::expected<pappus::affine_form<Operon::Scalar>, std::string> {
         using Value = pappus::affine_form<Operon::Scalar>;
         std::array<Value const*, kMaxComposedFunctionArity> const args{&arg, nullptr};
         return detail::EvaluateComposedBody<detail::AffinePolicy>(bodyNodes, ctx, args);
@@ -859,7 +855,7 @@ inline auto MakeComposedAffineBinaryFn(Tree const& body) -> AffineBinaryFn<Opero
     auto const& bodyNodes = body.Nodes();
     return [bodyNodes](pappus::ops::affine_context<Operon::Scalar> const& ctx,
                pappus::affine_form<Operon::Scalar> const& argJ,
-               pappus::affine_form<Operon::Scalar> const& argK) -> pappus::affine_form<Operon::Scalar> {
+               pappus::affine_form<Operon::Scalar> const& argK) -> tl::expected<pappus::affine_form<Operon::Scalar>, std::string> {
         using Value = pappus::affine_form<Operon::Scalar>;
         std::array<Value const*, kMaxComposedFunctionArity> const args{&argK, &argJ}; // args[paramIdx]
         return detail::EvaluateComposedBody<detail::AffinePolicy>(bodyNodes, ctx, args);
