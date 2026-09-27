@@ -29,8 +29,8 @@ namespace Operon {
 // functions, keyed by Node::HashValue. Definitions live in
 // interval_evaluator.cpp, explicitly instantiated per T, so all shared
 // libraries share one registry instance.
-template<typename T> using IntervalUnaryFn  = std::function<pappus::interval<T>(pappus::interval<T> const&)>;
-template<typename T> using IntervalBinaryFn = std::function<pappus::interval<T>(pappus::interval<T> const&, pappus::interval<T> const&)>;
+template<typename T> using IntervalUnaryFn  = std::function<tl::expected<pappus::interval<T>, std::string>(pappus::interval<T> const&)>;
+template<typename T> using IntervalBinaryFn = std::function<tl::expected<pappus::interval<T>, std::string>(pappus::interval<T> const&, pappus::interval<T> const&)>;
 
 template<typename T> using IntervalUnaryRegistry  = HashRegistry<IntervalUnaryFn<T>>;
 template<typename T> using IntervalBinaryRegistry = HashRegistry<IntervalBinaryFn<T>>;
@@ -97,8 +97,8 @@ struct IntervalPostOrderPolicy {
     static auto Max(Context const&, Value const& lhs, Value const& rhs) -> Value { return pappus::ops::max<Scalar>(lhs, rhs); }
     static auto Neg(Context const&, Value const& value) -> Value { return pappus::ops::neg<Scalar>(value); }
     static auto Inv(Context const&, Value const& value) -> Value { return pappus::ops::inv<Scalar>(value); }
-    static auto CallUnary(Context const&, IntervalUnaryFn<Scalar> const& function, Value const& value) -> Value { return function(value); }
-    static auto CallBinary(Context const&, IntervalBinaryFn<Scalar> const& function, Value const& lhs, Value const& rhs) -> Value { return function(lhs, rhs); }
+    static auto CallUnary(Context const&, IntervalUnaryFn<Scalar> const& function, Value const& value) -> tl::expected<Value, std::string> { return function(value); }
+    static auto CallBinary(Context const&, IntervalBinaryFn<Scalar> const& function, Value const& lhs, Value const& rhs) -> tl::expected<Value, std::string> { return function(lhs, rhs); }
     static auto Scale(Value value, Scalar scale) -> Value { return value * scale; }
 };
 } // namespace detail
@@ -159,8 +159,8 @@ public:
         Operon::Scalar const* Hi;
     };
 
-    // Non-throwing evaluation with caller-provided per-lane variable bounds -- including exceptions from
-    // user-registered interval callbacks, caught in TryEvaluateImpl; never propagates one.
+    // Non-throwing evaluation with caller-provided per-lane variable bounds. User-registered interval callbacks
+    // return tl::expected directly (no exception path to catch here).
     [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff, std::span<LaneOverride const> overrides) const
         -> tl::expected<Interval, std::string>
     {
@@ -183,8 +183,8 @@ public:
         if (!result) { throw std::runtime_error(result.error()); }
         return std::move(*result);
     }
-    // Non-throwing evaluation, including from user-registered callbacks -- see TryEvaluateImpl. Callers should
-    // never need their own try/catch around this; use it directly instead of Evaluate() + try/catch.
+    // Non-throwing evaluation, including from user-registered callbacks, which signal failure via tl::expected
+    // rather than throwing. Callers should never need their own try/catch around this.
     [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff) const -> tl::expected<Interval, std::string>
     {
         return TryEvaluateImpl(coeff, {});
@@ -219,16 +219,8 @@ private:
             return pappus::ops::variable<Scalar>(static_cast<Scalar>(slot.Bounds.first), static_cast<Scalar>(slot.Bounds.second)) * scale;
         };
 
-        // EvaluatePostOrder invokes user-registered interval callbacks (RegisterUnaryInterval/
-        // RegisterBinaryInterval) directly; a callback that throws must not escape here, or TryEvaluate would
-        // silently stop being non-throwing despite its name and tl::expected contract, forcing every caller to
-        // wrap it in its own try/catch to compensate. Caught once, here, instead.
-        try {
-            return detail::EvaluatePostOrder<detail::IntervalPostOrderPolicy<Scalar>>(
-                tree_->Nodes(), primal_, typename detail::IntervalPostOrderPolicy<Scalar>::Context {}, weight, bindLeaf);
-        } catch (std::exception const& error) {
-            return tl::unexpected(std::string(error.what()));
-        }
+        return detail::EvaluatePostOrder<detail::IntervalPostOrderPolicy<Scalar>>(
+            tree_->Nodes(), primal_, typename detail::IntervalPostOrderPolicy<Scalar>::Context {}, weight, bindLeaf);
     }
 
     [[nodiscard]] static auto LoadOverride(Operon::Scalar const* value) -> Scalar
