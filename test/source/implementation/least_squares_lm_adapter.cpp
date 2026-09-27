@@ -28,7 +28,7 @@ public:
     }
 
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return 2; }
-    [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t { return x_.size(); }
+    [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return x_.size(); }
 
     [[nodiscard]] auto Evaluate(
         std::span<Operon::Scalar const> parameters,
@@ -57,6 +57,7 @@ private:
 class FailingCost final : public Operon::LeastSquaresCostFunction {
 public:
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return 2; }
+    [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return 5; }
 
     [[nodiscard]] auto Evaluate(
         std::span<Operon::Scalar const> /*parameters*/,

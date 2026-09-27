@@ -33,7 +33,7 @@ public:
     }
 
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return 2; }
-    [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t { return x_.size(); }
+    [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return x_.size(); }
 
     [[nodiscard]] auto Evaluate(
         std::span<Operon::Scalar const> parameters,
@@ -85,6 +85,27 @@ auto MakeLinearFixture(std::size_t n, Operon::Scalar c0, Operon::Scalar c1) -> L
 }
 
 } // namespace
+
+TEST_CASE("LeastSquaresCostFunction: NumParameters/NumResiduals report exact dimensions", "[least-squares]")
+{
+    auto cost = MakeLinearFixture(11, Operon::Scalar { 0 }, Operon::Scalar { 1 });
+    CHECK(cost.NumParameters() == 2);
+    CHECK(cost.NumResiduals() == 11);
+}
+
+TEST_CASE("LeastSquaresError: Cause carries a typed interpreter error", "[least-squares]")
+{
+    Operon::LeastSquaresError error {
+        .Code = Operon::LeastSquaresErrorCode::NonFiniteEvaluation,
+        .Cause = Operon::InterpreterError { .Kind = Operon::InterpreterError::Code::MissingVariable, .Hash = 42 }
+    };
+    REQUIRE(error.Cause.has_value());
+    CHECK(error.Cause->Kind == Operon::InterpreterError::Code::MissingVariable);
+    CHECK(error.Cause->Hash == 42);
+
+    Operon::LeastSquaresError noCause { .Code = Operon::LeastSquaresErrorCode::InvalidShape };
+    CHECK_FALSE(noCause.Cause.has_value());
+}
 
 TEST_CASE("LeastSquaresCostFunction: residual-only evaluation omits Jacobian", "[least-squares]")
 {

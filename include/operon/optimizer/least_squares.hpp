@@ -14,6 +14,7 @@
 
 #include <tl/expected.hpp>
 
+#include "operon/core/interpreter_error.hpp"
 #include "operon/core/memory_view.hpp"
 
 namespace Operon {
@@ -31,6 +32,7 @@ struct LeastSquaresError {
     std::size_t Actual {};
     std::size_t Row {};
     std::size_t Column {};
+    std::optional<InterpreterError> Cause {};
 };
 
 /**
@@ -53,6 +55,7 @@ public:
     auto operator=(LeastSquaresCostFunction&&) -> LeastSquaresCostFunction& = delete;
     virtual ~LeastSquaresCostFunction() = default;
     [[nodiscard]] virtual auto NumParameters() const noexcept -> std::size_t = 0;
+    [[nodiscard]] virtual auto NumResiduals() const noexcept -> std::size_t = 0;
     [[nodiscard]] virtual auto Evaluate(
         std::span<Scalar const> parameters,
         std::span<Scalar> residuals,

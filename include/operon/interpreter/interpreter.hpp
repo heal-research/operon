@@ -13,6 +13,7 @@
 #include "derivatives.hpp"
 #include "operon/core/dataset.hpp"
 #include "operon/core/dispatch.hpp"
+#include "operon/core/interpreter_error.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
 #include "operon/formatter/formatter.hpp"
@@ -25,35 +26,6 @@ namespace Operon {
 
 enum class LikelihoodType : uint8_t { Gaussian,
     Poisson };
-
-struct InterpreterError {
-    enum class Code {
-        MissingVariable,
-        MissingPrimitive,
-        MissingDerivative,
-        InvalidOutputSize,
-        InvalidCoefficientSize,
-        InvalidRootIndex,
-
-    };
-
-    Code Kind;
-    Operon::Hash Hash{};
-    std::size_t ExpectedSize{};
-    std::size_t ActualSize{};
-};
-
-[[nodiscard]] inline auto FormatInterpreterError(InterpreterError const& error) -> std::string {
-    switch (error.Kind) {
-    case InterpreterError::Code::MissingVariable: return fmt::format("missing dataset variable with hash {}", error.Hash);
-    case InterpreterError::Code::MissingPrimitive: return fmt::format("missing primitive with hash {}", error.Hash);
-    case InterpreterError::Code::MissingDerivative: return fmt::format("missing derivative for primitive with hash {}", error.Hash);
-    case InterpreterError::Code::InvalidOutputSize: return fmt::format("invalid output size: expected {}, got {}", error.ExpectedSize, error.ActualSize);
-    case InterpreterError::Code::InvalidCoefficientSize: return fmt::format("invalid coefficient size: expected {}, got {}", error.ExpectedSize, error.ActualSize);
-    case InterpreterError::Code::InvalidRootIndex: return fmt::format("invalid root index: expected less than {}, got {}", error.ExpectedSize, error.ActualSize);
-    }
-    std::unreachable();
-}
 
 struct TreeEvaluationError {
     std::size_t Index{};
