@@ -79,6 +79,7 @@ add_executable(operon_test
     source/implementation/least_squares.cpp
     source/implementation/least_squares_lm_adapter.cpp
     source/implementation/gradient_cost.cpp
+    source/implementation/least_squares_gradient_adapter.cpp
     source/implementation/subtree.cpp
     source/implementation/composed_function.cpp
     )
