@@ -99,7 +99,11 @@ add_library(
     source/operators/selector/tournament.cpp
     source/parser/infix.cpp
 )
-add_library(operon::operon ALIAS operon_operon)
+# operon_operon is the compiled backend-adapter implementation: interpreter,
+# JIT, LM/optimizer machinery and everything that carries Eigen/Ceres/L-BFGS.
+# It is not aliased as operon::operon directly -- see the aggregate target
+# below, which combines it with operon::canonical_core under that name.
+add_library(operon::backend_adapter ALIAS operon_operon)
 # Public headers are an explicit target-owned interface. CONFIGURE_DEPENDS
 # keeps the list current when a contributor adds or removes a header without
 # making the installation layout depend on an untracked directory copy.
@@ -115,6 +119,56 @@ set(operon_detail_headers ${operon_installed_headers})
 list(FILTER operon_detail_headers INCLUDE REGEX "/(ceres|detail|backend/(eigen|eve|mad_eve|plain))/")
 set(operon_public_headers ${operon_installed_headers})
 list(FILTER operon_public_headers EXCLUDE REGEX "/(ceres|detail|backend/(eigen|eve|mad_eve|plain))/")
+
+# ---- Canonical-core (header-only, Eigen-free numerical/view contracts) ----
+# A curated allow-list, deliberately NOT a glob like operon_installed_headers
+# above: a glob would silently let a newly-added Eigen-touching header slip
+# into this target's public interface the moment it is dropped into one of
+# these directories, quietly breaking the Eigen-free guarantee. Every entry
+# here must be verified (by inspection of its own #includes, transitively)
+# to never reach Eigen, Ceres, or L-BFGS. See
+# test/package-consumer/canonical-core for the installed-package contract
+# test that enforces this.
+set(operon_canonical_core_headers
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/aligned_allocator.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/concepts.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/constants.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/contracts.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/interpreter_error.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/memory_view.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/range.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/types.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/view_descriptor.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/view_descriptor.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/mdspan/mdspan.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/optimizer/fisher_information.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/optimizer/gradient_cost.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/optimizer/least_squares.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/optimizer/least_squares_gradient_adapter.hpp"
+)
+
+# Canonical-core headers are installed via operon_canonical_core below; keep
+# them out of the backend-adapter's own header set so the same installed path
+# is not claimed by two targets.
+list(REMOVE_ITEM operon_public_headers ${operon_canonical_core_headers})
+
+add_library(operon_canonical_core INTERFACE)
+add_library(operon::canonical_core ALIAS operon_canonical_core)
+
+target_sources(operon_canonical_core INTERFACE
+    FILE_SET operon_canonical_headers
+    TYPE HEADERS
+    BASE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    FILES ${operon_canonical_core_headers}
+)
+
+target_include_directories(operon_canonical_core INTERFACE
+    "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>"
+)
+
+target_compile_features(operon_canonical_core INTERFACE cxx_std_23)
+
+set_target_properties(operon_canonical_core PROPERTIES EXPORT_NAME canonical_core)
 
 target_sources(operon_operon PUBLIC
     FILE_SET operon_headers
@@ -161,6 +215,18 @@ find_package(xxHash)
 # unconditionally `#include <pappus/pappus.hpp>` with no fallback, so pappus
 # is a real public dependency of operon_operon, not an optional add-on.
 find_package(pappus REQUIRED)
+
+# operon_canonical_core's dependency set is intentionally a small subset of
+# operon_operon's: header-only or near-header-only libraries only, nothing
+# that could reintroduce Eigen/Ceres/L-BFGS through the back door.
+target_link_libraries(operon_canonical_core INTERFACE
+    fluky::fluky
+    fmt::fmt
+    Microsoft.GSL::GSL
+    std::mdspan
+    tl::expected
+    unordered_dense::unordered_dense
+)
 
 if(xxHash_FOUND)
     target_link_libraries(operon_operon PRIVATE xxHash::xxhash)
@@ -258,7 +324,7 @@ set_target_properties(
     VISIBILITY_INLINES_HIDDEN YES
     VERSION "${PROJECT_VERSION}"
     SOVERSION "${PROJECT_VERSION_MAJOR}"
-    EXPORT_NAME operon
+    EXPORT_NAME backend_adapter
     OUTPUT_NAME operon
 )
 
@@ -284,6 +350,7 @@ target_link_libraries(operon_operon INTERFACE
 )
 
 target_link_libraries(operon_operon PUBLIC
+    operon::canonical_core
     Eigen3::Eigen
     Threads::Threads
     fluky::fluky
@@ -358,7 +425,24 @@ target_compile_definitions(operon_operon PUBLIC
 if(operon_DEVELOPER_MODE)
     set_property(TARGET operon_operon PROPERTY VERIFY_INTERFACE_HEADER_SETS ON)
     set_property(TARGET operon_operon PROPERTY INTERFACE_HEADER_SETS_TO_VERIFY operon_headers)
+    set_property(TARGET operon_canonical_core PROPERTY VERIFY_INTERFACE_HEADER_SETS ON)
+    set_property(TARGET operon_canonical_core PROPERTY INTERFACE_HEADER_SETS_TO_VERIFY operon_canonical_headers)
 endif()
+
+# ---- Aggregate umbrella target ----
+# operon::operon is what most consumers want: the full-featured aggregate of
+# the header-only canonical-core contracts and the compiled backend-adapter
+# (interpreter, JIT, LM/optimizer, Eigen/Ceres/L-BFGS). It carries no code or
+# headers of its own -- it only forwards to the two targets above -- so a
+# consumer linking operon::operon sees exactly the union of their usage
+# requirements, unchanged from before this target existed.
+add_library(operon_aggregate INTERFACE)
+add_library(operon::operon ALIAS operon_aggregate)
+target_link_libraries(operon_aggregate INTERFACE
+    operon::canonical_core
+    operon::backend_adapter
+)
+set_target_properties(operon_aggregate PROPERTIES EXPORT_NAME operon)
 
 # ---- Install rules ----
 

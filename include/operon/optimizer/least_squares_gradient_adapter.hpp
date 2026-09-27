@@ -12,6 +12,8 @@
 #include <optional>
 #include <vector>
 
+#include <gsl/pointers>
+
 #include "operon/optimizer/gradient_cost.hpp"
 #include "operon/optimizer/least_squares.hpp"
 

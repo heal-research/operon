@@ -1,33 +1,57 @@
 include(CMakeFindDependencyMacro)
 
-# PUBLIC dependencies
-find_dependency(Eigen3 CONFIG REQUIRED)
-find_dependency(Threads REQUIRED)
-if(@HAVE_ASMJIT@)
-    find_dependency(asmjit CONFIG REQUIRED)
-endif()
+# operon::canonical_core dependencies (header-only; no Eigen/Ceres/L-BFGS).
 find_dependency(fluky CONFIG REQUIRED)
 find_dependency(fmt CONFIG REQUIRED)
-find_dependency(lbfgs CONFIG REQUIRED)
-find_dependency(libassert CONFIG REQUIRED)
-find_dependency(infix-parser CONFIG REQUIRED)
+find_dependency(Microsoft.GSL CONFIG REQUIRED)
 find_dependency(mdspan CONFIG REQUIRED)
-find_dependency(vstat CONFIG REQUIRED)
-find_dependency(pappus CONFIG REQUIRED)
-find_dependency(xxHash CONFIG REQUIRED)
 find_dependency(tl-expected CONFIG REQUIRED)
-
-# INTERFACE dependencies
-find_dependency(eve CONFIG REQUIRED)
-
-# PRIVATE dependencies (needed for static library)
-find_dependency(AriaCsvParser CONFIG REQUIRED)
-find_dependency(Taskflow CONFIG REQUIRED)
-find_dependency(cpp-sort CONFIG REQUIRED)
 find_dependency(unordered_dense CONFIG REQUIRED)
-find_dependency(glaze CONFIG REQUIRED)
-find_dependency(ndsort CONFIG REQUIRED)
-find_dependency(gtl CONFIG REQUIRED)
+
+# A component request for canonical_core alone must not even discover backend
+# dependencies. The default package request remains the full aggregate.
+set(_operon_require_backend TRUE)
+if(operon_FIND_COMPONENTS)
+    set(_operon_require_backend FALSE)
+    foreach(_operon_component IN LISTS operon_FIND_COMPONENTS)
+        if(NOT _operon_component STREQUAL "canonical_core")
+            set(_operon_require_backend TRUE)
+        endif()
+    endforeach()
+endif()
+
+if(_operon_require_backend)
+    # operon::backend_adapter (PUBLIC) dependencies
+    find_dependency(Eigen3 CONFIG REQUIRED)
+    find_dependency(Threads REQUIRED)
+    if(@HAVE_ASMJIT@)
+        find_dependency(asmjit CONFIG REQUIRED)
+    endif()
+    find_dependency(lbfgs CONFIG REQUIRED)
+    find_dependency(libassert CONFIG REQUIRED)
+    find_dependency(infix-parser CONFIG REQUIRED)
+    find_dependency(vstat CONFIG REQUIRED)
+    find_dependency(pappus CONFIG REQUIRED)
+    find_dependency(xxHash CONFIG REQUIRED)
+
+    # operon::backend_adapter (INTERFACE) dependencies
+    find_dependency(eve CONFIG REQUIRED)
+
+    # operon::backend_adapter (PRIVATE) dependencies (needed for static library)
+    find_dependency(AriaCsvParser CONFIG REQUIRED)
+    find_dependency(Taskflow CONFIG REQUIRED)
+    find_dependency(cpp-sort CONFIG REQUIRED)
+    find_dependency(glaze CONFIG REQUIRED)
+    find_dependency(ndsort CONFIG REQUIRED)
+    find_dependency(gtl CONFIG REQUIRED)
+endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/operonTargets.cmake")
+
+# Exported targets are the package components. Explicitly mark their
+# component variables before check_required_components() evaluates a
+# canonical_core-only request.
+set(operon_canonical_core_FOUND TRUE)
+set(operon_backend_adapter_FOUND TRUE)
+set(operon_operon_FOUND TRUE)
 check_required_components(operon)
