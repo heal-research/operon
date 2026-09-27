@@ -4,9 +4,13 @@
 #ifndef OPERON_LEAST_SQUARES_HPP
 #define OPERON_LEAST_SQUARES_HPP
 
+#include <algorithm>
+#include <cmath>
 #include <cstddef>
+#include <limits>
 #include <optional>
 #include <span>
+#include <vector>
 
 #include <tl/expected.hpp>
 
@@ -55,6 +59,80 @@ public:
         std::optional<ScalarMatrixView> jacobian)
         const -> tl::expected<void, LeastSquaresError> = 0;
 };
+
+namespace detail {
+    // Finite, and nonnegative when requireNonnegative is set.
+    [[nodiscard]] inline auto AllFinite(ConstScalarSpan values, bool requireNonnegative) -> bool
+    {
+        return std::ranges::all_of(values, [requireNonnegative](Scalar v) -> bool {
+            return std::isfinite(static_cast<double>(v)) && (!requireNonnegative || v >= Scalar { 0 });
+        });
+    }
+} // namespace detail
+
+/** Diagnostics for a residual vector and optional Jacobian; GradientNorm is NaN without a Jacobian. */
+struct LeastSquaresDiagnostics {
+    double Cost {};
+    double ResidualNorm {};
+    double GradientNorm { std::numeric_limits<double>::quiet_NaN() };
+};
+
+/** Cost = 0.5 * sum(w_i * r_i^2); GradientNorm = ||J^T (w .* r)||_2 when jacobian is supplied. */
+[[nodiscard]] inline auto ComputeDiagnostics(
+    ConstScalarSpan residuals,
+    std::optional<ConstScalarMatrixView> jacobian,
+    ConstScalarSpan weights = {})
+    -> tl::expected<LeastSquaresDiagnostics, LeastSquaresError>
+{
+    auto const n = residuals.size();
+    if (!weights.empty() && weights.size() != 1 && weights.size() != n) {
+        return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape, .Expected = n, .Actual = weights.size() });
+    }
+    if (jacobian && jacobian->extent(0) != n) {
+        return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape, .Expected = n, .Actual = jacobian->extent(0) });
+    }
+    if (!detail::AllFinite(residuals, false) || !detail::AllFinite(weights, true)) {
+        return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::NonFiniteEvaluation });
+    }
+
+    auto const weightAt = [&weights](std::size_t i) -> AccumulationScalar {
+        if (weights.empty()) { return AccumulationScalar { 1 }; }
+        return static_cast<AccumulationScalar>(weights.size() == 1 ? weights[0] : weights[i]);
+    };
+
+    AccumulationScalar cost {0};
+    AccumulationScalar sumSquares {0};
+    for (std::size_t i = 0; i < n; ++i) {
+        auto const r = static_cast<AccumulationScalar>(residuals[i]);
+        cost += 0.5 * weightAt(i) * r * r;
+        sumSquares += r * r;
+    }
+
+    LeastSquaresDiagnostics diagnostics;
+    diagnostics.Cost = cost;
+    diagnostics.ResidualNorm = std::sqrt(sumSquares);
+
+    if (jacobian) {
+        auto const p = jacobian->extent(1);
+        std::vector<AccumulationScalar> gradient(p, AccumulationScalar { 0 });
+        for (std::size_t i = 0; i < n; ++i) {
+            auto const wr = weightAt(i) * static_cast<AccumulationScalar>(residuals[i]);
+            for (std::size_t j = 0; j < p; ++j) {
+                gradient[j] += wr * static_cast<AccumulationScalar>(At(*jacobian, i, j));
+            }
+        }
+        AccumulationScalar gradientSumSquares {0};
+        for (auto const g : gradient) { gradientSumSquares += g * g; }
+        diagnostics.GradientNorm = std::sqrt(gradientSumSquares);
+    }
+
+    if (!std::isfinite(diagnostics.Cost) || !std::isfinite(diagnostics.ResidualNorm)
+        || (jacobian && !std::isfinite(diagnostics.GradientNorm))) {
+        return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::NonFiniteEvaluation });
+    }
+
+    return diagnostics;
+}
 
 } // namespace Operon
 
