@@ -96,16 +96,6 @@ public:
         result.FunctionEvaluations = 1;
         return result;
     }
-
-    [[nodiscard]] auto ComputeLikelihood(Operon::Span<Operon::Scalar const> /*x*/, Operon::Span<Operon::Scalar const> /*y*/, Operon::Span<Operon::Scalar const> /*w*/) const -> Operon::Scalar override
-    {
-        return Operon::Scalar{};
-    }
-
-    [[nodiscard]] auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> /*pred*/, Operon::Span<Operon::Scalar const> /*jac*/, Operon::Span<Operon::Scalar const> /*sigma*/) const -> Eigen::Matrix<Operon::Scalar, -1, -1> override
-    {
-        return {};
-    }
 };
 
 TEST_CASE("ScoreIndividual evaluates optimized coefficients before non-Lamarckian restore", "[evaluator]")
@@ -176,13 +166,6 @@ TEST_CASE("Poisson likelihood static methods", "[likelihood]")
         auto nll = Lik::ComputeLikelihood(pred, target, w);
         auto const expected = static_cast<double>(n) * (2.0 - std::numbers::ln2);
         CHECK_THAT(static_cast<double>(nll), Catch::Matchers::WithinRel(expected, 1e-5));
-    }
-
-    SECTION("PoissonLoss::ComputeLikelihood delegates to PoissonLikelihood") {
-        std::vector<Operon::Scalar> pred(n, 0.0F);
-        std::vector<Operon::Scalar> target(n, 1.0F);
-        CHECK(PoissonLoss<Operon::Scalar>::ComputeLikelihood(pred, target, {})
-           == PoissonLikelihood<Operon::Scalar>::ComputeLikelihood(pred, target, {}));
     }
 
     SECTION("FisherMatrix LogInput=true: pred=0, J=I => F=I") {

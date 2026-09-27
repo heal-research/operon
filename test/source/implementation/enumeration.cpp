@@ -17,6 +17,7 @@
 #include "operon/core/problem.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/interpreter/interpreter.hpp"
+#include "operon/optimizer/gaussian_gradient_cost.hpp"
 #include "operon/optimizer/optimizer.hpp"
 #include "operon/core/serialization.hpp"
 
@@ -362,7 +363,7 @@ TEST_CASE("GrammarEnumerationAlgorithm - Run fits coefficients and tracks best t
 
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
-    LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{ &dtable, &problem };
+    LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer{ &dtable, &problem };
     Operon::Evaluator<DTable> evaluator{ &problem, &dtable, Operon::R2{} };
 
     Grammar grammar(PrimitiveSet::Arithmetic, problem.GetInputs());
@@ -401,7 +402,7 @@ TEST_CASE("GrammarEnumerationAlgorithm - TopK == 0 keeps nothing rather than cra
 
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
-    LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{ &dtable, &problem };
+    LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer{ &dtable, &problem };
     Operon::Evaluator<DTable> evaluator{ &problem, &dtable, Operon::R2{} };
 
     Grammar grammar(PrimitiveSet::Arithmetic, problem.GetInputs());
@@ -427,7 +428,7 @@ TEST_CASE("GrammarEnumerationAlgorithm - RequestStop halts Run early", "[enumera
 
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
-    LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{ &dtable, &problem };
+    LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer{ &dtable, &problem };
     Operon::Evaluator<DTable> evaluator{ &problem, &dtable, Operon::R2{} };
 
     Grammar grammar(PrimitiveSet::Arithmetic, problem.GetInputs());
@@ -479,7 +480,7 @@ TEST_CASE("GrammarEnumerationAlgorithm - recovers a small ground-truth expressio
 
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
-    LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{ &dtable, &problem };
+    LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer{ &dtable, &problem };
     Operon::Evaluator<DTable> evaluator{ &problem, &dtable, Operon::R2{} };
 
     Grammar grammar(PrimitiveSet::Arithmetic, problem.GetInputs());
@@ -523,7 +524,7 @@ TEST_CASE("GrammarEnumerationAlgorithm - threaded runs are reproducible", "[enum
 
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
-    LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{ &dtable, &problem };
+    LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer{ &dtable, &problem };
     Operon::Evaluator<DTable> evaluator{ &problem, &dtable, Operon::R2{} };
     EnumerationConfig config { .MaxComplexity = 6, .TopK = 5, .Ranking = EnumerationRanking::Objective,
                                .EvaluationBufferSize = problem.TrainingRange().Size() };
@@ -569,7 +570,7 @@ TEST_CASE("GrammarEnumerationAlgorithm - report can stop fitting batches", "[enu
 
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
-    LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{ &dtable, &problem };
+    LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer{ &dtable, &problem };
     Operon::Evaluator<DTable> evaluator{ &problem, &dtable, Operon::R2{} };
     EnumerationConfig config { .MaxComplexity = 6, .TopK = 100, .Ranking = EnumerationRanking::Objective,
                                .EvaluationBufferSize = problem.TrainingRange().Size() };
@@ -828,7 +829,7 @@ TEST_CASE("GrammarEnumerationAlgorithm - MDL ranking fits exactly one representa
 
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
-    LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{ &dtable, &problem };
+    LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer{ &dtable, &problem };
 
     Grammar grammar(PrimitiveSet::Arithmetic, problem.GetInputs());
     EnumerationConfig config;

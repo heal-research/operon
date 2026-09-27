@@ -83,6 +83,8 @@ add_executable(operon_test
     source/implementation/subtree.cpp
     source/implementation/interpreter_least_squares.cpp
     source/implementation/composed_function.cpp
+    source/implementation/gaussian_gradient_cost.cpp
+    source/implementation/poisson_gradient_cost.cpp
     )
 target_link_libraries(operon_test PRIVATE operon::operon Catch2::Catch2WithMain scn::scn nanobench::nanobench)
 target_compile_definitions(operon_test PRIVATE OPERON_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/..")

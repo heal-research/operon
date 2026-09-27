@@ -27,8 +27,8 @@
 #include "operon/operators/linear_scaling.hpp"
 #include "operon/operon_export.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
-#include "operon/optimizer/likelihood/likelihood_base.hpp"
 #include "operon/optimizer/likelihood/poisson_likelihood.hpp"
+#include "operon/optimizer/likelihood/statistical_concepts.hpp"
 
 namespace Operon {
 
