@@ -469,8 +469,8 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
     SECTION("lm / eigen: reported cost matches the weighted objective, not raw SSE")
     {
         // Symmetric with the "lbfgs / gaussian" cost check above, but for the
-        // LM path: LMCostFunction applies the sqrt(w)-residual trick (see
-        // lm_cost_function_base.hpp), so Eigen::LevenbergMarquardt's
+        // LM path: LeastSquaresLMAdapter applies the sqrt(w)-residual trick (see
+        // least_squares_lm_adapter.hpp), so Eigen::LevenbergMarquardt's
         // fnorm()^2 * 0.5 already equals the weighted SSE / 2 - pin that down
         // directly rather than relying on it transitively via Success/params.
         LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> optimizer { &dtable, &problem };
@@ -571,7 +571,7 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
 // itself whenever batchSize >= range_.Size() (the default), this reproduces
 // the out-of-bounds read even without any random sub-batching - LBFGS/SGD
 // with a non-zero training-range start alone was enough to trigger it.
-// LM is unaffected (LMCostFunction always indexes 0..numResiduals_-1,
+// LM is unaffected (LeastSquaresLMAdapter always indexes 0..numResiduals_-1,
 // never range.Start()), so this only needs to cover LBFGS/SGD.
 struct WeightedOptimizerNonZeroStartFixture {
     static constexpr auto Npad { 100 };

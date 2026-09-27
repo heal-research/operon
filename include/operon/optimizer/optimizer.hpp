@@ -20,7 +20,9 @@
 #include "likelihood/gaussian_likelihood.hpp"
 #include "likelihood/poisson_likelihood.hpp"
 // GaussianLoss / PoissonLoss are defined in the same headers above.
-#include "lm_cost_function.hpp"
+#include "operon/optimizer/interpreter_least_squares.hpp"
+#include "operon/optimizer/least_squares_lm_adapter.hpp"
+#include "operon/optimizer/lm_weights.hpp"
 #include "operon/core/comparison.hpp"
 #include "operon/core/dispatch.hpp"
 #include "operon/core/problem.hpp"
@@ -161,7 +163,6 @@ struct LevenbergMarquardtOptimizer : public OptimizerBase {
         auto target = problem->TargetValues();
         auto iterations = this->Iterations();
 
-        auto const weights = dataset->Weights().value_or(Operon::Span<Operon::Scalar const> {});
         auto const localWeights = problem->Weights(range).value_or(Operon::Span<Operon::Scalar const> {});
         auto x0 = tree.GetCoefficients();
         FitDiagnostics diag;
@@ -173,7 +174,8 @@ struct LevenbergMarquardtOptimizer : public OptimizerBase {
         }
 
         Operon::Interpreter<Operon::Scalar, DTable> interpreter { dtable, dataset, &tree };
-        Operon::LMCostFunction cf { gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> { &interpreter }, target, range, weights };
+        Operon::InterpreterLeastSquaresCostFunction costFn { gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> { &interpreter }, target, range };
+        Operon::LeastSquaresLMAdapter<> cf { &costFn, localWeights };
         ceres::TinySolver<decltype(cf)> solver;
         auto m0 = Eigen::Map<Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 1>>(x0.data(), x0.size());
         if (!x0.empty()) {
@@ -197,7 +199,8 @@ struct LevenbergMarquardtOptimizer : public OptimizerBase {
         diag.FunctionEvaluations = cf.ResidualCalls();
         diag.JacobianEvaluations = cf.JacobianCalls();
         if (auto const& error = cf.Error(); error) {
-            return detail::MakeFitEvaluationError(*error, std::move(diag));
+            EXPECT(error->Cause.has_value());
+            return detail::MakeFitEvaluationError(*error->Cause, std::move(diag));
         }
         return detail::MakeFitOutcome(std::move(diag));
     }
@@ -235,7 +238,6 @@ struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public 
         auto target = problem->TargetValues();
         auto iterations = this->Iterations();
 
-        auto const weights = dataset->Weights().value_or(Operon::Span<Operon::Scalar const> {});
         auto const localWeights = problem->Weights(range).value_or(Operon::Span<Operon::Scalar const> {});
         auto x0 = tree.GetCoefficients();
         FitDiagnostics diag;
@@ -247,7 +249,8 @@ struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public 
         }
 
         Operon::Interpreter<Operon::Scalar, DTable> interpreter { dtable, dataset, &tree };
-        Operon::LMCostFunction<Operon::Scalar> cf { &interpreter, target, range, weights };
+        Operon::InterpreterLeastSquaresCostFunction costFn { gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> { &interpreter }, target, range };
+        Operon::LeastSquaresLMAdapter<> cf { &costFn, localWeights };
         Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
         if (!x0.empty()) {
             // `iterations` counts accepted LM steps (lm.iterations()), matching the
@@ -282,7 +285,8 @@ struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public 
         diag.FunctionEvaluations = static_cast<int>(cf.ResidualCalls());
         diag.JacobianEvaluations = static_cast<int>(cf.JacobianCalls());
         if (auto const& error = cf.Error(); error) {
-            return detail::MakeFitEvaluationError(*error, std::move(diag));
+            EXPECT(error->Cause.has_value());
+            return detail::MakeFitEvaluationError(*error->Cause, std::move(diag));
         }
         return detail::MakeFitOutcome(std::move(diag));
     }
@@ -593,10 +597,8 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
 
         if (!useJitCf) {
             // Pure interpreter fallback — no JIT at all.
-            Operon::LMCostFunction cf {
-                gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> { &interpreter },
-                target, range, weights
-            };
+            Operon::InterpreterLeastSquaresCostFunction costFn { gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> { &interpreter }, target, range };
+            Operon::LeastSquaresLMAdapter<> cf { &costFn, localWeights };
             Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
             if (!x0.empty()) {
                 lm.setMaxfev(std::max<Eigen::Index>(
@@ -619,7 +621,8 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
             diag.FunctionEvaluations = static_cast<int>(cf.ResidualCalls());
             diag.JacobianEvaluations = static_cast<int>(cf.JacobianCalls());
             if (auto const& error = cf.Error(); error) {
-                return detail::MakeFitEvaluationError(*error, std::move(diag));
+                EXPECT(error->Cause.has_value());
+                return detail::MakeFitEvaluationError(*error->Cause, std::move(diag));
             }
             return detail::MakeFitOutcome(std::move(diag));
         }

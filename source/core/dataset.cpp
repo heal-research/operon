@@ -333,7 +333,7 @@ void Dataset::SetWeights(Span<Scalar const> w)
     // NOT validated for non-negativity here (unlike the size check above):
     // rows outside any particular Problem's training range are never read by
     // the coefficient optimizers and may legitimately hold negative/sentinel
-    // placeholder values (see GaussianLoss's/LMCostFunction's ctors, which
+    // placeholder values (see GaussianLoss's/LeastSquaresLMAdapter's callers, which
     // validate only the in-range slice they will actually use).
     weights_.emplace(w.begin(), w.end());
 }

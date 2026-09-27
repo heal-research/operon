@@ -10,7 +10,6 @@
 
 #include "operon/core/dataset.hpp"
 #include "operon/optimizer/interpreter_least_squares.hpp"
-#include "operon/optimizer/lm_cost_function.hpp"
 #include "operon/parser/infix.hpp"
 #include "operon/random/random.hpp"
 
@@ -69,7 +68,7 @@ TEST_CASE("InterpreterLeastSquaresCostFunction: dimensions match the tree and ra
     CHECK(cost.NumResiduals() == InterpreterFixture::Nrow);
 }
 
-TEST_CASE("InterpreterLeastSquaresCostFunction: residuals and Jacobian match LMCostFunction", "[interpreter-least-squares]")
+TEST_CASE("InterpreterLeastSquaresCostFunction: residuals and Jacobian match a direct interpreter evaluation", "[interpreter-least-squares]")
 {
     InterpreterFixture fix;
     Operon::Interpreter<Operon::Scalar, InterpreterFixture::DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
@@ -79,10 +78,13 @@ TEST_CASE("InterpreterLeastSquaresCostFunction: residuals and Jacobian match LMC
     auto const p = static_cast<std::size_t>(fix.tree.CoefficientsCount());
     std::vector<Operon::Scalar> params { 0.2F, -0.3F, 0.5F };
 
-    Operon::LMCostFunction<Operon::Scalar> reference { &interpreter, target, range };
     std::vector<Operon::Scalar> refResiduals(n);
+    REQUIRE(interpreter.Evaluate(params, range, refResiduals).has_value());
+    for (std::size_t i = 0; i < n; ++i) {
+        refResiduals[i] -= target[range.Start() + i];
+    }
     std::vector<Operon::Scalar> refJacobian(n * p);
-    REQUIRE(reference.Evaluate(params.data(), refResiduals.data(), refJacobian.data()));
+    REQUIRE(interpreter.JacRev(params, range, refJacobian).has_value());
 
     Operon::InterpreterLeastSquaresCostFunction cost { &interpreter, target, range };
     std::vector<Operon::Scalar> residuals(n);
@@ -94,7 +96,7 @@ TEST_CASE("InterpreterLeastSquaresCostFunction: residuals and Jacobian match LMC
     for (std::size_t i = 0; i < n; ++i) {
         CHECK_THAT(static_cast<double>(residuals[i]), Catch::Matchers::WithinAbs(static_cast<double>(refResiduals[i]), 1e-5));
     }
-    // reference LM Jacobian is column-major flat (stride {1, n})
+    // interpreter JacRev output is column-major flat (stride {1, n})
     for (std::size_t i = 0; i < n; ++i) {
         for (std::size_t j = 0; j < p; ++j) {
             CHECK_THAT(static_cast<double>(Operon::At(jac, i, j)), Catch::Matchers::WithinAbs(static_cast<double>(refJacobian[(j * n) + i]), 1e-5));

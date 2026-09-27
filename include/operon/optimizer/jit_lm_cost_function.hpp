@@ -14,7 +14,8 @@
 
 #include "operon/interpreter/backend/jit/jit_compiler.hpp"
 #include "operon/interpreter/interpreter.hpp"
-#include "operon/optimizer/lm_cost_function_base.hpp"
+#include "operon/optimizer/detail/lm_backend_functor.hpp"
+#include "operon/optimizer/lm_weights.hpp"
 
 namespace Operon {
 
@@ -25,8 +26,8 @@ namespace Operon {
 // colPtrs[i] and jacColPtrs[i] must follow the ordering returned by VarOrder(tree),
 // each already offset to range.Start().
 template <typename T = Operon::Scalar, int StorageOrder = Eigen::ColMajor>
-struct JitLMCostFunction : public LMCostFunctionBase<JitLMCostFunction<T, StorageOrder>, StorageOrder> {
-    using Base = LMCostFunctionBase<JitLMCostFunction<T, StorageOrder>, StorageOrder>;
+struct JitLMCostFunction : public detail::LMBackendFunctor<JitLMCostFunction<T, StorageOrder>, StorageOrder> {
+    using Base = detail::LMBackendFunctor<JitLMCostFunction<T, StorageOrder>, StorageOrder>;
     using Scalar = typename Base::Scalar;
 
     static_assert(std::is_same_v<T, float>,
