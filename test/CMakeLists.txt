@@ -77,6 +77,7 @@ add_executable(operon_test
     source/implementation/memory_view.cpp
     source/implementation/view_descriptor.cpp
     source/implementation/least_squares.cpp
+    source/implementation/least_squares_lm_adapter.cpp
     source/implementation/subtree.cpp
     source/implementation/composed_function.cpp
     )
