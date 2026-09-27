@@ -495,6 +495,13 @@ TEST_CASE("ComputeFisherMatrix matches GaussianLikelihood for uniform, per-row, 
                     Catch::Matchers::WithinRel(static_cast<double>(reference(static_cast<Eigen::Index>(a), static_cast<Eigen::Index>(b))), 1e-3));
             }
         }
+        // Exact symmetry: both (a,b) and (b,a) are written from the same
+        // accumulation, so any asymmetry is a write bug, not roundoff.
+        for (std::size_t a = 0; a < p; ++a) {
+            for (std::size_t b = 0; b < p; ++b) {
+                CHECK(Operon::At(fisher, a, b) == Operon::At(fisher, b, a));
+            }
+        }
     };
 
     SECTION("uniform sigma") {
@@ -676,6 +683,17 @@ TEST_CASE("ComputeFisherMatrix: shape and sigma validation errors", "[least-squa
         auto result = Operon::ComputeFisherMatrix(jac, sigma, fisher);
         REQUIRE_FALSE(result.has_value());
         CHECK(result.error().Code == Operon::FisherErrorCode::InvalidSigma);
+    }
+
+    SECTION("non-finite Jacobian entry") {
+        std::array<Operon::Scalar, n * p> badBuffer { 1, 0, 1, 1, 1, 2, 1, 3 };
+        badBuffer[3] = std::numeric_limits<Operon::Scalar>::quiet_NaN();
+        Operon::ConstScalarMatrixView badJac { badBuffer.data(), Mapping { Extents { n, p }, std::array<std::size_t, 2> { p, 1 } } };
+        std::array<Operon::Scalar, p * p> fisherBuffer {};
+        Operon::ScalarMatrixView fisher { fisherBuffer.data(), Mapping { Extents { p, p }, std::array<std::size_t, 2> { p, 1 } } };
+        auto result = Operon::ComputeFisherMatrix(badJac, {}, fisher);
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error().Code == Operon::FisherErrorCode::NonFiniteResult);
     }
 }
 

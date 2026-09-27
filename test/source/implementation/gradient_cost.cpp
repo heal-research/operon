@@ -3,6 +3,12 @@
 
 #include <vector>
 
+#include "operon/core/concepts.hpp"
+#include "operon/optimizer/gaussian_gradient_cost.hpp"
+#include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
+#include "operon/optimizer/likelihood/statistical_concepts.hpp"
+
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
@@ -70,7 +76,13 @@ public:
 // must satisfy Concepts::GradientCost. Adding a statistical requirement to
 // this concept would break this assertion.
 static_assert(Operon::Concepts::GradientCost<QuadraticBowlCost>);
-static_assert(Operon::Concepts::GradientCost<FailingGradientCost>);
+// The numerical/statistical boundary is part of the contract: no gradient
+// cost — synthetic or shipped — is a likelihood or Fisher producer, and a
+static_assert(!Operon::Concepts::Likelihood<Operon::GaussianGradientCostFunction<Operon::Scalar>>);
+static_assert(!Operon::Concepts::HasFisherMatrix<Operon::GaussianGradientCostFunction<Operon::Scalar>>);
+static_assert(!Operon::Concepts::GradientCost<Operon::GaussianLikelihood<Operon::Scalar>>);
+static_assert(Operon::Concepts::Likelihood<Operon::GaussianLikelihood<Operon::Scalar>>);
+static_assert(Operon::Concepts::HasFisherMatrix<Operon::GaussianLikelihood<Operon::Scalar>>);
 
 } // namespace
 
