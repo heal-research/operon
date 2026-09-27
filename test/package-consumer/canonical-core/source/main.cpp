@@ -10,18 +10,28 @@
 // relocated* package -- it never sees the operon source or build tree
 // directly, and it never links operon::backend_adapter or operon::operon.
 //
-// Representative headers from both halves of canonical-core's contract:
-// view (memory_view.hpp, view_descriptor.hpp) and numerical
-// (least_squares.hpp, fisher_information.hpp). None of them, nor anything
-// they transitively include, may pull in Eigen -- the CMakeLists.txt in
-// this directory additionally asserts that structurally.
+// Representative headers from all three parts of canonical-core's contract:
+// view (memory_view.hpp, view_descriptor.hpp), numerical
+// (least_squares.hpp, fisher_information.hpp), and the compiled
+// tree/grammar/primitive-set/enumeration-canonicalizer implementation
+// (node.hpp, tree.hpp, grammar.hpp, pset.hpp,
+// enumeration_canonicalizer.hpp) that used to live in operon_operon and
+// depend on dispatch/interpreter machinery. None of them, nor anything they
+// transitively include, may pull in Eigen -- the CMakeLists.txt in this
+// directory additionally asserts that structurally.
 
 #include <array>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 
+#include <operon/algorithms/enumeration_canonicalizer.hpp>
+#include <operon/core/grammar.hpp>
 #include <operon/core/memory_view.hpp>
+#include <operon/core/node.hpp>
+#include <operon/core/pset.hpp>
+#include <operon/core/tree.hpp>
 #include <operon/core/view_descriptor.h>
 #include <operon/core/view_descriptor.hpp>
 #include <operon/optimizer/fisher_information.hpp>
@@ -107,6 +117,69 @@ auto main() -> int {
     if (!NearlyEqual(diagnostics->Cost, 7.0) || !NearlyEqual(diagnostics->ResidualNorm, std::sqrt(14.0))
         || !NearlyEqual(diagnostics->GradientNorm, std::sqrt(41.0))) {
         std::cerr << "package-consumer(canonical-core): unexpected diagnostics\n";
+        return EXIT_FAILURE;
+    }
+
+    // Tree validation: a well-formed postfix tree (1 + 2) must Validate().
+    // Node::Function/Node::Constant, Tree::UpdateNodes(), and Tree::Validate()
+    // are all compiled into operon_canonical_core (source/core/node.cpp,
+    // source/core/tree.cpp) rather than declared-only, so this is a real link
+    // check, not just a header-compiles-standalone check.
+    auto const addHash = static_cast<Operon::Hash>(Operon::BuiltinOp::Add);
+    Operon::Tree const sumTree = Operon::Tree({
+        Operon::Node::Constant(1.0),
+        Operon::Node::Constant(2.0),
+        Operon::Node::Function(addHash, /*arity=*/2),
+    }).UpdateNodes();
+    if (!sumTree.Validate()) {
+        std::cerr << "package-consumer(canonical-core): well-formed tree failed Validate()\n";
+        return EXIT_FAILURE;
+    }
+
+    // A tree with a dangling forward Ref must fail Validate() (RefTo must
+    // point strictly backward) -- exercises the compiled error path too.
+    Operon::Node dangling(Operon::NodeType::Ref);
+    dangling.RefTo = 1; // forward reference: invalid
+    Operon::Tree const invalidTree = Operon::Tree({ dangling, Operon::Node::Constant(2.0) }).UpdateNodes();
+    if (invalidTree.Validate()) {
+        std::cerr << "package-consumer(canonical-core): malformed tree unexpectedly passed Validate()\n";
+        return EXIT_FAILURE;
+    }
+
+    // Grammar: PrimitiveSet::Full includes unary ops (Exp/Log/Sin/Sqrt/Cbrt/
+    // Aq) that Grammar::Configure(PrimitiveSetConfig) translates into
+    // RecurringFactor productions (see grammar.hpp's class comment) -- unlike
+    // PrimitiveSet::Arithmetic, which is Add/Sub/Mul/Div only and translates
+    // to zero RecurringFactor productions by design. Must produce a
+    // non-empty RecurringFactor production set and a finite MinComplexity
+    // for it -- both computed by Grammar::Rebuild(), compiled into
+    // operon_canonical_core (source/core/grammar.cpp).
+    // A non-empty variableHashes list is required for MinComplexity to reach
+    // any nonterminal at all: RecurringFactor/SimpleTerm's MinComplexity is
+    // only seeded (to 1, for a bare Variable leaf) when at least one
+    // variable is registered; with none, every nonterminal -- including
+    // Expression -- stays permanently Unreachable.
+    Operon::Grammar const grammar(Operon::PrimitiveSet::Full, /*variableHashes=*/{ 1 });
+    if (grammar.Productions(Operon::GrammarSymbol::RecurringFactor).empty()) {
+        std::cerr << "package-consumer(canonical-core): Grammar produced no RecurringFactor productions\n";
+        return EXIT_FAILURE;
+    }
+    constexpr auto Unreachable = std::numeric_limits<std::size_t>::max();
+    if (grammar.MinComplexity(Operon::GrammarSymbol::Expression) == Unreachable) {
+        std::cerr << "package-consumer(canonical-core): Grammar reports Expression as unreachable\n";
+        return EXIT_FAILURE;
+    }
+
+    // Enumeration canonicalization: x+y and y+x must canonicalize to the
+    // same Key (commutative reordering), exercising
+    // CanonicalizeEnumerationTree, compiled into operon_canonical_core
+    // (source/algorithms/enumeration_canonicalizer.cpp).
+    Operon::Node varX(Operon::NodeType::Variable); varX.HashValue = 1;
+    Operon::Node varY(Operon::NodeType::Variable); varY.HashValue = 2;
+    Operon::Tree const xy = Operon::Tree({ varX, varY, Operon::Node::Function(addHash, 2) }).UpdateNodes();
+    Operon::Tree const yx = Operon::Tree({ varY, varX, Operon::Node::Function(addHash, 2) }).UpdateNodes();
+    if (Operon::CanonicalizeEnumerationTree(xy).Key != Operon::CanonicalizeEnumerationTree(yx).Key) {
+        std::cerr << "package-consumer(canonical-core): x+y and y+x canonicalized to different keys\n";
         return EXIT_FAILURE;
     }
 

@@ -6,15 +6,22 @@
 # add_subdirectory()'d into the main operon build -- run-consumer-test.cmake
 # configures/builds/runs it as an entirely separate `cmake` invocation,
 # against an installed and relocated `operon` package, to prove that a
-# consumer wanting only the header-only, Eigen-free canonical-core contracts
-# can link operon::canonical_core alone: no Eigen, no Ceres, no L-BFGS, and
-# no dependency on liboperon's compiled backend-adapter.
+# consumer wanting only the compiled, Eigen-free canonical-core contracts
+# (tree/grammar/primitive-set/hash implementation plus header-only
+# numerical/view contracts) can link operon::canonical_core alone: no Eigen,
+# no Ceres, no L-BFGS, and no dependency on liboperon's compiled
+# backend-adapter.
 cmake_minimum_required(VERSION 3.25)
 
 project(operon_package_consumer_canonical_core LANGUAGES CXX)
 
-# This must configure without attempting backend dependency discovery.
+# This must configure without attempting backend dependency discovery: no
+# Eigen (interpreter/optimizer numerics), no L-BFGS (CoefficientOptimizer;
+# there is no separate "Ceres" CMake package to disable -- the vendored
+# include/operon/ceres/ headers are autodiff-only and never reach
+# find_package()).
 set(CMAKE_DISABLE_FIND_PACKAGE_Eigen3 TRUE)
+set(CMAKE_DISABLE_FIND_PACKAGE_lbfgs TRUE)
 find_package(operon CONFIG REQUIRED COMPONENTS canonical_core)
 
 # ---- Structural guard: operon::canonical_core must not reach Eigen ----

@@ -8,6 +8,7 @@
 #include "operon/core/dispatch.hpp"
 #include "operon/hash/zobrist.hpp"
 #include "operon/operators/evaluator.hpp"
+#include "operon/operon_export.hpp"
 #include <optional>
 #include <stdexcept>
 #include <string>

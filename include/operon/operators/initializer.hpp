@@ -10,6 +10,7 @@
 
 #include "operon/core/tree.hpp"
 #include "operon/operators/creator.hpp"
+#include "operon/operon_export.hpp"
 
 namespace Operon {
 

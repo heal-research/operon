@@ -10,10 +10,10 @@
 #include <string>
 
 #include "operon/core/constants.hpp"
-#include "operon/operon_export.hpp"
+#include "operon/canonical_core_export.hpp"
 
 namespace Operon {
-    struct OPERON_EXPORT Hasher {
+    struct OPERON_CANONICAL_CORE_EXPORT Hasher {
         using is_transparent = void; // enable transparent lookup NOLINT
 
         auto operator()(uint8_t const* key, size_t len) const noexcept -> uint64_t;

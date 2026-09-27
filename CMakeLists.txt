@@ -49,7 +49,6 @@ add_library(
     operon_operon
     source/algorithms/domain_pruning.cpp
     source/algorithms/enumeration.cpp
-    source/algorithms/enumeration_canonicalizer.cpp
     source/algorithms/gp.cpp
     source/algorithms/nsga2.cpp
     source/algorithms/probes/builtin.cpp
@@ -59,10 +58,6 @@ add_library(
     source/algorithms/solution_archive.cpp
     source/core/dataset.cpp
     source/core/distance.cpp
-    source/core/grammar.cpp
-    source/core/node.cpp
-    source/core/pset.cpp
-    source/core/tree.cpp
     source/core/serialization.cpp
     source/core/tree_diff.cpp
     source/core/version.cpp
@@ -72,8 +67,6 @@ add_library(
     source/formatter/postfix.cpp
     source/formatter/tree.cpp
     source/hash/content_hash.cpp
-    source/hash/hash.cpp
-    source/hash/metrohash64.cpp
     source/hash/zobrist.cpp
     source/interpreter/affine_evaluator.cpp
     source/interpreter/interpreter.cpp
@@ -120,7 +113,7 @@ list(FILTER operon_detail_headers INCLUDE REGEX "/(ceres|detail|backend/(eigen|e
 set(operon_public_headers ${operon_installed_headers})
 list(FILTER operon_public_headers EXCLUDE REGEX "/(ceres|detail|backend/(eigen|eve|mad_eve|plain))/")
 
-# ---- Canonical-core (header-only, Eigen-free numerical/view contracts) ----
+# ---- Canonical-core (compiled, Eigen/Ceres/L-BFGS-free tree/grammar/hash implementation plus header-only numerical/view contracts) ----
 # A curated allow-list, deliberately NOT a glob like operon_installed_headers
 # above: a glob would silently let a newly-added Eigen-touching header slip
 # into this target's public interface the moment it is dropped into one of
@@ -130,16 +123,26 @@ list(FILTER operon_public_headers EXCLUDE REGEX "/(ceres|detail|backend/(eigen|e
 # test/package-consumer/canonical-core for the installed-package contract
 # test that enforces this.
 set(operon_canonical_core_headers
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/algorithms/enumeration_canonicalizer.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/collections/bitset.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/aligned_allocator.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/concepts.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/constants.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/contracts.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/grammar.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/interpreter_error.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/memory_view.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/node.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/pset.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/range.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/standard_library.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/subtree.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/tree.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/types.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/view_descriptor.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/view_descriptor.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/hash/hash.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/hash/metrohash64.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/mdspan/mdspan.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/optimizer/fisher_information.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/optimizer/gradient_cost.hpp"
@@ -152,23 +155,58 @@ set(operon_canonical_core_headers
 # is not claimed by two targets.
 list(REMOVE_ITEM operon_public_headers ${operon_canonical_core_headers})
 
-add_library(operon_canonical_core INTERFACE)
+# A real compiled library (not header-only/INTERFACE): source/hash/metrohash64.cpp,
+# source/hash/hash.cpp, source/core/node.cpp, source/core/tree.cpp,
+# source/core/grammar.cpp, source/core/pset.cpp, and
+# source/algorithms/enumeration_canonicalizer.cpp form one coherent,
+# Eigen/Ceres/L-BFGS-free closure (tree/grammar/primitive-set representation
+# plus the hashing it relies on) that the interpreter/dispatch machinery does
+# not need to build. It gets its own export macro (canonical_core_export.hpp
+# below), independent of operon_operon's OPERON_EXPORT.
+add_library(
+    operon_canonical_core
+    source/algorithms/enumeration_canonicalizer.cpp
+    source/core/grammar.cpp
+    source/core/node.cpp
+    source/core/pset.cpp
+    source/core/tree.cpp
+    source/hash/hash.cpp
+    source/hash/metrohash64.cpp
+)
 add_library(operon::canonical_core ALIAS operon_canonical_core)
 
-target_sources(operon_canonical_core INTERFACE
+target_sources(operon_canonical_core PUBLIC
     FILE_SET operon_canonical_headers
     TYPE HEADERS
     BASE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/include"
     FILES ${operon_canonical_core_headers}
 )
 
-target_include_directories(operon_canonical_core INTERFACE
+target_include_directories(
+    operon_canonical_core ${operon_warning_guard}
+    PUBLIC
     "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>"
 )
 
-target_compile_features(operon_canonical_core INTERFACE cxx_std_23)
+target_include_directories(operon_canonical_core SYSTEM PUBLIC
+    "$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/export>"
+)
 
-set_target_properties(operon_canonical_core PROPERTIES EXPORT_NAME canonical_core)
+target_compile_features(operon_canonical_core PUBLIC cxx_std_23)
+
+# Operon::Scalar (core/types.hpp, a canonical-core header) is float or double
+# depending on this flag. PUBLIC and set here (not on operon_operon): every
+# translation unit that defines or calls a Tree/Node/PrimitiveSet member
+# taking or returning Operon::Scalar must agree on its size, including
+# operon_canonical_core's own node.cpp/tree.cpp/pset.cpp -- otherwise the two
+# compiled libraries silently disagree on Scalar's width (an ODR violation
+# that surfaces as a mismatched-signature undefined reference at link time,
+# e.g. Tree::SetCoefficients(span<double const>) vs the caller's
+# span<float const>). operon_operon still sees this definition because it
+# links operon::canonical_core PUBLIC.
+target_compile_definitions(operon_canonical_core PUBLIC
+    "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
+)
 
 target_sources(operon_operon PUBLIC
     FILE_SET operon_headers
@@ -218,18 +256,31 @@ find_package(pappus REQUIRED)
 
 # operon_canonical_core's dependency set is intentionally a small subset of
 # operon_operon's: header-only or near-header-only libraries only, nothing
-# that could reintroduce Eigen/Ceres/L-BFGS through the back door.
-target_link_libraries(operon_canonical_core INTERFACE
+# that could reintroduce Eigen/Ceres/L-BFGS through the back door. PUBLIC:
+# used by the canonical-core public headers below, so consumers need them
+# too (see test/package-consumer/canonical-core).
+target_link_libraries(operon_canonical_core PUBLIC
     fluky::fluky
     fmt::fmt
+    libassert::assert
     Microsoft.GSL::GSL
     std::mdspan
+    Threads::Threads
     tl::expected
     unordered_dense::unordered_dense
 )
 
+# gtl (node.cpp's Descriptions() registry) and xxHash (hash.cpp, compiled
+# with XXH_INLINE_ALL so it never leaves an unresolved runtime symbol) are
+# implementation details of canonical_core's own .cpp files, not used by any
+# canonical-core public header -- PRIVATE, so a canonical_core-only consumer
+# never needs to find_package() either of them (see install-config.cmake.in).
+target_link_libraries(operon_canonical_core PRIVATE
+    gtl::gtl
+)
+
 if(xxHash_FOUND)
-    target_link_libraries(operon_operon PRIVATE xxHash::xxhash)
+    target_link_libraries(operon_canonical_core PRIVATE xxHash::xxhash)
 else()
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(xxhash IMPORTED_TARGET xxhash)
@@ -237,7 +288,7 @@ else()
         pkg_check_modules(xxhash IMPORTED_TARGET libxxhash)
     endif()
     if(xxhash_FOUND)
-        target_link_libraries(operon_operon PRIVATE PkgConfig::xxhash)
+        target_link_libraries(operon_canonical_core PRIVATE PkgConfig::xxhash)
     else()
         message(FATAL_ERROR "xxHash dependency could not be found.")
     endif()
@@ -306,6 +357,19 @@ generate_export_header(
     CUSTOM_CONTENT_FROM_VARIABLE pragma_suppress_c4251
 )
 
+# operon_canonical_core is its own compiled library now, not a header-only
+# INTERFACE target folded into operon_operon's visibility -- it needs its own
+# export macro (OPERON_CANONICAL_CORE_EXPORT, distinct from OPERON_EXPORT
+# above) so hidden-visibility symbols in node.hpp/tree.hpp/grammar.hpp/
+# pset.hpp/hash.hpp/enumeration_canonicalizer.hpp are exported correctly
+# whether or not operon_operon is even built alongside it.
+generate_export_header(
+    operon_canonical_core
+    BASE_NAME operon_canonical_core
+    EXPORT_FILE_NAME export/operon/canonical_core_export.hpp
+    CUSTOM_CONTENT_FROM_VARIABLE pragma_suppress_c4251
+)
+
 # ---- Timestamp the current build ----
 string(TIMESTAMP OPERON_BUILD_TIMESTAMP "%Y-%m-%dT%H:%M:%SZ")
 
@@ -316,6 +380,7 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/buildinfo.hpp.in
 
 if(NOT BUILD_SHARED_LIBS)
   target_compile_definitions(operon_operon PUBLIC OPERON_STATIC_DEFINE)
+  target_compile_definitions(operon_canonical_core PUBLIC OPERON_CANONICAL_CORE_STATIC_DEFINE)
 endif()
 
 set_target_properties(
@@ -326,6 +391,16 @@ set_target_properties(
     SOVERSION "${PROJECT_VERSION_MAJOR}"
     EXPORT_NAME backend_adapter
     OUTPUT_NAME operon
+)
+
+set_target_properties(
+    operon_canonical_core PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN YES
+    VERSION "${PROJECT_VERSION}"
+    SOVERSION "${PROJECT_VERSION_MAJOR}"
+    EXPORT_NAME canonical_core
+    OUTPUT_NAME operon_canonical_core
 )
 
 target_include_directories(
@@ -378,9 +453,11 @@ target_compile_features(operon_operon PUBLIC cxx_std_23)
 
 if(MSVC)
     target_compile_options(operon_operon PRIVATE "/std:c++latest")
+    target_compile_options(operon_canonical_core PRIVATE "/std:c++latest")
 else()
     if (UNIX AND NOT APPLE)
         target_link_options(operon_operon PRIVATE "-Wl,--no-undefined")
+        target_link_options(operon_canonical_core PRIVATE "-Wl,--no-undefined")
     endif()
     target_compile_options(operon_operon PRIVATE "-fno-math-errno")
 endif()
@@ -414,7 +491,6 @@ if (HAVE_ASMJIT)
 endif()
 
 target_compile_definitions(operon_operon PUBLIC
-    "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
     "$<$<BOOL:${HAVE_ASMJIT}>:HAVE_ASMJIT>"
     )
 
@@ -431,9 +507,11 @@ endif()
 
 # ---- Aggregate umbrella target ----
 # operon::operon is what most consumers want: the full-featured aggregate of
-# the header-only canonical-core contracts and the compiled backend-adapter
-# (interpreter, JIT, LM/optimizer, Eigen/Ceres/L-BFGS). It carries no code or
-# headers of its own -- it only forwards to the two targets above -- so a
+# the compiled, Eigen/Ceres/L-BFGS-free canonical-core (tree/grammar/
+# primitive-set/hash implementation plus header-only numerical/view
+# contracts) and the compiled backend-adapter (interpreter, JIT,
+# LM/optimizer, Eigen/Ceres/L-BFGS). It carries no code or headers of its
+# own -- it only forwards to the two targets above -- so a
 # consumer linking operon::operon sees exactly the union of their usage
 # requirements, unchanged from before this target existed.
 add_library(operon_aggregate INTERFACE)

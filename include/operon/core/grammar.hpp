@@ -14,7 +14,7 @@
 #include "operon/core/contracts.hpp"
 #include "operon/core/node.hpp"
 #include "operon/core/types.hpp"
-#include "operon/operon_export.hpp"
+#include "operon/canonical_core_export.hpp"
 
 namespace Operon {
 
@@ -141,13 +141,13 @@ constexpr auto operator|=(EnumerationFunctionSet& lhs, EnumerationFunction rhs) 
 }
 
 // Canonical name used by CLI parsing and display.
-[[nodiscard]] OPERON_EXPORT auto EnumerationFunctionName(EnumerationFunction f) -> std::string_view;
+[[nodiscard]] OPERON_CANONICAL_CORE_EXPORT auto EnumerationFunctionName(EnumerationFunction f) -> std::string_view;
 
 // Parses an exact function name.
-[[nodiscard]] OPERON_EXPORT auto ParseEnumerationFunction(std::string_view name) -> std::optional<EnumerationFunction>;
+[[nodiscard]] OPERON_CANONICAL_CORE_EXPORT auto ParseEnumerationFunction(std::string_view name) -> std::optional<EnumerationFunction>;
 
 // Built-ins required to evaluate an enumeration function set.
-[[nodiscard]] OPERON_EXPORT auto UnderlyingPrimitives(EnumerationFunctionSet functions) -> PrimitiveSetConfig;
+[[nodiscard]] OPERON_CANONICAL_CORE_EXPORT auto UnderlyingPrimitives(EnumerationFunctionSet functions) -> PrimitiveSetConfig;
 
 // ESR-compatible named function sets; each includes add, sub, mul, div, and pow.
 enum class EnumerationPreset : uint8_t {
@@ -160,13 +160,13 @@ enum class EnumerationPreset : uint8_t {
 };
 
 // Parses a named preset.
-[[nodiscard]] OPERON_EXPORT auto ParseEnumerationPreset(std::string_view name) -> std::optional<EnumerationPreset>;
+[[nodiscard]] OPERON_CANONICAL_CORE_EXPORT auto ParseEnumerationPreset(std::string_view name) -> std::optional<EnumerationPreset>;
 
 // Returns the complete function set for a preset.
-[[nodiscard]] OPERON_EXPORT auto PresetFunctions(EnumerationPreset preset) -> EnumerationFunctionSet;
+[[nodiscard]] OPERON_CANONICAL_CORE_EXPORT auto PresetFunctions(EnumerationPreset preset) -> EnumerationFunctionSet;
 
 // Configurable grammar for exhaustive enumeration.
-class OPERON_EXPORT Grammar {
+class OPERON_CANONICAL_CORE_EXPORT Grammar {
 public:
     Grammar()
         : Grammar(PrimitiveSetConfig {}, {})

@@ -9,18 +9,30 @@
 #include <string_view>
 #include <utility>
 
-#include "dispatch.hpp"
 #include "node.hpp"
 
-// Registers the built-in math ops into a DispatchTable via the same
-// RegisterFunction<T> API used for user-defined Dynamic functions (see
-// symbol_library.hpp). Each entry's Callable/CallableDiff comes from
-// Dispatch::MakeFunctionCall/MakeDiffCall<Type,T,S> - the same
-// compile-time-specialized kernels DispatchTable's constructor uses
-// directly, so the compiled code for a given (Type,T,S) is unaffected by
-// which path registered it.
+// Built-in primitive metadata: name/description, arity limits, and
+// infix-rendering rule for every BuiltinOp/terminal NodeType. Deliberately
+// Eigen-free and dispatch/interpreter-free -- core/node.cpp and core/pset.cpp
+// depend on this header alone for that metadata (canonical_core), not on the
+// dispatch-table registration mechanism below.
+//
+// The registration half (StandardLibrary::Register, which populates a
+// DispatchTable with the compiled Callable/CallableDiff kernels for each
+// entry) is declared here but defined out-of-line in dispatch.hpp, which is
+// backend-facing: it is the only place that needs DispatchTable's full
+// definition and Dispatch::MakeFunctionCall/MakeDiffCall. This mirrors
+// DispatchTable's own out-of-line default constructor (also defined in
+// dispatch.hpp), so neither header needs the other's full contents just to
+// declare the boundary between them.
 
 namespace Operon {
+
+// Forward declaration only -- Register()'s declaration below needs the
+// template-template name, not DispatchTable's definition (which lives in
+// dispatch.hpp, backend-facing).
+template<typename... Ts>
+struct DispatchTable;
 
 // How a node's infix-notation rendering diverges from plain call syntax
 // `name(child, ...)` (GenericCall, the default). Consumed by the formatter;
@@ -58,12 +70,13 @@ struct StandardLibrary {
     // DTable supports. Constant/Variable/Ref/(the generic "dyn" Function
     // fallback) have no numeric Callable/CallableDiff to register - they're
     // terminals, not evaluated via the dispatch table.
+    //
+    // Declared here (part of canonical-core's Eigen-free metadata contract);
+    // defined out-of-line in dispatch.hpp (backend-facing), which is the
+    // only place that has DispatchTable's full definition and
+    // Dispatch::MakeFunctionCall/MakeDiffCall available.
     template<typename... Ts>
-    static void Register(DispatchTable<Ts...>& dt)
-    {
-        RegisterNames();
-        RegisterAll(dt, std::make_index_sequence<BuiltinEntries.size()>{});
-    }
+    static void Register(DispatchTable<Ts...>& dt);
 
     // Min/max arity for a built-in op, sourced from the registry instead of
     // position-based inference (removed along with NodeType's old
@@ -101,8 +114,9 @@ private:
         FormatRule Rule;
     };
 
-    // Ordered to match BuiltinOp's own enumerator order exactly - RegisterAll
-    // below relies on index I mapping directly to static_cast<BuiltinOp>(I).
+    // Ordered to match BuiltinOp's own enumerator order exactly - dispatch.hpp's
+    // Register() relies on index I mapping directly to static_cast<BuiltinOp>(I)
+    // (via Operon::BuiltinOpCount, which is defined to equal this same count).
     static constexpr std::array BuiltinEntries {
         BuiltinEntry{ BuiltinOp::Add, "+", "n-ary addition f(a,b,c,...) = a + b + c + ...", 2, 2, FormatRule::Infix },
         BuiltinEntry{ BuiltinOp::Mul, "*", "n-ary multiplication f(a,b,c,...) = a * b * c * ...", 2, 2, FormatRule::Infix },
@@ -151,44 +165,8 @@ private:
         TerminalEntry{ NodeType::Variable, "variable", "a dataset input with an associated weight" },
         TerminalEntry{ NodeType::Ref, "ref", "structural reference to another node (enables DAG sharing)" },
     };
-
-    template<typename... Ts, std::size_t... I>
-    static void RegisterAll(DispatchTable<Ts...>& dt, std::index_sequence<I...> /*unused*/)
-    {
-        (RegisterOne<static_cast<BuiltinOp>(I)>(dt), ...);
-    }
-
-    template<BuiltinOp Op, typename... Ts>
-    static void RegisterOne(DispatchTable<Ts...>& dt)
-    {
-        auto const hash = static_cast<Operon::Hash>(Op);
-        (RegisterForType<Op, Ts>(dt, hash), ...);
-    }
-
-    template<BuiltinOp Op, typename T, typename... Ts>
-    requires Operon::Concepts::Arithmetic<T>
-    static void RegisterForType(DispatchTable<Ts...>& dt, Operon::Hash hash)
-    {
-        constexpr auto S = DispatchTable<Ts...>::template BatchSize<T>;
-        dt.template RegisterFunction<T>(
-            hash,
-            Dispatch::MakeFunctionCall<Op, T, S>(),
-            Dispatch::MakeDiffCall<Op, T, S>());
-    }
-
-    template<BuiltinOp Op, typename T, typename... Ts>
-    requires (!Operon::Concepts::Arithmetic<T>)
-    static void RegisterForType(DispatchTable<Ts...>& /*dt*/, Operon::Hash /*hash*/)
-    {
-    }
 };
 
 } // namespace Operon
-
-template<typename... Ts>
-Operon::DispatchTable<Ts...>::DispatchTable()
-{
-    Operon::StandardLibrary::Register(*this);
-}
 
 #endif

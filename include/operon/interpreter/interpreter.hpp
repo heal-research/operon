@@ -18,6 +18,7 @@
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
 #include "operon/formatter/formatter.hpp"
+#include "operon/operon_export.hpp"
 #include <string>
 #include <tl/expected.hpp>
 

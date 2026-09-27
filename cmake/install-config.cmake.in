@@ -1,12 +1,30 @@
 include(CMakeFindDependencyMacro)
 
-# operon::canonical_core dependencies (header-only; no Eigen/Ceres/L-BFGS).
+# operon::canonical_core dependencies (compiled, but still Eigen/Ceres/L-BFGS-free;
+# see CMakeLists.txt's operon_canonical_core target).
 find_dependency(fluky CONFIG REQUIRED)
 find_dependency(fmt CONFIG REQUIRED)
+find_dependency(libassert CONFIG REQUIRED)
 find_dependency(Microsoft.GSL CONFIG REQUIRED)
 find_dependency(mdspan CONFIG REQUIRED)
+find_dependency(Threads REQUIRED)
 find_dependency(tl-expected CONFIG REQUIRED)
 find_dependency(unordered_dense CONFIG REQUIRED)
+
+# gtl and xxHash are also linked into operon_canonical_core, but PRIVATE and
+# fully inlined (gtl is header-only; xxHash is built with XXH_INLINE_ALL) --
+# normally invisible to a consumer. The exception is a STATIC
+# operon_canonical_core: CMake still records a static library's PRIVATE
+# dependencies in its exported INTERFACE_LINK_LIBRARIES (wrapped in
+# $<LINK_ONLY:...>) so the final consumer's link line includes them too (see
+# cmake-buildsystem(7), "Static Libraries and their dependencies"), and
+# operonTargets.cmake below sets that property on operon::canonical_core
+# unconditionally -- regardless of which COMPONENTS were requested. A shared
+# operon_canonical_core resolves both internally and needs neither.
+if(NOT @BUILD_SHARED_LIBS@)
+    find_dependency(gtl CONFIG REQUIRED)
+    find_dependency(xxHash CONFIG REQUIRED)
+endif()
 
 # A component request for canonical_core alone must not even discover backend
 # dependencies. The default package request remains the full aggregate.
@@ -21,18 +39,16 @@ if(operon_FIND_COMPONENTS)
 endif()
 
 if(_operon_require_backend)
-    # operon::backend_adapter (PUBLIC) dependencies
+    # operon::backend_adapter (PUBLIC) dependencies. Threads and libassert are
+    # already covered unconditionally above (canonical_core needs them too).
     find_dependency(Eigen3 CONFIG REQUIRED)
-    find_dependency(Threads REQUIRED)
     if(@HAVE_ASMJIT@)
         find_dependency(asmjit CONFIG REQUIRED)
     endif()
     find_dependency(lbfgs CONFIG REQUIRED)
-    find_dependency(libassert CONFIG REQUIRED)
     find_dependency(infix-parser CONFIG REQUIRED)
     find_dependency(vstat CONFIG REQUIRED)
     find_dependency(pappus CONFIG REQUIRED)
-    find_dependency(xxHash CONFIG REQUIRED)
 
     # operon::backend_adapter (INTERFACE) dependencies
     find_dependency(eve CONFIG REQUIRED)

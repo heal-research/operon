@@ -12,12 +12,11 @@
 #include "concepts.hpp"
 #include "node.hpp"
 #include "range.hpp"
+#include "standard_library.hpp"
 #include "types.hpp"
 #include "aligned_allocator.hpp"
 
 namespace Operon {
-
-struct StandardLibrary;
 
 namespace Backend {
 template<typename T>
@@ -364,8 +363,60 @@ public:
 }; // struct DispatchTable
 
 using ScalarDispatch = DispatchTable<Operon::Scalar>;
+
+// ---- StandardLibrary::Register out-of-line definition (backend-facing) ----
+// StandardLibrary itself (name/desc/arity/format-rule metadata) is declared
+// in standard_library.hpp, which stays Eigen-free and dispatch-free so
+// core/node.cpp and core/pset.cpp can depend on it alone. Register() is the
+// one StandardLibrary member that actually needs DispatchTable's full
+// definition and Dispatch::MakeFunctionCall/MakeDiffCall (both only
+// available here), so it - and its private helpers below - live in this
+// backend-facing header instead.
+namespace detail {
+    template<BuiltinOp Op, typename T, typename... Ts>
+    requires Operon::Concepts::Arithmetic<T>
+    void RegisterBuiltinForType(DispatchTable<Ts...>& dt, Operon::Hash hash)
+    {
+        constexpr auto S = DispatchTable<Ts...>::template BatchSize<T>;
+        dt.template RegisterFunction<T>(
+            hash,
+            Dispatch::MakeFunctionCall<Op, T, S>(),
+            Dispatch::MakeDiffCall<Op, T, S>());
+    }
+
+    template<BuiltinOp Op, typename T, typename... Ts>
+    requires (!Operon::Concepts::Arithmetic<T>)
+    void RegisterBuiltinForType(DispatchTable<Ts...>& /*dt*/, Operon::Hash /*hash*/)
+    {
+    }
+
+    template<BuiltinOp Op, typename... Ts>
+    void RegisterBuiltinOp(DispatchTable<Ts...>& dt)
+    {
+        auto const hash = static_cast<Operon::Hash>(Op);
+        (RegisterBuiltinForType<Op, Ts>(dt, hash), ...);
+    }
+
+    template<typename... Ts, std::size_t... I>
+    void RegisterAllBuiltinOps(DispatchTable<Ts...>& dt, std::index_sequence<I...> /*unused*/)
+    {
+        (RegisterBuiltinOp<static_cast<BuiltinOp>(I)>(dt), ...);
+    }
+} // namespace detail
+
+template<typename... Ts>
+void StandardLibrary::Register(DispatchTable<Ts...>& dt)
+{
+    RegisterNames();
+    detail::RegisterAllBuiltinOps(dt, std::make_index_sequence<Operon::BuiltinOpCount>{});
+}
+
 } // namespace Operon
 
-#include "standard_library.hpp"
+template<typename... Ts>
+Operon::DispatchTable<Ts...>::DispatchTable()
+{
+    Operon::StandardLibrary::Register(*this);
+}
 
 #endif

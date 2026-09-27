@@ -7,7 +7,7 @@
 #include <string>
 
 #include "operon/core/tree.hpp"
-#include "operon/operon_export.hpp"
+#include "operon/canonical_core_export.hpp"
 
 namespace Operon {
 
@@ -72,7 +72,7 @@ struct CanonicalExpression {
 // polynomial expansion would have found, but never incorrectly merges two
 // inequivalent expressions - correctness (never a false positive) is
 // prioritized over completeness (recall), per the algorithm's contract.
-[[nodiscard]] OPERON_EXPORT auto CanonicalizeEnumerationTree(Operon::Tree const& tree) -> CanonicalExpression;
+[[nodiscard]] OPERON_CANONICAL_CORE_EXPORT auto CanonicalizeEnumerationTree(Operon::Tree const& tree) -> CanonicalExpression;
 
 } // namespace Operon
 
