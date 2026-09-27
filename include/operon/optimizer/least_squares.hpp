@@ -25,6 +25,7 @@ enum class LeastSquaresErrorCode : std::uint8_t {
     InvalidView,
     NonFiniteEvaluation,
     NumericalFailure,
+    EvaluationFailure,
 };
 
 struct LeastSquaresError {

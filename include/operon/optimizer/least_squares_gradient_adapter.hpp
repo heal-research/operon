@@ -32,6 +32,9 @@ namespace detail {
         case LeastSquaresErrorCode::NumericalFailure:
             code = GradientErrorCode::NumericalFailure;
             break;
+        case LeastSquaresErrorCode::EvaluationFailure:
+            code = GradientErrorCode::EvaluationFailure;
+            break;
         }
         return GradientError { .Code = code, .Expected = error.Expected, .Actual = error.Actual, .Cause = error.Cause };
     }

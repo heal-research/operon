@@ -81,6 +81,7 @@ add_executable(operon_test
     source/implementation/gradient_cost.cpp
     source/implementation/least_squares_gradient_adapter.cpp
     source/implementation/subtree.cpp
+    source/implementation/interpreter_least_squares.cpp
     source/implementation/composed_function.cpp
     )
 target_link_libraries(operon_test PRIVATE operon::operon Catch2::Catch2WithMain scn::scn nanobench::nanobench)
