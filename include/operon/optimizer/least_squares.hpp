@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <concepts>
 #include <cstddef>
 #include <limits>
 #include <optional>
@@ -62,6 +63,21 @@ public:
         std::optional<ScalarMatrixView> jacobian)
         const -> tl::expected<void, LeastSquaresError> = 0;
 };
+
+namespace Concepts {
+    // Structural: NumParameters()/NumResiduals()/Evaluate() only. No
+    // likelihood, Fisher, or statistical requirement.
+    template <typename T>
+    concept LeastSquaresCost = requires(
+        T const& cost,
+        ConstScalarSpan parameters,
+        ScalarSpan residuals,
+        std::optional<ScalarMatrixView> jacobian) {
+        { cost.NumParameters() } -> std::same_as<std::size_t>;
+        { cost.NumResiduals() } -> std::same_as<std::size_t>;
+        { cost.Evaluate(parameters, residuals, jacobian) } -> std::same_as<tl::expected<void, LeastSquaresError>>;
+    };
+} // namespace Concepts
 
 namespace detail {
     // Finite, and nonnegative when requireNonnegative is set.

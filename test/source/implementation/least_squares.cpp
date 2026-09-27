@@ -71,6 +71,10 @@ private:
     std::vector<Operon::Scalar> y_;
 };
 
+// Regression guard: a numerical-only cost with no likelihood/Fisher method
+// must satisfy Concepts::LeastSquaresCost.
+static_assert(Operon::Concepts::LeastSquaresCost<LinearModelCost>);
+
 auto MakeLinearFixture(std::size_t n, Operon::Scalar c0, Operon::Scalar c1) -> LinearModelCost
 {
     std::vector<Operon::Scalar> x(n);
