@@ -1343,36 +1343,47 @@ TEST_CASE("ShapeConstrainedEvaluator - a throwing user-registered rule is treate
     SECTION("affine rule returning tl::unexpected, combined mode: degrades to uncertified")
     {
         auto const hash = Operon::Hasher {}("shape_throw_affine_rule");
+        bool invoked = false;
         RegisterUnaryAffine<Scalar>(hash,
-            [](AffineEvaluator<Scalar>::Context const&, AffineEvaluator<Scalar>::Affine const&)
-                -> tl::expected<AffineEvaluator<Scalar>::Affine, std::string> { return tl::unexpected("user affine rule failed"); });
+            [&invoked](AffineEvaluator<Scalar>::Context const&, AffineEvaluator<Scalar>::Affine const&)
+                -> tl::expected<AffineEvaluator<Scalar>::Affine, std::string> {
+                invoked = true;
+                return tl::unexpected("user affine rule failed");
+            });
         Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
         sce.SetBoundMode(ShapeBoundMode::Combined);
         assertDegradesToUncertified(sce, makeTree(hash));
+        CHECK(invoked); // proves the callback's tl::unexpected genuinely propagated, not a missing-registry short-circuit
     }
 
     SECTION("interval rule returning tl::unexpected, combined mode: degrades to uncertified")
     {
         auto const hash = Operon::Hasher {}("shape_throw_interval_rule_combined");
+        bool invoked = false;
         RegisterUnaryInterval<Scalar>(
-            hash, [](IntervalEvaluator<Scalar>::Interval const&) -> tl::expected<IntervalEvaluator<Scalar>::Interval, std::string> {
+            hash, [&invoked](IntervalEvaluator<Scalar>::Interval const&) -> tl::expected<IntervalEvaluator<Scalar>::Interval, std::string> {
+                invoked = true;
                 return tl::unexpected("user interval rule failed");
             });
         Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
         sce.SetBoundMode(ShapeBoundMode::Combined);
         assertDegradesToUncertified(sce, makeTree(hash));
+        CHECK(invoked);
     }
 
     SECTION("interval rule returning tl::unexpected, interval mode: degrades to uncertified")
     {
         auto const hash = Operon::Hasher {}("shape_throw_interval_rule_interval_mode");
+        bool invoked = false;
         RegisterUnaryInterval<Scalar>(
-            hash, [](IntervalEvaluator<Scalar>::Interval const&) -> tl::expected<IntervalEvaluator<Scalar>::Interval, std::string> {
+            hash, [&invoked](IntervalEvaluator<Scalar>::Interval const&) -> tl::expected<IntervalEvaluator<Scalar>::Interval, std::string> {
+                invoked = true;
                 return tl::unexpected("user interval rule failed");
             });
         Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
         sce.SetBoundMode(ShapeBoundMode::Interval);
         assertDegradesToUncertified(sce, makeTree(hash));
+        CHECK(invoked);
     }
 }
 
