@@ -28,7 +28,7 @@
 #include "operon/core/problem.hpp"
 #include "solvers/sgd.hpp"
 #if defined(HAVE_ASMJIT)
-#include "jit_lm_cost_function.hpp"
+#include "operon/optimizer/jit_least_squares.hpp"
 #include "operon/interpreter/backend/jit/jit_evaluator.hpp"
 #endif
 
@@ -566,7 +566,6 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
         auto const range = problem->TrainingRange();
         auto const target = problem->TargetValues();
         auto const iters = this->Iterations();
-        auto const weights = dataset->Weights().value_or(Operon::Span<Operon::Scalar const> {});
 
         Operon::Interpreter<Operon::Scalar, DTable> interpreter { dtable, dataset, &tree };
         FitDiagnostics diag;
@@ -592,7 +591,7 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
         bool const hasFn = meta && meta->fn;
         bool const hasJacFn = meta && meta->jacFn;
         // In JacobianOnly mode only enter the JIT path when the Jacobian was actually compiled;
-        // falling through to JitLMCostFunction with a null jacFn wastes allocation for nothing.
+        // falling through to JitLeastSquaresCostFunction with a null jacFn wastes allocation for nothing.
         bool const useJitCf = !x0.empty() && (hasFn || (JacobianOnly && hasJacFn));
 
         if (!useJitCf) {
@@ -653,7 +652,7 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
             }
         }
 
-        Operon::JitLMCostFunction cf {
+        Operon::JitLeastSquaresCostFunction costFn {
             gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> { &interpreter },
             evalFn,
             std::move(colPtrs),
@@ -661,9 +660,9 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
             jacFn,
             std::move(jacColPtrs),
             meta->nVars,
-            meta->nConsts,
-            weights
+            meta->nConsts
         };
+        Operon::LeastSquaresLMAdapter<> cf { &costFn, localWeights };
 
         Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
         lm.setMaxfev(std::max<Eigen::Index>(
@@ -688,7 +687,8 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
         diag.FunctionEvaluations = static_cast<int>(cf.ResidualCalls());
         diag.JacobianEvaluations = static_cast<int>(cf.JacobianCalls());
         if (auto const& error = cf.Error(); error) {
-            return detail::MakeFitEvaluationError(*error, std::move(diag));
+            EXPECT(error->Cause.has_value());
+            return detail::MakeFitEvaluationError(*error->Cause, std::move(diag));
         }
         return detail::MakeFitOutcome(std::move(diag));
     }
