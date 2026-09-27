@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <limits>
 #include <optional>
@@ -13,22 +14,36 @@
 
 #include <gsl/pointers>
 
+#include "operon/core/contracts.hpp"
+#include "operon/optimizer/detail/lm_backend_functor.hpp"
 #include "operon/optimizer/least_squares.hpp"
-#include "operon/optimizer/lm_cost_function_base.hpp"
 
 namespace Operon {
 
-/** Adapts a LeastSquaresCostFunction to the raw-pointer Evaluate() interface LMCostFunctionBase needs for Eigen::LevenbergMarquardt and ceres::TinySolver. */
+/**
+ * Adapts a LeastSquaresCostFunction to the raw-pointer Evaluate() interface
+ * detail::LMBackendFunctor needs for Eigen::LevenbergMarquardt and
+ * ceres::TinySolver. NumResiduals()/NumParameters() are derived from the
+ * wrapped cost; no duplicated count is accepted. weights is empty
+ * (unweighted), size 1 (uniform), or NumResiduals() (per-row); values are
+ * validated once (finite, nonnegative) at construction. Weighting scales
+ * each residual and Jacobian row by sqrt(weight_i), the standard WLS-via-LM
+ * trick that makes the unweighted normal equations solve sum(w_i * r_i^2).
+ * weights are numerical WLS weights, never interpreted as statistical sigma.
+ */
 template <int StorageOrder = Eigen::ColMajor>
-struct LeastSquaresLMAdapter final : public LMCostFunctionBase<LeastSquaresLMAdapter<StorageOrder>, StorageOrder> {
-    using Base = LMCostFunctionBase<LeastSquaresLMAdapter<StorageOrder>, StorageOrder>;
+struct LeastSquaresLMAdapter final : public detail::LMBackendFunctor<LeastSquaresLMAdapter<StorageOrder>, StorageOrder> {
+    using Base = detail::LMBackendFunctor<LeastSquaresLMAdapter<StorageOrder>, StorageOrder>;
     using Scalar = typename Base::Scalar;
 
-    LeastSquaresLMAdapter(gsl::not_null<LeastSquaresCostFunction const*> cost, std::size_t numResiduals)
-        : Base { numResiduals, cost->NumParameters() }
+    explicit LeastSquaresLMAdapter(gsl::not_null<LeastSquaresCostFunction const*> cost, ConstScalarSpan weights = {})
+        : Base { cost->NumResiduals(), cost->NumParameters() }
         , cost_(cost)
-        , residualScratch_(numResiduals)
+        , weights_(weights)
+        , residualScratch_(cost->NumResiduals())
     {
+        EXPECT(weights_.empty() || weights_.size() == 1 || weights_.size() == this->numResiduals_);
+        EXPECT(detail::AllFinite(weights_, /*requireNonnegative=*/true));
     }
 
     // Both solvers may request the Jacobian alone (residuals == nullptr); the
@@ -68,6 +83,20 @@ struct LeastSquaresLMAdapter final : public LMCostFunctionBase<LeastSquaresLMAda
             }
             return false;
         }
+
+        if (!weights_.empty()) {
+            for (std::size_t i = 0; i < this->numResiduals_; ++i) {
+                auto const w = weights_.size() == 1 ? weights_[0] : weights_[i];
+                auto const sw = std::sqrt(w);
+                residualOut[i] *= sw;
+                if (jacobianView) {
+                    for (std::size_t j = 0; j < this->numParameters_; ++j) {
+                        At(*jacobianView, i, j) *= sw;
+                    }
+                }
+            }
+        }
+
         return true;
     }
 
@@ -75,6 +104,7 @@ struct LeastSquaresLMAdapter final : public LMCostFunctionBase<LeastSquaresLMAda
 
 private:
     gsl::not_null<LeastSquaresCostFunction const*> cost_;
+    ConstScalarSpan weights_;
     mutable std::vector<Scalar> residualScratch_;
     mutable std::optional<LeastSquaresError> error_;
 };

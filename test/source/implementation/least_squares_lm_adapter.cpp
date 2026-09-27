@@ -87,7 +87,7 @@ TEST_CASE("LeastSquaresLMAdapter drives Eigen::LevenbergMarquardt to the true op
     auto const c0 = Operon::Scalar { 2.5 };
     auto const c1 = Operon::Scalar { -1.3 };
     auto cost = MakeLinearFixture(20, c0, c1);
-    Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost, cost.NumResiduals() };
+    Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost };
 
     Eigen::Matrix<Operon::Scalar, -1, 1> params(2);
     params << 0, 0;
@@ -107,7 +107,7 @@ TEST_CASE("LeastSquaresLMAdapter drives ceres::TinySolver to the true optimum", 
     auto const c0 = Operon::Scalar { -0.7 };
     auto const c1 = Operon::Scalar { 2.2 };
     auto cost = MakeLinearFixture(20, c0, c1);
-    Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost, cost.NumResiduals() };
+    Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost };
 
     ceres::TinySolver<decltype(adapter)> solver;
     typename decltype(solver)::ParameterVector params;
@@ -123,7 +123,7 @@ TEST_CASE("LeastSquaresLMAdapter drives ceres::TinySolver to the true optimum", 
 TEST_CASE("LeastSquaresLMAdapter surfaces evaluation errors and fills NaN", "[least-squares][lm-adapter]")
 {
     FailingCost cost;
-    Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost, 5 };
+    Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost };
 
     std::array<Operon::Scalar, 2> params { 0, 0 };
     std::vector<Operon::Scalar> residuals(5, Operon::Scalar { 1 });
@@ -140,7 +140,7 @@ TEST_CASE("LeastSquaresLMAdapter surfaces evaluation errors and fills NaN", "[le
 TEST_CASE("LeastSquaresLMAdapter: Jacobian-only evaluation matches a residual+Jacobian call", "[least-squares][lm-adapter]")
 {
     auto cost = MakeLinearFixture(8, Operon::Scalar { 1 }, Operon::Scalar { 0.5 });
-    Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost, cost.NumResiduals() };
+    Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost };
     std::array<Operon::Scalar, 2> params { 0.2, -0.1 };
 
     std::vector<Operon::Scalar> jacobianOnly(cost.NumResiduals() * 2);
@@ -161,8 +161,8 @@ TEST_CASE("LeastSquaresLMAdapter: row-major and column-major Jacobian storage ag
     std::array<Operon::Scalar, 2> params { 0.1, 0.1 };
     auto const n = cost.NumResiduals();
 
-    Operon::LeastSquaresLMAdapter<Eigen::ColMajor> colMajorAdapter { &cost, n };
-    Operon::LeastSquaresLMAdapter<Eigen::RowMajor> rowMajorAdapter { &cost, n };
+    Operon::LeastSquaresLMAdapter<Eigen::ColMajor> colMajorAdapter { &cost };
+    Operon::LeastSquaresLMAdapter<Eigen::RowMajor> rowMajorAdapter { &cost };
 
     std::vector<Operon::Scalar> colJacobian(n * 2);
     std::vector<Operon::Scalar> rowJacobian(n * 2);
@@ -176,4 +176,50 @@ TEST_CASE("LeastSquaresLMAdapter: row-major and column-major Jacobian storage ag
             CHECK(colValue == rowValue);
         }
     }
+}
+
+TEST_CASE("LeastSquaresLMAdapter: weighted fit agrees between Tiny and Eigen backends", "[least-squares][lm-adapter]")
+{
+    auto const c0 = Operon::Scalar { 1.1 };
+    auto const c1 = Operon::Scalar { -0.4 };
+    auto cost = MakeLinearFixture(16, c0, c1);
+    std::vector<Operon::Scalar> weights(cost.NumResiduals());
+    for (std::size_t i = 0; i < weights.size(); ++i) {
+        weights[i] = Operon::Scalar { 1 } + (Operon::Scalar { 0.1 } * static_cast<Operon::Scalar>(i));
+    }
+
+    Operon::LeastSquaresLMAdapter<Eigen::ColMajor> eigenAdapter { &cost, weights };
+    Eigen::Matrix<Operon::Scalar, -1, 1> eigenParams(2);
+    eigenParams << 0, 0;
+    Eigen::LevenbergMarquardt<decltype(eigenAdapter)> lm(eigenAdapter);
+    lm.minimize(eigenParams);
+
+    Operon::LeastSquaresLMAdapter<Eigen::ColMajor> tinyAdapter { &cost, weights };
+    ceres::TinySolver<decltype(tinyAdapter)> solver;
+    typename decltype(solver)::ParameterVector tinyParams;
+    tinyParams.resize(2);
+    tinyParams << 0, 0;
+    solver.Solve(tinyAdapter, &tinyParams);
+
+    CHECK_THAT(static_cast<double>(eigenParams[0]), Catch::Matchers::WithinAbs(static_cast<double>(tinyParams[0]), 1e-3));
+    CHECK_THAT(static_cast<double>(eigenParams[1]), Catch::Matchers::WithinAbs(static_cast<double>(tinyParams[1]), 1e-3));
+    CHECK_THAT(static_cast<double>(eigenParams[0]), Catch::Matchers::WithinAbs(static_cast<double>(c0), 1e-2));
+    CHECK_THAT(static_cast<double>(eigenParams[1]), Catch::Matchers::WithinAbs(static_cast<double>(c1), 1e-2));
+}
+
+TEST_CASE("LeastSquaresLMAdapter: uniform scalar weight scales the objective without changing the optimum", "[least-squares][lm-adapter]")
+{
+    auto const c0 = Operon::Scalar { 0.6 };
+    auto const c1 = Operon::Scalar { 1.4 };
+    auto cost = MakeLinearFixture(10, c0, c1);
+    std::array<Operon::Scalar, 1> const scalarWeight { Operon::Scalar { 2.5 } };
+
+    Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost, scalarWeight };
+    Eigen::Matrix<Operon::Scalar, -1, 1> params(2);
+    params << 0, 0;
+    Eigen::LevenbergMarquardt<decltype(adapter)> lm(adapter);
+    lm.minimize(params);
+
+    CHECK_THAT(static_cast<double>(params[0]), Catch::Matchers::WithinAbs(static_cast<double>(c0), 1e-3));
+    CHECK_THAT(static_cast<double>(params[1]), Catch::Matchers::WithinAbs(static_cast<double>(c1), 1e-3));
 }
