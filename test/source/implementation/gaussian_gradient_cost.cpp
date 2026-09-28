@@ -270,3 +270,20 @@ TEST_CASE("GaussianGradientCostFunction: FunctionEvaluations and JacobianEvaluat
     CHECK(cost.FunctionEvaluations() == 3);
     CHECK(cost.JacobianEvaluations() == 3);
 }
+
+TEST_CASE("GaussianGradientCostFunction: nonfinite weights are typed errors", "[gaussian-gradient-cost]")
+{
+    Fixture fix;
+    Operon::Interpreter<Operon::Scalar, Fixture::DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
+    auto target = fix.ds.GetValues("X4");
+    Operon::Range range { 0, Fixture::Nrow };
+    for (auto const weight : { std::numeric_limits<Operon::Scalar>::quiet_NaN(),
+                               std::numeric_limits<Operon::Scalar>::infinity() }) {
+        std::array<Operon::Scalar, 1> weights { weight };
+        Operon::GaussianGradientCostFunction<Operon::Scalar> cost { &interpreter, target, range, nullptr, 0, weights };
+        auto gradient = std::vector<Operon::Scalar>(cost.NumParameters());
+        auto result = cost.Evaluate(fix.tree.GetCoefficients(), gradient);
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error().Code == Operon::GradientErrorCode::NonFiniteEvaluation);
+    }
+}

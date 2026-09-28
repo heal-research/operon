@@ -223,3 +223,27 @@ TEST_CASE("LeastSquaresLMAdapter: uniform scalar weight scales the objective wit
     CHECK_THAT(static_cast<double>(params[0]), Catch::Matchers::WithinAbs(static_cast<double>(c0), 1e-3));
     CHECK_THAT(static_cast<double>(params[1]), Catch::Matchers::WithinAbs(static_cast<double>(c1), 1e-3));
 }
+
+TEST_CASE("LeastSquaresLMAdapter rejects nonfinite canonical outputs", "[least-squares][lm-adapter]")
+{
+    class NonFiniteCost final : public Operon::LeastSquaresCostFunction {
+    public:
+        [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return 1; }
+        [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return 1; }
+        [[nodiscard]] auto Evaluate(std::span<Operon::Scalar const>, std::span<Operon::Scalar> residuals,
+            std::optional<Operon::ScalarMatrixView> jacobian) const
+            -> tl::expected<void, Operon::LeastSquaresError> override
+        {
+            residuals[0] = std::numeric_limits<Operon::Scalar>::quiet_NaN();
+            if (jacobian) { Operon::At(*jacobian, 0, 0) = Operon::Scalar { 1 }; }
+            return {};
+        }
+    } cost;
+    Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost };
+    Operon::Scalar parameter = 0;
+    Operon::Scalar residual = 0;
+    Operon::Scalar jacobian = 0;
+    CHECK_FALSE(adapter.Evaluate(&parameter, &residual, &jacobian));
+    REQUIRE(adapter.Error().has_value());
+    CHECK(adapter.Error()->Code == Operon::LeastSquaresErrorCode::NonFiniteEvaluation);
+}

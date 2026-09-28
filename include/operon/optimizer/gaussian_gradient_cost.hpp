@@ -59,12 +59,6 @@ public:
         EXPECT(batchSize == 0 || rng_ != nullptr);
         EXPECT(batchSize_ <= range_.Size());
         EXPECT(weights_.empty() || weights_.size() == 1 || weights_.size() == target_.size());
-        // Rows outside range_ are never read (via SelectBatch) and may
-        // legitimately hold negative/placeholder values, so only the
-        // in-range slice of a per-row weight vector is validated here.
-        EXPECT(weights_.size() <= 1
-            ? detail::AllFinite(weights_, /*requireNonnegative=*/true)
-            : detail::AllFinite(weights_.subspan(range_.Start(), range_.Size()), /*requireNonnegative=*/true));
     }
 
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return numParameters_; }
@@ -75,6 +69,10 @@ public:
         ++feval_;
         auto const batch = SelectBatch();
         auto const n = batch.Size();
+        auto const weightSlice = (weights_.empty() || weights_.size() == 1) ? weights_ : weights_.subspan(batch.Start(), n);
+        if (!detail::AllFinite(weightSlice, /*requireNonnegative=*/true)) {
+            return Fail(GradientError { .Code = GradientErrorCode::NonFiniteEvaluation }, gradient);
+        }
         residualScratch_.resize(n);
         auto pred = interpreter_->Evaluate(parameters, batch, residualScratch_);
         if (!pred) {
@@ -95,8 +93,6 @@ public:
         using Extents = std::dextents<MemoryIndex, 2>;
         using Mapping = std::layout_stride::mapping<Extents>;
         ScalarMatrixView jacobianView { jacobianScratch_.data(), Mapping { Extents { n, numParameters_ }, std::array<MemoryIndex, 2> { 1, n } } };
-
-        auto const weightSlice = (weights_.empty() || weights_.size() == 1) ? weights_ : weights_.subspan(batch.Start(), n);
         auto gradResult = ComputeGradient(residualScratch_, jacobianView, gradient, weightSlice);
         if (!gradResult) {
             return Fail(detail::ToGradientError(gradResult.error()), gradient);

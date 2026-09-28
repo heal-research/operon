@@ -99,10 +99,7 @@ public:
         EXPECT(exposure_.empty() || exposure_.size() == 1 || exposure_.size() == target_.size());
         // Rows outside range_ are never read (via SelectBatch) and may
         // legitimately hold negative/placeholder values, so only the
-        // in-range slice of a per-row exposure vector is validated here.
-        EXPECT(exposure_.size() <= 1
-            ? detail::AllFinite(exposure_, /*requireNonnegative=*/true)
-            : detail::AllFinite(exposure_.subspan(range_.Start(), range_.Size()), /*requireNonnegative=*/true));
+        // in-range slice of a per-row exposure vector is validated in Evaluate().
     }
 
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return numParameters_; }
@@ -113,12 +110,15 @@ public:
         ++feval_;
         auto const batch = SelectBatch();
         auto const n = batch.Size();
-        predictionScratch_.resize(n);
-        auto pred = interpreter_->Evaluate(parameters, batch, predictionScratch_);
-        if (!pred) {
-            return Fail(GradientError { .Code = GradientErrorCode::EvaluationFailure, .Cause = pred.error() }, gradient);
+        auto const exposureSlice = (exposure_.empty() || exposure_.size() == 1) ? exposure_ : exposure_.subspan(batch.Start(), n);
+        if (!detail::AllFinite(exposureSlice, /*requireNonnegative=*/true)) {
+            return Fail(GradientError { .Code = GradientErrorCode::NonFiniteEvaluation }, gradient);
         }
-
+        predictionScratch_.resize(n);
+        auto predicted = interpreter_->Evaluate(parameters, batch, predictionScratch_);
+        if (!predicted) {
+            return Fail(GradientError { .Code = GradientErrorCode::EvaluationFailure, .Cause = predicted.error() }, gradient);
+        }
         auto const targetSlice = target_.subspan(batch.Start(), n);
         auto const exposureAt = [&](std::size_t i) -> Scalar {
             if (exposure_.empty()) {

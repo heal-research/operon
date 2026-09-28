@@ -311,7 +311,12 @@ namespace detail {
     [[nodiscard]] inline auto ScaleBatchEvaluations(std::size_t evaluations, std::size_t batchSize, std::size_t rangeSize) -> int
     {
         auto const effectiveBatchSize = batchSize == 0 ? rangeSize : batchSize;
-        return static_cast<int>(static_cast<double>(evaluations) * static_cast<double>(effectiveBatchSize) / static_cast<double>(rangeSize));
+        if (evaluations == 0 || effectiveBatchSize == 0 || rangeSize == 0) {
+            return 0;
+        }
+        auto const scaled = static_cast<double>(evaluations) * static_cast<double>(effectiveBatchSize)
+            / static_cast<double>(rangeSize);
+        return std::max(1, static_cast<int>(scaled));
     }
 } // namespace detail
 

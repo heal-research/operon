@@ -530,6 +530,21 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
     }
 }
 
+TEST_CASE("Minibatch optimizer diagnostics charge at least one evaluation", "[optimizer]")
+{
+    OptimizerFixture fix;
+    fix.problem.SetTrainingRange({ 0, OptimizerFixture::Nrow });
+    fix.problem.SetTarget("X4");
+    using DTable = OptimizerFixture::DTable;
+    LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer { &fix.dtable, &fix.problem };
+    optimizer.SetBatchSize(1);
+    optimizer.SetIterations(1);
+    auto outcome = optimizer.Optimize(fix.rng, fix.tree);
+    REQUIRE(outcome.has_value());
+    CHECK(outcome->FunctionEvaluations >= 1);
+    CHECK(outcome->JacobianEvaluations >= 1);
+}
+
 // Same clean/noisy problem as WeightedOptimizerFixture, but padded with
 // Npad unused rows so the training range starts at a non-zero offset
 // (range_.Start() = Npad). GaussianGradientCostFunction::Evaluate previously indexed

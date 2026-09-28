@@ -72,8 +72,18 @@ struct LeastSquaresLMAdapter final : public detail::LMBackendFunctor<LeastSquare
         if (residuals != nullptr) {
             ++this->residualCallCount_;
         }
-
         auto result = cost_->Evaluate(params, residualSpan, jacobianView);
+        if (result && (!detail::AllFinite(residualSpan, false)
+                           || (jacobianView && [&] {
+                                  for (std::size_t i = 0; i < this->numResiduals_; ++i) {
+                                      for (std::size_t j = 0; j < this->numParameters_; ++j) {
+                                          if (!std::isfinite(static_cast<double>(At(*jacobianView, i, j)))) return true;
+                                      }
+                                  }
+                                  return false;
+                              }()))) {
+            result = tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::NonFiniteEvaluation });
+        }
         if (!result) {
             error_ = result.error();
             if (residuals != nullptr) {
