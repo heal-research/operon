@@ -307,6 +307,12 @@ namespace detail {
             return dataset->Weights().value_or(Operon::Span<Operon::Scalar const> {});
         }
     };
+
+    [[nodiscard]] inline auto ScaleBatchEvaluations(std::size_t evaluations, std::size_t batchSize, std::size_t rangeSize) -> int
+    {
+        auto const effectiveBatchSize = batchSize == 0 ? rangeSize : batchSize;
+        return static_cast<int>(static_cast<double>(evaluations) * static_cast<double>(effectiveBatchSize) / static_cast<double>(rangeSize));
+    }
 } // namespace detail
 
 template <typename DTable, Concepts::GradientCost Cost = GaussianGradientCostFunction<Operon::Scalar>>
@@ -358,8 +364,8 @@ struct LBFGSOptimizer final : public OptimizerBase {
         Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1> const> xFinal(coeff.data(), std::ssize(coeff));
         diag.FinalCost = bridge(xFinal, gradMap);
         diag.FinalParameters = coeff;
-        diag.FunctionEvaluations = static_cast<int>(cost.FunctionEvaluations());
-        diag.JacobianEvaluations = static_cast<int>(cost.JacobianEvaluations());
+        diag.FunctionEvaluations = detail::ScaleBatchEvaluations(cost.FunctionEvaluations(), batchSize, range.Size());
+        diag.JacobianEvaluations = detail::ScaleBatchEvaluations(cost.JacobianEvaluations(), batchSize, range.Size());
         if (auto const& error = bridge.Error(); error) {
             return detail::MakeFitEvaluationError(*error, std::move(diag));
         }
@@ -427,8 +433,8 @@ struct SGDOptimizer final : public OptimizerBase {
         diag.FinalCost = bridge(xFinal, gradScratch);
         diag.FinalParameters = coeff;
         diag.Iterations = solver.Epochs();
-        diag.FunctionEvaluations = static_cast<int>(cost.FunctionEvaluations());
-        diag.JacobianEvaluations = static_cast<int>(cost.JacobianEvaluations());
+        diag.FunctionEvaluations = detail::ScaleBatchEvaluations(cost.FunctionEvaluations(), batchSize, range.Size());
+        diag.JacobianEvaluations = detail::ScaleBatchEvaluations(cost.JacobianEvaluations(), batchSize, range.Size());
         if (auto const& error = bridge.Error(); error) {
             return detail::MakeFitEvaluationError(*error, std::move(diag));
         }
