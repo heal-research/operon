@@ -16,7 +16,7 @@
 
 #include "contracts.hpp"
 #include "subtree.hpp"
-#include "operon/canonical_core_export.hpp"
+#include "operon/core_export.hpp"
 
 namespace Operon {
 enum class TreeValidationError : std::uint8_t {
@@ -36,7 +36,7 @@ enum class TreeValidationError : std::uint8_t {
     LevelMismatch,
 };
 
-class OPERON_CANONICAL_CORE_EXPORT Tree { // NOLINT
+class OPERON_CORE_EXPORT Tree { // NOLINT
 public:
     Tree() = default;
     Tree(std::initializer_list<Node> list)

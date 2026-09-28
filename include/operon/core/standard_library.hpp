@@ -14,7 +14,7 @@
 // Built-in primitive metadata: name/description, arity limits, and
 // infix-rendering rule for every BuiltinOp/terminal NodeType. Deliberately
 // Eigen-free and dispatch/interpreter-free -- core/node.cpp and core/pset.cpp
-// depend on this header alone for that metadata (canonical_core), not on the
+// depend on this header alone for that metadata (core), not on the
 // dispatch-table registration mechanism below.
 //
 // The registration half (StandardLibrary::Register, which populates a

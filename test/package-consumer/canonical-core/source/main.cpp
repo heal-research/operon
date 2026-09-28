@@ -2,15 +2,15 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 //
-// Package-consumer contract fixture for operon::canonical_core (see
+// Package-consumer contract fixture for operon::core (see
 // test/package-consumer/canonical-core/CMakeLists.txt). Intentionally
-// standalone: it must compile and link using ONLY the canonical-core public
-// headers and the operon::canonical_core imported target as they appear
+// standalone: it must compile and link using ONLY the core public
+// headers and the operon::core imported target as they appear
 // after `find_package(operon CONFIG REQUIRED)` against an *installed,
 // relocated* package -- it never sees the operon source or build tree
 // directly, and it never links operon::backend_adapter or operon::operon.
 //
-// Representative headers from all three parts of canonical-core's contract:
+// Representative headers from all three parts of core's contract:
 // view (memory_view.hpp, view_descriptor.hpp), numerical
 // (least_squares.hpp, fisher_information.hpp), and the compiled
 // tree/grammar/primitive-set/enumeration-canonicalizer implementation
@@ -72,11 +72,11 @@ auto main() -> int {
 
     auto descriptorView = Operon::MakeConstMatrixView(descriptor);
     if (!descriptorView) {
-        std::cerr << "package-consumer(canonical-core): view_descriptor rejected a valid descriptor\n";
+        std::cerr << "package-consumer(core): view_descriptor rejected a valid descriptor\n";
         return EXIT_FAILURE;
     }
     if (Operon::At(*descriptorView, 2, 1) != Operon::Scalar {1}) {
-        std::cerr << "package-consumer(canonical-core): view_descriptor built an incorrect view\n";
+        std::cerr << "package-consumer(core): view_descriptor built an incorrect view\n";
         return EXIT_FAILURE;
     }
 
@@ -86,12 +86,12 @@ auto main() -> int {
         fisherStorage.data(), Mapping {Extents {2, 2}, std::array<std::size_t, 2> {2, 1}}};
     auto fisherResult = Operon::ComputeFisherMatrix(jacobian, {}, fisher);
     if (!fisherResult) {
-        std::cerr << "package-consumer(canonical-core): ComputeFisherMatrix failed\n";
+        std::cerr << "package-consumer(core): ComputeFisherMatrix failed\n";
         return EXIT_FAILURE;
     }
     if (!NearlyEqual(Operon::At(fisher, 0, 0), 2.0) || !NearlyEqual(Operon::At(fisher, 1, 1), 2.0)
         || !NearlyEqual(Operon::At(fisher, 0, 1), 1.0) || !NearlyEqual(Operon::At(fisher, 1, 0), 1.0)) {
-        std::cerr << "package-consumer(canonical-core): unexpected Fisher matrix\n";
+        std::cerr << "package-consumer(core): unexpected Fisher matrix\n";
         return EXIT_FAILURE;
     }
 
@@ -100,29 +100,29 @@ auto main() -> int {
     std::array<Operon::Scalar, 2> gradient {};
     auto gradientResult = Operon::ComputeGradient(residuals, jacobian, gradient);
     if (!gradientResult) {
-        std::cerr << "package-consumer(canonical-core): ComputeGradient failed\n";
+        std::cerr << "package-consumer(core): ComputeGradient failed\n";
         return EXIT_FAILURE;
     }
     if (!NearlyEqual(*gradientResult, 7.0) || !NearlyEqual(gradient[0], 4.0) || !NearlyEqual(gradient[1], 5.0)) {
-        std::cerr << "package-consumer(canonical-core): unexpected gradient/cost\n";
+        std::cerr << "package-consumer(core): unexpected gradient/cost\n";
         return EXIT_FAILURE;
     }
 
     // ResidualNorm = sqrt(14); GradientNorm = sqrt(16 + 25) = sqrt(41).
     auto diagnostics = Operon::ComputeDiagnostics(residuals, jacobian);
     if (!diagnostics) {
-        std::cerr << "package-consumer(canonical-core): ComputeDiagnostics failed\n";
+        std::cerr << "package-consumer(core): ComputeDiagnostics failed\n";
         return EXIT_FAILURE;
     }
     if (!NearlyEqual(diagnostics->Cost, 7.0) || !NearlyEqual(diagnostics->ResidualNorm, std::sqrt(14.0))
         || !NearlyEqual(diagnostics->GradientNorm, std::sqrt(41.0))) {
-        std::cerr << "package-consumer(canonical-core): unexpected diagnostics\n";
+        std::cerr << "package-consumer(core): unexpected diagnostics\n";
         return EXIT_FAILURE;
     }
 
     // Tree validation: a well-formed postfix tree (1 + 2) must Validate().
     // Node::Function/Node::Constant, Tree::UpdateNodes(), and Tree::Validate()
-    // are all compiled into operon_canonical_core (source/core/node.cpp,
+    // are all compiled into operon_core (source/core/node.cpp,
     // source/core/tree.cpp) rather than declared-only, so this is a real link
     // check, not just a header-compiles-standalone check.
     auto const addHash = static_cast<Operon::Hash>(Operon::BuiltinOp::Add);
@@ -132,7 +132,7 @@ auto main() -> int {
         Operon::Node::Function(addHash, /*arity=*/2),
     }).UpdateNodes();
     if (!sumTree.Validate()) {
-        std::cerr << "package-consumer(canonical-core): well-formed tree failed Validate()\n";
+        std::cerr << "package-consumer(core): well-formed tree failed Validate()\n";
         return EXIT_FAILURE;
     }
 
@@ -142,7 +142,7 @@ auto main() -> int {
     dangling.RefTo = 1; // forward reference: invalid
     Operon::Tree const invalidTree = Operon::Tree({ dangling, Operon::Node::Constant(2.0) }).UpdateNodes();
     if (invalidTree.Validate()) {
-        std::cerr << "package-consumer(canonical-core): malformed tree unexpectedly passed Validate()\n";
+        std::cerr << "package-consumer(core): malformed tree unexpectedly passed Validate()\n";
         return EXIT_FAILURE;
     }
 
@@ -153,7 +153,7 @@ auto main() -> int {
     // to zero RecurringFactor productions by design. Must produce a
     // non-empty RecurringFactor production set and a finite MinComplexity
     // for it -- both computed by Grammar::Rebuild(), compiled into
-    // operon_canonical_core (source/core/grammar.cpp).
+    // operon_core (source/core/grammar.cpp).
     // A non-empty variableHashes list is required for MinComplexity to reach
     // any nonterminal at all: RecurringFactor/SimpleTerm's MinComplexity is
     // only seeded (to 1, for a bare Variable leaf) when at least one
@@ -161,28 +161,28 @@ auto main() -> int {
     // Expression -- stays permanently Unreachable.
     Operon::Grammar const grammar(Operon::PrimitiveSet::Full, /*variableHashes=*/{ 1 });
     if (grammar.Productions(Operon::GrammarSymbol::RecurringFactor).empty()) {
-        std::cerr << "package-consumer(canonical-core): Grammar produced no RecurringFactor productions\n";
+        std::cerr << "package-consumer(core): Grammar produced no RecurringFactor productions\n";
         return EXIT_FAILURE;
     }
     constexpr auto Unreachable = std::numeric_limits<std::size_t>::max();
     if (grammar.MinComplexity(Operon::GrammarSymbol::Expression) == Unreachable) {
-        std::cerr << "package-consumer(canonical-core): Grammar reports Expression as unreachable\n";
+        std::cerr << "package-consumer(core): Grammar reports Expression as unreachable\n";
         return EXIT_FAILURE;
     }
 
     // Enumeration canonicalization: x+y and y+x must canonicalize to the
     // same Key (commutative reordering), exercising
-    // CanonicalizeEnumerationTree, compiled into operon_canonical_core
+    // CanonicalizeEnumerationTree, compiled into operon_core
     // (source/algorithms/enumeration_canonicalizer.cpp).
     Operon::Node varX(Operon::NodeType::Variable); varX.HashValue = 1;
     Operon::Node varY(Operon::NodeType::Variable); varY.HashValue = 2;
     Operon::Tree const xy = Operon::Tree({ varX, varY, Operon::Node::Function(addHash, 2) }).UpdateNodes();
     Operon::Tree const yx = Operon::Tree({ varY, varX, Operon::Node::Function(addHash, 2) }).UpdateNodes();
     if (Operon::CanonicalizeEnumerationTree(xy).Key != Operon::CanonicalizeEnumerationTree(yx).Key) {
-        std::cerr << "package-consumer(canonical-core): x+y and y+x canonicalized to different keys\n";
+        std::cerr << "package-consumer(core): x+y and y+x canonicalized to different keys\n";
         return EXIT_FAILURE;
     }
 
-    std::cout << "package-consumer(canonical-core): OK\n";
+    std::cout << "package-consumer(core): OK\n";
     return EXIT_SUCCESS;
 }
