@@ -17,7 +17,14 @@ find_dependency(unordered_dense CONFIG REQUIRED)
 # exported link interface, so they must be discovered for that build.
 if(NOT @BUILD_SHARED_LIBS@)
     find_dependency(gtl CONFIG REQUIRED)
-    find_dependency(xxHash CONFIG REQUIRED)
+    find_dependency(xxHash CONFIG QUIET)
+    if(NOT xxHash_FOUND)
+        find_dependency(PkgConfig REQUIRED)
+        pkg_check_modules(xxhash QUIET IMPORTED_TARGET xxhash)
+        if(NOT xxhash_FOUND)
+            pkg_check_modules(xxhash REQUIRED IMPORTED_TARGET libxxhash)
+        endif()
+    endif()
 endif()
 
 # A component request for core alone must not even discover backend

@@ -48,7 +48,12 @@ int main(void)
     desc.flags = OPERON_VIEW_READONLY;
     failures += check("readonly rejects writable request", operon_view_validate(&desc, 1), OPERON_VIEW_ERR_WRITABLE);
     failures += check("readonly still permits read-only request", operon_view_validate(&desc, 0), OPERON_VIEW_OK);
+    desc.flags = 2U;
+    failures += check("unknown flags rejected", operon_view_validate(&desc, 0), OPERON_VIEW_ERR_SCALAR);
     desc.flags = 0;
+    desc.reserved = 1U;
+    failures += check("reserved bits rejected", operon_view_validate(&desc, 0), OPERON_VIEW_ERR_SCALAR);
+    desc.reserved = 0;
 
     desc.extents[1] = 0;
     failures += check("zero extent is a valid empty view", operon_view_validate(&desc, 0), OPERON_VIEW_OK);

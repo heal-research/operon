@@ -155,6 +155,10 @@ static inline enum OperonViewStatus operon_view_validate(struct OperonViewDescri
         return OPERON_VIEW_ERR_RANK;
     }
 
+    if ((desc->flags & ~(uint32_t)OPERON_VIEW_READONLY) != 0U || desc->reserved != 0U) {
+        return OPERON_VIEW_ERR_SCALAR;
+    }
+
     switch (desc->scalar_code) {
     case OPERON_SCALAR_F32:
         if (desc->element_size != sizeof(float)) {

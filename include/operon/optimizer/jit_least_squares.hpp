@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
+#include <stdexcept>
 #include <vector>
 
 #include <gsl/pointers>
@@ -54,7 +56,7 @@ public:
         , target_(target.subspan(range.Start(), range.Size()))
         , range_(range)
         , numParameters_(static_cast<std::size_t>(interpreter->GetTree()->CoefficientsCount()))
-        , nRowsPad_(static_cast<std::size_t>((static_cast<int>(range.Size()) + 7) & ~7))
+        , nRowsPad_(CheckedPaddedRows(range.Size()))
         , scratchResiduals_(nRowsPad_)
         , scratchJac_(nRowsPad_ * numParameters_)
         , nVars_(nVars)
@@ -162,6 +164,15 @@ private:
     mutable std::vector<Scalar> jacobianScratch_; // interpreter JacRev fallback, column-major
     int nVars_ = -1;
     int nConsts_ = -1;
+    static auto CheckedPaddedRows(std::size_t rows) -> std::size_t
+    {
+        constexpr auto maxRows = static_cast<std::size_t>(std::numeric_limits<int>::max());
+        if (rows > maxRows - 7) {
+            throw std::invalid_argument("JIT least-squares range exceeds the supported row count");
+        }
+        return (rows + 7U) & ~std::size_t { 7U };
+    }
+
 };
 
 } // namespace Operon

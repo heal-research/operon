@@ -70,7 +70,6 @@ auto ParseErrorMetric(std::string const& str) -> std::tuple<std::unique_ptr<Oper
 
 auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& cx, MutatorBase& mut, SelectorBase& femSel, SelectorBase& maleSel, CoefficientOptimizer const* coeffOptimizer) -> std::unique_ptr<OffspringGeneratorBase>;
 
-auto ParseOptimizer(std::string const& str, Problem const& problem, ScalarDispatch const& dtable) -> std::unique_ptr<OptimizerBase>;
 
 } // namespace Operon
 

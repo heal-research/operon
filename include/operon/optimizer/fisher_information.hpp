@@ -66,6 +66,9 @@ struct FisherError {
                 return tl::unexpected(FisherError { .Code = FisherErrorCode::NonFiniteResult });
             }
             auto const value = static_cast<Scalar>(sum);
+            if (!std::isfinite(static_cast<double>(value))) {
+                return tl::unexpected(FisherError { .Code = FisherErrorCode::NonFiniteResult });
+            }
             At(fisher, a, b) = value;
             At(fisher, b, a) = value;
         }
