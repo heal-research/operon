@@ -46,9 +46,10 @@ struct LeastSquaresLMAdapter final : public detail::LMBackendFunctor<LeastSquare
         EXPECT(detail::AllFinite(weights_, /*requireNonnegative=*/true));
     }
 
-    // Both solvers may request the Jacobian alone (residuals == nullptr); the
-    // canonical contract always writes residuals, so that case is redirected
-    // into residualScratch_ and discarded.
+    // Backend callback boundary: Eigen::LevenbergMarquardt and Ceres
+    // TinySolver invoke this adapter through their raw-pointer callback ABI.
+    // The backend-neutral contract remains span/mdspan-like at cost_->Evaluate;
+    // these pointers never cross that canonical interface.
     auto Evaluate(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const -> bool // NOLINT
     {
         Operon::Span<Scalar const> params { parameters, this->numParameters_ };
