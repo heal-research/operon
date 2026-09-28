@@ -7,6 +7,7 @@
 
 #include <Eigen/Core>
 #include <algorithm>
+#include <cmath>
 #include <tl/expected.hpp>
 
 #include "operon/core/contracts.hpp"
@@ -18,6 +19,7 @@ struct LMWeightError {
     enum class Code {
         SizeMismatch,
         NegativeValue,
+        NonFiniteValue,
     };
 
     Code Kind;
@@ -37,12 +39,13 @@ struct LMWeightError {
     if (!weights.empty() && weights.size() != numResiduals) {
         return tl::unexpected(LMWeightError { LMWeightError::Code::SizeMismatch });
     }
-    auto const it = std::ranges::find_if(weights, [](auto weight) { return weight < Operon::Scalar { 0 }; });
+    auto const it = std::ranges::find_if(weights, [](auto weight) {
+        return !std::isfinite(static_cast<double>(weight)) || weight < Operon::Scalar { 0 };
+    });
     if (it != weights.end()) {
-        return tl::unexpected(LMWeightError {
-            LMWeightError::Code::NegativeValue,
-            static_cast<std::size_t>(std::distance(weights.begin(), it)),
-        });
+        auto const kind = std::isfinite(static_cast<double>(*it)) ? LMWeightError::Code::NegativeValue
+                                                                   : LMWeightError::Code::NonFiniteValue;
+        return tl::unexpected(LMWeightError { kind, static_cast<std::size_t>(std::distance(weights.begin(), it)) });
     }
     return {};
 }

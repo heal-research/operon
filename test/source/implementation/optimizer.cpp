@@ -255,33 +255,36 @@ TEST_CASE("Optimizers return typed interpreter errors", "[optimizer][interpreter
 
 TEST_CASE("LM reports invalid training weights", "[optimizer]")
 {
-    OptimizerFixture fix;
-    using DTable = OptimizerFixture::DTable;
-    std::vector<Operon::Scalar> weights(OptimizerFixture::Nrow, Operon::Scalar { 1 });
-    weights[1] = Operon::Scalar { -1 };
-    fix.ds.SetWeights(weights);
+    for (auto const invalid : { Operon::Scalar { -1 }, std::numeric_limits<Operon::Scalar>::quiet_NaN(),
+                                std::numeric_limits<Operon::Scalar>::infinity() }) {
+        OptimizerFixture fix;
+        using DTable = OptimizerFixture::DTable;
+        std::vector<Operon::Scalar> weights(OptimizerFixture::Nrow, Operon::Scalar { 1 });
+        weights[1] = invalid;
+        fix.ds.SetWeights(weights);
 
-    auto check = [&](auto const& optimizer) {
-        auto outcome = optimizer.Optimize(fix.rng, fix.tree);
-        REQUIRE_FALSE(outcome.has_value());
-        auto const* error = ConfigurationError(outcome);
-        REQUIRE(error != nullptr);
-        CHECK(error->Error.Kind == LMWeightError::Code::NegativeValue);
-        CHECK(error->Error.Index == 1);
-    };
+        auto check = [&](auto const& optimizer) {
+            auto outcome = optimizer.Optimize(fix.rng, fix.tree);
+            REQUIRE_FALSE(outcome.has_value());
+            auto const* error = ConfigurationError(outcome);
+            REQUIRE(error != nullptr);
+            auto const expected = std::isfinite(static_cast<double>(invalid)) ? LMWeightError::Code::NegativeValue
+                                                                                : LMWeightError::Code::NonFiniteValue;
+            CHECK(error->Error.Kind == expected);
+            CHECK(error->Error.Index == 1);
+        };
 
-    LevenbergMarquardtOptimizer<DTable, OptimizerType::Tiny> tiny { &fix.dtable, &fix.problem };
-    check(tiny);
-
-    LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> eigen { &fix.dtable, &fix.problem };
-    check(eigen);
-
+        LevenbergMarquardtOptimizer<DTable, OptimizerType::Tiny> tiny { &fix.dtable, &fix.problem };
+        check(tiny);
+        LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> eigen { &fix.dtable, &fix.problem };
+        check(eigen);
 #if defined(HAVE_ASMJIT)
-    Operon::JIT::JitZobrist zobrist { fix.rng, 50, fix.problem.GetInputs() };
-    JIT::JitEvaluator jitEval { &fix.problem, &zobrist };
-    JitLevenbergMarquardtOptimizer<DTable> jit { &fix.dtable, &fix.problem, &jitEval };
-    check(jit);
+        Operon::JIT::JitZobrist zobrist { fix.rng, 50, fix.problem.GetInputs() };
+        JIT::JitEvaluator jitEval { &fix.problem, &zobrist };
+        JitLevenbergMarquardtOptimizer<DTable> jit { &fix.dtable, &fix.problem, &jitEval };
+        check(jit);
 #endif
+    }
 }
 
 // Test problem: a "clean" half of the rows has y = X1 exactly (X1 drawn from
