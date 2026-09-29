@@ -76,8 +76,15 @@ add_executable(operon_test
     source/implementation/user_defined_registries.cpp
     source/implementation/memory_view.cpp
     source/implementation/view_descriptor.cpp
+    source/implementation/least_squares.cpp
+    source/implementation/least_squares_lm_adapter.cpp
+    source/implementation/gradient_cost.cpp
+    source/implementation/least_squares_gradient_adapter.cpp
     source/implementation/subtree.cpp
+    source/implementation/interpreter_least_squares.cpp
     source/implementation/composed_function.cpp
+    source/implementation/gaussian_gradient_cost.cpp
+    source/implementation/poisson_gradient_cost.cpp
     )
 target_link_libraries(operon_test PRIVATE operon::operon Catch2::Catch2WithMain scn::scn nanobench::nanobench)
 target_compile_definitions(operon_test PRIVATE OPERON_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/..")
@@ -171,6 +178,31 @@ if(NOT PROJECT_IS_TOP_LEVEL)
                 "-DOPERON_RELOCATED_PREFIX=${operon_package_consumer_work_dir}/relocated-prefix"
                 "-DOPERON_CONSUMER_SOURCE_DIR=${operon_package_consumer_source_dir}"
                 "-DOPERON_CONSUMER_BUILD_DIR=${operon_package_consumer_work_dir}/build"
+                -P "${operon_package_consumer_source_dir}/run-consumer-test.cmake"
+    )
+
+    # Same install -> relocate -> find_package -> build -> run path, but the
+    # consumer here links only operon::core (see
+    # test/package-consumer/canonical-core/CMakeLists.txt), proving that
+    # contract holds independently of the full operon::operon aggregate.
+    # Reuses the same generic run-consumer-test.cmake driver above.
+    set(operon_package_consumer_core_source_dir "${CMAKE_CURRENT_SOURCE_DIR}/package-consumer/canonical-core")
+    set(operon_package_consumer_core_work_dir "${CMAKE_BINARY_DIR}/package-consumer-core")
+
+    add_test(
+        NAME package_consumer_core
+        COMMAND "${CMAKE_COMMAND}"
+                "-DCMAKE_COMMAND=${CMAKE_COMMAND}"
+                "-DOPERON_MAIN_BUILD_DIR=${CMAKE_BINARY_DIR}"
+                "-DOPERON_CONFIGURATION=$<CONFIG>"
+                "-DOPERON_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}"
+                "-DOPERON_VCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET}"
+                "-DOPERON_VCPKG_INSTALLED_DIR=${VCPKG_INSTALLED_DIR}"
+                "-DOPERON_MSVC_RUNTIME_LIBRARY=${CMAKE_MSVC_RUNTIME_LIBRARY}"
+                "-DOPERON_STAGE_DIR=${operon_package_consumer_core_work_dir}/stage"
+                "-DOPERON_RELOCATED_PREFIX=${operon_package_consumer_core_work_dir}/relocated-prefix"
+                "-DOPERON_CONSUMER_SOURCE_DIR=${operon_package_consumer_core_source_dir}"
+                "-DOPERON_CONSUMER_BUILD_DIR=${operon_package_consumer_core_work_dir}/build"
                 -P "${operon_package_consumer_source_dir}/run-consumer-test.cmake"
     )
 endif()

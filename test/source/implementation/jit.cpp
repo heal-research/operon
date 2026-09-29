@@ -23,7 +23,7 @@
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/operators/evaluator.hpp"
-#include "operon/optimizer/jit_lm_cost_function.hpp"
+#include "operon/optimizer/jit_least_squares.hpp"
 #include "operon/optimizer/optimizer.hpp"
 #include "operon/parser/infix.hpp"
 
@@ -928,10 +928,21 @@ TEST_CASE("CompileJacobian performance vs JacRev", "[jit][jacobian][performance]
 }
 
 // ============================================================
-// JitLMCostFunction tests
+// JitLeastSquaresCostFunction tests
 // ============================================================
 
-TEST_CASE("JitLMCostFunction residuals vs interpreter", "[jit][lm]")
+namespace {
+using JitExtents = std::dextents<std::size_t, 2>;
+using JitMapping = std::layout_stride::mapping<JitExtents>;
+
+// Column-major view (stride {1, rows}) over a flat rows*cols buffer.
+auto MakeColMajorView(std::vector<Operon::Scalar>& buffer, std::size_t rows, std::size_t cols) -> Operon::ScalarMatrixView
+{
+    return Operon::ScalarMatrixView { buffer.data(), JitMapping { JitExtents { rows, cols }, std::array<std::size_t, 2> { 1, rows } } };
+}
+} // namespace
+
+TEST_CASE("JitLeastSquaresCostFunction residuals vs interpreter", "[jit][lm]")
 {
     JIT::JitRuntimePool compilerPool;
     JIT::TreeCompiler compiler { &compilerPool };
@@ -949,7 +960,7 @@ TEST_CASE("JitLMCostFunction residuals vs interpreter", "[jit][lm]")
     auto const target = problem.TargetValues(range);
     DTable dtable;
 
-    // Build JitLMCostFunction for an expression, evaluate at `evalCoeff`, and
+    // Build JitLeastSquaresCostFunction for an expression, evaluate at `evalCoeff`, and
     // compare residuals + Jacobian against the interpreter reference.
     auto checkCostFn = [&](std::string_view exprStr, std::vector<Operon::Scalar> evalCoeff) {
         INFO("expression: " << exprStr);
@@ -984,19 +995,20 @@ TEST_CASE("JitLMCostFunction residuals vs interpreter", "[jit][lm]")
 
         Interpreter<Operon::Scalar, DTable> interp { &dtable, &ds, &tree };
 
-        JitLMCostFunction<> cf { gsl::not_null<InterpreterBase<Operon::Scalar> const*> { &interp }, compiled->fn,
+        JitLeastSquaresCostFunction cost { gsl::not_null<InterpreterBase<Operon::Scalar> const*> { &interp }, compiled->fn,
             makeColPtrs(varOrder), target, range, compiledJac->jacFn, makeColPtrs(varOrder) };
 
-        auto const nRes = static_cast<Eigen::Index>(cf.NumResiduals());
-        auto const nPar = static_cast<Eigen::Index>(cf.NumParameters());
+        auto const nRes = static_cast<Eigen::Index>(cost.NumResiduals());
+        auto const nPar = static_cast<Eigen::Index>(cost.NumParameters());
         REQUIRE(nRes == static_cast<Eigen::Index>(range.Size()));
         REQUIRE(nPar == static_cast<Eigen::Index>(coeff.size()));
 
         std::vector<Operon::Scalar> jitResiduals(static_cast<std::size_t>(nRes));
         std::vector<Operon::Scalar> jitJacobian(static_cast<std::size_t>(nRes * nPar));
+        auto jac = MakeColMajorView(jitJacobian, static_cast<std::size_t>(nRes), static_cast<std::size_t>(nPar));
 
-        bool ok = cf.Evaluate(evalCoeff.data(), jitResiduals.data(), jitJacobian.data());
-        REQUIRE(ok);
+        auto result = cost.Evaluate(evalCoeff, jitResiduals, jac);
+        REQUIRE(result.has_value());
 
         // Reference residuals: interpreter predict - target
         auto predVec = interp.Evaluate(evalCoeff, range).value();
@@ -1015,8 +1027,8 @@ TEST_CASE("JitLMCostFunction residuals vs interpreter", "[jit][lm]")
             if (!std::isfinite(refResiduals(r))) {
                 continue;
             }
-            INFO("residual row " << r << ": ref=" << refResiduals(r) << " jit=" << jitResiduals[r]);
-            CHECK(jitResiduals[r] == Catch::Approx(refResiduals(r)).epsilon(Eps));
+            INFO("residual row " << r << ": ref=" << refResiduals(r) << " jit=" << jitResiduals[static_cast<std::size_t>(r)]);
+            CHECK(jitResiduals[static_cast<std::size_t>(r)] == Catch::Approx(refResiduals(r)).epsilon(Eps));
         }
 
         // jitJacobian is col-major: column k at offset k*nRes
@@ -1039,7 +1051,7 @@ TEST_CASE("JitLMCostFunction residuals vs interpreter", "[jit][lm]")
     SECTION("composite") { checkCostFn("1.0 * X1 * X2 + 0.5 * sin(X3) + 2.0", { 1.0F, 0.5F, 2.0F }); }
 }
 
-TEST_CASE("JitLMCostFunction respects consts parameter", "[jit][lm]")
+TEST_CASE("JitLeastSquaresCostFunction respects consts parameter", "[jit][lm]")
 {
     // Verify that Evaluate uses the supplied coefficient values, not the tree's
     // stored values.  Evaluating at two different parameter sets must produce
@@ -1083,11 +1095,11 @@ TEST_CASE("JitLMCostFunction respects consts parameter", "[jit][lm]")
 
     Interpreter<Operon::Scalar, DTable> interp { &dtable, &ds, &tree };
 
-    JitLMCostFunction<> cf { gsl::not_null<InterpreterBase<Operon::Scalar> const*> { &interp }, compiled->fn,
+    JitLeastSquaresCostFunction cost { gsl::not_null<InterpreterBase<Operon::Scalar> const*> { &interp }, compiled->fn,
         makeColPtrs(varOrder), target, range, compiledJac->jacFn, makeColPtrs(varOrder) };
 
-    auto const nRes = static_cast<std::size_t>(cf.NumResiduals());
-    auto const nPar = static_cast<std::size_t>(cf.NumParameters());
+    auto const nRes = cost.NumResiduals();
+    auto const nPar = cost.NumParameters();
     REQUIRE(nPar == 2);
 
     std::vector<Operon::Scalar> res1(nRes), res2(nRes);
@@ -1096,8 +1108,8 @@ TEST_CASE("JitLMCostFunction respects consts parameter", "[jit][lm]")
     std::vector<Operon::Scalar> p1 = { 1.0F, 0.0F };
     std::vector<Operon::Scalar> p2 = { 2.0F, -1.0F };
 
-    cf.Evaluate(p1.data(), res1.data(), jac1.data());
-    cf.Evaluate(p2.data(), res2.data(), jac2.data());
+    REQUIRE(cost.Evaluate(p1, res1, MakeColMajorView(jac1, nRes, nPar)).has_value());
+    REQUIRE(cost.Evaluate(p2, res2, MakeColMajorView(jac2, nRes, nPar)).has_value());
 
     // The two residual vectors must differ (different a,b => different predictions)
     bool differ = false;
@@ -1142,7 +1154,7 @@ TEST_CASE("JitLMCostFunction respects consts parameter", "[jit][lm]")
     SECTION("at p2") { check(p2, res2, jac2); }
 }
 
-TEST_CASE("JitLMCostFunction residuals only (no Jacobian)", "[jit][lm]")
+TEST_CASE("JitLeastSquaresCostFunction residuals only (no Jacobian)", "[jit][lm]")
 {
     JIT::JitRuntimePool compilerPool;
     JIT::TreeCompiler compiler { &compilerPool };
@@ -1176,15 +1188,15 @@ TEST_CASE("JitLMCostFunction residuals only (no Jacobian)", "[jit][lm]")
 
     Interpreter<Operon::Scalar, DTable> interp { &dtable, &ds, &tree };
 
-    JitLMCostFunction<> cf { gsl::not_null<InterpreterBase<Operon::Scalar> const*> { &interp }, compiled->fn,
+    JitLeastSquaresCostFunction cost { gsl::not_null<InterpreterBase<Operon::Scalar> const*> { &interp }, compiled->fn,
         std::move(colPtrs), target, range }; // no Jacobian
 
-    auto const nRes = static_cast<std::size_t>(cf.NumResiduals());
+    auto const nRes = cost.NumResiduals();
     std::vector<Operon::Scalar> evalCoeff = { 1.5F, 2.0F, 0.5F };
 
     std::vector<Operon::Scalar> jitResiduals(nRes);
-    bool ok = cf.Evaluate(evalCoeff.data(), jitResiduals.data(), nullptr);
-    REQUIRE(ok);
+    auto result = cost.Evaluate(evalCoeff, jitResiduals, std::nullopt);
+    REQUIRE(result.has_value());
 
     auto predVec = interp.Evaluate(evalCoeff, range).value();
     Eigen::Map<const Eigen::Array<Operon::Scalar, -1, 1>> tgtArr(target.data(), static_cast<Eigen::Index>(nRes));
@@ -1202,10 +1214,10 @@ TEST_CASE("JitLMCostFunction residuals only (no Jacobian)", "[jit][lm]")
     }
 }
 
-TEST_CASE("JitLMCostFunction TinySolver convergence", "[jit][lm]")
+TEST_CASE("JitLeastSquaresCostFunction drives ceres::TinySolver to convergence", "[jit][lm]")
 {
-    // Run TinySolver + JitLMCostFunction on a problem with a known answer and
-    // verify the optimized coefficients are correct.
+    // Run TinySolver + LeastSquaresLMAdapter<JitLeastSquaresCostFunction> on a
+    // problem with a known answer and verify the optimized coefficients are correct.
     JIT::JitRuntimePool compilerPool;
     JIT::TreeCompiler compiler { &compilerPool };
     if (!compiler.HasAVX2()) {
@@ -1253,21 +1265,23 @@ TEST_CASE("JitLMCostFunction TinySolver convergence", "[jit][lm]")
 
     Interpreter<Operon::Scalar, DTable> interp { &dtable, &ds, &tree };
 
-    JitLMCostFunction<> cf { gsl::not_null<InterpreterBase<Operon::Scalar> const*> { &interp }, compiled->fn,
+    JitLeastSquaresCostFunction cost { gsl::not_null<InterpreterBase<Operon::Scalar> const*> { &interp }, compiled->fn,
         makeColPtrs(varOrder), target, range, compiledJac->jacFn, makeColPtrs(varOrder) };
 
-    REQUIRE(cf.NumParameters() == 2);
-    REQUIRE(cf.NumResiduals() == NRows);
+    REQUIRE(cost.NumParameters() == 2);
+    REQUIRE(cost.NumResiduals() == NRows);
+
+    Operon::LeastSquaresLMAdapter<> adapter { &cost };
 
     // Initial params: a=1, b=0
     std::vector<Operon::Scalar> x0 = { 1.0F, 0.0F };
     Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>> m0(x0.data(), std::ssize(x0));
 
-    ceres::TinySolver<JitLMCostFunction<>> solver;
+    ceres::TinySolver<decltype(adapter)> solver;
     solver.options.max_num_iterations = 100;
 
     typename decltype(solver)::ParameterVector p = m0.cast<Operon::Scalar>();
-    solver.Solve(cf, &p);
+    solver.Solve(adapter, &p);
     m0 = p.template cast<Operon::Scalar>();
 
     INFO("initial_cost=" << solver.summary.initial_cost << " final_cost=" << solver.summary.final_cost

@@ -9,7 +9,7 @@
 #include <type_traits>
 
 #include "operon/collections/bitset.hpp"
-#include "operon/operon_export.hpp"
+#include "operon/core_export.hpp"
 #include "types.hpp"
 
 namespace Operon {
@@ -267,12 +267,12 @@ struct Node {
 
     // Not noexcept: unlike the old std::string const& return, this now
     // copies (and, on invariant violation, can throw std::out_of_range).
-    [[nodiscard]] OPERON_EXPORT auto Name() const -> std::string;
-    [[nodiscard]] OPERON_EXPORT auto Desc() const -> std::string;
+    [[nodiscard]] OPERON_CORE_EXPORT auto Name() const -> std::string;
+    [[nodiscard]] OPERON_CORE_EXPORT auto Desc() const -> std::string;
 
     // Register a display name (and optional description) for a Dynamic node hash.
     // After registration, Name() and Desc() return the provided strings instead of "dyn".
-    static OPERON_EXPORT void RegisterName(Operon::Hash hash, std::string name, std::string desc = {});
+    static OPERON_CORE_EXPORT void RegisterName(Operon::Hash hash, std::string name, std::string desc = {});
 
     // comparison operators
     auto operator==(const Node& rhs) const noexcept -> bool

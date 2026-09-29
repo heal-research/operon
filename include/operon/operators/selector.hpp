@@ -8,6 +8,7 @@
 #include "operon/core/concepts.hpp"
 #include "operon/core/individual.hpp"
 #include "operon/core/operator.hpp"
+#include "operon/operon_export.hpp"
 
 namespace Operon {
 // the selector a vector of individuals and returns the index of a selected individual per each call of operator()

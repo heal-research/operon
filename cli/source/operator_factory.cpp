@@ -241,8 +241,5 @@ auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& 
     return generator;
 }
 
-auto ParseOptimizer(std::string const& /*str*/, Problem const& /*problem*/, ScalarDispatch const& /*dtable*/) -> std::unique_ptr<OptimizerBase> {
-    throw std::runtime_error("not implemented");
-}
 
 } // namespace Operon

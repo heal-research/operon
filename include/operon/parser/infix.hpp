@@ -13,6 +13,7 @@
 #include "operon/core/dataset.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
+#include "operon/operon_export.hpp"
 
 namespace Operon {
 struct InfixParseError {

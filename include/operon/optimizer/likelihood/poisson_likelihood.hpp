@@ -5,17 +5,16 @@
 #ifndef OPERON_POISSON_LIKELIHOOD_HPP
 #define OPERON_POISSON_LIKELIHOOD_HPP
 
-#include "likelihood_base.hpp"
+#include <Eigen/Core>
+#include <cmath>
+#include <stdexcept>
+#include <type_traits>
+
 #include "operon/core/concepts.hpp"
 #include "operon/core/types.hpp"
-#include "operon/error_metrics/sum_of_squared_errors.hpp"
-#include "operon/interpreter/interpreter.hpp"
-
-#include <functional>
-#include <random>
-#include <type_traits>
 #include <vstat/univariate.hpp>
 #include <vstat/vstat.hpp>
+
 namespace Operon {
 
 namespace detail {
@@ -98,124 +97,6 @@ struct PoissonLikelihood {
     }
 };
 
-// Callable loss object for gradient-based optimizers (L-BFGS, SGD).
-// Inherits LikelihoodBase<T> for the virtual operator() interface;
-// static methods delegate to PoissonLikelihood<T, LogInput> so this type
-// also satisfies Concepts::Likelihood.
-template <typename T = Operon::Scalar, bool LogInput = true>
-struct PoissonLoss : public LikelihoodBase<T> {
-    static constexpr bool UsesSigma = false;
-
-    // Diagnostic cost reported in OptimizerSummary. It must differ from
-    // operator() only by coefficient-independent constants, so optimizer
-    // acceptance and the Poisson gradient use the same objective.
-    template <typename Pred>
-    static auto Cost(Pred const& pred, Operon::Span<Operon::Scalar const> target, Operon::Span<Operon::Scalar const> /*weights*/) -> Operon::Scalar
-    {
-        return PoissonLikelihood<T, LogInput>::ComputeLikelihood(pred, target, {});
-    }
-
-    // `weights` is accepted only so PoissonLoss shares LBFGSOptimizer/SGDOptimizer's
-    // generic call site with GaussianLoss; it is intentionally not applied here.
-    // Sample weights (precision/multiplicity) and Poisson's existing w-as-exposure
-    // convention in detail::Poisson/PoissonLog are different semantics and
-    // reconciling them is a separate design decision, not yet implemented.
-    //
-    // `target` must span the *whole* dataset column (absolute, dataset-row-indexed
-    // - see GaussianLoss's constructor comment for why), not a slice pre-cut to `range`.
-    PoissonLoss(gsl::not_null<Operon::RandomGenerator*> rng, gsl::not_null<InterpreterBase<T> const*> interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range, std::size_t const batchSize = 0, Operon::Span<Operon::Scalar const> /*weights*/ = {})
-        : LikelihoodBase<T>(interpreter)
-        , rng_ { rng }
-        , target_(target)
-        , range_(range)
-        , batchSize_(batchSize == 0 ? range.Size() : batchSize)
-        , numParameters_ { static_cast<std::size_t>(interpreter->GetTree()->CoefficientsCount()) }
-        , numResiduals_ { range_.Size() }
-        , jac_ { batchSize_, numParameters_ }
-    {
-        EXPECT(range_.Start() + range_.Size() <= target_.size());
-    }
-
-    using Scalar = typename LikelihoodBase<T>::Scalar;
-    using scalar_t = Scalar; // needed by lbfgs library NOLINT
-
-    using Vector = typename LikelihoodBase<T>::Vector;
-    using Ref = typename LikelihoodBase<T>::Ref;
-    using Cref = typename LikelihoodBase<T>::Cref;
-    using Matrix = typename LikelihoodBase<T>::Matrix;
-
-    // Callable by L-BFGS / SGD optimizers: returns loss and fills gradient.
-    auto operator()(Cref x, Ref g) const noexcept -> Operon::Scalar final
-    {
-        ++feval_;
-        auto const* interpreter = this->GetInterpreter();
-        Operon::Span<Operon::Scalar const> c { x.data(), static_cast<std::size_t>(x.size()) };
-        auto const r = SelectBatch();
-        auto p = interpreter->Evaluate(c, r);
-        if (!p) {
-            return this->Fail(std::move(p.error()), g);
-        }
-        auto t = target_.subspan(r.Start(), r.Size());
-        auto pmap = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(p->data(), std::ssize(*p));
-
-        auto tmap = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(t.data(), std::ssize(t));
-        if (g.size() != 0) {
-            ++jeval_;
-            auto result = interpreter->JacRev(c, r, { jac_.data(), numParameters_ * batchSize_ });
-            if (!result) {
-                return this->Fail(std::move(result.error()), g);
-            }
-            if constexpr (LogInput) {
-                g = ((pmap.exp() - tmap).matrix().asDiagonal() * jac_.matrix()).colwise().sum();
-            } else {
-                g = ((1 - tmap * pmap.inverse()).matrix().asDiagonal() * jac_.matrix()).colwise().sum();
-            }
-        }
-        if constexpr (LogInput) {
-            return (pmap.exp() - tmap * pmap).sum();
-        } else {
-            return (pmap - tmap * pmap.log()).sum();
-        }
-    }
-
-    // Static delegation — PoissonLoss also satisfies Concepts::Likelihood.
-    static auto ComputeLikelihood(Span<Scalar const> x, Span<Scalar const> y, Span<Scalar const> w) -> Scalar
-    {
-        return PoissonLikelihood<T, LogInput>::ComputeLikelihood(x, y, w);
-    }
-
-    static auto ComputeFisherMatrix(Span<Scalar const> pred, Span<Scalar const> jac, Span<Scalar const> sigma) -> Matrix
-    {
-        return PoissonLikelihood<T, LogInput>::ComputeFisherMatrix(pred, jac, sigma);
-    }
-
-    auto NumParameters() const -> std::size_t { return numParameters_; }
-    auto NumObservations() const -> std::size_t { return numResiduals_; }
-    auto FunctionEvaluations() const -> std::size_t { return feval_; }
-    auto JacobianEvaluations() const -> std::size_t { return jeval_; }
-
-private:
-    // See GaussianLoss::SelectBatch - a random sub-range of range_ in the same
-    // absolute (dataset-row) coordinates as range_, safe to index target_ with directly.
-    auto SelectBatch() const -> Operon::Range
-    {
-        if (batchSize_ >= range_.Size()) {
-            return range_;
-        }
-        auto s = std::uniform_int_distribution<std::size_t> { 0UL, range_.Size() - batchSize_ }(*rng_);
-        return Operon::Range { range_.Start() + s, range_.Start() + s + batchSize_ };
-    }
-
-    gsl::not_null<Operon::RandomGenerator*> rng_;
-    Operon::Span<Operon::Scalar const> target_;
-    Operon::Range const range_; // NOLINT
-    std::size_t batchSize_; // batch size
-    std::size_t numParameters_; // number of parameters to optimize
-    std::size_t numResiduals_; // number of data points (rows)
-    mutable Eigen::Array<Scalar, -1, -1> jac_;
-    mutable std::size_t feval_ {};
-    mutable std::size_t jeval_ {};
-};
 } // namespace Operon
 
 #endif

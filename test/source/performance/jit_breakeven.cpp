@@ -20,7 +20,6 @@
 
 #ifdef HAVE_ASMJIT
 #include "operon/interpreter/backend/jit/jit_evaluator.hpp"
-#include "operon/optimizer/jit_lm_cost_function.hpp"
 #endif
 
 namespace nb = ankerl::nanobench;

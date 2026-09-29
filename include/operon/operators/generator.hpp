@@ -12,6 +12,7 @@
 #include "operon/operators/mutation.hpp"
 #include "operon/operators/selector.hpp"
 #include "operon/operators/local_search.hpp"
+#include "operon/operon_export.hpp"
 
 namespace Operon {
 

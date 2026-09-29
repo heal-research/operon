@@ -36,6 +36,17 @@ struct MatrixViewContract {
     static constexpr MemoryIndex Rank {2};
 };
 
+/** Logical (row, column) accessor over a canonical matrix view. */
+[[nodiscard]] constexpr auto At(ConstScalarMatrixView view, MemoryIndex row, MemoryIndex column) -> Scalar
+{
+    return view.accessor().access(view.data_handle(), view.mapping()(row, column));
+}
+
+[[nodiscard]] constexpr auto At(ScalarMatrixView view, MemoryIndex row, MemoryIndex column) -> Scalar&
+{
+    return view.accessor().access(view.data_handle(), view.mapping()(row, column));
+}
+
 } // namespace Operon
 
 #endif

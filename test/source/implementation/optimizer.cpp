@@ -8,9 +8,11 @@
 #include "operon/core/dataset.hpp"
 #include "operon/core/types.hpp"
 #include "operon/operators/local_search.hpp"
+#include "operon/optimizer/gaussian_gradient_cost.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/optimizer/likelihood/poisson_likelihood.hpp"
 #include "operon/optimizer/optimizer.hpp"
+#include "operon/optimizer/poisson_gradient_cost.hpp"
 #include "operon/optimizer/solvers/sgd.hpp"
 #include "operon/parser/infix.hpp"
 #include "operon/random/random.hpp"
@@ -93,15 +95,6 @@ TEST_CASE("Gaussian likelihood static methods", "[likelihood]")
         CHECK_THAT(static_cast<double>(nll), Catch::Matchers::WithinRel(expected, 1e-5));
     }
 
-    SECTION("GaussianLoss::ComputeLikelihood delegates to GaussianLikelihood")
-    {
-        std::vector<Operon::Scalar> pred(n, 1.0F);
-        std::vector<Operon::Scalar> target(n, 0.0F);
-        std::vector<Operon::Scalar> sigma(1, 1.0F);
-        CHECK(GaussianLoss<Operon::Scalar>::ComputeLikelihood(pred, target, sigma)
-            == GaussianLikelihood<Operon::Scalar>::ComputeLikelihood(pred, target, sigma));
-    }
-
     SECTION("FisherMatrix shape and values: identity jacobian, scalar sigma")
     {
         // J = I (n×n), sigma = 2  =>  F = J^T J / sigma^2 = I / 4
@@ -116,16 +109,6 @@ TEST_CASE("Gaussian likelihood static methods", "[likelihood]")
         CHECK_THAT(static_cast<double>(fisher.diagonal().maxCoeff()),
             Catch::Matchers::WithinRel(0.25, 1e-5));
     }
-}
-
-TEST_CASE("Poisson optimizer diagnostics use Poisson NLL", "[optimizer][likelihood]")
-{
-    using Loss = PoissonLoss<Operon::Scalar>;
-    std::vector<Operon::Scalar> const prediction { 0.0F, std::log(2.0F) };
-    std::vector<Operon::Scalar> const target { 1.0F, 3.0F };
-
-    CHECK(Loss::Cost(prediction, target, {})
-        == PoissonLikelihood<Operon::Scalar>::ComputeLikelihood(prediction, target, {}));
 }
 
 TEST_CASE("Parameter optimization", "[optimizer]") // NOLINT(readability-function-cognitive-complexity)
@@ -174,14 +157,14 @@ TEST_CASE("Parameter optimization", "[optimizer]") // NOLINT(readability-functio
 
     SECTION("lbfgs / gaussian")
     {
-        LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer { &dtable, &problem };
+        LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer { &dtable, &problem };
         checkExact(optimizer);
     }
 
     SECTION("lbfgs / poisson")
     {
         // Poisson loss on a continuous target: just verify it runs and improves
-        LBFGSOptimizer<DTable, PoissonLoss<Operon::Scalar>> const optimizer { &dtable, &problem };
+        LBFGSOptimizer<DTable, PoissonGradientCostFunction<Operon::Scalar>> const optimizer { &dtable, &problem };
         auto summary = optimizer.Optimize(rng, tree);
         REQUIRE(summary.has_value());
         CHECK(std::isfinite(summary->FinalCost));
@@ -192,7 +175,7 @@ TEST_CASE("Parameter optimization", "[optimizer]") // NOLINT(readability-functio
     {
         auto const dim { tree.CoefficientsCount() };
         auto rule = std::make_unique<UpdateRule::Adam<Operon::Scalar>>(dim);
-        SGDOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer { &dtable, &problem, *rule };
+        SGDOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer { &dtable, &problem, *rule };
         checkImproved(optimizer);
     }
 
@@ -200,7 +183,7 @@ TEST_CASE("Parameter optimization", "[optimizer]") // NOLINT(readability-functio
     {
         auto const dim { tree.CoefficientsCount() };
         auto rule = std::make_unique<UpdateRule::Adam<Operon::Scalar>>(dim);
-        SGDOptimizer<DTable, PoissonLoss<Operon::Scalar>> const optimizer { &dtable, &problem, *rule };
+        SGDOptimizer<DTable, PoissonGradientCostFunction<Operon::Scalar>> const optimizer { &dtable, &problem, *rule };
         auto summary = optimizer.Optimize(rng, tree);
         REQUIRE(summary.has_value());
         CHECK(std::isfinite(summary->FinalCost));
@@ -216,17 +199,6 @@ TEST_CASE("Parameter optimization", "[optimizer]") // NOLINT(readability-functio
         checkExact(optimizer);
     }
 #endif
-
-    SECTION("ComputeLikelihood virtual dispatch: pred==target => NLL = n/2 * log(2pi)")
-    {
-        LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> const optimizer { &dtable, &problem };
-        auto range = problem.TrainingRange();
-        auto target = problem.TargetValues(range);
-        std::vector<Operon::Scalar> sigma(1, 1.0F);
-        auto nll = optimizer.ComputeLikelihood(target, target, sigma);
-        auto expected = static_cast<double>(range.Size()) / 2.0 * std::log(Operon::Math::Tau);
-        CHECK_THAT(static_cast<double>(nll), Catch::Matchers::WithinRel(expected, 1e-4));
-    }
 }
 
 TEST_CASE("Optimizers return typed interpreter errors", "[optimizer][interpreter]")
@@ -247,8 +219,9 @@ TEST_CASE("Optimizers return typed interpreter errors", "[optimizer][interpreter
         REQUIRE_FALSE(outcome.has_value());
         auto const* error = EvaluationError(outcome);
         REQUIRE(error != nullptr);
-        CHECK(error->Error.Kind == expected);
-        CHECK(error->Error.Hash == (expected == InterpreterError::Code::MissingVariable ? missingVariable : missingPrimitive));
+        REQUIRE(error->Error.Cause.has_value());
+        CHECK(error->Error.Cause->Kind == expected);
+        CHECK(error->Error.Cause->Hash == (expected == InterpreterError::Code::MissingVariable ? missingVariable : missingPrimitive));
         if constexpr (std::same_as<std::remove_cvref_t<decltype(optimizer)>, LevenbergMarquardtOptimizer<DTable, OptimizerType::Tiny>>) {
             auto const& diag = Diagnostics(outcome);
             CHECK_FALSE(std::isfinite(diag.InitialCost));
@@ -262,54 +235,56 @@ TEST_CASE("Optimizers return typed interpreter errors", "[optimizer][interpreter
     LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> eigen { &fix.dtable, &fix.problem };
     check(eigen, variableTree, InterpreterError::Code::MissingVariable);
 
-    LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> lbfgs { &fix.dtable, &fix.problem };
+    LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> lbfgs { &fix.dtable, &fix.problem };
     check(lbfgs, primitiveTree, InterpreterError::Code::MissingPrimitive);
 
     auto rule = std::make_unique<UpdateRule::Adam<Operon::Scalar>>(variableTree.CoefficientsCount());
-    SGDOptimizer<DTable, GaussianLoss<Operon::Scalar>> sgd { &fix.dtable, &fix.problem, *rule };
+    SGDOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> sgd { &fix.dtable, &fix.problem, *rule };
     check(sgd, variableTree, InterpreterError::Code::MissingVariable);
 
     Operon::Interpreter<Operon::Scalar, DTable> interpreter { &fix.dtable, &fix.ds, &primitiveTree };
-    GaussianLoss<Operon::Scalar> loss { &fix.rng, &interpreter, fix.problem.TargetValues(), fix.problem.TrainingRange() };
+    GaussianGradientCostFunction<Operon::Scalar> cost { &interpreter, fix.problem.TargetValues(), fix.problem.TrainingRange() };
     auto coeff = primitiveTree.GetCoefficients();
-    GaussianLoss<Operon::Scalar>::Vector parameters(static_cast<Eigen::Index>(coeff.size()));
-    std::copy(coeff.begin(), coeff.end(), parameters.begin());
-    GaussianLoss<Operon::Scalar>::Vector gradient(parameters.size());
-    auto value = loss(parameters, gradient);
-    CHECK_FALSE(std::isfinite(value));
-    REQUIRE(loss.Error().has_value());
-    CHECK(loss.Error()->Kind == InterpreterError::Code::MissingPrimitive);
+    std::vector<Operon::Scalar> gradient(coeff.size());
+    auto value = cost.Evaluate(coeff, gradient);
+    REQUIRE_FALSE(value.has_value());
+    REQUIRE(value.error().Cause.has_value());
+    CHECK(value.error().Cause->Kind == InterpreterError::Code::MissingPrimitive);
+    for (auto g : gradient) { CHECK(std::isnan(static_cast<double>(g))); }
 }
 
 TEST_CASE("LM reports invalid training weights", "[optimizer]")
 {
-    OptimizerFixture fix;
-    using DTable = OptimizerFixture::DTable;
-    std::vector<Operon::Scalar> weights(OptimizerFixture::Nrow, Operon::Scalar { 1 });
-    weights[1] = Operon::Scalar { -1 };
-    fix.ds.SetWeights(weights);
+    for (auto const invalid : { Operon::Scalar { -1 }, std::numeric_limits<Operon::Scalar>::quiet_NaN(),
+                                std::numeric_limits<Operon::Scalar>::infinity() }) {
+        OptimizerFixture fix;
+        using DTable = OptimizerFixture::DTable;
+        std::vector<Operon::Scalar> weights(OptimizerFixture::Nrow, Operon::Scalar { 1 });
+        weights[1] = invalid;
+        fix.ds.SetWeights(weights);
 
-    auto check = [&](auto const& optimizer) {
-        auto outcome = optimizer.Optimize(fix.rng, fix.tree);
-        REQUIRE_FALSE(outcome.has_value());
-        auto const* error = ConfigurationError(outcome);
-        REQUIRE(error != nullptr);
-        CHECK(error->Error.Kind == LMWeightError::Code::NegativeValue);
-        CHECK(error->Error.Index == 1);
-    };
+        auto check = [&](auto const& optimizer) {
+            auto outcome = optimizer.Optimize(fix.rng, fix.tree);
+            REQUIRE_FALSE(outcome.has_value());
+            auto const* error = ConfigurationError(outcome);
+            REQUIRE(error != nullptr);
+            auto const expected = std::isfinite(static_cast<double>(invalid)) ? LMWeightError::Code::NegativeValue
+                                                                                : LMWeightError::Code::NonFiniteValue;
+            CHECK(error->Error.Kind == expected);
+            CHECK(error->Error.Index == 1);
+        };
 
-    LevenbergMarquardtOptimizer<DTable, OptimizerType::Tiny> tiny { &fix.dtable, &fix.problem };
-    check(tiny);
-
-    LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> eigen { &fix.dtable, &fix.problem };
-    check(eigen);
-
+        LevenbergMarquardtOptimizer<DTable, OptimizerType::Tiny> tiny { &fix.dtable, &fix.problem };
+        check(tiny);
+        LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> eigen { &fix.dtable, &fix.problem };
+        check(eigen);
 #if defined(HAVE_ASMJIT)
-    Operon::JIT::JitZobrist zobrist { fix.rng, 50, fix.problem.GetInputs() };
-    JIT::JitEvaluator jitEval { &fix.problem, &zobrist };
-    JitLevenbergMarquardtOptimizer<DTable> jit { &fix.dtable, &fix.problem, &jitEval };
-    check(jit);
+        Operon::JIT::JitZobrist zobrist { fix.rng, 50, fix.problem.GetInputs() };
+        JIT::JitEvaluator jitEval { &fix.problem, &zobrist };
+        JitLevenbergMarquardtOptimizer<DTable> jit { &fix.dtable, &fix.problem, &jitEval };
+        check(jit);
 #endif
+    }
 }
 
 // Test problem: a "clean" half of the rows has y = X1 exactly (X1 drawn from
@@ -419,7 +394,7 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
 
     SECTION("lbfgs / gaussian")
     {
-        LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer { &dtable, &problem };
+        LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer { &dtable, &problem };
         checkRecoversCleanSolution(optimizer);
     }
 
@@ -427,7 +402,7 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
     {
         auto const dim { tree.CoefficientsCount() };
         auto rule = std::make_unique<UpdateRule::Adam<Operon::Scalar>>(dim);
-        SGDOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer { &dtable, &problem, *rule };
+        SGDOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer { &dtable, &problem, *rule };
         auto summary = optimizer.Optimize(rng, tree);
         CHECK(summary.has_value());
         // SGD converges more slowly than LM/L-BFGS on this problem within
@@ -445,10 +420,10 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
         // to flip (which only happens for adversarial coefficient
         // trajectories - not guaranteed by every dataset/tolerance
         // combination): InitialCost/FinalCost must equal the *weighted* SSE
-        // GaussianLoss actually optimizes, independently recomputed here,
+        // GaussianGradientCostFunction actually optimizes, independently recomputed here,
         // not the unweighted SumOfSquaredErrors the cost lambda used before
         // the fix.
-        LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer { &dtable, &problem };
+        LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer { &dtable, &problem };
         auto summary = optimizer.Optimize(rng, tree);
         REQUIRE(summary.has_value());
 
@@ -469,8 +444,8 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
     SECTION("lm / eigen: reported cost matches the weighted objective, not raw SSE")
     {
         // Symmetric with the "lbfgs / gaussian" cost check above, but for the
-        // LM path: LMCostFunction applies the sqrt(w)-residual trick (see
-        // lm_cost_function_base.hpp), so Eigen::LevenbergMarquardt's
+        // LM path: LeastSquaresLMAdapter applies the sqrt(w)-residual trick (see
+        // least_squares_lm_adapter.hpp), so Eigen::LevenbergMarquardt's
         // fnorm()^2 * 0.5 already equals the weighted SSE / 2 - pin that down
         // directly rather than relying on it transitively via Success/params.
         LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> optimizer { &dtable, &problem };
@@ -497,7 +472,7 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
         // not just Optimize() directly: CoefficientOptimizer gates
         // SetCoefficients on the outcome having a value, so a mis-scored
         // outcome would silently discard a genuine weighted improvement here.
-        LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer { &dtable, &problem };
+        LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer { &dtable, &problem };
         Operon::CoefficientOptimizer const coeffOptimizer { &optimizer };
         auto [optimizedTree, summary] = coeffOptimizer(rng, tree);
         REQUIRE(summary.has_value());
@@ -525,32 +500,24 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
     {
         std::vector<Operon::Scalar> ones(WeightedOptimizerFixture::Nrow, Operon::Scalar { 1 });
         fix.problem.GetDataset()->SetWeights(ones);
-        LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer { &dtable, &problem };
+        LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer { &dtable, &problem };
         auto summary = optimizer.Optimize(rng, tree);
         REQUIRE(summary.has_value());
         auto const p = summary->FinalParameters.front();
         CHECK(std::abs(p - 1.0F) > paramTol);
     }
 
-    SECTION("poisson ignores weights (documented limitation, not yet implemented)")
+    SECTION("poisson never receives ordinary dataset sample weights as exposure")
     {
-        // PoissonLoss's constructor accepts a weights span only to share
-        // LBFGSOptimizer's generic call site with GaussianLoss; it must
-        // have zero effect on the result until the exposure-vs-precision
-        // weight semantics are reconciled. Verified by re-running with an
-        // all-ones weight vector (fresh rng, same seed) and checking the
-        // result matches the zeroed-weight run to within float noise (not
-        // exact ==: defensive against benign future changes to evaluation
-        // order/precision elsewhere in the RNG/opt path that wouldn't
-        // actually mean weights started being applied).
-        LBFGSOptimizer<DTable, PoissonLoss<Operon::Scalar>> const optimizerZeroed { &dtable, &problem };
+        // PoissonGradientCostFunction's exposure parameter is a deliberate, separate choice from Gaussian's WLS weights: LBFGSOptimizer's generic Optimize() only forwards dataset sample weights to GaussianGradientCostFunction (see GradientCostSampleWeights), never to Poisson. Verified by re-running with an all-ones weight vector (fresh rng, same seed) and checking the result matches the zeroed-weight run to within float noise (not exact ==: defensive against benign future changes to evaluation order/precision elsewhere in the RNG/opt path that wouldn't actually mean weights started being applied).
+        LBFGSOptimizer<DTable, PoissonGradientCostFunction<Operon::Scalar>> const optimizerZeroed { &dtable, &problem };
         Operon::RandomGenerator rngZeroed { 0 };
         auto summaryZeroed = optimizerZeroed.Optimize(rngZeroed, tree);
         REQUIRE(summaryZeroed.has_value());
 
         std::vector<Operon::Scalar> ones(WeightedOptimizerFixture::Nrow, Operon::Scalar { 1 });
         fix.problem.GetDataset()->SetWeights(ones);
-        LBFGSOptimizer<DTable, PoissonLoss<Operon::Scalar>> const optimizerOnes { &dtable, &problem };
+        LBFGSOptimizer<DTable, PoissonGradientCostFunction<Operon::Scalar>> const optimizerOnes { &dtable, &problem };
         Operon::RandomGenerator rngOnes { 0 };
         auto summaryOnes = optimizerOnes.Optimize(rngOnes, tree);
         REQUIRE(summaryOnes.has_value());
@@ -563,15 +530,48 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
     }
 }
 
+TEST_CASE("Minibatch optimizer diagnostics charge at least one evaluation", "[optimizer]")
+{
+    OptimizerFixture fix;
+    fix.problem.SetTrainingRange({ 0, OptimizerFixture::Nrow });
+    fix.problem.SetTarget("X4");
+    using DTable = OptimizerFixture::DTable;
+    LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer { &fix.dtable, &fix.problem };
+    optimizer.SetBatchSize(1);
+    optimizer.SetIterations(1);
+    auto outcome = optimizer.Optimize(fix.rng, fix.tree);
+    REQUIRE(EvaluationError(outcome) == nullptr);
+    auto const& diagnostics = Diagnostics(outcome);
+    CHECK(std::isfinite(static_cast<double>(diagnostics.InitialCost)));
+    CHECK(std::isfinite(static_cast<double>(diagnostics.FinalCost)));
+    CHECK(diagnostics.FunctionEvaluations >= 1);
+    CHECK(diagnostics.JacobianEvaluations >= 1);
+    auto const range = fix.problem.TrainingRange();
+    auto const target = fix.problem.TargetValues(range);
+    Operon::Interpreter<Operon::Scalar, DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
+    auto const pred0 = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { diagnostics.InitialParameters }, range).value();
+    auto const pred1 = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { diagnostics.FinalParameters }, range).value();
+    auto expectedCost = [&](auto const& prediction) {
+        double cost = 0;
+        for (std::size_t i = 0; i < prediction.size(); ++i) {
+            auto const residual = static_cast<double>(prediction[i] - target[i]);
+            cost += 0.5 * residual * residual;
+        }
+        return cost;
+    };
+    CHECK_THAT(static_cast<double>(diagnostics.InitialCost), Catch::Matchers::WithinRel(expectedCost(pred0), 1e-5));
+    CHECK_THAT(static_cast<double>(diagnostics.FinalCost), Catch::Matchers::WithinRel(expectedCost(pred1), 1e-5));
+}
+
 // Same clean/noisy problem as WeightedOptimizerFixture, but padded with
 // Npad unused rows so the training range starts at a non-zero offset
-// (range_.Start() = Npad). GaussianLoss::operator() previously indexed
+// (range_.Start() = Npad). GaussianGradientCostFunction::Evaluate previously indexed
 // target_/weights_ by the *absolute* range.Start() instead of an offset
 // relative to range_.Start(); since SelectRandomRange() returns range_
 // itself whenever batchSize >= range_.Size() (the default), this reproduces
 // the out-of-bounds read even without any random sub-batching - LBFGS/SGD
 // with a non-zero training-range start alone was enough to trigger it.
-// LM is unaffected (LMCostFunction always indexes 0..numResiduals_-1,
+// LM is unaffected (LeastSquaresLMAdapter always indexes 0..numResiduals_-1,
 // never range.Start()), so this only needs to cover LBFGS/SGD.
 struct WeightedOptimizerNonZeroStartFixture {
     static constexpr auto Npad { 100 };
@@ -638,7 +638,7 @@ TEST_CASE("Weighted parameter optimization with non-zero training range start", 
 
     SECTION("lbfgs / gaussian")
     {
-        LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer { &dtable, &problem };
+        LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer { &dtable, &problem };
         auto summary = optimizer.Optimize(rng, tree);
         REQUIRE(summary.has_value());
         for (auto const p : summary->FinalParameters) {
@@ -650,7 +650,7 @@ TEST_CASE("Weighted parameter optimization with non-zero training range start", 
     {
         auto const dim { tree.CoefficientsCount() };
         auto rule = std::make_unique<UpdateRule::Adam<Operon::Scalar>>(dim);
-        SGDOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer { &dtable, &problem, *rule };
+        SGDOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer { &dtable, &problem, *rule };
         auto summary = optimizer.Optimize(rng, tree);
         REQUIRE(summary.has_value());
         for (auto const p : summary->FinalParameters) {
@@ -660,7 +660,7 @@ TEST_CASE("Weighted parameter optimization with non-zero training range start", 
 
     SECTION("lbfgs / gaussian: negative placeholder weights outside the training range don't trip validation")
     {
-        // GaussianLoss now receives the whole-dataset weights column (not a
+        // GaussianGradientCostFunction now receives the whole-dataset weights column (not a
         // slice pre-cut to the training range), so its weight-sign check
         // must only validate the in-range slice - rows outside range_ (e.g.
         // padding, or other splits' rows) are never read by SelectBatch and
@@ -670,7 +670,7 @@ TEST_CASE("Weighted parameter optimization with non-zero training range start", 
         std::fill(weights.begin() + WeightedOptimizerNonZeroStartFixture::Npad + WeightedOptimizerNonZeroStartFixture::Nclean, weights.end(), Operon::Scalar { 0 });
         fix.problem.GetDataset()->SetWeights(weights);
 
-        LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer { &dtable, &problem };
+        LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer { &dtable, &problem };
         auto summary = optimizer.Optimize(rng, tree);
         REQUIRE(summary.has_value());
         for (auto const p : summary->FinalParameters) {
@@ -679,10 +679,10 @@ TEST_CASE("Weighted parameter optimization with non-zero training range start", 
     }
 }
 
-TEST_CASE("PoissonLoss respects a non-zero training range start", "[optimizer]")
+TEST_CASE("PoissonGradientCostFunction respects a non-zero training range start", "[optimizer]")
 {
-    // Same off-by-range_.Start() bug class fixed in GaussianLoss, but
-    // exercised directly on PoissonLoss::operator() rather than through a
+    // Same off-by-range_.Start() bug class fixed in Gaussian's gradient cost, but
+    // exercised directly on PoissonGradientCostFunction::Evaluate rather than through a
     // full optimization run (Poisson doesn't have a clean, guaranteed-
     // converging target on this kind of problem). Two structurally
     // identical problems - one with range_.Start()==0, one padded so
@@ -734,30 +734,27 @@ TEST_CASE("PoissonLoss respects a non-zero training range start", "[optimizer]")
     Operon::Interpreter<Operon::Scalar, DTable> interp0 { &dtable, &ds0, &tree0 };
     Operon::Interpreter<Operon::Scalar, DTable> interpPad { &dtable, &dsPad, &treePad };
 
-    Operon::RandomGenerator rng0 { 0 };
-    Operon::RandomGenerator rngPad { 0 };
-
-    // PoissonLoss now requires the whole dataset column (absolute,
-    // dataset-row-indexed), not a slice pre-cut to the training range - see
-    // its constructor comment.
+    // PoissonGradientCostFunction requires the whole dataset column
+    // (absolute, dataset-row-indexed), not a slice pre-cut to the training range.
     auto target0 = problem0.TargetValues();
     auto targetPad = problemPad.TargetValues();
 
-    PoissonLoss<Operon::Scalar> loss0 { &rng0, &interp0, target0, problem0.TrainingRange() };
-    PoissonLoss<Operon::Scalar> lossPad { &rngPad, &interpPad, targetPad, problemPad.TrainingRange() };
+    PoissonGradientCostFunction<Operon::Scalar> cost0 { &interp0, target0, problem0.TrainingRange() };
+    PoissonGradientCostFunction<Operon::Scalar> costPad { &interpPad, targetPad, problemPad.TrainingRange() };
 
     auto coeff = tree0.GetCoefficients();
     REQUIRE(!coeff.empty());
-    Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1> const> x0(coeff.data(), std::ssize(coeff));
-    Eigen::Matrix<Operon::Scalar, -1, 1> grad0(coeff.size());
-    Eigen::Matrix<Operon::Scalar, -1, 1> gradPad(coeff.size());
+    std::vector<Operon::Scalar> grad0(coeff.size());
+    std::vector<Operon::Scalar> gradPad(coeff.size());
 
-    auto const c0 = loss0(x0, grad0);
-    auto const cPad = lossPad(x0, gradPad);
+    auto const c0 = cost0.Evaluate(coeff, grad0);
+    auto const cPad = costPad.Evaluate(coeff, gradPad);
+    REQUIRE(c0.has_value());
+    REQUIRE(cPad.has_value());
 
-    CHECK_THAT(static_cast<double>(c0), Catch::Matchers::WithinRel(static_cast<double>(cPad), 1e-5));
-    for (auto i = 0; i < grad0.size(); ++i) {
-        CHECK_THAT(static_cast<double>(grad0(i)), Catch::Matchers::WithinRel(static_cast<double>(gradPad(i)), 1e-5));
+    CHECK_THAT(static_cast<double>(*c0), Catch::Matchers::WithinRel(static_cast<double>(*cPad), 1e-5));
+    for (std::size_t i = 0; i < grad0.size(); ++i) {
+        CHECK_THAT(static_cast<double>(grad0[i]), Catch::Matchers::WithinRel(static_cast<double>(gradPad[i]), 1e-5));
     }
 }
 
@@ -784,7 +781,7 @@ TEST_CASE("SGD update rules", "[optimizer]")
     rules.emplace_back(new UpdateRule::Yogi<Operon::Scalar>(dim));
 
     for (auto const& rule : rules) {
-        SGDOptimizer<DTable, GaussianLoss<Operon::Scalar>> const optimizer { &dtable, &problem, *rule };
+        SGDOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> const optimizer { &dtable, &problem, *rule };
         auto summary = optimizer.Optimize(rng, tree);
         // Not gated on summary.has_value(): some rules (see YamAdam note
         // below) may not actually improve the cost on this fixture, but

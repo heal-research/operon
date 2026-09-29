@@ -96,16 +96,6 @@ public:
         result.FunctionEvaluations = 1;
         return result;
     }
-
-    [[nodiscard]] auto ComputeLikelihood(Operon::Span<Operon::Scalar const> /*x*/, Operon::Span<Operon::Scalar const> /*y*/, Operon::Span<Operon::Scalar const> /*w*/) const -> Operon::Scalar override
-    {
-        return Operon::Scalar{};
-    }
-
-    [[nodiscard]] auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> /*pred*/, Operon::Span<Operon::Scalar const> /*jac*/, Operon::Span<Operon::Scalar const> /*sigma*/) const -> Eigen::Matrix<Operon::Scalar, -1, -1> override
-    {
-        return {};
-    }
 };
 
 TEST_CASE("ScoreIndividual evaluates optimized coefficients before non-Lamarckian restore", "[evaluator]")
@@ -178,11 +168,19 @@ TEST_CASE("Poisson likelihood static methods", "[likelihood]")
         CHECK_THAT(static_cast<double>(nll), Catch::Matchers::WithinRel(expected, 1e-5));
     }
 
-    SECTION("PoissonLoss::ComputeLikelihood delegates to PoissonLikelihood") {
-        std::vector<Operon::Scalar> pred(n, 0.0F);
+    SECTION("LogInput=false, per-row exposure scales each rate independently") {
+        using Lik = PoissonLikelihood<Operon::Scalar, false>;
+        std::vector<Operon::Scalar> pred(n, 1.0F);   // rate = 1 before exposure
         std::vector<Operon::Scalar> target(n, 1.0F);
-        CHECK(PoissonLoss<Operon::Scalar>::ComputeLikelihood(pred, target, {})
-           == PoissonLikelihood<Operon::Scalar>::ComputeLikelihood(pred, target, {}));
+        std::vector<Operon::Scalar> exposure(n);
+        // f(w*x, y) = w - log(w) per observation with x = y = 1.
+        auto expected = 0.0;
+        for (auto i = 0UL; i < n; ++i) {
+            exposure[i] = static_cast<Operon::Scalar>(i + 1);
+            expected += static_cast<double>(i + 1) - std::log(static_cast<double>(i + 1));
+        }
+        auto nll = Lik::ComputeLikelihood(pred, target, exposure);
+        CHECK_THAT(static_cast<double>(nll), Catch::Matchers::WithinRel(expected, 1e-5));
     }
 
     SECTION("FisherMatrix LogInput=true: pred=0, J=I => F=I") {
@@ -235,6 +233,12 @@ TEST_CASE("Gaussian per-sample sigma", "[likelihood]")
         auto const nllPerSample = Lik::ComputeLikelihood(pred, target, perSampleSigma);
         CHECK_THAT(static_cast<double>(nllPerSample),
                    Catch::Matchers::WithinRel(static_cast<double>(nllScalar), 1e-4));
+    }
+
+    SECTION("ComputeLikelihood: mismatched sigma size yields NaN, not a wrong NLL") {
+        std::vector<Operon::Scalar> mismatched(n - 1, s);
+        auto const nll = Lik::ComputeLikelihood(pred, target, mismatched);
+        CHECK(std::isnan(static_cast<double>(nll)));
     }
 
     SECTION("ComputeFisherMatrix: uniform per-sample sigma matches scalar sigma") {

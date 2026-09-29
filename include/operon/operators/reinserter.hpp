@@ -9,6 +9,7 @@
 #include "operon/core/concepts.hpp"
 #include "operon/core/operator.hpp"
 #include "operon/core/individual.hpp"
+#include "operon/operon_export.hpp"
 
 namespace Operon {
 // Elitism lives here (rather than as a separate per-algorithm mechanism,

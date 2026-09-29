@@ -49,10 +49,10 @@ public:
     static constexpr PrimitiveSetConfig TypeCoherent = Arithmetic | BuiltinOp::Pow | BuiltinOp::Exp | BuiltinOp::Log | BuiltinOp::Sin | BuiltinOp::Cos | BuiltinOp::Square;
     static constexpr PrimitiveSetConfig Full = TypeCoherent | BuiltinOp::Aq | BuiltinOp::Tan | BuiltinOp::Tanh | BuiltinOp::Sqrt | BuiltinOp::Cbrt;
     PrimitiveSet() = default;
-    OPERON_EXPORT PrimitiveSet(PrimitiveSet const& other);
-    OPERON_EXPORT PrimitiveSet(PrimitiveSet&& other) noexcept;
-    OPERON_EXPORT auto operator=(PrimitiveSet const& other) -> PrimitiveSet&;
-    OPERON_EXPORT auto operator=(PrimitiveSet&& other) noexcept -> PrimitiveSet&;
+    OPERON_CORE_EXPORT PrimitiveSet(PrimitiveSet const& other);
+    OPERON_CORE_EXPORT PrimitiveSet(PrimitiveSet&& other) noexcept;
+    OPERON_CORE_EXPORT auto operator=(PrimitiveSet const& other) -> PrimitiveSet&;
+    OPERON_CORE_EXPORT auto operator=(PrimitiveSet&& other) noexcept -> PrimitiveSet&;
 
 
     explicit PrimitiveSet(PrimitiveSetConfig config)
@@ -86,7 +86,7 @@ public:
         if (pset_.erase(hash) != 0) { InvalidateReachability(); }
     }
 
-    OPERON_EXPORT void SetConfig(PrimitiveSetConfig config);
+    OPERON_CORE_EXPORT void SetConfig(PrimitiveSetConfig config);
 
     [[nodiscard]] auto EnabledPrimitives() const -> std::vector<Node> {
         std::vector<Node> nodes;
@@ -158,14 +158,14 @@ public:
     // pset mutation and shared by all creators using this PrimitiveSet.
     // Configure the PrimitiveSet before concurrent tree construction; mutation
     // concurrent with cache reads is not supported.
-    [[nodiscard]] OPERON_EXPORT auto ReachableLengths(size_t maxLength) const -> std::shared_ptr<std::vector<bool> const>;
+    [[nodiscard]] OPERON_CORE_EXPORT auto ReachableLengths(size_t maxLength) const -> std::shared_ptr<std::vector<bool> const>;
 
     // Returns the largest tree length <= targetLen achievable with the current
     // pset. A length n is achievable if n == 1 (a single leaf, assuming the
     // pset has at least one enabled terminal) or (n-1) can be expressed as a
     // sum of available function arities.
     // Precondition: the pset must have at least one enabled terminal symbol.
-    [[nodiscard]] OPERON_EXPORT auto AchievableLength(size_t targetLen) const -> size_t;
+    [[nodiscard]] OPERON_CORE_EXPORT auto AchievableLength(size_t targetLen) const -> size_t;
 
     [[nodiscard]] auto FunctionArityLimits() const -> std::pair<size_t, size_t>
     {
@@ -179,7 +179,7 @@ public:
         return { minArity, maxArity };
     }
 
-    OPERON_EXPORT auto SampleRandomSymbol(Operon::RandomGenerator& random, size_t minArity, size_t maxArity) const -> Operon::Node;
+    OPERON_CORE_EXPORT auto SampleRandomSymbol(Operon::RandomGenerator& random, size_t minArity, size_t maxArity) const -> Operon::Node;
 
     void SetMinimumArity(Operon::Hash hash, size_t minArity)
     {
