@@ -24,11 +24,13 @@ namespace Operon {
  * Adapts a LeastSquaresCostFunction to the raw-pointer Evaluate() interface
  * detail::LMBackendFunctor needs for Eigen::LevenbergMarquardt and
  * ceres::TinySolver. NumResiduals()/NumParameters() are derived from the
- * wrapped cost; no duplicated count is accepted. weights is empty
- * (unweighted), size 1 (uniform), or NumResiduals() (per-row); values are
- * validated once (finite, nonnegative) at construction. Weighting scales
- * each residual and Jacobian row by sqrt(weight_i), the standard WLS-via-LM
- * trick that makes the unweighted normal equations solve sum(w_i * r_i^2).
+ * wrapped cost; no duplicated count is accepted. weights is empty (unweighted),
+ * size 1 (uniform), or NumResiduals() (per-row); values are validated once
+ * (finite, nonnegative). Weighting scales each residual and Jacobian row by
+ * sqrt(weight_i), the standard WLS-via-LM trick. When recoverNonFinite is true,
+ * non-finite outputs from an otherwise successful cost evaluation are returned
+ * to the solver so it can reject the trial step and increase damping; when false,
+ * they become a typed NonFiniteEvaluation error.
  * weights are numerical WLS weights, never interpreted as statistical sigma.
  */
 template <int StorageOrder = Eigen::ColMajor>

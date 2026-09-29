@@ -89,13 +89,12 @@ public:
         , target_(target)
         , range_(range)
         , rng_(rng)
-        , batchSize_(batchSize == 0 ? range.Size() : batchSize)
+        , batchSize_(batchSize == 0 ? range.Size() : std::min(batchSize, range.Size()))
         , exposure_(exposure)
         , numParameters_(static_cast<std::size_t>(interpreter->GetTree()->CoefficientsCount()))
     {
         EXPECT(range_.Start() + range_.Size() <= target_.size());
         EXPECT(batchSize == 0 || rng_ != nullptr);
-        EXPECT(batchSize_ <= range_.Size());
         EXPECT(exposure_.empty() || exposure_.size() == 1 || exposure_.size() == target_.size());
         // Rows outside range_ are never read (via SelectBatch) and may
         // legitimately hold negative/placeholder values, so only the

@@ -546,6 +546,21 @@ TEST_CASE("Minibatch optimizer diagnostics charge at least one evaluation", "[op
     CHECK(std::isfinite(static_cast<double>(diagnostics.FinalCost)));
     CHECK(diagnostics.FunctionEvaluations >= 1);
     CHECK(diagnostics.JacobianEvaluations >= 1);
+    auto const range = fix.problem.TrainingRange();
+    auto const target = fix.problem.TargetValues(range);
+    Operon::Interpreter<Operon::Scalar, DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
+    auto const pred0 = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { diagnostics.InitialParameters }, range).value();
+    auto const pred1 = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { diagnostics.FinalParameters }, range).value();
+    auto expectedCost = [&](auto const& prediction) {
+        double cost = 0;
+        for (std::size_t i = 0; i < prediction.size(); ++i) {
+            auto const residual = static_cast<double>(prediction[i] - target[i]);
+            cost += 0.5 * residual * residual;
+        }
+        return cost;
+    };
+    CHECK_THAT(static_cast<double>(diagnostics.InitialCost), Catch::Matchers::WithinRel(expectedCost(pred0), 1e-5));
+    CHECK_THAT(static_cast<double>(diagnostics.FinalCost), Catch::Matchers::WithinRel(expectedCost(pred1), 1e-5));
 }
 
 // Same clean/noisy problem as WeightedOptimizerFixture, but padded with

@@ -48,6 +48,7 @@ public:
     virtual ~GradientCostFunction() = default;
 
     [[nodiscard]] virtual auto NumParameters() const noexcept -> std::size_t = 0;
+
     [[nodiscard]] virtual auto Evaluate(
         ConstScalarSpan parameters,
         ScalarSpan gradient)

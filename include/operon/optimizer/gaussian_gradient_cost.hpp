@@ -51,13 +51,12 @@ public:
         , target_(target)
         , range_(range)
         , rng_(rng)
-        , batchSize_(batchSize == 0 ? range.Size() : batchSize)
+        , batchSize_(batchSize == 0 ? range.Size() : std::min(batchSize, range.Size()))
         , weights_(weights)
         , numParameters_(static_cast<std::size_t>(interpreter->GetTree()->CoefficientsCount()))
     {
         EXPECT(range_.Start() + range_.Size() <= target_.size());
         EXPECT(batchSize == 0 || rng_ != nullptr);
-        EXPECT(batchSize_ <= range_.Size());
         EXPECT(weights_.empty() || weights_.size() == 1 || weights_.size() == target_.size());
     }
 
