@@ -15,7 +15,7 @@ find_dependency(unordered_dense CONFIG REQUIRED)
 # inlined -- normally invisible to a consumer. The exception is a STATIC
 # operon_core: CMake still records static PRIVATE dependencies in the
 # exported link interface, so they must be discovered for that build.
-if(NOT @BUILD_SHARED_LIBS@)
+if(NOT "@BUILD_SHARED_LIBS@")
     find_dependency(gtl CONFIG REQUIRED)
     find_package(xxHash CONFIG QUIET)
     if(NOT xxHash_FOUND)
@@ -54,7 +54,7 @@ if(_operon_require_backend)
     find_dependency(eve CONFIG REQUIRED)
 
     # operon::backend_adapter (PRIVATE) dependencies (needed for static library)
-    if(NOT @BUILD_SHARED_LIBS@)
+    if(NOT "@BUILD_SHARED_LIBS@")
         find_dependency(AriaCsvParser CONFIG REQUIRED)
         find_dependency(Taskflow CONFIG REQUIRED)
         find_dependency(cpp-sort CONFIG REQUIRED)
