@@ -540,9 +540,13 @@ TEST_CASE("Minibatch optimizer diagnostics charge at least one evaluation", "[op
     optimizer.SetBatchSize(1);
     optimizer.SetIterations(1);
     auto outcome = optimizer.Optimize(fix.rng, fix.tree);
-    REQUIRE(outcome.has_value());
-    CHECK(outcome->FunctionEvaluations >= 1);
-    CHECK(outcome->JacobianEvaluations >= 1);
+    // Every cost call samples an independent row, so a one-step stochastic
+    // run may validly finish without improving its separately sampled initial
+    // cost. Diagnostics are available for both fit results and fit failures.
+    REQUIRE(EvaluationError(outcome) == nullptr);
+    auto const& diagnostics = Diagnostics(outcome);
+    CHECK(diagnostics.FunctionEvaluations >= 1);
+    CHECK(diagnostics.JacobianEvaluations >= 1);
 }
 
 // Same clean/noisy problem as WeightedOptimizerFixture, but padded with
