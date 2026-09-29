@@ -180,7 +180,7 @@ struct LevenbergMarquardtOptimizer : public OptimizerBase {
 
         Operon::Interpreter<Operon::Scalar, DTable> interpreter { dtable, dataset, &tree };
         Operon::InterpreterLeastSquaresCostFunction costFn { gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> { &interpreter }, target, range };
-        Operon::LeastSquaresLMAdapter<> cf { &costFn, localWeights };
+        Operon::LeastSquaresLMAdapter<> cf { &costFn, localWeights, true };
         ceres::TinySolver<decltype(cf)> solver;
         auto m0 = Eigen::Map<Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 1>>(x0.data(), x0.size());
         if (!x0.empty()) {
@@ -244,7 +244,7 @@ struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public 
 
         Operon::Interpreter<Operon::Scalar, DTable> interpreter { dtable, dataset, &tree };
         Operon::InterpreterLeastSquaresCostFunction costFn { gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> { &interpreter }, target, range };
-        Operon::LeastSquaresLMAdapter<> cf { &costFn, localWeights };
+        Operon::LeastSquaresLMAdapter<> cf { &costFn, localWeights, true };
         Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
         if (!x0.empty()) {
             // `iterations` counts accepted LM steps (lm.iterations()), matching the
@@ -342,7 +342,9 @@ struct LBFGSOptimizer final : public OptimizerBase {
         // target column (absolute, dataset-row-indexed), not a slice pre-cut
         // to range.
         Cost cost { &interpreter, problem->TargetValues(), range, &rng, batchSize, detail::GradientCostSampleWeights<Cost>::Get(dataset) };
+        Cost endpointCost { &interpreter, problem->TargetValues(), range, nullptr, 0, detail::GradientCostSampleWeights<Cost>::Get(dataset) };
         Operon::detail::GradientSolverAdapter<Cost> bridge { &cost };
+        Operon::detail::GradientSolverAdapter<Cost> endpointBridge { &endpointCost };
 
         auto coeff = tree.GetCoefficients();
         FitDiagnostics diag;
@@ -351,8 +353,8 @@ struct LBFGSOptimizer final : public OptimizerBase {
         std::vector<Operon::Scalar> gradScratch(coeff.size());
         Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>> gradMap(gradScratch.data(), std::ssize(gradScratch));
         Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1> const> x0(coeff.data(), std::ssize(coeff));
-        diag.InitialCost = bridge(x0, gradMap);
-        if (auto const& error = bridge.Error(); error) {
+        diag.InitialCost = endpointBridge(x0, gradMap);
+        if (auto const& error = endpointBridge.Error(); error) {
             diag.FinalParameters = coeff;
             return detail::MakeFitEvaluationError(*error, std::move(diag));
         }
@@ -365,13 +367,12 @@ struct LBFGSOptimizer final : public OptimizerBase {
             auto xf = result.value();
             std::copy(xf.begin(), xf.end(), coeff.begin());
         }
-
         Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1> const> xFinal(coeff.data(), std::ssize(coeff));
-        diag.FinalCost = bridge(xFinal, gradMap);
+        diag.FinalCost = endpointBridge(xFinal, gradMap);
         diag.FinalParameters = coeff;
         diag.FunctionEvaluations = detail::ScaleBatchEvaluations(cost.FunctionEvaluations(), batchSize, range.Size());
         diag.JacobianEvaluations = detail::ScaleBatchEvaluations(cost.JacobianEvaluations(), batchSize, range.Size());
-        if (auto const& error = bridge.Error(); error) {
+        if (auto const& error = endpointBridge.Error(); error) {
             return detail::MakeFitEvaluationError(*error, std::move(diag));
         }
         return detail::MakeFitOutcome(std::move(diag));
@@ -415,7 +416,9 @@ struct SGDOptimizer final : public OptimizerBase {
         // target column (absolute, dataset-row-indexed), not a slice pre-cut
         // to range.
         Cost cost { &interpreter, problem->TargetValues(), range, &rng, batchSize, detail::GradientCostSampleWeights<Cost>::Get(dataset) };
+        Cost endpointCost { &interpreter, problem->TargetValues(), range, nullptr, 0, detail::GradientCostSampleWeights<Cost>::Get(dataset) };
         Operon::detail::GradientSolverAdapter<Cost> bridge { &cost };
+        Operon::detail::GradientSolverAdapter<Cost> endpointBridge { &endpointCost };
 
         auto coeff = tree.GetCoefficients();
         FitDiagnostics diag;
@@ -423,8 +426,8 @@ struct SGDOptimizer final : public OptimizerBase {
 
         Eigen::Array<Operon::Scalar, -1, 1> gradScratch(coeff.size());
         Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> x0(coeff.data(), std::ssize(coeff));
-        diag.InitialCost = bridge(x0, gradScratch);
-        if (auto const& error = bridge.Error(); error) {
+        diag.InitialCost = endpointBridge(x0, gradScratch);
+        if (auto const& error = endpointBridge.Error(); error) {
             diag.FinalParameters = coeff;
             return detail::MakeFitEvaluationError(*error, std::move(diag));
         }
@@ -435,12 +438,12 @@ struct SGDOptimizer final : public OptimizerBase {
         std::copy(x.begin(), x.end(), coeff.begin());
 
         Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> xFinal(coeff.data(), std::ssize(coeff));
-        diag.FinalCost = bridge(xFinal, gradScratch);
+        diag.FinalCost = endpointBridge(xFinal, gradScratch);
         diag.FinalParameters = coeff;
         diag.Iterations = solver.Epochs();
         diag.FunctionEvaluations = detail::ScaleBatchEvaluations(cost.FunctionEvaluations(), batchSize, range.Size());
         diag.JacobianEvaluations = detail::ScaleBatchEvaluations(cost.JacobianEvaluations(), batchSize, range.Size());
-        if (auto const& error = bridge.Error(); error) {
+        if (auto const& error = endpointBridge.Error(); error) {
             return detail::MakeFitEvaluationError(*error, std::move(diag));
         }
         return detail::MakeFitOutcome(std::move(diag));
@@ -517,7 +520,7 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
         if (!useJitCf) {
             // Pure interpreter fallback — no JIT at all.
             Operon::InterpreterLeastSquaresCostFunction costFn { gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> { &interpreter }, target, range };
-            Operon::LeastSquaresLMAdapter<> cf { &costFn, localWeights };
+            Operon::LeastSquaresLMAdapter<> cf { &costFn, localWeights, true };
             Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
             if (!x0.empty()) {
                 lm.setMaxfev(std::max<Eigen::Index>(
@@ -581,7 +584,7 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
             meta->nVars,
             meta->nConsts
         };
-        Operon::LeastSquaresLMAdapter<> cf { &costFn, localWeights };
+        Operon::LeastSquaresLMAdapter<> cf { &costFn, localWeights, true };
 
         Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
         lm.setMaxfev(std::max<Eigen::Index>(

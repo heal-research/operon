@@ -36,10 +36,14 @@ struct LeastSquaresLMAdapter final : public detail::LMBackendFunctor<LeastSquare
     using Base = detail::LMBackendFunctor<LeastSquaresLMAdapter<StorageOrder>, StorageOrder>;
     using Scalar = typename Base::Scalar;
 
-    explicit LeastSquaresLMAdapter(gsl::not_null<LeastSquaresCostFunction const*> cost, ConstScalarSpan weights = {})
+    explicit LeastSquaresLMAdapter(
+        gsl::not_null<LeastSquaresCostFunction const*> cost,
+        ConstScalarSpan weights = {},
+        bool recoverNonFinite = false)
         : Base { cost->NumResiduals(), cost->NumParameters() }
         , cost_(cost)
         , weights_(weights)
+        , recoverNonFinite_(recoverNonFinite)
         , residualScratch_(cost->NumResiduals())
     {
         EXPECT(weights_.empty() || weights_.size() == 1 || weights_.size() == this->numResiduals_);
@@ -73,7 +77,7 @@ struct LeastSquaresLMAdapter final : public detail::LMBackendFunctor<LeastSquare
             ++this->residualCallCount_;
         }
         auto result = cost_->Evaluate(params, residualSpan, jacobianView);
-        if (result && (!detail::AllFinite(residualSpan, false)
+        if (!recoverNonFinite_ && result && (!detail::AllFinite(residualSpan, false)
                            || (jacobianView && [&] {
                                   for (std::size_t i = 0; i < this->numResiduals_; ++i) {
                                       for (std::size_t j = 0; j < this->numParameters_; ++j) {
@@ -116,6 +120,7 @@ struct LeastSquaresLMAdapter final : public detail::LMBackendFunctor<LeastSquare
 private:
     gsl::not_null<LeastSquaresCostFunction const*> cost_;
     ConstScalarSpan weights_;
+    bool recoverNonFinite_;
     mutable std::vector<Scalar> residualScratch_;
     mutable std::optional<LeastSquaresError> error_;
 };
