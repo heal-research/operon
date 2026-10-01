@@ -101,7 +101,7 @@ using EnumerationScorer
 
 // Builds an MDL scorer. Empty sigma profiles Gaussian noise; otherwise sigma is fixed.
 template <typename DTable, Concepts::Likelihood Lik>
-    requires Concepts::HasFisherMatrix<Lik>
+    requires Concepts::HasFisherDiagonal<Lik>
 auto MakeMdlScorer(gsl::not_null<Operon::Problem const*> problem, gsl::not_null<DTable const*> dtable,
     std::vector<Operon::Scalar> sigma = {}) -> EnumerationScorer
 {
@@ -133,19 +133,37 @@ auto MakeMdlScorer(gsl::not_null<Operon::Problem const*> problem, gsl::not_null<
             ? Operon::Span<Operon::Scalar const> { &profiledSigma, 1 }
             : Operon::Span<Operon::Scalar const> { sigma };
 
-        auto jacobian = interpreter.JacRev(parameters, trainingRange);
-        if (!jacobian) { throw std::runtime_error(FormatInterpreterError(jacobian.error())); }
-        Eigen::Matrix<Operon::Scalar, -1, -1> jac = std::move(*jacobian);
-        if (scaling) {
-            jac *= static_cast<Operon::Scalar>(scaling->Scale);
+        auto const columns = parameters.size();
+        auto jacobianStorage = std::vector<Operon::Scalar>(trainingRange.Size() * columns);
+        using Extents = std::dextents<MemoryIndex, 2>;
+        using Mapping = std::layout_stride::mapping<Extents>;
+        auto jacobianView = ScalarMatrixView {jacobianStorage.data(),
+            Mapping {Extents {trainingRange.Size(), columns}, std::array<MemoryIndex, 2> {1, trainingRange.Size()}}};
+        if (auto result = interpreter.JacRev(parameters, trainingRange, jacobianStorage); !result) {
+            throw std::runtime_error(FormatInterpreterError(result.error()));
         }
-        auto fisherMatrix
-            = Lik::ComputeFisherMatrix(yPred, { jac.data(), static_cast<std::size_t>(jac.size()) }, effectiveSigma);
-        auto fisherDiag = fisherMatrix.diagonal().array();
-        EXPECT(static_cast<std::size_t>(fisherDiag.size()) == parameters.size());
+        if (scaling) {
+            for (std::size_t row = 0; row < trainingRange.Size(); ++row) {
+                for (std::size_t column = 0; column < columns; ++column) {
+                    At(jacobianView, row, column) *= static_cast<Operon::Scalar>(scaling->Scale);
+                }
+            }
+        }
+        auto fisherDiagonal = std::vector<Operon::Scalar>(columns);
+        if (auto result = Lik::ComputeFisherDiagonal(yPred, jacobianView, effectiveSigma, fisherDiagonal); !result) {
+            // Candidate-local numerical failures must not abort Taskflow's
+            // enumeration. This includes an overflowing Fisher accumulation
+            // and a non-finite profiled Gaussian sigma; both reached MDL as
+            // NaN through the legacy Eigen facade and ranked at ErrMax.
+            if (result.error().Code == FisherErrorCode::NonFiniteResult
+                || (sigma.empty() && Lik::UsesSigma && result.error().Code == FisherErrorCode::InvalidSigma)) {
+                return EnumerationScore { .Score = EvaluatorBase::ErrMax };
+            }
+            throw std::runtime_error("failed to compute Fisher diagonal");
+        }
 
         auto const nllNats = static_cast<double>(Lik::ComputeLikelihood(yPred, yTrue, effectiveSigma));
-        auto const paramNats = Operon::ParameterDescriptionLength(parameters, fisherDiag);
+        auto const paramNats = Operon::ParameterDescriptionLength(parameters, fisherDiagonal);
 
         constexpr double Ln2 = 0.6931471805599453094;
         auto const paramBits = paramNats / Ln2;

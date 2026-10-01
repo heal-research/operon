@@ -867,6 +867,34 @@ TEST_CASE("GrammarEnumerationAlgorithm - MDL ranking fits exactly one representa
     for (std::size_t i = 1; i < best.size(); ++i) { CHECK(best[i - 1].Score <= best[i].Score); }
 }
 
+TEST_CASE("MDL scorer rejects an overflowing Fisher candidate without aborting enumeration", "[enumeration]")
+{
+    auto dataset = Dataset(
+        std::vector<std::string> {"x", "y"},
+        std::vector<std::vector<Operon::Scalar>> {{1}, {0}});
+    auto problem = Problem {&dataset};
+    problem.SetTrainingRange({0, 1});
+    problem.SetTarget("y");
+    problem.SetInputs(std::vector<std::string> {"x"});
+    auto exponent = Node::Constant(1000);
+    exponent.Optimize = true;
+    auto const power = Node::Function(static_cast<Hash>(BuiltinOp::Exp), 1);
+    auto tree = Tree {std::vector {exponent, power}};
+    tree.UpdateNodes();
+    auto const coefficients = tree.GetCoefficients();
+    REQUIRE(coefficients.size() == 1);
+
+    using DTable = DispatchTable<Operon::Scalar>;
+    auto const dispatch = DTable {};
+    auto scorer = MakeMdlScorer<DTable, PoissonLikelihood<Operon::Scalar>>(&problem, &dispatch);
+    auto scratch = std::array<Operon::Scalar, 1> {};
+    auto random = Operon::RandomGenerator {0};
+    auto const score = scorer(random, tree, 0, scratch);
+
+    CHECK(score.Score == EvaluatorBase::ErrMax);
+    CHECK_FALSE(std::isfinite(score.NegativeLogLikelihood));
+}
+
 TEST_CASE("GrammarEnumerationAlgorithm - Cube/TenExp productions compute the correct (non-swapped) function", "[enumeration]")
 {
     // Regression test: ProcessNonterminal's operand-to-postfix-position mapping must match the

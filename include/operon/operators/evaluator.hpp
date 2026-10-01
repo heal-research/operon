@@ -5,6 +5,7 @@
 #ifndef OPERON_EVALUATOR_HPP
 #define OPERON_EVALUATOR_HPP
 
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <functional>
@@ -531,7 +532,7 @@ namespace detail {
 } // namespace detail
 
 template <typename DTable, Concepts::Likelihood Lik>
-    requires Concepts::HasFisherMatrix<Lik>
+    requires Concepts::HasFisherDiagonal<Lik>
 class OPERON_EXPORT MinimumDescriptionLengthEvaluator final : public Evaluator<DTable> {
     // Scores the same fitted linear-scaled model as pareto_front.cpp export and shape certification,
     // closing the previous in-search/exported MDL divergence for the same individual.
@@ -557,7 +558,6 @@ public:
         auto const& tree = ctx.Ind.Genotype;
         auto parameters = tree.GetCoefficients();
 
-        auto const p { static_cast<double>(parameters.size()) };
 
         auto [trainingRange, yPred, yTrue, weights, scaling] = detail::PrepareScaledValues(*problem, ctx, evaluated);
 
@@ -571,20 +571,30 @@ public:
             : std::span<Operon::Scalar const> { sigma_ }; // fixed scalar, per-sample, or empty (Poisson unweighted)
 
         ++Base::JacobianEvaluations;
+        auto const columns = parameters.size();
+        auto jacobianStorage = std::vector<Operon::Scalar>(trainingRange.Size() * columns);
+        using Extents = std::dextents<MemoryIndex, 2>;
+        using Mapping = std::layout_stride::mapping<Extents>;
+        auto jacobian = ScalarMatrixView {jacobianStorage.data(),
+            Mapping {Extents {trainingRange.Size(), columns}, std::array<MemoryIndex, 2> {1, trainingRange.Size()}}};
         Operon::Interpreter<Operon::Scalar, DTable> const interpreter { dtable, dataset, &tree };
-        auto jacobian = interpreter.JacRev(parameters, trainingRange);
-        if (!jacobian) { return typename EvaluatorBase::ReturnType { EvaluatorBase::ErrMax }; }
-        Eigen::Matrix<Operon::Scalar, -1, -1> jac = std::move(*jacobian);
-        if (scaling) {
-            jac *= static_cast<Operon::Scalar>(scaling->Scale); // d(a*tree)/d(coeffs) = a * d(tree)/d(coeffs)
+        if (auto result = interpreter.JacRev(parameters, trainingRange, jacobianStorage); !result) {
+            return typename EvaluatorBase::ReturnType { EvaluatorBase::ErrMax };
         }
-        auto fisherMatrix
-            = Lik::ComputeFisherMatrix(yPred, { jac.data(), static_cast<std::size_t>(jac.size()) }, effectiveSigma);
-        auto fisherDiag = fisherMatrix.diagonal().array();
-        ENSURE(fisherDiag.size() == p);
+        if (scaling) {
+            for (std::size_t row = 0; row < trainingRange.Size(); ++row) {
+                for (std::size_t column = 0; column < columns; ++column) {
+                    At(jacobian, row, column) *= static_cast<Operon::Scalar>(scaling->Scale);
+                }
+            }
+        }
+        auto fisherDiagonal = std::vector<Operon::Scalar>(columns);
+        if (auto result = Lik::ComputeFisherDiagonal(yPred, jacobian, effectiveSigma, fisherDiagonal); !result) {
+            return typename EvaluatorBase::ReturnType { EvaluatorBase::ErrMax };
+        }
 
         auto cLikelihood = Lik::ComputeLikelihood(yPred, yTrue, effectiveSigma);
-        auto mdl = Operon::MinimumDescriptionLength(tree, parameters, fisherDiag, static_cast<double>(cLikelihood));
+        auto mdl = Operon::MinimumDescriptionLength(tree, parameters, fisherDiagonal, static_cast<double>(cLikelihood));
         if (!std::isfinite(mdl)) {
             mdl = EvaluatorBase::ErrMax;
         }
@@ -596,7 +606,6 @@ private:
 };
 
 template <typename DTable, Concepts::Likelihood Lik>
-    requires Concepts::HasFisherMatrix<Lik>
 class OPERON_EXPORT FractionalBayesFactorEvaluator final : public Evaluator<DTable> {
     // Scores the same fitted linear-scaled model as pareto_front.cpp export and shape certification,
     // closing the previous in-search/exported FBF divergence for the same individual.

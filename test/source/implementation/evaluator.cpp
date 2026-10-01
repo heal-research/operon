@@ -214,6 +214,61 @@ TEST_CASE("Poisson likelihood static methods", "[likelihood]")
     }
 }
 
+TEST_CASE("Likelihood Fisher diagonals use canonical strided views", "[likelihood][fisher]")
+{
+    using Extents = std::dextents<std::size_t, 2>;
+    using Mapping = std::layout_stride::mapping<Extents>;
+    auto storage = std::array<Operon::Scalar, 6> {1, 0, -7, 0, 1, -7};
+    auto const jacobian = Operon::ConstScalarMatrixView {storage.data(),
+        Mapping {Extents {2, 2}, std::array<std::size_t, 2> {3, 1}}};
+    auto diagonal = std::array<Operon::Scalar, 2> {};
+
+    SECTION("Gaussian") {
+        auto const prediction = std::array<Operon::Scalar, 2> {0, 0};
+        auto const sigma = std::array<Operon::Scalar, 1> {2};
+        REQUIRE(Operon::GaussianLikelihood<Operon::Scalar>::ComputeFisherDiagonal(
+                    prediction, jacobian, sigma, diagonal)
+                    .has_value());
+        CHECK(diagonal[0] == Catch::Approx(0.25F));
+        CHECK(diagonal[1] == Catch::Approx(0.25F));
+    }
+
+    SECTION("Poisson log-rate") {
+        auto const prediction = std::array<Operon::Scalar, 2> {0, 0};
+        REQUIRE(Operon::PoissonLikelihood<Operon::Scalar>::ComputeFisherDiagonal(
+                    prediction, jacobian, {}, diagonal)
+                    .has_value());
+        CHECK(diagonal[0] == Catch::Approx(1));
+        CHECK(diagonal[1] == Catch::Approx(1));
+    }
+
+    SECTION("Poisson rate") {
+        auto const prediction = std::array<Operon::Scalar, 2> {1, 1};
+        REQUIRE(Operon::PoissonLikelihood<Operon::Scalar, false>::ComputeFisherDiagonal(
+                    prediction, jacobian, {}, diagonal)
+                    .has_value());
+        CHECK(diagonal[0] == Catch::Approx(1));
+        CHECK(diagonal[1] == Catch::Approx(1));
+    }
+}
+
+TEST_CASE("Gaussian Fisher diagonal accepts the profiled perfect-fit sigma", "[likelihood][fisher]")
+{
+    auto const prediction = std::array<Operon::Scalar, 2> {3, 5};
+    auto const sigma = std::array<Operon::Scalar, 1> {std::numeric_limits<Operon::Scalar>::epsilon()};
+    auto const jacobianStorage = std::array<Operon::Scalar, 2> {1, 1};
+    using Extents = std::dextents<std::size_t, 2>;
+    using Mapping = std::layout_stride::mapping<Extents>;
+    auto const jacobian = Operon::ConstScalarMatrixView {jacobianStorage.data(),
+        Mapping {Extents {2, 1}, std::array<std::size_t, 2> {1, 2}}};
+    auto diagonal = std::array<Operon::Scalar, 1> {};
+
+    REQUIRE(Operon::GaussianLikelihood<Operon::Scalar>::ComputeFisherDiagonal(
+                prediction, jacobian, sigma, diagonal)
+                .has_value());
+    CHECK(std::isfinite(static_cast<double>(diagonal[0])));
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Gaussian per-sample sigma
 // ──────────────────────────────────────────────────────────────────────────────

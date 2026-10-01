@@ -72,7 +72,7 @@ auto ParameterDescriptionLength(Operon::Span<Operon::Scalar const> coeffs, Fishe
     auto const p = static_cast<double>(coeffs.size());
     auto cParameters = 0.0;
     for (auto pi = 0; pi < static_cast<int>(coeffs.size()); ++pi) {
-        auto fi = static_cast<double>(fisherDiag(pi));
+        auto fi = static_cast<double>(fisherDiag[pi]);
         // fi == 0 is legitimate (a parameter with zero Fisher information
         // truly carries no cost — handled below via the ordinary
         // isfinite(di) quantization check, since sqrt(12/0) = inf).
