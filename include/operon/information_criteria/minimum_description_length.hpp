@@ -54,7 +54,7 @@ inline auto StructureDescriptionLength(Tree const& tree) -> double
 // derived from the diagonal Fisher information. `fisherDiag` is the diagonal of the
 // Fisher information matrix for `coeffs`, in the same order as the tree's
 // Optimize-flagged nodes - likelihood-agnostic: pass whatever Fisher diagonal your
-// likelihood model produces (see GaussianLikelihood/PoissonLikelihood::ComputeFisherMatrix).
+// likelihood model produces (see GaussianLikelihood/PoissonLikelihood::ComputeFisherDiagonal).
 // Returns NaN if the Fisher diagonal violates its PSD invariant (see the noise-floor
 // comment below) - propagate, don't silently charge zero cost.
 template<typename FisherDiag>

@@ -124,11 +124,14 @@ auto WriteParetoFront(std::string const& path,
             }
         }
         auto fisherDiagonal = std::vector<Scalar>(columns);
+        auto mdl = std::numeric_limits<double>::quiet_NaN(); // exported as null for a degenerate member
         if (auto result = GaussianLikelihood<Scalar>::ComputeFisherDiagonal(
-                estimTrain, jacobian, sigmaArr, fisherDiagonal); !result) {
+                estimTrain, jacobian, sigmaArr, fisherDiagonal); result) {
+            mdl = MinimumDescriptionLength(ind->Genotype, coeffs, fisherDiagonal, nll);
+        } else if (result.error().Code != FisherErrorCode::NonFiniteResult
+                   && result.error().Code != FisherErrorCode::InvalidSigma) {
             throw std::runtime_error("failed to compute Fisher diagonal");
         }
-        auto const mdl = MinimumDescriptionLength(ind->Genotype, coeffs, fisherDiagonal, nll);
 
         std::string objArr = "[";
         for (auto j = 0UL; j < ind->Fitness.size(); ++j) {
