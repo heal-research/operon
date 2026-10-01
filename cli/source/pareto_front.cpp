@@ -113,8 +113,11 @@ auto WriteParetoFront(std::string const& path,
         auto jacobianStorage = std::vector<Scalar>(trainRange.Size() * columns);
         using Extents = std::dextents<MemoryIndex, 2>;
         using Mapping = std::layout_stride::mapping<Extents>;
+        // Column stride must stay nonzero for an empty training range (extent 0
+        // addresses no element, but a zero stride violates layout_stride preconditions).
+        auto const columnStride = std::max<MemoryIndex>(trainRange.Size(), MemoryIndex {1});
         auto jacobian = ScalarMatrixView {jacobianStorage.data(),
-            Mapping {Extents {trainRange.Size(), columns}, std::array<MemoryIndex, 2> {1, trainRange.Size()}}};
+            Mapping {Extents {trainRange.Size(), columns}, std::array<MemoryIndex, 2> {1, columnStride}}};
         if (auto result = interp.JacRev(coeffs, trainRange, jacobianStorage); !result) {
             throw std::runtime_error(FormatInterpreterError(result.error()));
         }

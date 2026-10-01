@@ -85,11 +85,11 @@ public:
         // the canonical interpreter cost for exactly this batch yields the
         // raw residual (prediction - target) and Jacobian.
         InterpreterLeastSquaresCostFunction const residualCost { interpreter_, target_, batch };
-        ++jeval_;
         auto evaluated = residualCost.Evaluate(parameters, residualScratch_, jacobianView);
         if (!evaluated) {
             return Fail(detail::ToGradientError(evaluated.error()), gradient);
         }
+        ++jeval_;
         auto gradResult = ComputeGradient(residualScratch_, jacobianView, gradient, weightSlice);
         if (!gradResult) {
             return Fail(detail::ToGradientError(gradResult.error()), gradient);

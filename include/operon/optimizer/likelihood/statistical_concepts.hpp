@@ -26,8 +26,9 @@ namespace Concepts {
             -> std::same_as<tl::expected<void, Operon::FisherError>>;
     };
 
-    // Compatibility contract for the Eigen-returning Fisher facade. New
-    // numerical callers use HasFisherDiagonal above.
+    // Compatibility contract for the Eigen-returning ComputeFisherMatrix
+    // facade. Unused in-repo; kept for downstream compatibility. New code
+    // uses ComputeFisherDiagonal (HasFisherDiagonal above) instead.
     template <typename T>
     concept HasFisherMatrix = requires(
         Operon::Span<Operon::Scalar const> prediction,

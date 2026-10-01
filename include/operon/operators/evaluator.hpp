@@ -5,6 +5,7 @@
 #ifndef OPERON_EVALUATOR_HPP
 #define OPERON_EVALUATOR_HPP
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cmath>
@@ -575,8 +576,11 @@ public:
         auto jacobianStorage = std::vector<Operon::Scalar>(trainingRange.Size() * columns);
         using Extents = std::dextents<MemoryIndex, 2>;
         using Mapping = std::layout_stride::mapping<Extents>;
+        // Column stride must stay nonzero for an empty training range (extent 0
+        // addresses no element, but a zero stride violates layout_stride preconditions).
+        auto const columnStride = std::max<MemoryIndex>(trainingRange.Size(), MemoryIndex {1});
         auto jacobian = ScalarMatrixView {jacobianStorage.data(),
-            Mapping {Extents {trainingRange.Size(), columns}, std::array<MemoryIndex, 2> {1, trainingRange.Size()}}};
+            Mapping {Extents {trainingRange.Size(), columns}, std::array<MemoryIndex, 2> {1, columnStride}}};
         Operon::Interpreter<Operon::Scalar, DTable> const interpreter { dtable, dataset, &tree };
         if (auto result = interpreter.JacRev(parameters, trainingRange, jacobianStorage); !result) {
             return typename EvaluatorBase::ReturnType { EvaluatorBase::ErrMax };

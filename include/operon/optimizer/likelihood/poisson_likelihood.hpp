@@ -121,6 +121,12 @@ struct PoissonLikelihood {
         return {};
     }
 
+    /**
+     * Compatibility facade: returns the full Fisher information matrix as a
+     * dense Eigen matrix. Unused in-repo; kept for downstream compatibility.
+     * New code uses ComputeFisherDiagonal above, which writes only the
+     * diagonal into caller-owned storage without materializing the matrix.
+     */
     static auto ComputeFisherMatrix(Span<Scalar const> pred, Span<Scalar const> jac, Span<Scalar const> /*not used*/) -> Matrix
     {
         auto const rows = pred.size();

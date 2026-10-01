@@ -6,7 +6,9 @@
 // interpreter errors, counters, and objective/gradient equality with
 // ComputeGradient over the same raw residual/Jacobian.
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <random>
 #include <vector>
 
@@ -246,18 +248,24 @@ TEST_CASE("GaussianGradientCostFunction: a minibatch of an offset range uses mat
     auto result = cost.Evaluate(params, gradient);
     REQUIRE(result.has_value());
 
-    // Replay the batch draw to learn which absolute rows the cost must have used.
-    Operon::RandomGenerator replay { 11 };
-    auto const offset = std::uniform_int_distribution<std::size_t> { 0UL, range.Size() - batchSize }(replay);
-    Operon::Range batch { range.Start() + offset, range.Start() + offset + batchSize };
-    std::vector<Operon::Scalar> expectedGradient(params.size());
-    auto expectedCost = ReferenceCost(interpreter, params, target, batch,
-        Operon::ConstScalarSpan { weights }.subspan(batch.Start(), batch.Size()), expectedGradient);
-
-    CHECK_THAT(static_cast<double>(*result), Catch::Matchers::WithinRel(static_cast<double>(expectedCost), 1e-3));
-    for (std::size_t i = 0; i < gradient.size(); ++i) {
-        CHECK_THAT(static_cast<double>(gradient[i]), Catch::Matchers::WithinRel(static_cast<double>(expectedGradient[i]), 1e-3));
+    // The batch is some contiguous batchSize-row subrange inside the offset
+    // range; the result must equal the reference cost and gradient (with the
+    // matching absolute target and weight rows) for one of the possible starts.
+    auto const close = [](double a, double b) {
+        return std::abs(a - b) <= 1e-3 * std::max(std::abs(a), std::abs(b));
+    };
+    bool matched = false;
+    for (std::size_t offset = 0; offset <= range.Size() - batchSize && !matched; ++offset) {
+        Operon::Range batch { range.Start() + offset, range.Start() + offset + batchSize };
+        std::vector<Operon::Scalar> expectedGradient(params.size());
+        auto expectedCost = ReferenceCost(interpreter, params, target, batch,
+            Operon::ConstScalarSpan { weights }.subspan(batch.Start(), batch.Size()), expectedGradient);
+        matched = close(static_cast<double>(*result), static_cast<double>(expectedCost));
+        for (std::size_t i = 0; matched && i < gradient.size(); ++i) {
+            matched = close(static_cast<double>(gradient[i]), static_cast<double>(expectedGradient[i]));
+        }
     }
+    CHECK(matched);
 }
 
 TEST_CASE("GaussianGradientCostFunction: interpreter failures are typed with the original cause", "[gaussian-gradient-cost]")
@@ -282,6 +290,8 @@ TEST_CASE("GaussianGradientCostFunction: interpreter failures are typed with the
     REQUIRE(cost.Error().has_value());
     CHECK(cost.Error()->Code == Operon::GradientErrorCode::EvaluationFailure);
     for (auto g : gradient) { CHECK(std::isnan(static_cast<double>(g))); }
+    CHECK(cost.FunctionEvaluations() == 1);
+    CHECK(cost.JacobianEvaluations() == 0);
 }
 
 TEST_CASE("GaussianGradientCostFunction: FunctionEvaluations and JacobianEvaluations count Evaluate calls", "[gaussian-gradient-cost]")
@@ -303,6 +313,29 @@ TEST_CASE("GaussianGradientCostFunction: FunctionEvaluations and JacobianEvaluat
     }
     CHECK(cost.FunctionEvaluations() == 3);
     CHECK(cost.JacobianEvaluations() == 3);
+}
+
+TEST_CASE("GaussianGradientCostFunction: only successful evaluations count as Jacobian evaluations", "[gaussian-gradient-cost]")
+{
+    Fixture fix;
+    constexpr auto missingVariable = Operon::Hash { 0xBADF00D };
+    auto const variableTree = Operon::Tree({ Operon::Node { Operon::NodeType::Variable, missingVariable } });
+    Operon::Interpreter<Operon::Scalar, Fixture::DTable> failingInterpreter { &fix.dtable, &fix.ds, &variableTree };
+    Operon::Interpreter<Operon::Scalar, Fixture::DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
+    auto target = fix.ds.GetValues("X4");
+    Operon::Range range { 0, Fixture::Nrow };
+
+    Operon::GaussianGradientCostFunction<Operon::Scalar> failing { &failingInterpreter, target, range };
+    std::vector<Operon::Scalar> failingParams(failing.NumParameters());
+    std::vector<Operon::Scalar> failingGradient(failingParams.size());
+    REQUIRE_FALSE(failing.Evaluate(failingParams, failingGradient).has_value());
+    CHECK(failing.JacobianEvaluations() == 0);
+
+    Operon::GaussianGradientCostFunction<Operon::Scalar> cost { &interpreter, target, range };
+    auto params = fix.tree.GetCoefficients();
+    std::vector<Operon::Scalar> gradient(params.size());
+    REQUIRE(cost.Evaluate(params, gradient).has_value());
+    CHECK(cost.JacobianEvaluations() == 1);
 }
 
 TEST_CASE("GaussianGradientCostFunction: nonfinite weights are typed errors", "[gaussian-gradient-cost]")

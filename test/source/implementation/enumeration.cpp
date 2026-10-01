@@ -7,8 +7,9 @@
 #include "../operon_test.hpp"
 
 #include <cmath>
+#include <limits>
 #include <set>
-#include <string>
+#include <stdexcept>
 
 #include "operon/algorithms/enumeration.hpp"
 #include "operon/core/dataset.hpp"
@@ -893,6 +894,37 @@ TEST_CASE("MDL scorer rejects an overflowing Fisher candidate without aborting e
 
     CHECK(score.Score == EvaluatorBase::ErrMax);
     CHECK_FALSE(std::isfinite(score.NegativeLogLikelihood));
+}
+
+TEST_CASE("MDL scorer rejects an invalid fixed sigma at construction", "[enumeration]")
+{
+    // A caller-supplied sigma runs inside Taskflow workers; a statically invalid
+    // one (non-finite or non-positive entry) must surface here, at construction,
+    // rather than as a mid-enumeration throw from a worker.
+    auto dataset = Dataset(
+        std::vector<std::string> {"x", "y"},
+        std::vector<std::vector<Operon::Scalar>> {{1}, {0}});
+    auto problem = Problem {&dataset};
+    problem.SetTrainingRange({0, 1});
+    problem.SetTarget("y");
+    problem.SetInputs(std::vector<std::string> {"x"});
+
+    using DTable = DispatchTable<Operon::Scalar>;
+    auto const dispatch = DTable {};
+
+    CHECK_THROWS_AS((MakeMdlScorer<DTable, GaussianLikelihood<Operon::Scalar>>(&problem, &dispatch,
+                       std::vector<Operon::Scalar> {0.F})),
+        std::invalid_argument);
+    CHECK_THROWS_AS((MakeMdlScorer<DTable, GaussianLikelihood<Operon::Scalar>>(&problem, &dispatch,
+                       std::vector<Operon::Scalar> {std::numeric_limits<Operon::Scalar>::quiet_NaN()})),
+        std::invalid_argument);
+
+    // Valid sigma constructs in either accepted shape (scalar or per-row); only the
+    // values are validated here, a length mismatch is deferred to score time.
+    CHECK_NOTHROW((MakeMdlScorer<DTable, GaussianLikelihood<Operon::Scalar>>(&problem, &dispatch,
+        std::vector<Operon::Scalar> {0.5F})));
+    CHECK_NOTHROW((MakeMdlScorer<DTable, GaussianLikelihood<Operon::Scalar>>(&problem, &dispatch,
+        std::vector<Operon::Scalar> {0.5F, 1.F})));
 }
 
 TEST_CASE("GrammarEnumerationAlgorithm - Cube/TenExp productions compute the correct (non-swapped) function", "[enumeration]")
