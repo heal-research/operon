@@ -39,7 +39,7 @@ TEST_CASE("Parser throughput", "[performance]")
     for (auto i = 0; i < nTrees; ++i) {
         auto tree = creator(rng, dist(rng), 0, 10);
         totalNodes += tree.Length();
-        strings.push_back(fmt::format("{:infix:20}", Operon::Fmt::WithNames{tree, ds}));
+        strings.push_back(fmt::format("{:infix:20}", Operon::Fmt::TreeFormatArgs{tree, ds}));
     }
 
     size_t idx{0};

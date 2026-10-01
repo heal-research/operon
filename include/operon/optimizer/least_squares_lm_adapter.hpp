@@ -79,16 +79,10 @@ struct LeastSquaresLMAdapter final : public detail::LMBackendFunctor<LeastSquare
             ++this->residualCallCount_;
         }
         auto result = cost_->Evaluate(params, residualSpan, jacobianView);
-        if (!recoverNonFinite_ && result && (!detail::AllFinite(residualSpan, false)
-                           || (jacobianView && [&] {
-                                  for (std::size_t i = 0; i < this->numResiduals_; ++i) {
-                                      for (std::size_t j = 0; j < this->numParameters_; ++j) {
-                                          if (!std::isfinite(static_cast<double>(At(*jacobianView, i, j)))) return true;
-                                      }
-                                  }
-                                  return false;
-                              }()))) {
-            result = tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::NonFiniteEvaluation });
+        if (!recoverNonFinite_ && result) {
+            if (auto nonFinite = FirstNonFinite(residualSpan, jacobianView); nonFinite) {
+                result = tl::unexpected(*nonFinite);
+            }
         }
         if (!result) {
             error_ = result.error();
@@ -125,6 +119,27 @@ private:
     bool recoverNonFinite_;
     mutable std::vector<Scalar> residualScratch_;
     mutable std::optional<LeastSquaresError> error_;
+
+    // Locates the first non-finite residual (Row set) or Jacobian entry (Row/Column set).
+    static auto FirstNonFinite(ConstScalarSpan residuals, std::optional<ScalarMatrixView> const& jacobian)
+        -> std::optional<LeastSquaresError>
+    {
+        for (std::size_t i = 0; i < residuals.size(); ++i) {
+            if (!std::isfinite(static_cast<double>(residuals[i]))) {
+                return LeastSquaresError { .Code = LeastSquaresErrorCode::NonFiniteEvaluation, .Row = i };
+            }
+        }
+        if (jacobian) {
+            for (std::size_t i = 0; i < jacobian->extent(0); ++i) {
+                for (std::size_t j = 0; j < jacobian->extent(1); ++j) {
+                    if (!std::isfinite(static_cast<double>(At(*jacobian, i, j)))) {
+                        return LeastSquaresError { .Code = LeastSquaresErrorCode::NonFiniteEvaluation, .Row = i, .Column = j };
+                    }
+                }
+            }
+        }
+        return std::nullopt;
+    }
 };
 
 } // namespace Operon

@@ -18,6 +18,7 @@
 #include "operon/core/range.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/optimizer/gradient_cost.hpp"
+#include "operon/optimizer/interpreter_least_squares.hpp"
 #include "operon/optimizer/least_squares.hpp"
 #include "operon/optimizer/least_squares_gradient_adapter.hpp"
 #include "operon/random/random.hpp"
@@ -26,8 +27,9 @@ namespace Operon {
 
 /**
  * Gaussian gradient cost: 0.5*sum(w_i*(prediction_i-target_i)^2) and its exact
- * reverse-Jacobian gradient, computed via ComputeGradient over the raw
- * interpreter residual. target and weights are whole-dataset-column spans
+ * reverse-Jacobian gradient, computed via ComputeGradient over the canonical
+ * InterpreterLeastSquaresCostFunction residual/Jacobian of the selected batch.
+ * target and weights are whole-dataset-column spans
  * (absolute row-indexed), the same coordinates as range, since a minibatch is
  * a random subrange of range indexed the same way. Empty weights mean one; a
  * scalar weight broadcasts; per-row weights are numerical WLS weights, never
@@ -73,25 +75,21 @@ public:
             return Fail(GradientError { .Code = GradientErrorCode::NonFiniteEvaluation }, gradient);
         }
         residualScratch_.resize(n);
-        auto pred = interpreter_->Evaluate(parameters, batch, residualScratch_);
-        if (!pred) {
-            return Fail(GradientError { .Code = GradientErrorCode::EvaluationFailure, .Cause = pred.error() }, gradient);
-        }
-        auto const targetSlice = target_.subspan(batch.Start(), n);
-        for (std::size_t i = 0; i < n; ++i) {
-            residualScratch_[i] -= targetSlice[i];
-        }
-
-        ++jeval_;
         jacobianScratch_.resize(n * numParameters_);
-        auto jacResult = interpreter_->JacRev(parameters, batch, jacobianScratch_);
-        if (!jacResult) {
-            return Fail(GradientError { .Code = GradientErrorCode::EvaluationFailure, .Cause = jacResult.error() }, gradient);
-        }
 
         using Extents = std::dextents<MemoryIndex, 2>;
         using Mapping = std::layout_stride::mapping<Extents>;
         ScalarMatrixView jacobianView { jacobianScratch_.data(), Mapping { Extents { n, numParameters_ }, std::array<MemoryIndex, 2> { 1, n } } };
+
+        // The batch is an absolute subrange of the whole-dataset target, so
+        // the canonical interpreter cost for exactly this batch yields the
+        // raw residual (prediction - target) and Jacobian.
+        InterpreterLeastSquaresCostFunction const residualCost { interpreter_, target_, batch };
+        ++jeval_;
+        auto evaluated = residualCost.Evaluate(parameters, residualScratch_, jacobianView);
+        if (!evaluated) {
+            return Fail(detail::ToGradientError(evaluated.error()), gradient);
+        }
         auto gradResult = ComputeGradient(residualScratch_, jacobianView, gradient, weightSlice);
         if (!gradResult) {
             return Fail(detail::ToGradientError(gradResult.error()), gradient);

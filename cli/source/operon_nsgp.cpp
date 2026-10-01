@@ -261,7 +261,7 @@ auto main(int argc, char** argv) -> int
             }
             errorEvaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable,
                 result["skip-nonfinite"].as<bool>(), result["nonfinite-penalty-weight"].as<double>());
-            optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
+            optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable)>>(&dtable, &problem);
         } else {
             auto jobj = Operon::CLI::MakeJitObjects(
                 jitMode, problem, dtable,
@@ -284,7 +284,7 @@ auto main(int argc, char** argv) -> int
             }
             // unknown mode: factory returned null optimizer; fall back to defaults.
             if (!optimizer) {
-                optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
+                optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable)>>(&dtable, &problem);
             }
         }
         errorEvaluator->SetBudget(config.Evaluations);
@@ -483,7 +483,7 @@ auto main(int argc, char** argv) -> int
                                                  : shapePenaltyStorage->Measure(best.Genotype).Feasible;
             fmt::print(stderr, "shape-constraints: final model is {}\n", feasible ? "feasible" : "INFEASIBLE (not certified over the domain box)");
         }
-        fmt::print("{:infix:roundtrip}\n", Operon::Fmt::WithNames{best.Genotype, *problem.GetDataset()});
+        fmt::print("{:infix:roundtrip}\n", Operon::Fmt::TreeFormatArgs{best.Genotype, *problem.GetDataset()});
         if (result.contains("pareto-front")) {
             Operon::WriteParetoFront(result["pareto-front"].as<std::string>(), gp.Individuals(), dtable, problem);
         }

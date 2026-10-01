@@ -32,8 +32,8 @@ using VariableNameMap = Operon::Map<Operon::Hash, std::string>;
 enum class Mode : std::uint8_t { Infix, Postfix, Tree, Dot };
 
 // Only Dataset and an explicit Hash->name map are legitimate variable-name
-// sources in this codebase; constraining WithNames<Names> to this concept
-// turns "wrong type passed" into a clear error at the WithNames call site
+// sources in this codebase; constraining TreeFormatArgs<Source> to this concept
+// turns an invalid source into a clear error at the TreeFormatArgs call site.
 // instead of a deep NameView overload-resolution failure.
 template <typename T>
 concept NameSource = std::same_as<T, Operon::Dataset> || std::same_as<T, VariableNameMap>;
@@ -83,30 +83,27 @@ struct ValueSpec {
     bool Fixed{false};
 };
 
-// Wraps a Tree with the variable-name source used to resolve its
-// Variable nodes' display names -- what callers actually pass to
-// fmt::format/fmt::print: fmt::format("{:infix}", WithNames{tree, dataset}).
-// Non-owning; both Subject and Variables must outlive the format call
-// (ordinary fmt::format/fmt::print usage, which consumes its arguments
-// synchronously, is always safe -- storing a WithNames for later/async
-// formatting is not).
-// Non-owning formatting arguments: both references are consumed synchronously
-// by fmt::format/fmt::print and must therefore remain references.
-template <NameSource Names>
-struct WithNames {
+// Carries a Tree and the runtime name source used to resolve variable hashes.
+// Both references are non-owning and must outlive the synchronous formatting call.
+template <NameSource Source>
+struct TreeFormatArgs {
     Operon::Tree const& Subject; // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members)
-    Names const& Variables; // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members)
+    Source const& Variables; // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members)
     int Precision{2};
 };
 
-template <NameSource Names>
-WithNames(Operon::Tree const&, Names const&) -> WithNames<Names>;
-template <NameSource Names>
-WithNames(Operon::Tree const&, Names const&, int) -> WithNames<Names>;
+template <NameSource Source>
+TreeFormatArgs(Operon::Tree const&, Source const&) -> TreeFormatArgs<Source>;
+template <NameSource Source>
+TreeFormatArgs(Operon::Tree const&, Source const&, int) -> TreeFormatArgs<Source>;
+
+// Source-compatibility alias for the former public name; new code should use TreeFormatArgs.
+template <NameSource Source>
+using WithNames [[deprecated("use Operon::Fmt::TreeFormatArgs")]] = TreeFormatArgs<Source>;
 
 // Shared `fmt` format-spec grammar for both fmt::formatter<Operon::Tree>
-// and fmt::formatter<Operon::Fmt::WithNames<Names>> (inherited by both, so
-// the grammar is parsed in exactly one place):
+// and fmt::formatter<Operon::Fmt::TreeFormatArgs<Source>> (inherited by both,
+// so the grammar is parsed in exactly one place):
 //
 //   tree-spec ::= [mode] [":" precision]
 //   mode      ::= "infix" | "postfix" | "tree" | "dot"      (default: infix)
@@ -114,10 +111,9 @@ WithNames(Operon::Tree const&, Names const&, int) -> WithNames<Names>;
 //
 // Examples: "{}", "{:infix}", "{:tree}", "{:infix:roundtrip}",
 // "{:infix:6g}", "{:tree:3f}", "{:dot:6g}". An explicit digit-precision
-// override (with or without a trailing presentation letter) always wins
-// over WithNames::Precision; "roundtrip" is shorthand for
-// max_digits10 significant digits. An unrecognized mode word or trailing
-// spec text is a compile error for a literal format string (fmt's
+// override (with or without a trailing presentation letter) always wins over
+// TreeFormatArgs::Precision; "roundtrip" is shorthand for max_digits10 significant digits.
+// Unrecognized spec text is a compile error for a literal format string (fmt's
 // consteval parse check) or an fmt::format_error at runtime for
 // fmt::runtime(...).
 struct TreeFormatSpec {
@@ -219,14 +215,13 @@ struct fmt::formatter<Operon::Tree> : Operon::Fmt::TreeFormatSpec {
     }
 };
 
-template <Operon::Fmt::NameSource Names>
-struct fmt::formatter<Operon::Fmt::WithNames<Names>> : Operon::Fmt::TreeFormatSpec {
+template <Operon::Fmt::NameSource Source>
+struct fmt::formatter<Operon::Fmt::TreeFormatArgs<Source>> : Operon::Fmt::TreeFormatSpec {
     template <typename FormatContext>
-    auto format(Operon::Fmt::WithNames<Names> const& w, FormatContext& ctx) const -> decltype(ctx.out()) // NOLINT(readability-identifier-naming)
+    auto format(Operon::Fmt::TreeFormatArgs<Source> const& w, FormatContext& ctx) const -> decltype(ctx.out()) // NOLINT(readability-identifier-naming)
     {
         auto text = Operon::Fmt::Detail::Render(w.Subject, RenderMode, Operon::Fmt::NameView{w.Variables}, Resolve(w.Precision));
         return fmt::format_to(ctx.out(), "{}", text);
     }
 };
-
 #endif

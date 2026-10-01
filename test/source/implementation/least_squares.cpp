@@ -56,7 +56,7 @@ public:
             if (jacobian->extent(0) != x_.size() || jacobian->extent(1) != NumParameters()) {
                 return tl::unexpected(Operon::LeastSquaresError {
                     .Code = Operon::LeastSquaresErrorCode::InvalidShape, .Expected = x_.size(), .Actual = jacobian->extent(0),
-                    .Row = 0, .Column = NumParameters() });
+                    .Row = x_.size(), .Column = NumParameters() });
             }
             for (std::size_t i = 0; i < x_.size(); ++i) {
                 Operon::At(*jacobian, i, 0) = Operon::Scalar { 1 };
@@ -488,8 +488,14 @@ TEST_CASE("ComputeFisherMatrix matches GaussianLikelihood for uniform, per-row, 
 
         auto reference = Operon::GaussianLikelihood<Operon::Scalar>::ComputeFisherMatrix(
             { pred.data(), pred.size() }, { refJac.data(), static_cast<std::size_t>(refJac.size()) }, sigmaForEigen);
+        std::vector<Operon::Scalar> diagonal(p);
+        auto diagonalResult = Operon::GaussianLikelihood<Operon::Scalar>::ComputeFisherDiagonal(
+            pred, jac, sigmaForEigen, diagonal);
+        REQUIRE(diagonalResult.has_value());
 
         for (std::size_t a = 0; a < p; ++a) {
+            CHECK_THAT(static_cast<double>(diagonal[a]),
+                Catch::Matchers::WithinRel(static_cast<double>(reference(static_cast<Eigen::Index>(a), static_cast<Eigen::Index>(a))), 1e-3));
             for (std::size_t b = 0; b < p; ++b) {
                 CHECK_THAT(static_cast<double>(Operon::At(fisher, a, b)),
                     Catch::Matchers::WithinRel(static_cast<double>(reference(static_cast<Eigen::Index>(a), static_cast<Eigen::Index>(b))), 1e-3));

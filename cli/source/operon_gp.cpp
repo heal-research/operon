@@ -210,7 +210,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             }
             evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable,
                 result["skip-nonfinite"].as<bool>(), result["nonfinite-penalty-weight"].as<double>());
-            optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
+            optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable)>>(&dtable, &problem);
         } else {
             auto jobj = Operon::CLI::MakeJitObjects(
                 jitMode, problem, dtable,
@@ -233,7 +233,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             }
             // unknown mode: factory returned null optimizer; fall back to defaults.
             if (!optimizer) {
-                optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
+                optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable)>>(&dtable, &problem);
             }
         }
         evaluator->SetBudget(config.Evaluations);
@@ -408,7 +408,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
                                                            : shapeViolationStorage->Measure(best.Genotype).Feasible;
             fmt::print(stderr, "shape-constraints: final model is {}\n", feasible ? "feasible" : "INFEASIBLE (not certified over the domain box)");
         }
-        auto const model = fmt::format("{:infix:roundtrip}", Operon::Fmt::WithNames{best.Genotype, *problem.GetDataset()});
+        auto const model = fmt::format("{:infix:roundtrip}", Operon::Fmt::TreeFormatArgs{best.Genotype, *problem.GetDataset()});
         fmt::print("{}\n", model);
         if (result.contains("report-json")) {
             reporter.SetSymbolicModel(model);
