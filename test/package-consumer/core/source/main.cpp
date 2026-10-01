@@ -3,22 +3,21 @@
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 //
 // Package-consumer contract fixture for operon::core (see
-// test/package-consumer/canonical-core/CMakeLists.txt). Intentionally
+// test/package-consumer/core/CMakeLists.txt). Intentionally
 // standalone: it must compile and link using ONLY the core public
 // headers and the operon::core imported target as they appear
 // after `find_package(operon CONFIG REQUIRED)` against an *installed,
 // relocated* package -- it never sees the operon source or build tree
 // directly, and it never links operon::backend_adapter or operon::operon.
 //
-// Representative headers from all three parts of core's contract:
-// view (memory_view.hpp, view_descriptor.hpp), numerical
-// (least_squares.hpp, fisher_information.hpp), and the compiled
-// tree/grammar/primitive-set/enumeration-canonicalizer implementation
-// (node.hpp, tree.hpp, grammar.hpp, pset.hpp,
-// enumeration_canonicalizer.hpp) that used to live in operon_operon and
-// depend on dispatch/interpreter machinery. None of them, nor anything they
-// transitively include, may pull in Eigen -- the CMakeLists.txt in this
-// directory additionally asserts that structurally.
+// Includes every header of operon::core's installed contract (the
+// CMakeLists.txt in this directory scans this file's include closure for
+// backend headers): view (memory_view.hpp, view_descriptor.hpp), numerical
+// (least_squares.hpp, fisher_information.hpp, gradient_cost.hpp), and the
+// compiled tree/grammar/primitive-set/enumeration-canonicalizer
+// implementation (node.hpp, tree.hpp, grammar.hpp, pset.hpp,
+// enumeration_canonicalizer.hpp). None of them, nor anything they
+// transitively include, may pull in Eigen or any other backend dependency.
 
 #include <array>
 #include <cmath>
@@ -27,15 +26,30 @@
 #include <limits>
 
 #include <operon/algorithms/enumeration_canonicalizer.hpp>
+#include <operon/collections/bitset.hpp>
+#include <operon/core/aligned_allocator.hpp>
+#include <operon/core/concepts.hpp>
+#include <operon/core/constants.hpp>
+#include <operon/core/contracts.hpp>
 #include <operon/core/grammar.hpp>
+#include <operon/core/interpreter_error.hpp>
 #include <operon/core/memory_view.hpp>
 #include <operon/core/node.hpp>
 #include <operon/core/pset.hpp>
+#include <operon/core/range.hpp>
+#include <operon/core/standard_library.hpp>
+#include <operon/core/subtree.hpp>
 #include <operon/core/tree.hpp>
+#include <operon/core/types.hpp>
 #include <operon/core/view_descriptor.h>
 #include <operon/core/view_descriptor.hpp>
+#include <operon/hash/hash.hpp>
+#include <operon/hash/metrohash64.hpp>
+#include <operon/mdspan/mdspan.hpp>
 #include <operon/optimizer/fisher_information.hpp>
+#include <operon/optimizer/gradient_cost.hpp>
 #include <operon/optimizer/least_squares.hpp>
+#include <operon/optimizer/least_squares_gradient_adapter.hpp>
 
 namespace {
 
