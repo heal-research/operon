@@ -594,7 +594,15 @@ public:
         }
         auto fisherDiagonal = std::vector<Operon::Scalar>(columns);
         if (auto result = Lik::ComputeFisherDiagonal(yPred, jacobian, effectiveSigma, fisherDiagonal); !result) {
-            return typename EvaluatorBase::ReturnType { EvaluatorBase::ErrMax };
+            // Candidate-local numerical failures score ErrMax. A length
+            // mismatch (InvalidShape, e.g. a wrong-length SetSigma) is a
+            // configuration error and must not silently rank every
+            // individual at ErrMax; MakeMdlScorer and WriteParetoFront throw too.
+            if (result.error().Code == FisherErrorCode::NonFiniteResult
+                || (sigma_.empty() && Lik::UsesSigma && result.error().Code == FisherErrorCode::InvalidSigma)) {
+                return typename EvaluatorBase::ReturnType { EvaluatorBase::ErrMax };
+            }
+            throw std::runtime_error("failed to compute Fisher diagonal");
         }
 
         auto cLikelihood = Lik::ComputeLikelihood(yPred, yTrue, effectiveSigma);

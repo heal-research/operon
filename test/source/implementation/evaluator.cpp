@@ -339,6 +339,13 @@ TEST_CASE("MDL evaluator", "[evaluator][information-criteria]")
         CHECK(result[0] > 0);
     }
 
+    SECTION("Gaussian / wrong-length sigma is a configuration error, not a silent ErrMax") {
+        MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
+        ev.SetSigma({0.5F, 0.5F}); // neither scalar nor one value per training row
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
+        CHECK_THROWS_AS(ev(fix.rng, ind), std::runtime_error);
+    }
+
     SECTION("Poisson: finite result") {
         MinimumDescriptionLengthEvaluator<DTable, PoissonLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
         auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
