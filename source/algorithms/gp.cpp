@@ -63,9 +63,17 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
     ENSURE(executor.num_workers() > 0);
     std::vector<Operon::Vector<Operon::Scalar>> slots(executor.num_workers());
 
-    auto stop = [&]() -> bool {
+    // stop() is polled concurrently by offspring-generation workers and must
+    // not write shared state; Elapsed() is published only from single-task
+    // contexts (the loop condition and the report task), which the taskflow
+    // graph orders against every reader.
+    auto shouldStop = [&](double elapsed) -> bool {
+        return StopRequested() || generator->Terminate() || Generation() == config.Generations || elapsed > static_cast<double>(config.TimeLimit);
+    };
+    auto stop = [&]() -> bool { return shouldStop(computeElapsed()); };
+    auto loopCondition = [&]() -> bool {
         Elapsed() = computeElapsed();
-        return StopRequested() || generator->Terminate() || Generation() == config.Generations || Elapsed() > static_cast<double>(config.TimeLimit);
+        return shouldStop(Elapsed());
     };
 
     auto parents = Parents();
@@ -135,7 +143,7 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
                 restoreCoeffs.precede(reportProgress);
             }
         }, // init
-        stop, // loop condition
+        loopCondition, // loop condition
         [&, timer](tf::Subflow& subflow) -> void {
             // Elitism (if any) is now handled uniformly by ReinserterBase
             // (reinserter.hpp) - it protects the top EliteCount() parents
@@ -164,6 +172,7 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
             auto reinsert = subflow.emplace([&]() -> void { (*reinserter)(random, Parents(), offspring); }).name("reinsert");
             auto incrementGeneration = subflow.emplace([&]() -> void { ++Generation(); }).name("increment generation");
             auto reportProgress = subflow.emplace([&, timer]() -> void {
+                                             Elapsed() = computeElapsed();
                                              Timings() = timer->Timings();
                                              if (report && std::invoke(report)) { RequestStop(); }
                                          }).name("report progress");

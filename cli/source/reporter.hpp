@@ -121,7 +121,6 @@ public:
     auto operator()(tf::Executor& executor, Operon::GeneticAlgorithmBase const& gp) const -> void {
         auto const config = gp.GetConfig();
         auto const pop = gp.Parents();
-        auto const off = gp.Offspring();
 
         constexpr auto idx{0};
         auto getBest = [&](Operon::Span<Operon::Individual const> pop) -> Operon::Individual {
@@ -201,18 +200,14 @@ public:
 
         double avgLength = 0;
         double avgQuality = 0;
-        double totalMemory = 0;
 
-        auto getSize = [](Operon::Individual const& ind) { return sizeof(ind) + sizeof(ind.Genotype) + sizeof(Operon::Node) * ind.Genotype.Nodes().capacity(); };
         auto calculateLength = tf.transform_reduce(pop.begin(), pop.end(), avgLength, std::plus{}, [](auto const& ind) { return ind.Genotype.Length(); }).name("calc length");
         auto calculateQuality = tf.transform_reduce(pop.begin(), pop.end(), avgQuality, std::plus{}, [idx=idx](auto const& ind) { return ind[idx]; }).name("calc quality");
-        auto calculatePopMemory = tf.transform_reduce(pop.begin(), pop.end(), totalMemory, std::plus{}, [&](auto const& ind) { return getSize(ind); }).name("calc parent mem");
-        auto calculateOffMemory = tf.transform_reduce(off.begin(), off.end(), totalMemory, std::plus{}, [&](auto const& ind) { return getSize(ind); }).name("calc child mem");
 
         // define task graph
         evaluate.precede(linearScaling);
         calcStats.succeed(linearScaling);
-        calcStats.precede(calculateLength, calculateQuality, calculatePopMemory, calculateOffMemory);
+        calcStats.precede(calculateLength, calculateQuality);
         // taskflow.dump(std::cout);
 
         executor.corun(tf);
