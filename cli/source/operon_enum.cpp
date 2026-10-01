@@ -161,7 +161,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         config.EvaluationBufferSize = problem.TrainingRange().Size();
 
         Operon::ScalarDispatch dtable;
-        Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen> optimizer{ &dtable, &problem };
+        Operon::LevenbergMarquardtOptimizer<decltype(dtable)> optimizer{ &dtable, &problem };
         // Enumeration always needs to fit coefficients (unlike GP, where
         // --iterations 0 sensibly means "no local search on top of the
         // evolved structure") - default to a reasonable non-zero iteration
@@ -214,9 +214,9 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             if (config.Ranking == Operon::EnumerationRanking::MinimumDescriptionLength) {
                 auto const nllBits = r.NegativeLogLikelihood / std::log(2.0);
                 fmt::print("{}mdl_bits={:.6g}\tnll_bits={:.6g}\tparameter_bits={:.6g}\tstructure_bits={:.6g}\t{:infix:roundtrip}\n",
-                    keyPrefix, r.Score, nllBits, r.ParameterCodeBits, r.StructureCodeBits, Operon::Fmt::WithNames{r.Tree, *problem.GetDataset()});
+                    keyPrefix, r.Score, nllBits, r.ParameterCodeBits, r.StructureCodeBits, Operon::Fmt::TreeFormatArgs{r.Tree, *problem.GetDataset()});
             } else {
-                fmt::print("{}fitness={:.6g}\t{:infix:roundtrip}\n", keyPrefix, r.Score, Operon::Fmt::WithNames{r.Tree, *problem.GetDataset()});
+                fmt::print("{}fitness={:.6g}\t{:infix:roundtrip}\n", keyPrefix, r.Score, Operon::Fmt::TreeFormatArgs{r.Tree, *problem.GetDataset()});
             }
         }
     } catch (std::exception& e) {

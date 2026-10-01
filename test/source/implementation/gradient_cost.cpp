@@ -79,10 +79,10 @@ static_assert(Operon::Concepts::GradientCost<QuadraticBowlCost>);
 // The numerical/statistical boundary is part of the contract: no gradient
 // cost — synthetic or shipped — is a likelihood or Fisher producer, and a
 static_assert(!Operon::Concepts::Likelihood<Operon::GaussianGradientCostFunction<Operon::Scalar>>);
-static_assert(!Operon::Concepts::HasFisherMatrix<Operon::GaussianGradientCostFunction<Operon::Scalar>>);
+static_assert(!Operon::Concepts::HasFisherDiagonal<Operon::GaussianGradientCostFunction<Operon::Scalar>>);
 static_assert(!Operon::Concepts::GradientCost<Operon::GaussianLikelihood<Operon::Scalar>>);
 static_assert(Operon::Concepts::Likelihood<Operon::GaussianLikelihood<Operon::Scalar>>);
-static_assert(Operon::Concepts::HasFisherMatrix<Operon::GaussianLikelihood<Operon::Scalar>>);
+static_assert(Operon::Concepts::HasFisherDiagonal<Operon::GaussianLikelihood<Operon::Scalar>>);
 
 } // namespace
 

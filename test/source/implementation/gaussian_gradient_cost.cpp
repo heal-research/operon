@@ -7,6 +7,7 @@
 // ComputeGradient over the same raw residual/Jacobian.
 
 #include <array>
+#include <random>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
@@ -224,6 +225,39 @@ TEST_CASE("GaussianGradientCostFunction: a nonzero batch size selects a reproduc
 
     CHECK(*resultA == *resultB);
     CHECK(gradientA == gradientB);
+}
+
+TEST_CASE("GaussianGradientCostFunction: a minibatch of an offset range uses matching absolute target and weight rows", "[gaussian-gradient-cost]")
+{
+    Fixture fix;
+    Operon::Interpreter<Operon::Scalar, Fixture::DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
+    auto target = fix.ds.GetValues("X4");
+    Operon::Range range { 5, Fixture::Nrow };
+    constexpr std::size_t batchSize = 10;
+    std::vector<Operon::Scalar> weights(Fixture::Nrow);
+    for (std::size_t i = 0; i < weights.size(); ++i) {
+        weights[i] = Operon::Scalar { 1 } + (Operon::Scalar { 0.3 } * static_cast<Operon::Scalar>(i));
+    }
+    auto params = fix.tree.GetCoefficients();
+
+    Operon::RandomGenerator rng { 11 };
+    Operon::GaussianGradientCostFunction<Operon::Scalar> cost { &interpreter, target, range, &rng, batchSize, weights };
+    std::vector<Operon::Scalar> gradient(params.size());
+    auto result = cost.Evaluate(params, gradient);
+    REQUIRE(result.has_value());
+
+    // Replay the batch draw to learn which absolute rows the cost must have used.
+    Operon::RandomGenerator replay { 11 };
+    auto const offset = std::uniform_int_distribution<std::size_t> { 0UL, range.Size() - batchSize }(replay);
+    Operon::Range batch { range.Start() + offset, range.Start() + offset + batchSize };
+    std::vector<Operon::Scalar> expectedGradient(params.size());
+    auto expectedCost = ReferenceCost(interpreter, params, target, batch,
+        Operon::ConstScalarSpan { weights }.subspan(batch.Start(), batch.Size()), expectedGradient);
+
+    CHECK_THAT(static_cast<double>(*result), Catch::Matchers::WithinRel(static_cast<double>(expectedCost), 1e-3));
+    for (std::size_t i = 0; i < gradient.size(); ++i) {
+        CHECK_THAT(static_cast<double>(gradient[i]), Catch::Matchers::WithinRel(static_cast<double>(expectedGradient[i]), 1e-3));
+    }
 }
 
 TEST_CASE("GaussianGradientCostFunction: interpreter failures are typed with the original cause", "[gaussian-gradient-cost]")

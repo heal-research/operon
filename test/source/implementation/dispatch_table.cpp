@@ -434,17 +434,17 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
         dynNode.Length = 1;
 
         Operon::Tree const tree({ varNode, dynNode });
-        auto formatted = fmt::format("{:infix}", Operon::Fmt::WithNames{tree, ds});
+        auto formatted = fmt::format("{:infix}", Operon::Fmt::TreeFormatArgs{tree, ds});
         CHECK(formatted.find("cube") != std::string::npos);
     }
 
     SECTION("PostfixFormatter and DotFormatter use registered built-in names") {
         auto builtInTree = InfixParser::ParseOrThrow("sin(x)");
 
-        auto postfix = fmt::format("{:postfix}", Operon::Fmt::WithNames{builtInTree, ds});
+        auto postfix = fmt::format("{:postfix}", Operon::Fmt::TreeFormatArgs{builtInTree, ds});
         CHECK(postfix == "((1.00 * x) sin) ");
 
-        auto dot = fmt::format("{:dot}", Operon::Fmt::WithNames{builtInTree, ds});
+        auto dot = fmt::format("{:dot}", Operon::Fmt::TreeFormatArgs{builtInTree, ds});
         CHECK(dot.find("[label=\"sin\"]") != std::string::npos);
         CHECK(dot.find("0 -> 1") != std::string::npos);
     }
@@ -482,7 +482,7 @@ TEST_CASE("Formatter bugfixes: registered n-ary calls, weighted function nodes, 
             dyn,
         });
 
-        auto formatted = fmt::format("{:infix}", Operon::Fmt::WithNames{tree, ds});
+        auto formatted = fmt::format("{:infix}", Operon::Fmt::TreeFormatArgs{tree, ds});
         CHECK(formatted.find("sum3(") != std::string::npos);
         CHECK(formatted.find("21") != std::string::npos);
         CHECK(formatted.find("34") != std::string::npos);
@@ -512,7 +512,7 @@ TEST_CASE("Formatter bugfixes: registered n-ary calls, weighted function nodes, 
         Operon::Tree const tree({ Operon::Node::Constant(1.0), dyn });
 
         std::string formatted;
-        CHECK_NOTHROW(formatted = fmt::format("{:tree}", Operon::Fmt::WithNames{tree, ds}));
+        CHECK_NOTHROW(formatted = fmt::format("{:tree}", Operon::Fmt::TreeFormatArgs{tree, ds}));
         CHECK(formatted.find("2.50") != std::string::npos);
         CHECK(formatted.find("cube") != std::string::npos);
     }
@@ -532,7 +532,7 @@ TEST_CASE("Formatter bugfixes: registered n-ary calls, weighted function nodes, 
         dyn.Value = 2.5;
         Operon::Tree const tree({ Operon::Node::Constant(1.0), dyn });
 
-        auto dot = fmt::format("{:dot}", Operon::Fmt::WithNames{tree, ds});
+        auto dot = fmt::format("{:dot}", Operon::Fmt::TreeFormatArgs{tree, ds});
         CHECK(dot.find("2.50") != std::string::npos);
         CHECK(dot.find("cube") != std::string::npos);
     }
@@ -552,7 +552,7 @@ TEST_CASE("Formatter bugfixes: registered n-ary calls, weighted function nodes, 
         dyn.Value = 2.5;
         Operon::Tree const tree({ Operon::Node::Constant(1.0), dyn });
 
-        auto postfix = fmt::format("{:postfix}", Operon::Fmt::WithNames{tree, ds});
+        auto postfix = fmt::format("{:postfix}", Operon::Fmt::TreeFormatArgs{tree, ds});
         CHECK(postfix == "(1.00 cube 2.50 *) ");
     }
 
@@ -575,7 +575,7 @@ TEST_CASE("Formatter bugfixes: registered n-ary calls, weighted function nodes, 
         Operon::Tree const tree({ Operon::Node::Constant(1.0), dyn });
 
         std::string formatted;
-        CHECK_NOTHROW(formatted = fmt::format("{:postfix}", Operon::Fmt::WithNames{tree, ds}));
+        CHECK_NOTHROW(formatted = fmt::format("{:postfix}", Operon::Fmt::TreeFormatArgs{tree, ds}));
         CHECK(formatted.find("f{brace}") != std::string::npos);
     }
 
@@ -584,9 +584,9 @@ TEST_CASE("Formatter bugfixes: registered n-ary calls, weighted function nodes, 
         std::string treeOut;
         std::string postfixOut;
         std::string dotOut;
-        CHECK_NOTHROW(treeOut = fmt::format("{:tree}", Operon::Fmt::WithNames{empty, ds}));
-        CHECK_NOTHROW(postfixOut = fmt::format("{:postfix}", Operon::Fmt::WithNames{empty, ds}));
-        CHECK_NOTHROW(dotOut = fmt::format("{:dot}", Operon::Fmt::WithNames{empty, ds}));
+        CHECK_NOTHROW(treeOut = fmt::format("{:tree}", Operon::Fmt::TreeFormatArgs{empty, ds}));
+        CHECK_NOTHROW(postfixOut = fmt::format("{:postfix}", Operon::Fmt::TreeFormatArgs{empty, ds}));
+        CHECK_NOTHROW(dotOut = fmt::format("{:dot}", Operon::Fmt::TreeFormatArgs{empty, ds}));
         CHECK(treeOut.empty());
         CHECK(postfixOut.empty());
         CHECK(dotOut.find("digraph") != std::string::npos);

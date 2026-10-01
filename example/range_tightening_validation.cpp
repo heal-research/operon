@@ -142,7 +142,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     Operon::Evaluator<DT> evaluator { &problem, &dtable, Operon::MSE{} };
     evaluator.SetBudget(std::numeric_limits<std::size_t>::max());
 
-    Operon::LevenbergMarquardtOptimizer<DT, Operon::OptimizerType::Eigen> lmOptimizer {
+    Operon::LevenbergMarquardtOptimizer<DT> lmOptimizer {
         &dtable, &problem
     };
     Operon::CoefficientOptimizer const coeffOpt { &lmOptimizer };
