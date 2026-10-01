@@ -13,6 +13,22 @@ project(operon_package_consumer LANGUAGES CXX)
 
 find_package(operon CONFIG REQUIRED)
 
+foreach(component IN ITEMS core backend_adapter operon)
+    if(NOT TARGET operon::${component})
+        message(FATAL_ERROR "operon package did not provide operon::${component}")
+    endif()
+endforeach()
+
+foreach(component IN ITEMS core backend_adapter operon)
+    if(NOT operon_${component}_FOUND)
+        message(FATAL_ERROR "operon_${component}_FOUND is not set for the default package request")
+    endif()
+endforeach()
+
+get_target_property(operon_aggregate_links operon::operon INTERFACE_LINK_LIBRARIES)
+if(NOT "${operon_aggregate_links}" MATCHES "operon::core" OR NOT "${operon_aggregate_links}" MATCHES "operon::backend_adapter")
+    message(FATAL_ERROR "operon::operon must aggregate operon::core and operon::backend_adapter")
+endif()
 add_executable(package_consumer source/main.cpp)
 target_link_libraries(package_consumer PRIVATE operon::operon)
 target_compile_features(package_consumer PRIVATE cxx_std_23)

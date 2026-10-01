@@ -113,14 +113,14 @@ list(FILTER operon_detail_headers INCLUDE REGEX "/(ceres|detail|backend/(eigen|e
 set(operon_public_headers ${operon_installed_headers})
 list(FILTER operon_public_headers EXCLUDE REGEX "/(ceres|detail|backend/(eigen|eve|mad_eve|plain))/")
 
-# ---- Canonical-core (compiled, Eigen/Ceres/L-BFGS-free tree/grammar/hash implementation plus header-only numerical/view contracts) ----
+# ---- Core (compiled, Eigen/Ceres/L-BFGS-free tree/grammar/hash implementation plus header-only numerical/view contracts) ----
 # A curated allow-list, deliberately NOT a glob like operon_installed_headers
 # above: a glob would silently let a newly-added Eigen-touching header slip
 # into this target's public interface the moment it is dropped into one of
 # these directories, quietly breaking the Eigen-free guarantee. Every entry
 # here must be verified (by inspection of its own #includes, transitively)
 # to never reach Eigen, Ceres, or L-BFGS. See
-# test/package-consumer/canonical-core for the installed-package contract
+# test/package-consumer/core for the installed-package contract
 # test that enforces this.
 set(operon_core_headers
     "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/algorithms/enumeration_canonicalizer.hpp"
@@ -194,7 +194,7 @@ target_include_directories(operon_core SYSTEM PUBLIC
 
 target_compile_features(operon_core PUBLIC cxx_std_23)
 
-# Operon::Scalar (core/types.hpp, a canonical-core header) is float or double
+# Operon::Scalar (core/types.hpp, a core header) is float or double
 # depending on this flag. PUBLIC and set here (not on operon_operon): every
 # translation unit that defines or calls a Tree/Node/PrimitiveSet member
 # taking or returning Operon::Scalar must agree on its size, including
@@ -258,7 +258,7 @@ find_package(pappus REQUIRED)
 # operon_operon's: header-only or near-header-only libraries only, nothing
 # that could reintroduce Eigen/Ceres/L-BFGS through the back door. PUBLIC:
 # used by the core public headers below, so consumers need them
-# too (see test/package-consumer/canonical-core).
+# too (see test/package-consumer/core).
 target_link_libraries(operon_core PUBLIC
     fluky::fluky
     fmt::fmt

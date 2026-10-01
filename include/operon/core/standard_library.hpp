@@ -71,7 +71,7 @@ struct StandardLibrary {
     // fallback) have no numeric Callable/CallableDiff to register - they're
     // terminals, not evaluated via the dispatch table.
     //
-    // Declared here (part of canonical-core's Eigen-free metadata contract);
+    // Declared here as part of the core Eigen-free metadata contract;
     // defined out-of-line in dispatch.hpp (backend-facing), which is the
     // only place that has DispatchTable's full definition and
     // Dispatch::MakeFunctionCall/MakeDiffCall available.
