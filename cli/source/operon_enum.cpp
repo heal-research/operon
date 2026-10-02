@@ -161,7 +161,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         config.EvaluationBufferSize = problem.TrainingRange().Size();
 
         Operon::ScalarDispatch dtable;
-        Operon::LevenbergMarquardtOptimizer<decltype(dtable)> optimizer{ &dtable, &problem };
+        Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen> optimizer{ &dtable, &problem };
         // Enumeration always needs to fit coefficients (unlike GP, where
         // --iterations 0 sensibly means "no local search on top of the
         // evolved structure") - default to a reasonable non-zero iteration

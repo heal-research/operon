@@ -96,9 +96,9 @@ namespace {
         -> Operon::Cli::Result<std::unique_ptr<Operon::OptimizerBase>>
     {
         if (optimizer == "lm") {
-            // The default Tiny backend consumes the canonical least-squares
-            // contract; Eigen remains an explicit compatibility backend.
-            return std::make_unique<Operon::LevenbergMarquardtOptimizer<Operon::ScalarDispatch>>(dtable, problem);
+            // Use Eigen for the shipped non-JIT LM default: Tiny remains
+            // available through the explicit template/API backend choice.
+            return std::make_unique<Operon::LevenbergMarquardtOptimizer<Operon::ScalarDispatch, Operon::OptimizerType::Eigen>>(dtable, problem);
         }
         if (optimizer == "lbfgs") {
             if (likelihood == "gaussian") {

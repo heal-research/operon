@@ -210,7 +210,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             }
             evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable,
                 result["skip-nonfinite"].as<bool>(), result["nonfinite-penalty-weight"].as<double>());
-            optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable)>>(&dtable, &problem);
+            optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
         } else {
             auto jobj = Operon::CLI::MakeJitObjects(
                 jitMode, problem, dtable,
@@ -233,7 +233,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             }
             // unknown mode: factory returned null optimizer; fall back to defaults.
             if (!optimizer) {
-                optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable)>>(&dtable, &problem);
+                optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
             }
         }
         evaluator->SetBudget(config.Evaluations);
