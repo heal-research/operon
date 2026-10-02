@@ -33,7 +33,7 @@ namespace detail {
     template <typename Adapter>
     inline auto FitZeroParameterLeastSquares(Adapter const& cf, FitDiagnostics diag) -> FitOutcome
     {
-        std::vector<Operon::Scalar> residuals(static_cast<std::size_t>(cf.NumResiduals()));
+        std::vector<Operon::Scalar> residuals(cf.ResidualCount());
         auto const ok = cf.Evaluate(diag.InitialParameters.data(), residuals.data(), nullptr);
         auto const functionEvaluations = static_cast<int>(cf.ResidualCalls());
         if (!ok) {
@@ -50,7 +50,8 @@ namespace detail {
     // The single least-squares driver shared by LevenbergMarquardtOptimizer
     // (Tiny and Eigen), JitLevenbergMarquardtOptimizer (Eigen), and the public
     // FitLeastSquares. `cf` is a LeastSquaresLMAdapter (or any type with the
-    // same Evaluate/Error/ResidualCalls/JacobianCalls surface) that the caller
+    // same Evaluate/Error/ResidualCalls/JacobianCalls/ResidualCount/
+    // ParameterCount/ExceedsBackendLimit/RecordOversized surface) that the caller
     // owns and that is not shared with another thread; diag.InitialParameters
     // holds the starting point and is the only diag field read. The adapter's
     // first recorded error, if any, is classified as FitEvaluationError;
@@ -74,6 +75,13 @@ namespace detail {
     // (Expected == NumParameters(), Actual == NumResiduals()), NaN costs,
     // FinalParameters == InitialParameters, and zero counters.
     //
+    // A problem whose residual count the backends' int ABI cannot represent
+    // (cf.ExceedsBackendLimit()) is rejected first, on both backends and for
+    // zero parameters, before any solver, buffer, or counter: the cost's own
+    // stored error if it has one (cf.RecordOversized()), else InvalidShape with
+    // Expected == the backend limit and Actual == NumResiduals(); NaN costs,
+    // FinalParameters == InitialParameters, zero counters.
+    //
     // If the initial evaluation fails there is no valid initial cost: both
     // costs are NaN and Iterations is 0.
     //
@@ -81,14 +89,19 @@ namespace detail {
     template <OptimizerType Backend, typename Adapter>
     [[nodiscard]] inline auto RunLeastSquares(Adapter& cf, std::size_t iterations, FitDiagnostics diag) -> FitOutcome
     {
+        if (cf.ExceedsBackendLimit()) {
+            cf.RecordOversized(diag.InitialParameters.data());
+            return MakeUnevaluatedFitEvaluationError(ToGradientError(*cf.Error()), std::move(diag));
+        }
+
         if (diag.InitialParameters.empty()) {
             return FitZeroParameterLeastSquares(cf, std::move(diag));
         }
 
         if constexpr (Backend == OptimizerType::Eigen) {
-            if (cf.NumResiduals() < cf.NumParameters()) {
+            if (cf.ResidualCount() < cf.ParameterCount()) {
                 return MakeUnevaluatedFitEvaluationError(
-                    GradientError { .Code = GradientErrorCode::InvalidShape, .Expected = static_cast<std::size_t>(cf.NumParameters()), .Actual = static_cast<std::size_t>(cf.NumResiduals()) },
+                    GradientError { .Code = GradientErrorCode::InvalidShape, .Expected = cf.ParameterCount(), .Actual = cf.ResidualCount() },
                     std::move(diag));
             }
         }
@@ -197,7 +210,10 @@ struct LeastSquaresFitOptions {
  * borrowed for the duration of the call only; nothing is retained after the
  * function returns. The returned FitOutcome owns its parameter vectors and
  * holds no reference to the inputs. `cost` is only called through const
- * Evaluate(), always from the calling thread.
+ * Evaluate(), always from the calling thread. The LeastSquaresLMAdapter it
+ * builds is local to the call (single-threaded, never shared); its
+ * weight-configuration error is unreachable here because options.Weights is
+ * validated first.
  *
  * Thread safety: the function holds no global or static state and builds all
  * solver and adapter state locally, so concurrent calls on distinct cost
@@ -216,19 +232,29 @@ struct LeastSquaresFitOptions {
  *    FinalParameters equals InitialParameters and counters are zero.
  *  - FitEvaluationError (GradientError): the cost failed or, with
  *    RecoverNonFinite == false, produced a non-finite output; the first error
- *    is reported with its Code/Row/Column/Cause preserved from the cost's
- *    LeastSquaresError. Counters and FinalParameters describe the point
+ *    the adapter observed is reported (later failures never replace it) with
+ *    its Code/Row/Column/Cause preserved from the cost's LeastSquaresError.
+ *    Counters and FinalParameters describe the point
  *    reached when the error stopped the solve. If the very first evaluation
  *    fails there is no valid initial cost: InitialCost and FinalCost are NaN
- *    and Iterations is 0. Two shape errors are reported as
- *    GradientErrorCode::InvalidShape before the cost is evaluated (NaN costs,
- *    FinalParameters == InitialParameters, zero counters):
+ *    and Iterations is 0. Three shape errors are reported (the first two as
+ *    GradientErrorCode::InvalidShape) before the cost is evaluated (NaN costs,
+ *    FinalParameters == InitialParameters, zero counters) and before any solver
+ *    or residual/Jacobian buffer is allocated:
  *      - a parameter-count mismatch, with Expected == cost.NumParameters()
  *        and Actual == initialParameters.size();
  *      - with the Eigen backend, an underdetermined problem
  *        (cost.NumResiduals() < cost.NumParameters()), with Expected ==
  *        cost.NumParameters() (the minimum residual count) and Actual ==
  *        cost.NumResiduals(). Tiny has no such restriction.
+ *      - a residual count above LeastSquaresLMAdapter<>::MaxBackendResiduals
+ *        (INT_MAX; the backends' int ABI), on both backends and for zero
+ *        parameters. The cost is probed once with an empty residual span: a
+ *        cost that stored its own construction error (such as an invalid
+ *        JitLeastSquaresCostFunction) has that error reported unchanged
+ *        (Code/Expected/Actual/Row/Column as the cost set them); otherwise the
+ *        error is GradientErrorCode::InvalidShape with Expected ==
+ *        MaxBackendResiduals and Actual == cost.NumResiduals().
  *
  * Costs: InitialCost and FinalCost use the 0.5 * sum(w_i * r_i^2)
  * convention (never gradient-norm or statistical likelihood values).

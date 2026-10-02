@@ -253,6 +253,42 @@ TEST_CASE("LeastSquaresLMAdapter rejects nonfinite canonical outputs", "[least-s
     CHECK(adapter.Error()->Code == Operon::LeastSquaresErrorCode::NonFiniteEvaluation);
 }
 
+TEST_CASE("LeastSquaresLMAdapter reaches the cost's stored error for an oversized problem without allocating", "[least-squares][lm-adapter]")
+{
+    // The cost reports a residual count no allocation could satisfy and fails
+    // every Evaluate() with a stored error, as an invalid JIT cost does.
+    class OversizedInvalidCost final : public Operon::LeastSquaresCostFunction {
+    public:
+        [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return 2; }
+        [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return std::numeric_limits<std::size_t>::max(); }
+        [[nodiscard]] auto Evaluate(std::span<Operon::Scalar const>, std::span<Operon::Scalar>,
+            std::optional<Operon::ScalarMatrixView>) const
+            -> tl::expected<void, Operon::LeastSquaresError> override
+        {
+            return tl::unexpected(Operon::LeastSquaresError { .Code = Operon::LeastSquaresErrorCode::InvalidShape, .Expected = 9, .Actual = 4, .Row = 1, .Column = 2 });
+        }
+    } cost;
+
+    // Construction must neither allocate nor throw.
+    Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost };
+    CHECK(adapter.ResidualCount() == std::numeric_limits<std::size_t>::max());
+    CHECK(adapter.ParameterCount() == 2);
+    CHECK(adapter.ExceedsBackendLimit());
+    CHECK_FALSE(adapter.Error().has_value());
+
+    // A Jacobian-only call needs internal scratch; it must surface the stored error instead.
+    std::array<Operon::Scalar, 2> const parameters { 0, 0 };
+    CHECK_FALSE(adapter.Evaluate(parameters.data(), nullptr, nullptr));
+    REQUIRE(adapter.Error().has_value());
+    CHECK(adapter.Error()->Code == Operon::LeastSquaresErrorCode::InvalidShape);
+    CHECK(adapter.Error()->Expected == 9);
+    CHECK(adapter.Error()->Actual == 4);
+    CHECK(adapter.Error()->Row == 1);
+    CHECK(adapter.Error()->Column == 2);
+    CHECK(adapter.ResidualCalls() == 0);
+    CHECK(adapter.JacobianCalls() == 0);
+}
+
 TEST_CASE("LeastSquaresLMAdapter recovers nonfinite solver trials when enabled", "[least-squares][lm-adapter]")
 {
     class NonFiniteCost final : public Operon::LeastSquaresCostFunction {
@@ -864,4 +900,221 @@ TEST_CASE("LeastSquaresLMAdapter: non-finite trial steps are recovered or report
         CHECK(error->Code == Operon::LeastSquaresErrorCode::NonFiniteEvaluation);
         CHECK(error->Row == 0);
     }
+}
+
+namespace {
+// Fails every call with an error whose fields encode the call index, so a test can tell which call's error survived.
+class SequencedFailureCost final : public Operon::LeastSquaresCostFunction {
+public:
+    [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return 2; }
+    [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return 3; }
+    [[nodiscard]] auto Evaluate(std::span<Operon::Scalar const>, std::span<Operon::Scalar>,
+        std::optional<Operon::ScalarMatrixView>) const
+        -> tl::expected<void, Operon::LeastSquaresError> override
+    {
+        auto const call = ++calls;
+        return tl::unexpected(Operon::LeastSquaresError {
+            .Code = call == 1 ? Operon::LeastSquaresErrorCode::EvaluationFailure : Operon::LeastSquaresErrorCode::NumericalFailure,
+            .Expected = 10 * call,
+            .Actual = 20 * call,
+            .Row = call,
+            .Column = call + 1,
+            .Cause = Operon::InterpreterError { .Kind = Operon::InterpreterError::Code::MissingVariable, .Hash = 1000 + call } });
+    }
+    mutable std::size_t calls {};
+};
+
+// Counts invocations; reports what the test configures (NaN residual/Jacobian, or a typed error) without a model.
+class ScriptedCost final : public Operon::LeastSquaresCostFunction {
+public:
+    [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return 2; }
+    [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return 3; }
+    [[nodiscard]] auto Evaluate(std::span<Operon::Scalar const>, std::span<Operon::Scalar> residuals,
+        std::optional<Operon::ScalarMatrixView> jacobian) const
+        -> tl::expected<void, Operon::LeastSquaresError> override
+    {
+        ++calls;
+        if (failWithError) {
+            return tl::unexpected(Operon::LeastSquaresError { .Code = Operon::LeastSquaresErrorCode::EvaluationFailure, .Row = 99 });
+        }
+        std::ranges::fill(residuals, Operon::Scalar { 2 });
+        if (nanResidual < residuals.size()) { residuals[nanResidual] = std::numeric_limits<Operon::Scalar>::quiet_NaN(); }
+        if (jacobian) {
+            for (std::size_t i = 0; i < jacobian->extent(0); ++i) {
+                for (std::size_t j = 0; j < jacobian->extent(1); ++j) { Operon::At(*jacobian, i, j) = Operon::Scalar { 1 }; }
+            }
+        }
+        return {};
+    }
+    mutable std::size_t calls {};
+    bool failWithError { false };
+    std::size_t nanResidual { std::numeric_limits<std::size_t>::max() };
+};
+} // namespace
+
+TEST_CASE("LeastSquaresLMAdapter keeps the first typed error across repeated failing calls", "[least-squares][lm-adapter]")
+{
+    SequencedFailureCost cost;
+    Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost };
+    std::array<Operon::Scalar, 2> params { 0, 0 };
+
+    for (std::size_t call = 1; call <= 3; ++call) {
+        std::vector<Operon::Scalar> residuals(3, Operon::Scalar { 1 });
+        std::vector<Operon::Scalar> jacobian(6, Operon::Scalar { 1 });
+        CHECK_FALSE(adapter.Evaluate(params.data(), residuals.data(), jacobian.data()));
+        // Outputs are poisoned on every failing call, not only the first.
+        for (auto r : residuals) { CHECK(std::isnan(static_cast<double>(r))); }
+        for (auto j : jacobian) { CHECK(std::isnan(static_cast<double>(j))); }
+
+        REQUIRE(adapter.Error().has_value());
+        auto const& error = *adapter.Error();
+        CHECK(error.Code == Operon::LeastSquaresErrorCode::EvaluationFailure);
+        CHECK(error.Expected == 10);
+        CHECK(error.Actual == 20);
+        CHECK(error.Row == 1);
+        CHECK(error.Column == 2);
+        REQUIRE(error.Cause.has_value());
+        CHECK(error.Cause->Kind == Operon::InterpreterError::Code::MissingVariable);
+        CHECK(error.Cause->Hash == 1001);
+    }
+    CHECK(cost.calls == 3); // later calls still reach the cost; only the stored error is frozen
+}
+
+TEST_CASE("LeastSquaresLMAdapter: a detected non-finite output is not replaced by a later cost error or a later success", "[least-squares][lm-adapter]")
+{
+    ScriptedCost cost;
+    Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost };
+    std::array<Operon::Scalar, 2> params { 0, 0 };
+    std::vector<Operon::Scalar> residuals(3);
+    std::vector<Operon::Scalar> jacobian(6);
+
+    cost.nanResidual = 1;
+    CHECK_FALSE(adapter.Evaluate(params.data(), residuals.data(), jacobian.data()));
+    REQUIRE(adapter.Error().has_value());
+    CHECK(adapter.Error()->Code == Operon::LeastSquaresErrorCode::NonFiniteEvaluation);
+    CHECK(adapter.Error()->Row == 1);
+
+    cost.nanResidual = std::numeric_limits<std::size_t>::max();
+    cost.failWithError = true;
+    CHECK_FALSE(adapter.Evaluate(params.data(), residuals.data(), jacobian.data()));
+    REQUIRE(adapter.Error().has_value());
+    CHECK(adapter.Error()->Code == Operon::LeastSquaresErrorCode::NonFiniteEvaluation);
+    CHECK(adapter.Error()->Row == 1);
+
+    cost.failWithError = false;
+    CHECK(adapter.Evaluate(params.data(), residuals.data(), jacobian.data())); // a later success does not clear it
+    REQUIRE(adapter.Error().has_value());
+    CHECK(adapter.Error()->Code == Operon::LeastSquaresErrorCode::NonFiniteEvaluation);
+    CHECK(adapter.Error()->Row == 1);
+}
+
+TEST_CASE("LeastSquaresLMAdapter: invalid stored configuration fails every call without evaluating, counting, or replacing the error", "[least-squares][lm-adapter]")
+{
+    ScriptedCost cost; // would succeed if it were ever called
+    std::vector<Operon::Scalar> const weights { 1, -2, 1 };
+    Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost, weights };
+    std::array<Operon::Scalar, 2> params { 0, 0 };
+
+    auto const checkStoredError = [&]() -> void {
+        REQUIRE(adapter.Error().has_value());
+        CHECK(adapter.Error()->Code == Operon::LeastSquaresErrorCode::InvalidWeights);
+        CHECK(adapter.Error()->Expected == 3);
+        CHECK(adapter.Error()->Actual == 3);
+        CHECK(adapter.Error()->Row == 1);
+        CHECK_FALSE(adapter.Error()->Cause.has_value());
+    };
+    checkStoredError();
+
+    for (int repeat = 0; repeat < 3; ++repeat) {
+        std::vector<Operon::Scalar> residuals(3, Operon::Scalar { 1 });
+        std::vector<Operon::Scalar> jacobian(6, Operon::Scalar { 1 });
+        CHECK_FALSE(adapter.Evaluate(params.data(), residuals.data(), jacobian.data()));
+        for (auto r : residuals) { CHECK(std::isnan(static_cast<double>(r))); }
+        for (auto j : jacobian) { CHECK(std::isnan(static_cast<double>(j))); }
+
+        std::ranges::fill(residuals, Operon::Scalar { 1 });
+        CHECK_FALSE(adapter.Evaluate(params.data(), residuals.data(), nullptr));
+        for (auto r : residuals) { CHECK(std::isnan(static_cast<double>(r))); }
+
+        std::ranges::fill(jacobian, Operon::Scalar { 1 });
+        CHECK_FALSE(adapter.Evaluate(params.data(), nullptr, jacobian.data()));
+        for (auto j : jacobian) { CHECK(std::isnan(static_cast<double>(j))); }
+
+        checkStoredError();
+    }
+    CHECK(cost.calls == 0);
+    CHECK(adapter.ResidualCalls() == 0);
+    CHECK(adapter.JacobianCalls() == 0);
+}
+
+TEST_CASE("LeastSquaresLMAdapter counters count calls that reached the cost, per requested output", "[least-squares][lm-adapter]")
+{
+    auto cost = MakeLinearFixture(4, Operon::Scalar { 1 }, Operon::Scalar { 2 });
+    Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost };
+    std::array<Operon::Scalar, 2> params { 0, 0 };
+    std::vector<Operon::Scalar> residuals(4);
+    std::vector<Operon::Scalar> jacobian(8);
+
+    CHECK(adapter.ResidualCalls() == 0);
+    CHECK(adapter.JacobianCalls() == 0);
+
+    REQUIRE(adapter.Evaluate(params.data(), residuals.data(), nullptr));
+    CHECK(adapter.ResidualCalls() == 1);
+    CHECK(adapter.JacobianCalls() == 0);
+
+    REQUIRE(adapter.Evaluate(params.data(), nullptr, jacobian.data()));
+    CHECK(adapter.ResidualCalls() == 1);
+    CHECK(adapter.JacobianCalls() == 1);
+
+    REQUIRE(adapter.Evaluate(params.data(), residuals.data(), jacobian.data())); // counts in both
+    CHECK(adapter.ResidualCalls() == 2);
+    CHECK(adapter.JacobianCalls() == 2);
+
+    // A call that reaches the cost and fails is still counted.
+    SequencedFailureCost failing;
+    Operon::LeastSquaresLMAdapter<Eigen::ColMajor> failingAdapter { &failing };
+    std::vector<Operon::Scalar> failingResiduals(3);
+    std::vector<Operon::Scalar> failingJacobian(6);
+    CHECK_FALSE(failingAdapter.Evaluate(params.data(), failingResiduals.data(), failingJacobian.data()));
+    CHECK_FALSE(failingAdapter.Evaluate(params.data(), failingResiduals.data(), nullptr));
+    CHECK(failingAdapter.ResidualCalls() == 2);
+    CHECK(failingAdapter.JacobianCalls() == 1);
+
+    // Counters are per adapter instance.
+    CHECK(adapter.ResidualCalls() == 2);
+    CHECK(adapter.JacobianCalls() == 2);
+}
+
+TEST_CASE("LeastSquaresLMAdapter with recoverNonFinite returns weighted non-finite outputs and still records cost errors", "[least-squares][lm-adapter]")
+{
+    ScriptedCost cost;
+    cost.nanResidual = 0;
+    std::vector<Operon::Scalar> const weights { 4, 9, 16 };
+    Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost, weights, true };
+    std::array<Operon::Scalar, 2> params { 0, 0 };
+    std::vector<Operon::Scalar> residuals(3);
+    std::vector<Operon::Scalar> jacobian(6);
+
+    REQUIRE(adapter.Evaluate(params.data(), residuals.data(), jacobian.data()));
+    CHECK_FALSE(adapter.Error().has_value());
+    CHECK(std::isnan(static_cast<double>(residuals[0]))); // returned to the solver, not poisoned or rejected
+    CHECK(residuals[1] == Operon::Scalar { 6 }); // 2 * sqrt(9)
+    CHECK(residuals[2] == Operon::Scalar { 8 }); // 2 * sqrt(16)
+    // column-major 3x2: rows scaled by sqrt(w_i)
+    for (std::size_t j = 0; j < 2; ++j) {
+        CHECK(jacobian[(j * 3) + 0] == Operon::Scalar { 2 });
+        CHECK(jacobian[(j * 3) + 1] == Operon::Scalar { 3 });
+        CHECK(jacobian[(j * 3) + 2] == Operon::Scalar { 4 });
+    }
+    CHECK(adapter.ResidualCalls() == 1);
+    CHECK(adapter.JacobianCalls() == 1);
+
+    // An error returned by the cost itself is still a recorded failure, and the first one is kept.
+    cost.failWithError = true;
+    CHECK_FALSE(adapter.Evaluate(params.data(), residuals.data(), jacobian.data()));
+    REQUIRE(adapter.Error().has_value());
+    CHECK(adapter.Error()->Code == Operon::LeastSquaresErrorCode::EvaluationFailure);
+    CHECK(adapter.Error()->Row == 99);
+    for (auto r : residuals) { CHECK(std::isnan(static_cast<double>(r))); }
+    for (auto j : jacobian) { CHECK(std::isnan(static_cast<double>(j))); }
 }

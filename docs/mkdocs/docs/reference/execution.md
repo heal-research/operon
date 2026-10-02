@@ -74,6 +74,18 @@ A tree with no optimizable coefficients is not solved by any optimizer: the endp
 
 `LevenbergMarquardtOptimizer<DTable, OptimizerType>` is the standard local optimizer; `OptimizerType::Tiny` is the default and `OptimizerType::Eigen` stays selectable. `SetIterations` sets its accepted-step budget (see the `FitLeastSquares` iteration semantics below); `SetBatchSize(0)` means the complete data range. It optimizes only the tree's marked coefficients and leaves topology unchanged. `Optimize()` builds all per-call state locally, so concurrent calls on a shared optimizer are safe provided nothing calls `SetIterations` concurrently and the `Problem` and `Dataset` are read-only. `JitLevenbergMarquardtOptimizer<DTable, JacobianOnly>` (with `HAVE_ASMJIT`) always solves with the Eigen backend; it has no backend parameter.
 
+`JitLeastSquaresCostFunction` (`operon/optimizer/jit_least_squares.hpp`, `HAVE_ASMJIT`; float-only, `Operon::Scalar == float`) never throws on user data. The constructor validates once and stores the first violation; every `Evaluate()` then returns it unchanged as a `LeastSquaresError` before any buffer, kernel, or interpreter call, and `FitLeastSquares`/`JitLevenbergMarquardtOptimizer` report it as a `FitEvaluationError` with the same `Code`/`Expected`/`Actual`/`Row`/`Column` (`NaN` costs, `Iterations == 0`). A range whose size exceeds `INT_MAX` cannot be represented by the solver backends; the driver probes such a cost once before allocating any solver, residual, or Jacobian buffer, so the stored error is reported instead of an allocation failure or an `int` narrowing. Violations, in the order they are checked:
+
+| Violation | `Code` | `Expected` | `Actual` | `Row` / `Column` |
+|---|---|---|---|---|
+| range overruns the target (`Range.Start() + Range.Size() > target.size()`) | `InvalidShape` | the required target size, `Start + Size` (saturating at `SIZE_MAX`) | `target.size()` | 0 / 0 |
+| range has more than `INT32_MAX - 7` rows | `InvalidShape` | `INT32_MAX - 7` (the row limit) | `Range.Size()` | 0 / 0 |
+| non-negative `nConsts` different from `NumParameters()` | `InvalidShape` | `nConsts` | `NumParameters()` | 0 / 0 |
+| column array size differs from `nVars` (or from `JIT::VarOrder(tree).size()` when `nVars < 0`) | `InvalidShape` | the variable count | the array size | `Row` is 0 for the residual kernel's array and 1 for the Jacobian kernel's; `Column` 0 |
+| null column pointer | `InvalidView` | the variable count | the array size | `Row` as above; `Column` is the index of the first null pointer |
+
+An absent kernel selects the interpreter fallback and its column array and metadata are ignored. That a kernel was compiled for this tree and that each column addresses enough padded rows remain caller preconditions (the `JitEvaluator` metadata supplies them). `LeastSquaresError::Row` and `Column` are not a fixed coordinate system: their meaning depends on `Code` (for example a residual or Jacobian index for `NonFiniteEvaluation`, a kernel/array selector and index for the JIT shape errors above), so interpret them only together with the code and the producing cost. The object is single-threaded: `Evaluate()` is `const` but writes mutable residual, Jacobian, and interpreter scratch, so concurrent `Evaluate()` calls on one instance are not safe and there is no locking; use one instance per thread.
+
 ### `FitLeastSquares`
 
 Header: [`operon/optimizer/least_squares_fit.hpp`](https://github.com/heal-research/operon/blob/main/include/operon/optimizer/least_squares_fit.hpp)
@@ -100,6 +112,7 @@ if (outcome) { tree.SetCoefficients(outcome->FinalParameters); }
 | weights violate `ValidateWeights` | `FitConfigurationError` carrying a `WeightError`; the cost is not evaluated and the counters are zero |
 | `initialParameters.size() != cost.NumParameters()` | `FitEvaluationError` with `GradientErrorCode::InvalidShape` (`Expected`/`Actual` hold the two counts); the cost is not evaluated; `InitialCost` and `FinalCost` are NaN and the counters are zero |
 | Eigen backend with `cost.NumResiduals() < cost.NumParameters()` | `FitEvaluationError` with `GradientErrorCode::InvalidShape` (`Expected == NumParameters()`, `Actual == NumResiduals()`); no solver step and no cost evaluation; NaN costs, zero counters, `FinalParameters == InitialParameters`. Tiny has no such restriction |
+| `cost.NumResiduals() > INT_MAX` (either backend, any parameter count) | `FitEvaluationError` before any solver or buffer: the cost's own stored error if it has one (an invalid `JitLeastSquaresCostFunction` reports its `Code`/`Expected`/`Actual`/`Row`/`Column` unchanged), else `GradientErrorCode::InvalidShape` with `Expected == INT_MAX`, `Actual == NumResiduals()`; NaN costs, zero counters, `FinalParameters == InitialParameters` |
 | cost failure, or non-finite output with `RecoverNonFinite == false` | `FitEvaluationError` with the cost's `Code`/`Row`/`Column`/`Cause` preserved; if the very first evaluation fails, `InitialCost` and `FinalCost` are NaN and `Iterations == 0` |
 | zero parameters | no solver runs; one residual evaluation; `InitialCost == FinalCost`, `Iterations == 0`, `FunctionEvaluations == 1`, `JacobianEvaluations == 0`, empty parameters; `FitFailure` (or `FitEvaluationError` if the evaluation fails) |
 

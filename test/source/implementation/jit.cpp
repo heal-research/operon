@@ -7,6 +7,8 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <cstdint>
 #include <cmath>
 #include <limits>
 #include <vector>
@@ -1298,6 +1300,339 @@ TEST_CASE("JitLeastSquaresCostFunction drives ceres::TinySolver to convergence",
     for (int i = 0; i < NRows; ++i) {
         INFO("row " << i);
         CHECK(predVec[i] == Catch::Approx(y[i]).epsilon(1e-3F));
+    }
+}
+
+namespace {
+// Stand-in kernels that only count invocations: an invalid JitLeastSquaresCostFunction
+// must be rejected before any kernel runs.
+int residualKernelCalls = 0;
+int jacobianKernelCalls = 0;
+
+void CountingResidualKernel(float* /*out*/, float const* const* /*cols*/, int32_t /*rows*/, float const* /*consts*/)
+{
+    ++residualKernelCalls;
+}
+
+void CountingJacobianKernel(float* const* /*outs*/, float const* const* /*cols*/, int32_t /*rows*/, float const* /*consts*/)
+{
+    ++jacobianKernelCalls;
+}
+
+template <typename F>
+auto GenerateColumn(std::size_t n, F f) -> std::vector<Operon::Scalar>
+{
+    std::vector<Operon::Scalar> column(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        column[i] = f(i);
+    }
+    return column;
+}
+
+auto MakeOptimizableTree(Dataset const& ds) -> Operon::Tree
+{
+    auto tree = InfixParser::ParseOrThrow("1.0 * X1 + 0.5 * X2 + 0.0", ds);
+    for (auto& nd : tree.Nodes()) {
+        nd.Optimize = nd.IsConstant();
+    }
+    return tree;
+}
+
+// Exact linear problem Y = 2*X1 + 3 (+ 0*X2) over two variables, so the
+// compiled column array has more than one entry.
+struct JitCostFixture {
+    static constexpr std::size_t NRows = 64;
+    std::vector<Operon::Scalar> x1 = GenerateColumn(NRows, [](std::size_t i) { return static_cast<Operon::Scalar>(i) / (NRows - 1); });
+    std::vector<Operon::Scalar> x2 = GenerateColumn(NRows, [](std::size_t i) { return std::sin(0.37F * static_cast<Operon::Scalar>(i)); });
+    std::vector<Operon::Scalar> y = GenerateColumn(NRows, [this](std::size_t i) { return (2.0F * x1[i]) + 3.0F; });
+    Dataset ds = Dataset({ "X1", "X2", "Y" }, { x1, x2, y });
+    Operon::Tree tree = MakeOptimizableTree(ds);
+    DTable dtable;
+    Interpreter<Operon::Scalar, DTable> interp { &dtable, &ds, &tree };
+
+    auto Base() -> gsl::not_null<InterpreterBase<Operon::Scalar> const*> { return gsl::not_null<InterpreterBase<Operon::Scalar> const*> { &interp }; }
+    auto Target() const -> ConstScalarSpan { return { y.data(), y.size() }; }
+    auto FullRange() const -> Range { return Range { 0, NRows }; }
+    auto NumParams() const -> std::size_t { return static_cast<std::size_t>(tree.CoefficientsCount()); }
+    auto Columns() -> std::vector<float const*>
+    {
+        auto const order = JIT::VarOrder(tree);
+        std::vector<float const*> ptrs(order.size());
+        for (std::size_t i = 0; i < order.size(); ++i) {
+            ptrs[i] = ds.GetPaddedValues(order[i]);
+        }
+        return ptrs;
+    }
+};
+} // namespace
+
+TEST_CASE("JitLeastSquaresCostFunction reports invalid construction as a typed error", "[jit][lm]")
+{
+    JitCostFixture fx;
+    residualKernelCalls = 0;
+    jacobianKernelCalls = 0;
+
+    auto const p = fx.NumParams();
+    REQUIRE(p >= 2);
+    REQUIRE(fx.Columns().size() == 2);
+
+    constexpr Operon::Scalar Sentinel = -12345.0F;
+    auto const params = fx.tree.GetCoefficients();
+    std::vector<Operon::Scalar> residuals(JitCostFixture::NRows, Sentinel);
+    std::vector<Operon::Scalar> jac(JitCostFixture::NRows * p, Sentinel);
+
+    // The configuration error is stored once and returned verbatim by every
+    // Evaluate(), before any argument-shape check, buffer write, or kernel call.
+    auto const checkRejected = [&](JitLeastSquaresCostFunction const& cost, LeastSquaresErrorCode code,
+                                   std::size_t expected, std::size_t actual, std::size_t row, std::size_t column) {
+        REQUIRE(cost.ConfigurationError().has_value());
+        for (int attempt = 0; attempt < 2; ++attempt) {
+            auto const result = cost.Evaluate(params, residuals, MakeColMajorView(jac, JitCostFixture::NRows, p));
+            REQUIRE_FALSE(result.has_value());
+            CHECK(result.error().Code == code);
+            CHECK(result.error().Expected == expected);
+            CHECK(result.error().Actual == actual);
+            CHECK(result.error().Row == row);
+            CHECK(result.error().Column == column);
+        }
+        // Residual-only requests are rejected identically.
+        auto const residualOnly = cost.Evaluate(params, residuals, std::nullopt);
+        REQUIRE_FALSE(residualOnly.has_value());
+        CHECK(residualOnly.error().Code == code);
+        CHECK(residualKernelCalls == 0);
+        CHECK(jacobianKernelCalls == 0);
+        CHECK(std::ranges::all_of(residuals, [](Operon::Scalar v) { return v == Sentinel; }));
+        CHECK(std::ranges::all_of(jac, [](Operon::Scalar v) { return v == Sentinel; }));
+    };
+
+    SECTION("range exceeds the target")
+    {
+        // [32, 96) needs 96 target rows; only 64 exist.
+        JitLeastSquaresCostFunction cost { fx.Base(), &CountingResidualKernel, fx.Columns(), fx.Target(), Range { 32, 96 } };
+        checkRejected(cost, LeastSquaresErrorCode::InvalidShape, 96, JitCostFixture::NRows, 0, 0);
+        CHECK(cost.NumResiduals() == 64);
+    }
+
+    SECTION("range start beyond the target")
+    {
+        JitLeastSquaresCostFunction cost { fx.Base(), &CountingResidualKernel, fx.Columns(), fx.Target(), Range { 100, 101 } };
+        checkRejected(cost, LeastSquaresErrorCode::InvalidShape, 101, JitCostFixture::NRows, 0, 0);
+    }
+
+    SECTION("range too large for the kernels' int32 row count")
+    {
+        // The target view is only ever sized, never read: construction must
+        // fail before any scratch allocation or subspan.
+        constexpr auto Rows = static_cast<std::size_t>(std::numeric_limits<int32_t>::max()) - 6;
+        Operon::Scalar dummy = 0;
+        ConstScalarSpan const hugeTarget { &dummy, Rows };
+        JitLeastSquaresCostFunction cost { fx.Base(), &CountingResidualKernel, fx.Columns(), hugeTarget, Range { 0, Rows } };
+        REQUIRE(cost.ConfigurationError().has_value());
+        CHECK(cost.ConfigurationError()->Code == LeastSquaresErrorCode::InvalidShape);
+        CHECK(cost.ConfigurationError()->Expected == Rows - 1);
+        CHECK(cost.ConfigurationError()->Actual == Rows);
+        CHECK(cost.NumResiduals() == Rows);
+        auto const result = cost.Evaluate(params, residuals, std::nullopt);
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error().Code == LeastSquaresErrorCode::InvalidShape);
+        CHECK(result.error().Actual == Rows);
+        CHECK(residualKernelCalls == 0);
+    }
+
+    SECTION("nConsts does not match the coefficient count")
+    {
+        JitLeastSquaresCostFunction cost { fx.Base(), &CountingResidualKernel, fx.Columns(), fx.Target(), fx.FullRange(), nullptr, {}, 2, static_cast<int>(p) + 1 };
+        checkRejected(cost, LeastSquaresErrorCode::InvalidShape, p + 1, p, 0, 0);
+    }
+
+    SECTION("residual column array disagrees with nVars")
+    {
+        auto columns = fx.Columns();
+        columns.pop_back();
+        JitLeastSquaresCostFunction cost { fx.Base(), &CountingResidualKernel, std::move(columns), fx.Target(), fx.FullRange(), nullptr, {}, 2, static_cast<int>(p) };
+        checkRejected(cost, LeastSquaresErrorCode::InvalidShape, 2, 1, 0, 0);
+    }
+
+    SECTION("residual column array disagrees with the tree when nVars is unknown")
+    {
+        JitLeastSquaresCostFunction cost { fx.Base(), &CountingResidualKernel, {}, fx.Target(), fx.FullRange() };
+        checkRejected(cost, LeastSquaresErrorCode::InvalidShape, 2, 0, 0, 0);
+    }
+
+    SECTION("null residual column pointer")
+    {
+        auto columns = fx.Columns();
+        columns[1] = nullptr;
+        JitLeastSquaresCostFunction cost { fx.Base(), &CountingResidualKernel, std::move(columns), fx.Target(), fx.FullRange() };
+        checkRejected(cost, LeastSquaresErrorCode::InvalidView, 2, 2, 0, 1);
+    }
+
+    SECTION("Jacobian column array of the wrong size")
+    {
+        JitLeastSquaresCostFunction cost { fx.Base(), &CountingResidualKernel, fx.Columns(), fx.Target(), fx.FullRange(), &CountingJacobianKernel, {}, 2, static_cast<int>(p) };
+        checkRejected(cost, LeastSquaresErrorCode::InvalidShape, 2, 0, 1, 0);
+    }
+
+    SECTION("null Jacobian column pointer")
+    {
+        auto jacColumns = fx.Columns();
+        jacColumns[0] = nullptr;
+        JitLeastSquaresCostFunction cost { fx.Base(), &CountingResidualKernel, fx.Columns(), fx.Target(), fx.FullRange(), &CountingJacobianKernel, std::move(jacColumns) };
+        checkRejected(cost, LeastSquaresErrorCode::InvalidView, 2, 2, 1, 0);
+    }
+}
+
+TEST_CASE("JitLeastSquaresCostFunction interpreter fallback ignores absent-kernel metadata", "[jit][lm]")
+{
+    // Without kernels the column arrays and metadata are never read, so
+    // inconsistent values there are not an error and the cost matches the interpreter.
+    JitCostFixture fx;
+    residualKernelCalls = 0;
+    jacobianKernelCalls = 0;
+
+    auto const p = fx.NumParams();
+    auto const n = JitCostFixture::NRows;
+    JitLeastSquaresCostFunction cost { fx.Base(), nullptr, { nullptr }, fx.Target(), fx.FullRange(), nullptr, { nullptr, nullptr, nullptr }, 7, 99 };
+    CHECK_FALSE(cost.ConfigurationError().has_value());
+
+    auto params = fx.tree.GetCoefficients();
+    params[0] += 0.25F; // off the exact solution so residuals are non-trivial
+    std::vector<Operon::Scalar> residuals(n);
+    std::vector<Operon::Scalar> jac(n * p);
+    auto const result = cost.Evaluate(params, residuals, MakeColMajorView(jac, n, p));
+    REQUIRE(result.has_value());
+
+    auto const predicted = fx.interp.Evaluate(params, fx.FullRange()).value();
+    auto const refJac = fx.interp.JacRev(params, fx.FullRange()).value();
+    for (std::size_t r = 0; r < n; ++r) {
+        CHECK(residuals[r] == Catch::Approx(predicted[r] - fx.y[r]).epsilon(1e-4F));
+        for (std::size_t k = 0; k < p; ++k) {
+            CHECK(jac[(k * n) + r] == Catch::Approx(refJac(static_cast<Eigen::Index>(r), static_cast<Eigen::Index>(k))).epsilon(1e-4F));
+        }
+    }
+    CHECK(residualKernelCalls == 0);
+    CHECK(jacobianKernelCalls == 0);
+}
+
+TEST_CASE("FitLeastSquares propagates JIT cost configuration errors as typed evaluation errors", "[jit][lm]")
+{
+    JitCostFixture fx;
+    auto const initial = fx.tree.GetCoefficients();
+
+    // `reachesCost`: whether FitLeastSquares calls the cost at all. A stored
+    // configuration error is only observable by evaluating the cost, so the
+    // adapter counts that one failed call (Tiny's first evaluation requests
+    // residuals and Jacobian together; Eigen's minimizeInit requests residuals
+    // only). An oversized problem is rejected before any evaluation is
+    // counted, so both counters stay at zero.
+    auto const checkFit = [&](JitLeastSquaresCostFunction const& cost, bool reachesCost, Operon::GradientErrorCode code,
+                              std::size_t expected, std::size_t actual, std::size_t column) {
+        for (auto backend : { Operon::OptimizerType::Tiny, Operon::OptimizerType::Eigen }) {
+            INFO("backend " << static_cast<int>(backend));
+            residualKernelCalls = 0;
+            jacobianKernelCalls = 0;
+            auto const outcome = Operon::FitLeastSquares(cost, initial, { .Backend = backend });
+            REQUIRE_FALSE(outcome.has_value());
+            CHECK(Operon::ConfigurationError(outcome) == nullptr);
+            auto const* error = Operon::EvaluationError(outcome);
+            REQUIRE(error != nullptr);
+            CHECK(error->Error.Code == code);
+            CHECK(error->Error.Expected == expected);
+            CHECK(error->Error.Actual == actual);
+            CHECK(error->Error.Column == column);
+            CHECK(error->Iterations == 0);
+            CHECK(std::isnan(static_cast<double>(error->InitialCost)));
+            CHECK(error->FinalParameters == error->InitialParameters);
+            CHECK(error->FunctionEvaluations == (reachesCost ? 1 : 0));
+            CHECK(error->JacobianEvaluations == (reachesCost && backend == Operon::OptimizerType::Tiny ? 1 : 0));
+            CHECK(residualKernelCalls == 0);
+            CHECK(jacobianKernelCalls == 0);
+        }
+    };
+
+    SECTION("null column pointer")
+    {
+        auto columns = fx.Columns();
+        columns[1] = nullptr;
+        JitLeastSquaresCostFunction cost { fx.Base(), &CountingResidualKernel, std::move(columns), fx.Target(), fx.FullRange(), &CountingJacobianKernel, fx.Columns() };
+        checkFit(cost, true, Operon::GradientErrorCode::InvalidView, 2, 2, 1);
+    }
+
+    SECTION("range exceeds the target")
+    {
+        // 64 rows requested from a 32-row target; the row count still satisfies p <= n.
+        ConstScalarSpan const shortTarget { fx.y.data(), 32 };
+        JitLeastSquaresCostFunction cost { fx.Base(), &CountingResidualKernel, fx.Columns(), shortTarget, fx.FullRange(), &CountingJacobianKernel, fx.Columns() };
+        checkFit(cost, true, Operon::GradientErrorCode::InvalidShape, JitCostFixture::NRows, 32, 0);
+    }
+
+    SECTION("range far beyond INT_MAX rows overruns the target")
+    {
+        // 2^40 rows requested from a 64-row target. The residual count is not
+        // representable by either backend, so any adapter scratch or solver
+        // buffer sized from it would fail; the stored error must come back.
+        constexpr std::size_t Rows = std::size_t { 1 } << 40;
+        JitLeastSquaresCostFunction cost { fx.Base(), &CountingResidualKernel, fx.Columns(), fx.Target(), Range { 0, Rows }, &CountingJacobianKernel, fx.Columns() };
+        REQUIRE(cost.NumResiduals() == Rows);
+        checkFit(cost, false, Operon::GradientErrorCode::InvalidShape, Rows, JitCostFixture::NRows, 0);
+    }
+
+    SECTION("oversized range with no kernels (interpreter path)")
+    {
+        constexpr std::size_t Rows = std::size_t { 1 } << 40;
+        JitLeastSquaresCostFunction cost { fx.Base(), nullptr, {}, fx.Target(), Range { 0, Rows } };
+        REQUIRE(cost.NumResiduals() == Rows);
+        checkFit(cost, false, Operon::GradientErrorCode::InvalidShape, Rows, JitCostFixture::NRows, 0);
+    }
+
+    SECTION("range past INT_MAX rows exceeds the kernels' int32 row limit")
+    {
+        // The target view is sized but never read, so this fits the range
+        // check and fails the row-count check instead.
+        constexpr auto Rows = static_cast<std::size_t>(std::numeric_limits<int32_t>::max()) + 1;
+        Operon::Scalar dummy = 0;
+        ConstScalarSpan const hugeTarget { &dummy, Rows };
+        JitLeastSquaresCostFunction cost { fx.Base(), &CountingResidualKernel, fx.Columns(), hugeTarget, Range { 0, Rows }, &CountingJacobianKernel, fx.Columns() };
+        REQUIRE(cost.NumResiduals() == Rows);
+        checkFit(cost, false, Operon::GradientErrorCode::InvalidShape, Rows - 8, Rows, 0);
+    }
+}
+
+TEST_CASE("FitLeastSquares fits a valid JIT cost with full kernel metadata", "[jit][lm]")
+{
+    JIT::JitRuntimePool compilerPool;
+    JIT::TreeCompiler compiler { &compilerPool };
+    if (!compiler.HasAVX2()) {
+        SKIP("AVX2 not available");
+    }
+
+    JitCostFixture fx;
+    auto compiled = compiler.CompileAVX2(fx.tree);
+    auto dag = BuildJacobianDag(fx.tree);
+    auto compiledJac = compiler.CompileJacobian(dag);
+    REQUIRE(compiled != nullptr);
+    REQUIRE(compiledJac != nullptr);
+    REQUIRE(compiled->nVars == 2);
+    REQUIRE(static_cast<std::size_t>(compiled->nConsts) == fx.NumParams());
+
+    JitLeastSquaresCostFunction cost { fx.Base(), compiled->fn, fx.Columns(), fx.Target(), fx.FullRange(),
+        compiledJac->jacFn, fx.Columns(), compiled->nVars, compiled->nConsts };
+    REQUIRE_FALSE(cost.ConfigurationError().has_value());
+
+    auto const initial = fx.tree.GetCoefficients();
+    for (auto backend : { Operon::OptimizerType::Tiny, Operon::OptimizerType::Eigen }) {
+        INFO("backend " << static_cast<int>(backend));
+        auto const outcome = Operon::FitLeastSquares(cost, initial, { .Backend = backend });
+        REQUIRE(outcome.has_value());
+        CHECK(outcome->FinalCost < 1e-4F);
+        CHECK(outcome->FinalCost < outcome->InitialCost);
+
+        // The fitted coefficients reproduce the exact target through the compiled kernel.
+        std::vector<Operon::Scalar> residuals(JitCostFixture::NRows);
+        REQUIRE(cost.Evaluate(outcome->FinalParameters, residuals, std::nullopt).has_value());
+        for (auto r : residuals) {
+            CHECK(std::abs(r) < 1e-2F);
+        }
     }
 }
 

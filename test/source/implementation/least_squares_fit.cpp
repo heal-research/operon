@@ -374,6 +374,104 @@ TEST_CASE("FitLeastSquares reports consistent diagnostics for a parameterless co
     }
 }
 
+namespace {
+// Reports a residual count no solver backend can represent. Like any conforming
+// cost it rejects a residual span of the wrong size, so a driver that allocates
+// buffers or evaluates it would fail these tests; optionally it stores a
+// construction error that every Evaluate() returns first (the way an invalid
+// JitLeastSquaresCostFunction does).
+class OversizedCost final : public Operon::LeastSquaresCostFunction {
+public:
+    OversizedCost(std::size_t residuals, std::size_t parameters, std::optional<Operon::LeastSquaresError> stored = std::nullopt)
+        : residuals_(residuals)
+        , parameters_(parameters)
+        , stored_(std::move(stored))
+    {
+    }
+
+    [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return parameters_; }
+    [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return residuals_; }
+
+    [[nodiscard]] auto Evaluate(
+        std::span<Scalar const> /*parameters*/,
+        std::span<Scalar> residuals,
+        std::optional<Operon::ScalarMatrixView> /*jacobian*/) const
+        -> tl::expected<void, Operon::LeastSquaresError> override
+    {
+        ++calls;
+        if (stored_) {
+            return tl::unexpected(*stored_);
+        }
+        if (residuals.size() != residuals_) {
+            return tl::unexpected(Operon::LeastSquaresError { .Code = Operon::LeastSquaresErrorCode::InvalidShape, .Expected = residuals_, .Actual = residuals.size() });
+        }
+        return {};
+    }
+
+    mutable std::size_t calls { 0 };
+
+private:
+    std::size_t residuals_;
+    std::size_t parameters_;
+    std::optional<Operon::LeastSquaresError> stored_;
+};
+} // namespace
+
+TEST_CASE("FitLeastSquares rejects an oversized residual count before allocating or narrowing", "[least-squares][fit]")
+{
+    constexpr auto limit = static_cast<std::size_t>(std::numeric_limits<int>::max());
+    constexpr std::array<std::size_t, 3> sizes { limit + 1, std::size_t { 1 } << 40, std::numeric_limits<std::size_t>::max() };
+
+    for (auto backend : BACKENDS) {
+        CAPTURE(static_cast<int>(backend));
+        for (auto const rows : sizes) {
+            CAPTURE(rows);
+            for (std::size_t const parameters : { std::size_t { 0 }, std::size_t { 2 } }) {
+                CAPTURE(parameters);
+                std::vector<Scalar> const start(parameters, Scalar { 0.25 });
+                auto const checkUnevaluated = [&](Operon::FitOutcome const& outcome) {
+                    REQUIRE_FALSE(outcome.has_value());
+                    CHECK(Operon::ConfigurationError(outcome) == nullptr);
+                    auto const* error = Operon::EvaluationError(outcome);
+                    REQUIRE(error != nullptr);
+                    CHECK(error->FinalParameters == error->InitialParameters);
+                    CHECK(error->InitialParameters == start);
+                    CHECK(std::isnan(static_cast<double>(error->InitialCost)));
+                    CHECK(std::isnan(static_cast<double>(error->FinalCost)));
+                    CHECK(error->Iterations == 0);
+                    CHECK(error->FunctionEvaluations == 0);
+                    CHECK(error->JacobianEvaluations == 0);
+                };
+
+                // Valid but oversized cost: InvalidShape against the backend limit.
+                {
+                    OversizedCost cost { rows, parameters };
+                    auto const outcome = Operon::FitLeastSquares(cost, start, { .Backend = backend });
+                    checkUnevaluated(outcome);
+                    auto const* error = Operon::EvaluationError(outcome);
+                    CHECK(error->Error.Code == Operon::GradientErrorCode::InvalidShape);
+                    CHECK(error->Error.Expected == limit);
+                    CHECK(error->Error.Actual == rows);
+                    CHECK(cost.calls == 1); // the single empty-span probe
+                }
+
+                // A stored construction error is reported unchanged.
+                {
+                    OversizedCost cost { rows, parameters, Operon::LeastSquaresError { .Code = Operon::LeastSquaresErrorCode::InvalidView, .Expected = 5, .Actual = 6, .Row = 1, .Column = 3 } };
+                    auto const outcome = Operon::FitLeastSquares(cost, start, { .Backend = backend });
+                    checkUnevaluated(outcome);
+                    auto const* error = Operon::EvaluationError(outcome);
+                    CHECK(error->Error.Code == Operon::GradientErrorCode::InvalidView);
+                    CHECK(error->Error.Expected == 5);
+                    CHECK(error->Error.Actual == 6);
+                    CHECK(error->Error.Row == 1);
+                    CHECK(error->Error.Column == 3);
+                }
+            }
+        }
+    }
+}
+
 TEST_CASE("FitLeastSquares propagates a cost error with its location and driver counters", "[least-squares][fit]")
 {
     std::array<Scalar, 2> const start { 0, 0 };

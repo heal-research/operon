@@ -30,6 +30,21 @@ enum class LeastSquaresErrorCode : std::uint8_t {
     EvaluationFailure,
 };
 
+/**
+ * Typed least-squares failure. Code selects the failure; every other field is
+ * interpreted relative to it and to the cost that produced the error:
+ *  - Expected/Actual are the required and observed value of whatever Code
+ *    checks (a size, a count), zero when not applicable.
+ *  - Row/Column are NOT a fixed coordinate system. Depending on Code and the
+ *    producing cost they are a residual/Jacobian element (first non-finite
+ *    residual: Row; first non-finite Jacobian entry: Row and Column), the first
+ *    offending weight (InvalidWeights: Row), a selector/index pair
+ *    (JitLeastSquaresCostFunction column arrays: Row = kernel, Column = first
+ *    null pointer), or the expected extents of a mismatched view. They are
+ *    zero when unused, so a zero Row/Column does not by itself mean "element
+ *    0". Read them only together with Code and the cost's documentation.
+ *  - Cause carries the original InterpreterError for EvaluationFailure.
+ */
 struct LeastSquaresError {
     LeastSquaresErrorCode Code {LeastSquaresErrorCode::InvalidShape};
     std::size_t Expected {};

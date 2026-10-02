@@ -5,7 +5,6 @@
 #define OPERON_LM_BACKEND_FUNCTOR_HPP
 
 #include <Eigen/Core>
-#include <atomic>
 #include <cstddef>
 
 #include "operon/core/types.hpp"
@@ -16,6 +15,11 @@ namespace Operon::detail {
 // adapter boilerplate: both solvers only need Derived::Evaluate(parameters,
 // residuals, jacobian), everything else here (the Eigen::Matrix-based
 // overloads, values()/inputs(), call counters) is identical across backends.
+//
+// Single-threaded by design: the call counters are plain integers, mutated
+// through const Evaluate(). A functor instance (and therefore a Derived
+// adapter) must be used from one thread at a time; use distinct instances
+// for concurrent solves.
 template <typename Derived, int StorageOrder = Eigen::ColMajor>
 struct LMBackendFunctor {
     static auto constexpr Storage { StorageOrder };
@@ -55,11 +59,15 @@ struct LMBackendFunctor {
 
     [[nodiscard]] auto NumResiduals() const -> int { return static_cast<int>(numResiduals_); }
     [[nodiscard]] auto NumParameters() const -> int { return static_cast<int>(numParameters_); }
+    // Exact counts. NumResiduals()/NumParameters() above narrow to the int the
+    // backends require, so any size comparison must use these instead.
+    [[nodiscard]] auto ResidualCount() const noexcept -> std::size_t { return numResiduals_; }
+    [[nodiscard]] auto ParameterCount() const noexcept -> std::size_t { return numParameters_; }
     [[nodiscard]] auto values() const -> int { return NumResiduals(); } // NOLINT
     [[nodiscard]] auto inputs() const -> int { return NumParameters(); } // NOLINT
 
-    [[nodiscard]] auto ResidualCalls() const -> std::size_t { return residualCallCount_.load(); }
-    [[nodiscard]] auto JacobianCalls() const -> std::size_t { return jacobianCallCount_.load(); }
+    [[nodiscard]] auto ResidualCalls() const -> std::size_t { return residualCallCount_; }
+    [[nodiscard]] auto JacobianCalls() const -> std::size_t { return jacobianCallCount_; }
 
 protected:
     auto self() const -> Derived const& { return static_cast<Derived const&>(*this); }
@@ -67,8 +75,8 @@ protected:
     std::size_t numResiduals_;
     std::size_t numParameters_;
 
-    mutable std::atomic_size_t jacobianCallCount_ { 0 };
-    mutable std::atomic_size_t residualCallCount_ { 0 };
+    mutable std::size_t jacobianCallCount_ { 0 };
+    mutable std::size_t residualCallCount_ { 0 };
 };
 
 } // namespace Operon::detail
