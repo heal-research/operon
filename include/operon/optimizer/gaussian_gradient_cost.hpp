@@ -4,6 +4,7 @@
 #ifndef OPERON_GAUSSIAN_GRADIENT_COST_HPP
 #define OPERON_GAUSSIAN_GRADIENT_COST_HPP
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -11,6 +12,7 @@
 #include <optional>
 #include <random>
 #include <vector>
+#include <utility>
 
 #include <gsl/pointers>
 
@@ -33,17 +35,23 @@ namespace Operon {
  * (absolute row-indexed), the same coordinates as range, since a minibatch is
  * a random subrange of range indexed the same way. Empty weights mean one; a
  * scalar weight broadcasts; per-row weights are numerical WLS weights, never
- * statistical sigma. batchSize==0 is full-range; a nonzero batch size
- * requires a non-null rng and selects a new random subrange of range on every
- * call. Has no likelihood, Fisher, sigma, or Eigen-facing method.
+ * statistical sigma. Weight shape and domain are user data: a violation is a
+ * typed GradientErrorCode::InvalidWeights from Evaluate (Row = absolute
+ * dataset row), never an assertion. batchSize==0 is full-range; a nonzero
+ * batch size requires a non-null rng and selects a new random subrange of
+ * range on every call. Has no likelihood, Fisher, sigma, or Eigen-facing
+ * method. The scalar type is Operon::Scalar.
+ *
+ * UsesDatasetWeights is true: the optimizers forward the dataset's sample
+ * weights (Dataset::Weights()) as the weights constructor argument.
  */
-template <typename T = Scalar>
 class GaussianGradientCostFunction final : public GradientCostFunction {
 public:
-    using Scalar = T;
+    using Scalar = Operon::Scalar;
+    static constexpr bool UsesDatasetWeights { true };
 
     GaussianGradientCostFunction(
-        gsl::not_null<InterpreterBase<T> const*> interpreter,
+        gsl::not_null<InterpreterBase<Scalar> const*> interpreter,
         ConstScalarSpan target,
         Range range,
         RandomGenerator* rng = nullptr,
@@ -59,7 +67,6 @@ public:
     {
         EXPECT(range_.Start() + range_.Size() <= target_.size());
         EXPECT(batchSize == 0 || rng_ != nullptr);
-        EXPECT(weights_.empty() || weights_.size() == 1 || weights_.size() == target_.size());
     }
 
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return numParameters_; }
@@ -70,10 +77,11 @@ public:
         ++feval_;
         auto const batch = SelectBatch();
         auto const n = batch.Size();
-        auto const weightSlice = (weights_.empty() || weights_.size() == 1) ? weights_ : weights_.subspan(batch.Start(), n);
-        if (!detail::AllFinite(weightSlice, /*requireNonnegative=*/true)) {
-            return Fail(GradientError { .Code = GradientErrorCode::NonFiniteEvaluation }, gradient);
+        auto validWeights = detail::ValidatedBatchWeights(weights_, target_.size(), batch.Start(), n);
+        if (!validWeights) {
+            return Fail(std::move(validWeights.error()), gradient);
         }
+        auto const weightSlice = *validWeights;
         residualScratch_.resize(n);
         jacobianScratch_.resize(n * numParameters_);
 
@@ -87,12 +95,12 @@ public:
         InterpreterLeastSquaresCostFunction const residualCost { interpreter_, target_, batch };
         auto evaluated = residualCost.Evaluate(parameters, residualScratch_, jacobianView);
         if (!evaluated) {
-            return Fail(detail::ToGradientError(evaluated.error()), gradient);
+            return Fail(ToGradientError(evaluated.error()), gradient);
         }
         ++jeval_;
         auto gradResult = ComputeGradient(residualScratch_, jacobianView, gradient, weightSlice);
         if (!gradResult) {
-            return Fail(detail::ToGradientError(gradResult.error()), gradient);
+            return Fail(ToGradientError(gradResult.error()), gradient);
         }
         auto const cost = static_cast<Scalar>(*gradResult);
         if (!std::isfinite(static_cast<double>(cost))) {
@@ -124,7 +132,7 @@ private:
         return tl::unexpected(error);
     }
 
-    gsl::not_null<InterpreterBase<T> const*> interpreter_;
+    gsl::not_null<InterpreterBase<Scalar> const*> interpreter_;
     ConstScalarSpan target_;
     Range range_; // NOLINT(readability-identifier-naming)
     RandomGenerator* rng_;

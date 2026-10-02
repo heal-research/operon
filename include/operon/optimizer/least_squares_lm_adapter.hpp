@@ -24,9 +24,13 @@ namespace Operon {
  * Adapts a LeastSquaresCostFunction to the raw-pointer Evaluate() interface
  * detail::LMBackendFunctor needs for Eigen::LevenbergMarquardt and
  * ceres::TinySolver. NumResiduals()/NumParameters() are derived from the
- * wrapped cost; no duplicated count is accepted. weights is empty (unweighted),
- * size 1 (uniform), or NumResiduals() (per-row); values are validated once
- * (finite, nonnegative). Weighting scales each residual and Jacobian row by
+ * wrapped cost; no duplicated count is accepted. weights follow
+ * ValidateWeights: empty (unweighted), size 1 (uniform), or NumResiduals()
+ * (per-row), finite and nonnegative. The constructor validates once without
+ * asserting: an invalid weight vector is recorded as a typed
+ * LeastSquaresErrorCode::InvalidWeights in Error(), and every Evaluate then
+ * returns false with NaN-filled outputs without calling the wrapped cost.
+ * Weighting scales each residual and Jacobian row by
  * sqrt(weight_i), the standard WLS-via-LM trick. When recoverNonFinite is true,
  * non-finite outputs from an otherwise successful cost evaluation are returned
  * to the solver so it can reject the trial step and increase damping; when false,
@@ -48,8 +52,10 @@ struct LeastSquaresLMAdapter final : public detail::LMBackendFunctor<LeastSquare
         , recoverNonFinite_(recoverNonFinite)
         , residualScratch_(cost->NumResiduals())
     {
-        EXPECT(weights_.empty() || weights_.size() == 1 || weights_.size() == this->numResiduals_);
-        EXPECT(detail::AllFinite(weights_, /*requireNonnegative=*/true));
+        if (auto validWeights = ValidateWeights(weights_, this->numResiduals_); !validWeights) {
+            invalidWeights_ = true;
+            error_ = ToLeastSquaresError(validWeights.error());
+        }
     }
 
     // Backend callback boundary: Eigen::LevenbergMarquardt and Ceres
@@ -61,6 +67,19 @@ struct LeastSquaresLMAdapter final : public detail::LMBackendFunctor<LeastSquare
         Operon::Span<Scalar const> params { parameters, this->numParameters_ };
         auto* residualOut = residuals != nullptr ? residuals : residualScratch_.data();
         Operon::Span<Scalar> residualSpan { residualOut, this->numResiduals_ };
+
+        auto const poisonOutputs = [&]() -> void {
+            if (residuals != nullptr) {
+                std::fill_n(residuals, this->numResiduals_, std::numeric_limits<Scalar>::quiet_NaN());
+            }
+            if (jacobian != nullptr) {
+                std::fill_n(jacobian, this->numResiduals_ * this->numParameters_, std::numeric_limits<Scalar>::quiet_NaN());
+            }
+        };
+        if (invalidWeights_) {
+            poisonOutputs();
+            return false;
+        }
 
         std::optional<ScalarMatrixView> jacobianView;
         if (jacobian != nullptr) {
@@ -86,12 +105,7 @@ struct LeastSquaresLMAdapter final : public detail::LMBackendFunctor<LeastSquare
         }
         if (!result) {
             error_ = result.error();
-            if (residuals != nullptr) {
-                std::fill_n(residuals, this->numResiduals_, std::numeric_limits<Scalar>::quiet_NaN());
-            }
-            if (jacobian != nullptr) {
-                std::fill_n(jacobian, this->numResiduals_ * this->numParameters_, std::numeric_limits<Scalar>::quiet_NaN());
-            }
+            poisonOutputs();
             return false;
         }
 
@@ -117,6 +131,7 @@ private:
     gsl::not_null<LeastSquaresCostFunction const*> cost_;
     ConstScalarSpan weights_;
     bool recoverNonFinite_;
+    bool invalidWeights_ { false };
     mutable std::vector<Scalar> residualScratch_;
     mutable std::optional<LeastSquaresError> error_;
 

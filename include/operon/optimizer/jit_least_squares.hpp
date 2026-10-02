@@ -8,6 +8,7 @@
 #ifdef HAVE_ASMJIT
 
 #include <algorithm>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -23,6 +24,10 @@
 #include "operon/optimizer/least_squares.hpp"
 
 namespace Operon {
+
+// JIT kernels and their column/Jacobian buffers are float-typed
+// (jit_compiler.hpp); a double Operon::Scalar build cannot use them.
+static_assert(std::same_as<Scalar, float>, "JIT least-squares costs require Operon::Scalar == float (USE_SINGLE_PRECISION=ON)");
 
 /**
  * Backend-neutral LeastSquaresCostFunction over compiled JIT kernels: raw

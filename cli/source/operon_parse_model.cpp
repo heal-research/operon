@@ -102,17 +102,17 @@ namespace {
         }
         if (optimizer == "lbfgs") {
             if (likelihood == "gaussian") {
-                return std::make_unique<Operon::LBFGSOptimizer<Operon::ScalarDispatch, Operon::GaussianGradientCostFunction<Operon::Scalar>>>(dtable, problem);
+                return std::make_unique<Operon::LBFGSOptimizer<Operon::ScalarDispatch, Operon::GaussianGradientCostFunction>>(dtable, problem);
             }
             if (likelihood == "poisson") {
-                return std::make_unique<Operon::LBFGSOptimizer<Operon::ScalarDispatch, Operon::PoissonGradientCostFunction<Operon::Scalar>>>(dtable, problem);
+                return std::make_unique<Operon::LBFGSOptimizer<Operon::ScalarDispatch, Operon::PoissonGradientCostFunction<>>>(dtable, problem);
             }
         } else if (optimizer == "sgd") {
             if (likelihood == "gaussian") {
-                return std::make_unique<Operon::SGDOptimizer<Operon::ScalarDispatch, Operon::GaussianGradientCostFunction<Operon::Scalar>>>(dtable, problem);
+                return std::make_unique<Operon::SGDOptimizer<Operon::ScalarDispatch, Operon::GaussianGradientCostFunction>>(dtable, problem);
             }
             if (likelihood == "poisson") {
-                return std::make_unique<Operon::SGDOptimizer<Operon::ScalarDispatch, Operon::PoissonGradientCostFunction<Operon::Scalar>>>(dtable, problem);
+                return std::make_unique<Operon::SGDOptimizer<Operon::ScalarDispatch, Operon::PoissonGradientCostFunction<>>>(dtable, problem);
             }
         } else {
             return tl::unexpected(Operon::Cli::Error{

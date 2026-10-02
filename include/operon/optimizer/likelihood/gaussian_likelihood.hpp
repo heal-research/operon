@@ -27,13 +27,6 @@ namespace detail {
             auto const e = x - y;
             return e * e;
         }
-
-        template <Operon::Concepts::Arithmetic T>
-        auto operator()(T const x, T const y, T const w) const -> T
-        {
-            auto const e = w * (x - y);
-            return e * e;
-        }
     };
 } // namespace detail
 
@@ -43,8 +36,6 @@ namespace detail {
 template <typename T = Operon::Scalar>
 struct GaussianLikelihood {
     using Scalar = T;
-    using Matrix = Eigen::Matrix<Scalar, -1, -1>;
-    using Vector = Eigen::Matrix<Scalar, -1, 1>;
 
     static constexpr bool UsesSigma = true; // sigma is required; empty span is invalid
 
@@ -79,8 +70,7 @@ struct GaussianLikelihood {
     /**
      * Canonical Fisher-diagonal contract for callers that only need the
      * per-coefficient MDL term. This overload is available only for
-     * `Operon::Scalar`, matching the canonical view contract; the legacy
-     * Eigen-returning facade below remains generic in `T`. `jacobian` is
+     * `Operon::Scalar`, matching the canonical view contract. `jacobian` is
      * logically (row, coefficient) with arbitrary valid strides; `diagonal`
      * has exactly one element per coefficient. Sigma is scalar or per row and
      * must be finite positive.
@@ -119,31 +109,6 @@ struct GaussianLikelihood {
             diagonal[column] = result;
         }
         return {};
-    }
-
-    /**
-     * Compatibility facade: returns the full Fisher information matrix as a
-     * dense Eigen matrix. Unused in-repo; kept for downstream compatibility.
-     * New code uses ComputeFisherDiagonal above, which writes only the
-     * diagonal into caller-owned storage without materializing the matrix.
-     */
-    static auto ComputeFisherMatrix(Span<Scalar const> pred, Span<Scalar const> jac, Span<Scalar const> sigma) -> Matrix
-    {
-        EXPECT(!sigma.empty());
-        auto const rows = pred.size();
-        auto const cols = jac.size() / pred.size();
-        Eigen::Map<Matrix const> m(jac.data(), rows, cols);
-        if (sigma.size() == 1) {
-            auto const s2 = sigma[0] * sigma[0];
-            Matrix f = m.transpose() * m;
-            f.array() /= s2;
-            return f;
-        }
-        EXPECT(sigma.size() == rows);
-        Eigen::Map<Vector const> s { sigma.data(), std::ssize(pred) };
-        // F = J^T diag(1/σᵢ²) J = (diag(1/σᵢ) J)^T (diag(1/σᵢ) J)
-        Matrix scaledJ = s.array().inverse().matrix().asDiagonal() * m;
-        return scaledJ.transpose() * scaledJ;
     }
 };
 

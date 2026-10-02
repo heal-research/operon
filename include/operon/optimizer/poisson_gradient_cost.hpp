@@ -4,12 +4,14 @@
 #ifndef OPERON_POISSON_GRADIENT_COST_HPP
 #define OPERON_POISSON_GRADIENT_COST_HPP
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
 #include <optional>
 #include <random>
+#include <utility>
 #include <vector>
 
 #include <gsl/pointers>
@@ -19,6 +21,7 @@
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/optimizer/gradient_cost.hpp"
 #include "operon/optimizer/least_squares.hpp"
+#include "operon/optimizer/least_squares_gradient_adapter.hpp"
 #include "operon/random/random.hpp"
 
 namespace Operon {
@@ -68,18 +71,23 @@ namespace detail {
  * through the interpreter's reverse-Jacobian row J_i. exposure is explicit
  * Poisson exposure (not a Gaussian precision): empty means one, one value
  * broadcasts, one value per observation is a whole-dataset-column span in
- * the same absolute row coordinates as target/range. Ordinary dataset sample
- * weights are deliberately not applied unless a caller passes them explicitly
- * as exposure. batchSize==0 is full-range; a nonzero batch size requires a
- * non-null rng and selects a new random subrange of range on every call.
+ * the same absolute row coordinates as target/range. Exposure shape and
+ * domain (finite, nonnegative) are user data: a violation is a typed
+ * GradientErrorCode::InvalidWeights from Evaluate, never an assertion. Ordinary
+ * dataset sample weights are deliberately not applied unless a caller passes
+ * them explicitly as exposure; UsesDatasetWeights is therefore false, and the
+ * optimizers always construct this cost with empty exposure. batchSize==0 is
+ * full-range; a nonzero batch size requires a non-null rng and selects a new
+ * random subrange of range on every call. The scalar type is Operon::Scalar.
  */
-template <typename T = Scalar, bool LogInput = true>
+template <bool LogInput = true>
 class PoissonGradientCostFunction final : public GradientCostFunction {
 public:
-    using Scalar = T;
+    using Scalar = Operon::Scalar;
+    static constexpr bool UsesDatasetWeights { false };
 
     PoissonGradientCostFunction(
-        gsl::not_null<InterpreterBase<T> const*> interpreter,
+        gsl::not_null<InterpreterBase<Scalar> const*> interpreter,
         ConstScalarSpan target,
         Range range,
         RandomGenerator* rng = nullptr,
@@ -95,10 +103,6 @@ public:
     {
         EXPECT(range_.Start() + range_.Size() <= target_.size());
         EXPECT(batchSize == 0 || rng_ != nullptr);
-        EXPECT(exposure_.empty() || exposure_.size() == 1 || exposure_.size() == target_.size());
-        // Rows outside range_ are never read (via SelectBatch) and may
-        // legitimately hold negative/placeholder values, so only the
-        // in-range slice of a per-row exposure vector is validated in Evaluate().
     }
 
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return numParameters_; }
@@ -109,9 +113,9 @@ public:
         ++feval_;
         auto const batch = SelectBatch();
         auto const n = batch.Size();
-        auto const exposureSlice = (exposure_.empty() || exposure_.size() == 1) ? exposure_ : exposure_.subspan(batch.Start(), n);
-        if (!detail::AllFinite(exposureSlice, /*requireNonnegative=*/true)) {
-            return Fail(GradientError { .Code = GradientErrorCode::NonFiniteEvaluation }, gradient);
+        auto validExposure = detail::ValidatedBatchWeights(exposure_, target_.size(), batch.Start(), n);
+        if (!validExposure) {
+            return Fail(std::move(validExposure.error()), gradient);
         }
         predictionScratch_.resize(n);
         auto predicted = interpreter_->Evaluate(parameters, batch, predictionScratch_);
@@ -192,7 +196,7 @@ private:
         return tl::unexpected(error);
     }
 
-    gsl::not_null<InterpreterBase<T> const*> interpreter_;
+    gsl::not_null<InterpreterBase<Scalar> const*> interpreter_;
     ConstScalarSpan target_;
     Range range_; // NOLINT(readability-identifier-naming)
     RandomGenerator* rng_;

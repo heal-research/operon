@@ -78,6 +78,7 @@ add_executable(operon_test
     source/implementation/view_descriptor.cpp
     source/implementation/least_squares.cpp
     source/implementation/least_squares_lm_adapter.cpp
+    source/implementation/least_squares_fit.cpp
     source/implementation/gradient_cost.cpp
     source/implementation/least_squares_gradient_adapter.cpp
     source/implementation/subtree.cpp

@@ -134,6 +134,20 @@ auto main() -> int {
         return EXIT_FAILURE;
     }
 
+    // Typed weight validation and the public location-preserving error
+    // conversion are Eigen-free core symbols (header-only here).
+    std::array<Operon::Scalar, 3> badWeights {1, -1, 1};
+    auto weightResult = Operon::ValidateWeights(badWeights, 3);
+    if (weightResult || weightResult.error().Code != Operon::WeightErrorCode::NegativeValue || weightResult.error().Row != 1) {
+        std::cerr << "package-consumer(core): ValidateWeights did not report the negative weight\n";
+        return EXIT_FAILURE;
+    }
+    auto const converted = Operon::ToGradientError(weightResult.error());
+    if (converted.Code != Operon::GradientErrorCode::InvalidWeights || converted.Row != 1) {
+        std::cerr << "package-consumer(core): ToGradientError lost the weight error location\n";
+        return EXIT_FAILURE;
+    }
+
     // Tree validation: a well-formed postfix tree (1 + 2) must Validate().
     // Node::Function/Node::Constant, Tree::UpdateNodes(), and Tree::Validate()
     // are all compiled into operon_core (source/core/node.cpp,

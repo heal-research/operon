@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <random>
 #include <vector>
 
@@ -18,6 +19,7 @@
 #include "operon/core/dataset.hpp"
 #include "operon/core/dispatch.hpp"
 #include "operon/optimizer/gaussian_gradient_cost.hpp"
+#include "operon/optimizer/interpreter_gradient_cost.hpp"
 #include "operon/parser/infix.hpp"
 #include "operon/random/random.hpp"
 
@@ -85,7 +87,11 @@ auto ReferenceCost(Operon::Interpreter<Operon::Scalar, Fixture::DTable> const& i
     return *result;
 }
 
-static_assert(Operon::Concepts::GradientCost<Operon::GaussianGradientCostFunction<Operon::Scalar>>);
+static_assert(Operon::Concepts::GradientCost<Operon::GaussianGradientCostFunction>);
+static_assert(Operon::Concepts::InterpreterGradientCost<Operon::GaussianGradientCostFunction>);
+// Gaussian sample weights are numerical WLS weights: the optimizers forward
+// the dataset's weights to this cost.
+static_assert(Operon::GaussianGradientCostFunction::UsesDatasetWeights);
 
 } // namespace
 
@@ -96,7 +102,7 @@ TEST_CASE("GaussianGradientCostFunction: unweighted objective and gradient match
     auto target = fix.ds.GetValues("X4");
     Operon::Range range { 0, Fixture::Nrow };
 
-    Operon::GaussianGradientCostFunction<Operon::Scalar> cost { &interpreter, target, range };
+    Operon::GaussianGradientCostFunction cost { &interpreter, target, range };
     auto params = fix.tree.GetCoefficients();
     std::vector<Operon::Scalar> gradient(params.size());
     auto result = cost.Evaluate(params, gradient);
@@ -121,7 +127,7 @@ TEST_CASE("GaussianGradientCostFunction: scalar weight matches ComputeGradient w
     Operon::Range range { 0, Fixture::Nrow };
     std::array<Operon::Scalar, 1> const weight { Operon::Scalar { 2.5 } };
 
-    Operon::GaussianGradientCostFunction<Operon::Scalar> cost { &interpreter, target, range, nullptr, 0, weight };
+    Operon::GaussianGradientCostFunction cost { &interpreter, target, range, nullptr, 0, weight };
     auto params = fix.tree.GetCoefficients();
     std::vector<Operon::Scalar> gradient(params.size());
     auto result = cost.Evaluate(params, gradient);
@@ -147,7 +153,7 @@ TEST_CASE("GaussianGradientCostFunction: per-row weight matches ComputeGradient 
         weights[i] = Operon::Scalar { 1 } + (Operon::Scalar { 0.05 } * static_cast<Operon::Scalar>(i));
     }
 
-    Operon::GaussianGradientCostFunction<Operon::Scalar> cost { &interpreter, target, range, nullptr, 0, weights };
+    Operon::GaussianGradientCostFunction cost { &interpreter, target, range, nullptr, 0, weights };
     auto params = fix.tree.GetCoefficients();
     std::vector<Operon::Scalar> gradient(params.size());
     auto result = cost.Evaluate(params, gradient);
@@ -169,7 +175,7 @@ TEST_CASE("GaussianGradientCostFunction: a non-zero range offset is honored", "[
     auto target = fix.ds.GetValues("X4");
     Operon::Range range { 10, Fixture::Nrow };
 
-    Operon::GaussianGradientCostFunction<Operon::Scalar> cost { &interpreter, target, range };
+    Operon::GaussianGradientCostFunction cost { &interpreter, target, range };
     auto params = fix.tree.GetCoefficients();
     std::vector<Operon::Scalar> gradient(params.size());
     auto result = cost.Evaluate(params, gradient);
@@ -193,7 +199,7 @@ TEST_CASE("GaussianGradientCostFunction: batchSize==0 always evaluates the full 
 
     // No rng supplied and batchSize left at its 0 default: never touches
     // the RNG, so a null pointer is safe here.
-    Operon::GaussianGradientCostFunction<Operon::Scalar> cost { &interpreter, target, range };
+    Operon::GaussianGradientCostFunction cost { &interpreter, target, range };
     auto params = fix.tree.GetCoefficients();
     std::vector<Operon::Scalar> firstGradient(params.size());
     std::vector<Operon::Scalar> secondGradient(params.size());
@@ -214,13 +220,13 @@ TEST_CASE("GaussianGradientCostFunction: a nonzero batch size selects a reproduc
     auto params = fix.tree.GetCoefficients();
 
     Operon::RandomGenerator rngA { 7 };
-    Operon::GaussianGradientCostFunction<Operon::Scalar> costA { &interpreter, target, range, &rngA, 10 };
+    Operon::GaussianGradientCostFunction costA { &interpreter, target, range, &rngA, 10 };
     std::vector<Operon::Scalar> gradientA(params.size());
     auto resultA = costA.Evaluate(params, gradientA);
     REQUIRE(resultA.has_value());
 
     Operon::RandomGenerator rngB { 7 };
-    Operon::GaussianGradientCostFunction<Operon::Scalar> costB { &interpreter, target, range, &rngB, 10 };
+    Operon::GaussianGradientCostFunction costB { &interpreter, target, range, &rngB, 10 };
     std::vector<Operon::Scalar> gradientB(params.size());
     auto resultB = costB.Evaluate(params, gradientB);
     REQUIRE(resultB.has_value());
@@ -243,7 +249,7 @@ TEST_CASE("GaussianGradientCostFunction: a minibatch of an offset range uses mat
     auto params = fix.tree.GetCoefficients();
 
     Operon::RandomGenerator rng { 11 };
-    Operon::GaussianGradientCostFunction<Operon::Scalar> cost { &interpreter, target, range, &rng, batchSize, weights };
+    Operon::GaussianGradientCostFunction cost { &interpreter, target, range, &rng, batchSize, weights };
     std::vector<Operon::Scalar> gradient(params.size());
     auto result = cost.Evaluate(params, gradient);
     REQUIRE(result.has_value());
@@ -277,7 +283,7 @@ TEST_CASE("GaussianGradientCostFunction: interpreter failures are typed with the
     auto target = fix.ds.GetValues("X4");
     Operon::Range range { 0, Fixture::Nrow };
 
-    Operon::GaussianGradientCostFunction<Operon::Scalar> cost { &interpreter, target, range };
+    Operon::GaussianGradientCostFunction cost { &interpreter, target, range };
     std::vector<Operon::Scalar> params(cost.NumParameters());
     std::vector<Operon::Scalar> gradient(params.size());
     auto result = cost.Evaluate(params, gradient);
@@ -301,7 +307,7 @@ TEST_CASE("GaussianGradientCostFunction: FunctionEvaluations and JacobianEvaluat
     auto target = fix.ds.GetValues("X4");
     Operon::Range range { 0, Fixture::Nrow };
 
-    Operon::GaussianGradientCostFunction<Operon::Scalar> cost { &interpreter, target, range };
+    Operon::GaussianGradientCostFunction cost { &interpreter, target, range };
     auto params = fix.tree.GetCoefficients();
     std::vector<Operon::Scalar> gradient(params.size());
 
@@ -325,32 +331,70 @@ TEST_CASE("GaussianGradientCostFunction: only successful evaluations count as Ja
     auto target = fix.ds.GetValues("X4");
     Operon::Range range { 0, Fixture::Nrow };
 
-    Operon::GaussianGradientCostFunction<Operon::Scalar> failing { &failingInterpreter, target, range };
+    Operon::GaussianGradientCostFunction failing { &failingInterpreter, target, range };
     std::vector<Operon::Scalar> failingParams(failing.NumParameters());
     std::vector<Operon::Scalar> failingGradient(failingParams.size());
     REQUIRE_FALSE(failing.Evaluate(failingParams, failingGradient).has_value());
     CHECK(failing.JacobianEvaluations() == 0);
 
-    Operon::GaussianGradientCostFunction<Operon::Scalar> cost { &interpreter, target, range };
+    Operon::GaussianGradientCostFunction cost { &interpreter, target, range };
     auto params = fix.tree.GetCoefficients();
     std::vector<Operon::Scalar> gradient(params.size());
     REQUIRE(cost.Evaluate(params, gradient).has_value());
     CHECK(cost.JacobianEvaluations() == 1);
 }
 
-TEST_CASE("GaussianGradientCostFunction: nonfinite weights are typed errors", "[gaussian-gradient-cost]")
+TEST_CASE("GaussianGradientCostFunction: invalid weights are typed InvalidWeights errors, not assertions", "[gaussian-gradient-cost]")
 {
     Fixture fix;
     Operon::Interpreter<Operon::Scalar, Fixture::DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
     auto target = fix.ds.GetValues("X4");
     Operon::Range range { 0, Fixture::Nrow };
-    for (auto const weight : { std::numeric_limits<Operon::Scalar>::quiet_NaN(),
-                               std::numeric_limits<Operon::Scalar>::infinity() }) {
-        std::array<Operon::Scalar, 1> weights { weight };
-        Operon::GaussianGradientCostFunction<Operon::Scalar> cost { &interpreter, target, range, nullptr, 0, weights };
+    auto const params = fix.tree.GetCoefficients();
+
+    SECTION("scalar weight that is NaN, infinite, or negative") {
+        for (auto const weight : { std::numeric_limits<Operon::Scalar>::quiet_NaN(),
+                                   std::numeric_limits<Operon::Scalar>::infinity(),
+                                   Operon::Scalar { -1 } }) {
+            std::array<Operon::Scalar, 1> weights { weight };
+            Operon::GaussianGradientCostFunction cost { &interpreter, target, range, nullptr, 0, weights };
+            auto gradient = std::vector<Operon::Scalar>(cost.NumParameters());
+            auto result = cost.Evaluate(params, gradient);
+            REQUIRE_FALSE(result.has_value());
+            CHECK(result.error().Code == Operon::GradientErrorCode::InvalidWeights);
+            CHECK(result.error().Row == 0);
+            for (auto g : gradient) { CHECK(std::isnan(static_cast<double>(g))); }
+        }
+    }
+
+    SECTION("per-row weights of the wrong size report expected and actual sizes") {
+        std::vector<Operon::Scalar> weights(7, Operon::Scalar { 1 });
+        Operon::GaussianGradientCostFunction cost { &interpreter, target, range, nullptr, 0, weights };
         auto gradient = std::vector<Operon::Scalar>(cost.NumParameters());
-        auto result = cost.Evaluate(fix.tree.GetCoefficients(), gradient);
+        auto result = cost.Evaluate(params, gradient);
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error().Code == Operon::GradientErrorCode::NonFiniteEvaluation);
+        CHECK(result.error().Code == Operon::GradientErrorCode::InvalidWeights);
+        CHECK(result.error().Expected == static_cast<std::size_t>(Fixture::Nrow));
+        CHECK(result.error().Actual == weights.size());
+    }
+
+    SECTION("a per-row violation reports the absolute row; rows outside the range are not read") {
+        Operon::Range offsetRange { 5, Fixture::Nrow };
+        std::vector<Operon::Scalar> weights(Fixture::Nrow, Operon::Scalar { 1 });
+        weights[2] = Operon::Scalar { -1 }; // before the range: ignored
+        {
+            Operon::GaussianGradientCostFunction cost { &interpreter, target, offsetRange, nullptr, 0, weights };
+            auto gradient = std::vector<Operon::Scalar>(cost.NumParameters());
+            REQUIRE(cost.Evaluate(params, gradient).has_value());
+        }
+        weights[12] = std::numeric_limits<Operon::Scalar>::quiet_NaN();
+        Operon::GaussianGradientCostFunction cost { &interpreter, target, offsetRange, nullptr, 0, weights };
+        auto gradient = std::vector<Operon::Scalar>(cost.NumParameters());
+        auto result = cost.Evaluate(params, gradient);
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error().Code == Operon::GradientErrorCode::InvalidWeights);
+        CHECK(result.error().Row == 12);
+        REQUIRE(cost.Error().has_value());
+        CHECK(cost.Error()->Code == Operon::GradientErrorCode::InvalidWeights);
     }
 }

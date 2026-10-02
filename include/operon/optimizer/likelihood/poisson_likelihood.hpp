@@ -55,8 +55,6 @@ namespace detail {
 template <typename T = Operon::Scalar, bool LogInput = true>
 struct PoissonLikelihood {
     using Scalar = T;
-    using Matrix = Eigen::Matrix<Scalar, -1, -1>;
-    using Vector = Eigen::Matrix<Scalar, -1, 1>;
 
     static constexpr bool UsesSigma = false; // w is an optional weight, not sigma; empty = unweighted
 
@@ -87,10 +85,9 @@ struct PoissonLikelihood {
     /**
      * Canonical Fisher-diagonal contract for MDL callers. This overload is
      * available only for `Operon::Scalar`, matching the canonical view
-     * contract; the legacy Eigen-returning facade below remains generic in
-     * `T`. `jacobian` is logically (row, coefficient) with arbitrary valid
-     * strides. The third argument is unused: Poisson Fisher information is
-     * determined by the model prediction, not a sigma profile.
+     * contract. `jacobian` is logically (row, coefficient) with arbitrary
+     * valid strides. The third argument is unused: Poisson Fisher information
+     * is determined by the model prediction, not a sigma profile.
      */
     static auto ComputeFisherDiagonal(Span<Scalar const> prediction, ConstScalarMatrixView jacobian,
         Span<Scalar const> /*unused*/, ScalarSpan diagonal) -> tl::expected<void, FisherError>
@@ -119,26 +116,6 @@ struct PoissonLikelihood {
             diagonal[column] = result;
         }
         return {};
-    }
-
-    /**
-     * Compatibility facade: returns the full Fisher information matrix as a
-     * dense Eigen matrix. Unused in-repo; kept for downstream compatibility.
-     * New code uses ComputeFisherDiagonal above, which writes only the
-     * diagonal into caller-owned storage without materializing the matrix.
-     */
-    static auto ComputeFisherMatrix(Span<Scalar const> pred, Span<Scalar const> jac, Span<Scalar const> /*not used*/) -> Matrix
-    {
-        auto const rows = pred.size();
-        auto const cols = jac.size() / pred.size();
-        Eigen::Map<Matrix const> m(jac.data(), rows, cols);
-        Eigen::Map<Vector const> s { pred.data(), std::ssize(pred) };
-
-        if constexpr (LogInput) {
-            return (s.array().exp().matrix().asDiagonal() * m).transpose() * m;
-        } else {
-            return (s.array().inverse().matrix().asDiagonal() * m).transpose() * m;
-        }
     }
 };
 

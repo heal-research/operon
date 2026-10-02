@@ -400,6 +400,53 @@ TEST_CASE("LeastSquaresLMAdapter: weighted Jacobian-only evaluation scales rows 
     }
 }
 
+TEST_CASE("LeastSquaresLMAdapter: invalid weights are a typed InvalidWeights error, never a sqrt of a negative", "[least-squares][lm-adapter]")
+{
+    auto cost = MakeLinearFixture(5, Operon::Scalar { 1 }, Operon::Scalar { 0.5 });
+    std::array<Operon::Scalar, 2> params { 0.2, -0.1 };
+    auto const n = cost.NumResiduals();
+
+    auto const checkRejected = [&](std::vector<Operon::Scalar> const& weights, std::size_t expectedRow) -> void {
+        Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost, weights };
+        REQUIRE(adapter.Error().has_value());
+        CHECK(adapter.Error()->Code == Operon::LeastSquaresErrorCode::InvalidWeights);
+        CHECK(adapter.Error()->Row == expectedRow);
+
+        std::vector<Operon::Scalar> residuals(n);
+        std::vector<Operon::Scalar> jacobian(n * 2);
+        CHECK_FALSE(adapter.Evaluate(params.data(), residuals.data(), jacobian.data()));
+        for (auto r : residuals) { CHECK(std::isnan(static_cast<double>(r))); }
+        for (auto j : jacobian) { CHECK(std::isnan(static_cast<double>(j))); }
+        CHECK(adapter.Error()->Code == Operon::LeastSquaresErrorCode::InvalidWeights);
+        CHECK(adapter.ResidualCalls() == 0);
+    };
+
+    SECTION("negative weight") {
+        checkRejected({ 1, 1, -4, 1, 1 }, 2);
+    }
+
+    SECTION("NaN weight") {
+        checkRejected({ 1, std::numeric_limits<Operon::Scalar>::quiet_NaN(), 1, 1, 1 }, 1);
+    }
+
+    SECTION("wrong per-row size") {
+        std::vector<Operon::Scalar> wrong { 1, 2, 3 };
+        Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost, wrong };
+        REQUIRE(adapter.Error().has_value());
+        CHECK(adapter.Error()->Code == Operon::LeastSquaresErrorCode::InvalidWeights);
+        CHECK(adapter.Error()->Expected == n);
+        CHECK(adapter.Error()->Actual == wrong.size());
+        std::vector<Operon::Scalar> residuals(n);
+        CHECK_FALSE(adapter.Evaluate(params.data(), residuals.data(), nullptr));
+    }
+
+    SECTION("valid weights record no error") {
+        std::vector<Operon::Scalar> weights { 1, 2, 3, 4, 5 };
+        Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost, weights };
+        CHECK_FALSE(adapter.Error().has_value());
+    }
+}
+
 TEST_CASE("LeastSquaresLMAdapter preserves typed cost errors through both solver backends", "[least-squares][lm-adapter]")
 {
     class TypedFailureCost final : public Operon::LeastSquaresCostFunction {
