@@ -7,8 +7,9 @@
 #include "../operon_test.hpp"
 
 #include <cmath>
+#include <limits>
 #include <set>
-#include <string>
+#include <stdexcept>
 
 #include "operon/algorithms/enumeration.hpp"
 #include "operon/core/dataset.hpp"
@@ -363,7 +364,7 @@ TEST_CASE("GrammarEnumerationAlgorithm - Run fits coefficients and tracks best t
 
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
-    LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer{ &dtable, &problem };
+    LBFGSOptimizer<DTable, GaussianGradientCostFunction> optimizer{ &dtable, &problem };
     Operon::Evaluator<DTable> evaluator{ &problem, &dtable, Operon::R2{} };
 
     Grammar grammar(PrimitiveSet::Arithmetic, problem.GetInputs());
@@ -402,7 +403,7 @@ TEST_CASE("GrammarEnumerationAlgorithm - TopK == 0 keeps nothing rather than cra
 
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
-    LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer{ &dtable, &problem };
+    LBFGSOptimizer<DTable, GaussianGradientCostFunction> optimizer{ &dtable, &problem };
     Operon::Evaluator<DTable> evaluator{ &problem, &dtable, Operon::R2{} };
 
     Grammar grammar(PrimitiveSet::Arithmetic, problem.GetInputs());
@@ -428,7 +429,7 @@ TEST_CASE("GrammarEnumerationAlgorithm - RequestStop halts Run early", "[enumera
 
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
-    LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer{ &dtable, &problem };
+    LBFGSOptimizer<DTable, GaussianGradientCostFunction> optimizer{ &dtable, &problem };
     Operon::Evaluator<DTable> evaluator{ &problem, &dtable, Operon::R2{} };
 
     Grammar grammar(PrimitiveSet::Arithmetic, problem.GetInputs());
@@ -480,7 +481,7 @@ TEST_CASE("GrammarEnumerationAlgorithm - recovers a small ground-truth expressio
 
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
-    LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer{ &dtable, &problem };
+    LBFGSOptimizer<DTable, GaussianGradientCostFunction> optimizer{ &dtable, &problem };
     Operon::Evaluator<DTable> evaluator{ &problem, &dtable, Operon::R2{} };
 
     Grammar grammar(PrimitiveSet::Arithmetic, problem.GetInputs());
@@ -524,7 +525,7 @@ TEST_CASE("GrammarEnumerationAlgorithm - threaded runs are reproducible", "[enum
 
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
-    LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer{ &dtable, &problem };
+    LBFGSOptimizer<DTable, GaussianGradientCostFunction> optimizer{ &dtable, &problem };
     Operon::Evaluator<DTable> evaluator{ &problem, &dtable, Operon::R2{} };
     EnumerationConfig config { .MaxComplexity = 6, .TopK = 5, .Ranking = EnumerationRanking::Objective,
                                .EvaluationBufferSize = problem.TrainingRange().Size() };
@@ -570,7 +571,7 @@ TEST_CASE("GrammarEnumerationAlgorithm - report can stop fitting batches", "[enu
 
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
-    LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer{ &dtable, &problem };
+    LBFGSOptimizer<DTable, GaussianGradientCostFunction> optimizer{ &dtable, &problem };
     Operon::Evaluator<DTable> evaluator{ &problem, &dtable, Operon::R2{} };
     EnumerationConfig config { .MaxComplexity = 6, .TopK = 100, .Ranking = EnumerationRanking::Objective,
                                .EvaluationBufferSize = problem.TrainingRange().Size() };
@@ -829,7 +830,7 @@ TEST_CASE("GrammarEnumerationAlgorithm - MDL ranking fits exactly one representa
 
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
-    LBFGSOptimizer<DTable, GaussianGradientCostFunction<Operon::Scalar>> optimizer{ &dtable, &problem };
+    LBFGSOptimizer<DTable, GaussianGradientCostFunction> optimizer{ &dtable, &problem };
 
     Grammar grammar(PrimitiveSet::Arithmetic, problem.GetInputs());
     EnumerationConfig config;
@@ -865,6 +866,65 @@ TEST_CASE("GrammarEnumerationAlgorithm - MDL ranking fits exactly one representa
     }
     // ascending by Score
     for (std::size_t i = 1; i < best.size(); ++i) { CHECK(best[i - 1].Score <= best[i].Score); }
+}
+
+TEST_CASE("MDL scorer rejects an overflowing Fisher candidate without aborting enumeration", "[enumeration]")
+{
+    auto dataset = Dataset(
+        std::vector<std::string> {"x", "y"},
+        std::vector<std::vector<Operon::Scalar>> {{1}, {0}});
+    auto problem = Problem {&dataset};
+    problem.SetTrainingRange({0, 1});
+    problem.SetTarget("y");
+    problem.SetInputs(std::vector<std::string> {"x"});
+    auto exponent = Node::Constant(1000);
+    exponent.Optimize = true;
+    auto const power = Node::Function(static_cast<Hash>(BuiltinOp::Exp), 1);
+    auto tree = Tree {std::vector {exponent, power}};
+    tree.UpdateNodes();
+    auto const coefficients = tree.GetCoefficients();
+    REQUIRE(coefficients.size() == 1);
+
+    using DTable = DispatchTable<Operon::Scalar>;
+    auto const dispatch = DTable {};
+    auto scorer = MakeMdlScorer<DTable, PoissonLikelihood<Operon::Scalar>>(&problem, &dispatch);
+    auto scratch = std::array<Operon::Scalar, 1> {};
+    auto random = Operon::RandomGenerator {0};
+    auto const score = scorer(random, tree, 0, scratch);
+
+    CHECK(score.Score == EvaluatorBase::ErrMax);
+    CHECK_FALSE(std::isfinite(score.NegativeLogLikelihood));
+}
+
+TEST_CASE("MDL scorer rejects an invalid fixed sigma at construction", "[enumeration]")
+{
+    // A caller-supplied sigma runs inside Taskflow workers; a statically invalid
+    // one (non-finite or non-positive entry) must surface here, at construction,
+    // rather than as a mid-enumeration throw from a worker.
+    auto dataset = Dataset(
+        std::vector<std::string> {"x", "y"},
+        std::vector<std::vector<Operon::Scalar>> {{1}, {0}});
+    auto problem = Problem {&dataset};
+    problem.SetTrainingRange({0, 1});
+    problem.SetTarget("y");
+    problem.SetInputs(std::vector<std::string> {"x"});
+
+    using DTable = DispatchTable<Operon::Scalar>;
+    auto const dispatch = DTable {};
+
+    CHECK_THROWS_AS((MakeMdlScorer<DTable, GaussianLikelihood<Operon::Scalar>>(&problem, &dispatch,
+                       std::vector<Operon::Scalar> {0.F})),
+        std::invalid_argument);
+    CHECK_THROWS_AS((MakeMdlScorer<DTable, GaussianLikelihood<Operon::Scalar>>(&problem, &dispatch,
+                       std::vector<Operon::Scalar> {std::numeric_limits<Operon::Scalar>::quiet_NaN()})),
+        std::invalid_argument);
+
+    // Valid sigma constructs in either accepted shape (scalar or per-row); only the
+    // values are validated here, a length mismatch is deferred to score time.
+    CHECK_NOTHROW((MakeMdlScorer<DTable, GaussianLikelihood<Operon::Scalar>>(&problem, &dispatch,
+        std::vector<Operon::Scalar> {0.5F})));
+    CHECK_NOTHROW((MakeMdlScorer<DTable, GaussianLikelihood<Operon::Scalar>>(&problem, &dispatch,
+        std::vector<Operon::Scalar> {0.5F, 1.F})));
 }
 
 TEST_CASE("GrammarEnumerationAlgorithm - Cube/TenExp productions compute the correct (non-swapped) function", "[enumeration]")

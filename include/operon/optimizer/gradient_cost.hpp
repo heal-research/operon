@@ -18,15 +18,25 @@ namespace Operon {
 
 enum class GradientErrorCode : std::uint8_t {
     InvalidShape,
+    InvalidView,
+    InvalidWeights,
     NonFiniteEvaluation,
     NumericalFailure,
     EvaluationFailure,
 };
 
+// Row/Column locate the offending residual row, Jacobian entry, or weight
+// when the producing cost knows them (zero otherwise); they are set by
+// ToGradientError from LeastSquaresError and by the Gaussian/Poisson costs
+// for weight violations. For GradientErrorCode::InvalidWeights, Row is the
+// index of the first invalid weight in the frame documented on WeightError
+// (absolute dataset-column row for a gradient cost's Evaluate).
 struct GradientError {
     GradientErrorCode Code {GradientErrorCode::EvaluationFailure};
     std::size_t Expected {};
     std::size_t Actual {};
+    std::size_t Row {};
+    std::size_t Column {};
     std::optional<InterpreterError> Cause {};
 };
 
@@ -56,14 +66,15 @@ public:
 };
 
 namespace Concepts {
-    // Structural: NumParameters()/Evaluate() only. No likelihood, Fisher, or
-    // interpreter requirement -- a purely numerical cost with no statistical
-    // interpretation must satisfy this.
+    // Structural: NumParameters()/Evaluate() only, in Operon::Scalar. No
+    // likelihood, Fisher, or interpreter requirement -- a purely numerical
+    // cost with no statistical interpretation must satisfy this.
     template <typename T>
     concept GradientCost = requires(T const& cost, ConstScalarSpan parameters, ScalarSpan gradient) {
         typename T::Scalar;
+        requires std::same_as<typename T::Scalar, Operon::Scalar>;
         { cost.NumParameters() } -> std::same_as<std::size_t>;
-        { cost.Evaluate(parameters, gradient) } -> std::same_as<tl::expected<Scalar, GradientError>>;
+        { cost.Evaluate(parameters, gradient) } -> std::same_as<tl::expected<Operon::Scalar, GradientError>>;
     };
 } // namespace Concepts
 

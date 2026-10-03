@@ -5,7 +5,10 @@
 #ifndef OPERON_OPTIMIZER_HPP
 #define OPERON_OPTIMIZER_HPP
 
+#include <algorithm>
 #include <functional>
+#include <limits>
+#include <vector>
 #include <gsl/pointers>
 #include <lbfgs/solver.hpp>
 #include <tl/expected.hpp>
@@ -19,10 +22,12 @@
 
 #include "operon/optimizer/detail/gradient_solver_adapter.hpp"
 #include "operon/optimizer/gaussian_gradient_cost.hpp"
+#include "operon/optimizer/interpreter_gradient_cost.hpp"
 #include "operon/optimizer/poisson_gradient_cost.hpp"
 #include "operon/optimizer/interpreter_least_squares.hpp"
+#include "operon/optimizer/fit_outcome.hpp"
+#include "operon/optimizer/least_squares_fit.hpp"
 #include "operon/optimizer/least_squares_lm_adapter.hpp"
-#include "operon/optimizer/lm_weights.hpp"
 #include "operon/core/comparison.hpp"
 #include "operon/core/dispatch.hpp"
 #include "operon/core/problem.hpp"
@@ -33,52 +38,6 @@
 #endif
 
 namespace Operon {
-
-enum class OptimizerType : int { Tiny,
-    Eigen };
-
-// Fields every Optimize() call always produces. FitResult, FitFailure,
-// FitEvaluationError, and FitConfigurationError all carry them, so callers
-// that need e.g. FunctionEvaluations regardless of outcome use Diagnostics().
-struct FitDiagnostics {
-    std::vector<Operon::Scalar> InitialParameters;
-    std::vector<Operon::Scalar> FinalParameters;
-    Operon::Scalar InitialCost {};
-    Operon::Scalar FinalCost {};
-    int Iterations {};
-    int FunctionEvaluations {};
-    int JacobianEvaluations {};
-};
-
-struct FitResult : FitDiagnostics {}; // FinalCost improved on InitialCost
-struct FitFailure : FitDiagnostics {}; // valid fit that did not improve (incl. non-finite cost)
-struct FitEvaluationError : FitDiagnostics {
-    GradientError Error;
-};
-struct FitConfigurationError : FitDiagnostics {
-    LMWeightError Error;
-};
-
-using FitError = std::variant<FitFailure, FitEvaluationError, FitConfigurationError>;
-using FitOutcome = tl::expected<FitResult, FitError>;
-
-[[nodiscard]] inline auto Diagnostics(FitOutcome const& outcome) -> FitDiagnostics const&
-{
-    if (outcome) {
-        return *outcome;
-    }
-    return std::visit([](auto const& error) -> FitDiagnostics const& { return error; }, outcome.error());
-}
-
-[[nodiscard]] inline auto EvaluationError(FitOutcome const& outcome) -> FitEvaluationError const*
-{
-    return outcome ? nullptr : std::get_if<FitEvaluationError>(&outcome.error());
-}
-
-[[nodiscard]] inline auto ConfigurationError(FitOutcome const& outcome) -> FitConfigurationError const*
-{
-    return outcome ? nullptr : std::get_if<FitConfigurationError>(&outcome.error());
-}
 
 class OptimizerBase {
     gsl::not_null<Problem const*> problem_;
@@ -109,49 +68,12 @@ public:
     [[nodiscard]] virtual auto Optimize(Operon::RandomGenerator& rng, Tree const& tree) const -> FitOutcome = 0;
 };
 
-namespace detail {
-    inline auto CheckSuccess(double initialCost, double finalCost)
-    {
-        constexpr auto CHECK_NAN { true };
-        return Operon::Less<CHECK_NAN> {}(finalCost, initialCost);
-    }
-
-    // Replaces the near-identical summary-assembly tail block that used to
-    // be repeated at the end of every Optimize() override: each override
-    // builds one FitDiagnostics via aggregate init, then returns
-    // MakeFitOutcome(std::move(diag)) as its last line.
-    inline auto MakeFitOutcome(FitDiagnostics diag) -> FitOutcome
-    {
-        if (CheckSuccess(diag.InitialCost, diag.FinalCost)) {
-            return FitResult { std::move(diag) };
-        }
-        return tl::unexpected(FitFailure { std::move(diag) });
-    }
-    inline auto MakeFitEvaluationError(GradientError error, FitDiagnostics diag) -> FitOutcome
-    {
-        FitEvaluationError failure;
-        static_cast<FitDiagnostics&>(failure) = std::move(diag);
-        failure.Error = std::move(error);
-        return tl::unexpected(FitError { std::move(failure) });
-    }
-
-    // Convenience for the (still common) case of a raw interpreter failure
-    // with no separate numerical cost wrapping it.
-    inline auto MakeFitEvaluationError(InterpreterError error, FitDiagnostics diag) -> FitOutcome
-    {
-        return MakeFitEvaluationError(GradientError { .Code = GradientErrorCode::EvaluationFailure, .Cause = std::move(error) }, std::move(diag));
-    }
-
-    inline auto MakeFitConfigurationError(LMWeightError error, FitDiagnostics diag) -> FitOutcome
-    {
-        FitConfigurationError failure;
-        static_cast<FitDiagnostics&>(failure) = std::move(diag);
-        failure.Error = error;
-        return tl::unexpected(FitError { std::move(failure) });
-    }
-} // namespace detail
-
-template <typename DTable, OptimizerType = OptimizerType::Tiny>
+// Levenberg-Marquardt on the tree's coefficients over the problem's training
+// range. Type selects the backend (Tiny by default; Eigen on request); both
+// run through detail::RunLeastSquares, the driver behind Operon::FitLeastSquares.
+// Optimize() builds all per-call state locally, so concurrent calls on a shared
+// optimizer are safe as long as nothing calls SetIterations concurrently.
+template <typename DTable, OptimizerType Type = OptimizerType::Tiny>
 struct LevenbergMarquardtOptimizer : public OptimizerBase {
     explicit LevenbergMarquardtOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem)
         : OptimizerBase { problem }
@@ -169,119 +91,18 @@ struct LevenbergMarquardtOptimizer : public OptimizerBase {
         auto iterations = this->Iterations();
 
         auto const localWeights = problem->Weights(range).value_or(Operon::Span<Operon::Scalar const> {});
-        auto x0 = tree.GetCoefficients();
         FitDiagnostics diag;
-        diag.InitialParameters = x0;
-        auto validWeights = TryValidateLMWeights(localWeights, range.Size());
+        diag.InitialParameters = tree.GetCoefficients();
+        auto validWeights = ValidateWeights(localWeights, range.Size());
         if (!validWeights) {
-            diag.FinalParameters = x0;
+            diag.FinalParameters = diag.InitialParameters;
             return detail::MakeFitConfigurationError(validWeights.error(), std::move(diag));
         }
 
         Operon::Interpreter<Operon::Scalar, DTable> interpreter { dtable, dataset, &tree };
         Operon::InterpreterLeastSquaresCostFunction costFn { gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> { &interpreter }, target, range };
         Operon::LeastSquaresLMAdapter<> cf { &costFn, localWeights, true };
-        ceres::TinySolver<decltype(cf)> solver;
-        auto m0 = Eigen::Map<Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 1>>(x0.data(), x0.size());
-        if (!x0.empty()) {
-            // max_num_accepted_steps counts accepted LM steps only, matching
-            // Eigen::LevenbergMarquardt's iterations() semantics (see the
-            // Eigen-backend LevenbergMarquardtOptimizer below) - unlike this
-            // class's own max_num_iterations, which (unmodified) bounds total
-            // attempts, accepted or rejected. max_num_iterations is still set,
-            // as a MINPACK-convention-scaled safety net on rejected-retry
-            // attempts, mirroring maxfev's role for the Eigen backend.
-            solver.options.max_num_accepted_steps = static_cast<int>(iterations);
-            solver.options.max_num_iterations = static_cast<int>(iterations) * (static_cast<int>(x0.size()) + 1);
-            typename decltype(solver)::ParameterVector p = m0.cast<typename decltype(cf)::Scalar>();
-            solver.Solve(cf, &p);
-            m0 = p.template cast<Operon::Scalar>();
-        }
-        diag.FinalParameters = x0;
-        diag.InitialCost = solver.summary.initial_cost;
-        diag.FinalCost = solver.summary.final_cost;
-        diag.Iterations = solver.summary.iterations;
-        diag.FunctionEvaluations = cf.ResidualCalls();
-        diag.JacobianEvaluations = cf.JacobianCalls();
-        if (auto const& error = cf.Error(); error) {
-            return detail::MakeFitEvaluationError(detail::ToGradientError(*error), std::move(diag));
-        }
-        return detail::MakeFitOutcome(std::move(diag));
-    }
-
-    auto GetDispatchTable() const -> DTable const* { return dtable_.get(); }
-
-private:
-    gsl::not_null<DTable const*> dtable_;
-};
-
-template <typename DTable>
-struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public OptimizerBase {
-    explicit LevenbergMarquardtOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem)
-        : OptimizerBase { problem }
-        , dtable_ { dtable }
-    {
-    }
-
-    [[nodiscard]] auto Optimize(Operon::RandomGenerator& /*unused*/, Operon::Tree const& tree) const -> FitOutcome final
-    {
-        auto const* dtable = this->GetDispatchTable();
-        auto const* problem = this->GetProblem();
-        auto const* dataset = problem->GetDataset();
-        auto range = problem->TrainingRange();
-        auto target = problem->TargetValues();
-        auto iterations = this->Iterations();
-
-        auto const localWeights = problem->Weights(range).value_or(Operon::Span<Operon::Scalar const> {});
-        auto x0 = tree.GetCoefficients();
-        FitDiagnostics diag;
-        diag.InitialParameters = x0;
-        auto validWeights = TryValidateLMWeights(localWeights, range.Size());
-        if (!validWeights) {
-            diag.FinalParameters = x0;
-            return detail::MakeFitConfigurationError(validWeights.error(), std::move(diag));
-        }
-
-        Operon::Interpreter<Operon::Scalar, DTable> interpreter { dtable, dataset, &tree };
-        Operon::InterpreterLeastSquaresCostFunction costFn { gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> { &interpreter }, target, range };
-        Operon::LeastSquaresLMAdapter<> cf { &costFn, localWeights, true };
-        Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
-        if (!x0.empty()) {
-            // `iterations` counts accepted LM steps (lm.iterations()), matching the
-            // Tiny/ceres variant's max_num_iterations - it is not itself a function-
-            // evaluation budget. maxfev is still needed as a bound on rejected
-            // trust-region retries within/across those steps (Eigen's own default,
-            // 400 regardless of iterations, is enough per individual to exhaust the
-            // CLI's overall --evaluations budget across a full GP run), scaled by
-            // parameter count using MINPACK's own convention (100*(n+1) for its
-            // "no fixed iteration count" default) so the ceiling grows with problem
-            // size instead of being a fixed constant.
-            auto const maxfev = static_cast<Eigen::Index>(iterations) * (static_cast<Eigen::Index>(x0.size()) + 1);
-            lm.setMaxfev(std::max<Eigen::Index>(maxfev, 1));
-
-            Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>> m0(x0.data(), std::ssize(x0));
-            Eigen::Matrix<Operon::Scalar, -1, 1> m = m0;
-
-            // do the minimization loop manually because we want to extract the initial cost
-            Eigen::LevenbergMarquardtSpace::Status status = lm.minimizeInit(m);
-            diag.InitialCost = diag.FinalCost = lm.fnorm() * lm.fnorm() * Operon::Scalar{0.5}; // get the initial cost after calling minimizeInit()
-            if (status != Eigen::LevenbergMarquardtSpace::ImproperInputParameters) {
-                do {
-                    status = lm.minimizeOneStep(m);
-                } while (status == Eigen::LevenbergMarquardtSpace::Running
-                    && lm.iterations() < static_cast<Eigen::Index>(iterations));
-            }
-            m0 = m;
-        }
-        diag.FinalParameters = x0;
-        diag.FinalCost = lm.fnorm() * lm.fnorm() * Operon::Scalar{0.5};
-        diag.Iterations = static_cast<int>(lm.iterations());
-        diag.FunctionEvaluations = static_cast<int>(cf.ResidualCalls());
-        diag.JacobianEvaluations = static_cast<int>(cf.JacobianCalls());
-        if (auto const& error = cf.Error(); error) {
-            return detail::MakeFitEvaluationError(detail::ToGradientError(*error), std::move(diag));
-        }
-        return detail::MakeFitOutcome(std::move(diag));
+        return detail::RunLeastSquares<Type>(cf, iterations, std::move(diag));
     }
 
     auto GetDispatchTable() const -> DTable const* { return dtable_.get(); }
@@ -291,22 +112,35 @@ private:
 };
 
 namespace detail {
-    // Ordinary dataset sample weights apply to Gaussian gradient costs as
-    // numerical WLS weights. They are never forwarded as Poisson exposure --
-    // a caller that genuinely intends exposure constructs
+    // The dataset's sample weights reach a gradient cost only when the cost
+    // declares Cost::UsesDatasetWeights (Gaussian: numerical WLS weights).
+    // Otherwise the cost gets an empty span and the dataset weights are
+    // neither validated nor forwarded -- notably never as Poisson exposure; a
+    // caller that genuinely intends exposure constructs
     // PoissonGradientCostFunction directly with an explicit exposure span.
-    template <typename Cost>
-    struct GradientCostSampleWeights {
-        static auto Get(Operon::Dataset const* /*dataset*/) -> Operon::Span<Operon::Scalar const> { return {}; }
-    };
-
-    template <typename T>
-    struct GradientCostSampleWeights<GaussianGradientCostFunction<T>> {
-        static auto Get(Operon::Dataset const* dataset) -> Operon::Span<Operon::Scalar const>
-        {
+    template <Concepts::InterpreterGradientCost Cost>
+    [[nodiscard]] auto CostDatasetWeights(Operon::Dataset const* dataset) -> Operon::Span<Operon::Scalar const>
+    {
+        if constexpr (Cost::UsesDatasetWeights) {
             return dataset->Weights().value_or(Operon::Span<Operon::Scalar const> {});
+        } else {
+            return {};
         }
-    };
+    }
+
+    // Validates the in-range slice of a whole-dataset-column sample-weight
+    // span (rows outside the training range are never read and may hold
+    // placeholder values). Row in the error is relative to the range start,
+    // like the LM path's range-local weights.
+    [[nodiscard]] inline auto ValidateRangeWeights(Operon::Span<Operon::Scalar const> column, Operon::Range range)
+        -> tl::expected<void, WeightError>
+    {
+        if (column.empty()) {
+            return {};
+        }
+        ENSURE(range.Start() + range.Size() <= column.size());
+        return ValidateWeights(column.subspan(range.Start(), range.Size()), range.Size());
+    }
 
     [[nodiscard]] inline auto ScaleBatchEvaluations(std::size_t evaluations, std::size_t batchSize, std::size_t rangeSize) -> int
     {
@@ -320,7 +154,7 @@ namespace detail {
     }
 } // namespace detail
 
-template <typename DTable, Concepts::GradientCost Cost = GaussianGradientCostFunction<Operon::Scalar>>
+template <typename DTable, Concepts::InterpreterGradientCost Cost = GaussianGradientCostFunction>
 struct LBFGSOptimizer final : public OptimizerBase {
     LBFGSOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem)
         : OptimizerBase { problem }
@@ -337,12 +171,20 @@ struct LBFGSOptimizer final : public OptimizerBase {
         auto iterations = this->Iterations();
         auto batchSize = this->BatchSize();
 
+        auto const sampleWeights = detail::CostDatasetWeights<Cost>(dataset);
+        if (auto validWeights = detail::ValidateRangeWeights(sampleWeights, range); !validWeights) {
+            FitDiagnostics diag;
+            diag.InitialParameters = tree.GetCoefficients();
+            diag.FinalParameters = diag.InitialParameters;
+            return detail::MakeFitConfigurationError(validWeights.error(), std::move(diag));
+        }
+
         Operon::Interpreter<Operon::Scalar, DTable> interpreter { dtable, dataset, &tree };
         // Cost batches internally (SelectBatch), so it needs the whole-dataset
         // target column (absolute, dataset-row-indexed), not a slice pre-cut
         // to range.
-        Cost cost { &interpreter, problem->TargetValues(), range, &rng, batchSize, detail::GradientCostSampleWeights<Cost>::Get(dataset) };
-        Cost endpointCost { &interpreter, problem->TargetValues(), range, nullptr, 0, detail::GradientCostSampleWeights<Cost>::Get(dataset) };
+        Cost cost { &interpreter, problem->TargetValues(), range, &rng, batchSize, sampleWeights };
+        Cost endpointCost { &interpreter, problem->TargetValues(), range, nullptr, 0, sampleWeights };
         Operon::detail::GradientSolverAdapter<Cost> bridge { &cost };
         Operon::detail::GradientSolverAdapter<Cost> endpointBridge { &endpointCost };
 
@@ -358,10 +200,18 @@ struct LBFGSOptimizer final : public OptimizerBase {
             diag.FinalParameters = coeff;
             return detail::MakeFitEvaluationError(*error, std::move(diag));
         }
+        if (coeff.empty()) {
+            auto const cost = diag.InitialCost;
+            return detail::MakeFitOutcome(detail::ZeroParameterDiagnostics(std::move(diag), cost, 1));
+        }
 
         lbfgs::solver solver { bridge };
-        solver.max_iterations = iterations;
-        solver.max_line_search_iterations = iterations;
+        solver.max_iterations = detail::SaturatingCast<int>(iterations);
+        solver.max_line_search_iterations = detail::SaturatingCast<int>(iterations);
+        // lbfgs::solver reverts to the last accepted iterate and still
+        // succeeds when a line-search trial is non-finite or fails, so a
+        // solver-facing bridge error alone is advisory. optimize() returns an
+        // error only when the solve itself fails.
         auto result = solver.optimize(x0);
         if (result) {
             auto xf = result.value();
@@ -370,9 +220,15 @@ struct LBFGSOptimizer final : public OptimizerBase {
         Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1> const> xFinal(coeff.data(), std::ssize(coeff));
         diag.FinalCost = endpointBridge(xFinal, gradMap);
         diag.FinalParameters = coeff;
+        // lbfgs::solver does not report an iteration count (solver_status::iterations
+        // is never populated), so Iterations stays 0 for this optimizer.
         diag.FunctionEvaluations = detail::ScaleBatchEvaluations(cost.FunctionEvaluations(), batchSize, range.Size());
         diag.JacobianEvaluations = detail::ScaleBatchEvaluations(cost.JacobianEvaluations(), batchSize, range.Size());
+        // The endpoint error describes the returned point and takes precedence.
         if (auto const& error = endpointBridge.Error(); error) {
+            return detail::MakeFitEvaluationError(*error, std::move(diag));
+        }
+        if (auto const& error = bridge.Error(); !result && error) {
             return detail::MakeFitEvaluationError(*error, std::move(diag));
         }
         return detail::MakeFitOutcome(std::move(diag));
@@ -384,7 +240,7 @@ private:
     gsl::not_null<DTable const*> dtable_;
 };
 
-template <typename DTable, Concepts::GradientCost Cost = GaussianGradientCostFunction<Operon::Scalar>>
+template <typename DTable, Concepts::InterpreterGradientCost Cost = GaussianGradientCostFunction>
 struct SGDOptimizer final : public OptimizerBase {
     SGDOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem)
         : OptimizerBase { problem }
@@ -411,12 +267,20 @@ struct SGDOptimizer final : public OptimizerBase {
         auto iterations = this->Iterations();
         auto batchSize = this->BatchSize();
 
+        auto const sampleWeights = detail::CostDatasetWeights<Cost>(dataset);
+        if (auto validWeights = detail::ValidateRangeWeights(sampleWeights, range); !validWeights) {
+            FitDiagnostics diag;
+            diag.InitialParameters = tree.GetCoefficients();
+            diag.FinalParameters = diag.InitialParameters;
+            return detail::MakeFitConfigurationError(validWeights.error(), std::move(diag));
+        }
+
         Operon::Interpreter<Operon::Scalar, DTable> interpreter { dtable, dataset, &tree };
         // Cost batches internally (SelectBatch), so it needs the whole-dataset
         // target column (absolute, dataset-row-indexed), not a slice pre-cut
         // to range.
-        Cost cost { &interpreter, problem->TargetValues(), range, &rng, batchSize, detail::GradientCostSampleWeights<Cost>::Get(dataset) };
-        Cost endpointCost { &interpreter, problem->TargetValues(), range, nullptr, 0, detail::GradientCostSampleWeights<Cost>::Get(dataset) };
+        Cost cost { &interpreter, problem->TargetValues(), range, &rng, batchSize, sampleWeights };
+        Cost endpointCost { &interpreter, problem->TargetValues(), range, nullptr, 0, sampleWeights };
         Operon::detail::GradientSolverAdapter<Cost> bridge { &cost };
         Operon::detail::GradientSolverAdapter<Cost> endpointBridge { &endpointCost };
 
@@ -431,10 +295,17 @@ struct SGDOptimizer final : public OptimizerBase {
             diag.FinalParameters = coeff;
             return detail::MakeFitEvaluationError(*error, std::move(diag));
         }
+        if (coeff.empty()) {
+            auto const cost = diag.InitialCost;
+            return detail::MakeFitOutcome(detail::ZeroParameterDiagnostics(std::move(diag), cost, 1));
+        }
 
         auto rule = update_->Clone(coeff.size());
         SGDSolver<decltype(bridge)> solver(&bridge, rule.get());
-        auto x = solver.Optimize(x0, iterations);
+        // The solver stops at the first failed or non-finite evaluation and
+        // returns the last finite iterate, so coeff never receives a NaN
+        // update; the endpoint evaluation below judges that iterate.
+        auto x = solver.Optimize(x0, detail::SaturatingCast<int>(iterations));
         std::copy(x.begin(), x.end(), coeff.begin());
 
         Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> xFinal(coeff.data(), std::ssize(coeff));
@@ -462,6 +333,8 @@ private:
 };
 #if defined(HAVE_ASMJIT)
 // LM optimizer backed by a JitEvaluator for compiled residuals and/or Jacobian.
+// It always solves with the Eigen LM backend (through detail::RunLeastSquares);
+// there is no Tiny JIT variant.
 //
 // JacobianOnly=false (default): JIT-compiles both the forward pass (residuals)
 //   and the Jacobian; falls back to interpreter when compilation fails.
@@ -470,7 +343,7 @@ private:
 //
 // Pass a JitEvaluator constructed for the same GP run so the code cache is
 // shared between fitness evaluation and coefficient optimisation.
-template <typename DTable, OptimizerType Type = OptimizerType::Tiny, bool JacobianOnly = false>
+template <typename DTable, bool JacobianOnly = false>
 struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
     explicit JitLevenbergMarquardtOptimizer(gsl::not_null<DTable const*> dtable,
         gsl::not_null<Problem const*> problem,
@@ -492,18 +365,18 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
 
         Operon::Interpreter<Operon::Scalar, DTable> interpreter { dtable, dataset, &tree };
         FitDiagnostics diag;
-        auto x0 = tree.GetCoefficients();
-        diag.InitialParameters = x0;
+        diag.InitialParameters = tree.GetCoefficients();
         auto const localWeights = problem->Weights(range).value_or(Operon::Span<Operon::Scalar const> {});
-        auto validWeights = TryValidateLMWeights(localWeights, range.Size());
+        auto validWeights = ValidateWeights(localWeights, range.Size());
         if (!validWeights) {
-            diag.FinalParameters = x0;
+            diag.FinalParameters = diag.InitialParameters;
             return detail::MakeFitConfigurationError(validWeights.error(), std::move(diag));
         }
         auto bound = interpreter.BindTree(range);
         if (!bound) {
-            diag.FinalParameters = x0;
-            return detail::MakeFitEvaluationError(std::move(bound.error()), std::move(diag));
+            return detail::MakeUnevaluatedFitEvaluationError(
+                GradientError { .Code = GradientErrorCode::EvaluationFailure, .Cause = std::move(bound.error()) },
+                std::move(diag));
         }
 
         JIT::CompileMeta const* meta = jitEval_->GetOrCompileJacobian(tree);
@@ -515,37 +388,13 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
         bool const hasJacFn = meta && meta->jacFn;
         // In JacobianOnly mode only enter the JIT path when the Jacobian was actually compiled;
         // falling through to JitLeastSquaresCostFunction with a null jacFn wastes allocation for nothing.
-        bool const useJitCf = !x0.empty() && (hasFn || (JacobianOnly && hasJacFn));
+        bool const useJitCf = !diag.InitialParameters.empty() && (hasFn || (JacobianOnly && hasJacFn));
 
         if (!useJitCf) {
             // Pure interpreter fallback — no JIT at all.
             Operon::InterpreterLeastSquaresCostFunction costFn { gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> { &interpreter }, target, range };
             Operon::LeastSquaresLMAdapter<> cf { &costFn, localWeights, true };
-            Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
-            if (!x0.empty()) {
-                lm.setMaxfev(std::max<Eigen::Index>(
-                    static_cast<Eigen::Index>(iters) * (static_cast<Eigen::Index>(x0.size()) + 1), 1));
-                Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>> m0(x0.data(), std::ssize(x0));
-                Eigen::Matrix<Operon::Scalar, -1, 1> m = m0;
-                Eigen::LevenbergMarquardtSpace::Status status = lm.minimizeInit(m);
-                diag.InitialCost = diag.FinalCost = lm.fnorm() * lm.fnorm() * 0.5;
-                if (status != Eigen::LevenbergMarquardtSpace::ImproperInputParameters) {
-                    do {
-                        status = lm.minimizeOneStep(m);
-                    } while (status == Eigen::LevenbergMarquardtSpace::Running
-                        && lm.iterations() < static_cast<Eigen::Index>(iters));
-                }
-                m0 = m;
-            }
-            diag.FinalParameters = x0;
-            diag.FinalCost = lm.fnorm() * lm.fnorm() * 0.5;
-            diag.Iterations = static_cast<int>(lm.iterations());
-            diag.FunctionEvaluations = static_cast<int>(cf.ResidualCalls());
-            diag.JacobianEvaluations = static_cast<int>(cf.JacobianCalls());
-            if (auto const& error = cf.Error(); error) {
-                return detail::MakeFitEvaluationError(detail::ToGradientError(*error), std::move(diag));
-            }
-            return detail::MakeFitOutcome(std::move(diag));
+            return detail::RunLeastSquares<OptimizerType::Eigen>(cf, iters, std::move(diag));
         }
 
         // Column pointer arrays are rebuilt from the tree (VarOrder is re-derivable;
@@ -585,33 +434,7 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
             meta->nConsts
         };
         Operon::LeastSquaresLMAdapter<> cf { &costFn, localWeights, true };
-
-        Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
-        lm.setMaxfev(std::max<Eigen::Index>(
-            static_cast<Eigen::Index>(iters) * (static_cast<Eigen::Index>(x0.size()) + 1), 1));
-
-        Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>> m0(x0.data(), std::ssize(x0));
-        Eigen::Matrix<Operon::Scalar, -1, 1> m = m0;
-
-        Eigen::LevenbergMarquardtSpace::Status status = lm.minimizeInit(m);
-        diag.InitialCost = diag.FinalCost = lm.fnorm() * lm.fnorm() * 0.5;
-        if (status != Eigen::LevenbergMarquardtSpace::ImproperInputParameters) {
-            do {
-                status = lm.minimizeOneStep(m);
-            } while (status == Eigen::LevenbergMarquardtSpace::Running
-                && lm.iterations() < static_cast<Eigen::Index>(iters));
-        }
-        m0 = m;
-
-        diag.FinalParameters = x0;
-        diag.FinalCost = lm.fnorm() * lm.fnorm() * 0.5;
-        diag.Iterations = static_cast<int>(lm.iterations());
-        diag.FunctionEvaluations = static_cast<int>(cf.ResidualCalls());
-        diag.JacobianEvaluations = static_cast<int>(cf.JacobianCalls());
-        if (auto const& error = cf.Error(); error) {
-            return detail::MakeFitEvaluationError(detail::ToGradientError(*error), std::move(diag));
-        }
-        return detail::MakeFitOutcome(std::move(diag));
+        return detail::RunLeastSquares<OptimizerType::Eigen>(cf, iters, std::move(diag));
     }
 
     auto GetDispatchTable() const -> DTable const* { return dtable_.get(); }

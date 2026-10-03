@@ -139,6 +139,42 @@ TEST_CASE("InterpreterLeastSquaresCostFunction: row-major, column-major, and pad
     }
 }
 
+TEST_CASE("InterpreterLeastSquaresCostFunction: column-major views with padded columns are not filled in place", "[interpreter-least-squares]")
+{
+    InterpreterFixture fix;
+    Operon::Interpreter<Operon::Scalar, InterpreterFixture::DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
+    auto target = fix.ds.GetValues("X4");
+    Operon::Range range { 0, InterpreterFixture::Nrow };
+    auto const n = range.Size();
+    auto const p = static_cast<std::size_t>(fix.tree.CoefficientsCount());
+    std::vector<Operon::Scalar> params { 0.1F, 0.2F, 0.3F };
+    Operon::InterpreterLeastSquaresCostFunction cost { &interpreter, target, range };
+    std::vector<Operon::Scalar> residuals(n);
+
+    std::vector<Operon::Scalar> contiguous(n * p);
+    Operon::ScalarMatrixView contiguousJac { contiguous.data(), Mapping { Extents { n, p }, std::array<std::size_t, 2> { 1, n } } };
+    REQUIRE(cost.Evaluate(params, residuals, contiguousJac).has_value());
+
+    // Column stride wider than n: a column-major view whose columns are separated by gaps that
+    // must stay untouched.
+    constexpr std::size_t gap = 3;
+    constexpr auto sentinel = Operon::Scalar { -12345 };
+    std::vector<Operon::Scalar> padded(((p - 1) * (n + gap)) + n, sentinel);
+    Operon::ScalarMatrixView paddedJac { padded.data(), Mapping { Extents { n, p }, std::array<std::size_t, 2> { 1, n + gap } } };
+    REQUIRE(cost.Evaluate(params, residuals, paddedJac).has_value());
+
+    for (std::size_t j = 0; j < p; ++j) {
+        for (std::size_t i = 0; i < n; ++i) {
+            CHECK(Operon::At(paddedJac, i, j) == Operon::At(contiguousJac, i, j));
+        }
+        if (j + 1 < p) {
+            for (std::size_t g = 0; g < gap; ++g) {
+                CHECK(padded[(j * (n + gap)) + n + g] == sentinel);
+            }
+        }
+    }
+}
+
 TEST_CASE("InterpreterLeastSquaresCostFunction: residual-only evaluation skips the Jacobian", "[interpreter-least-squares]")
 {
     InterpreterFixture fix;

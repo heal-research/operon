@@ -13,6 +13,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include "operon/optimizer/gradient_cost.hpp"
+#include "operon/optimizer/interpreter_gradient_cost.hpp"
 
 namespace {
 
@@ -72,17 +73,36 @@ public:
     }
 };
 
+// Structurally identical to QuadraticBowlCost but advertises a scalar type
+// other than Operon::Scalar: GradientCost must reject it rather than accept
+// a cost whose declared scalar disagrees with its Evaluate signature.
+struct MismatchedScalarCost {
+    using Scalar = int;
+    [[nodiscard]] auto NumParameters() const noexcept -> std::size_t { return 1; }
+    [[nodiscard]] auto Evaluate(Operon::ConstScalarSpan /*parameters*/, Operon::ScalarSpan /*gradient*/) const
+        -> tl::expected<Operon::Scalar, Operon::GradientError>
+    {
+        return Operon::Scalar { 0 };
+    }
+};
+
 // Regression guard: a numerical-only cost with no likelihood/Fisher method
 // must satisfy Concepts::GradientCost. Adding a statistical requirement to
 // this concept would break this assertion.
 static_assert(Operon::Concepts::GradientCost<QuadraticBowlCost>);
+static_assert(!Operon::Concepts::GradientCost<MismatchedScalarCost>);
+// GradientCost is the minimal solver-facing contract: a cost with no tree
+// constructor, counters, or dataset-weight policy is a GradientCost but not
+// something LBFGSOptimizer/SGDOptimizer can build (InterpreterGradientCost).
+static_assert(!Operon::Concepts::InterpreterGradientCost<QuadraticBowlCost>);
 // The numerical/statistical boundary is part of the contract: no gradient
-// cost — synthetic or shipped — is a likelihood or Fisher producer, and a
-static_assert(!Operon::Concepts::Likelihood<Operon::GaussianGradientCostFunction<Operon::Scalar>>);
-static_assert(!Operon::Concepts::HasFisherMatrix<Operon::GaussianGradientCostFunction<Operon::Scalar>>);
+// cost -- synthetic or shipped -- is a likelihood or Fisher producer, and no
+// likelihood is a gradient cost.
+static_assert(!Operon::Concepts::Likelihood<Operon::GaussianGradientCostFunction>);
+static_assert(!Operon::Concepts::HasFisherDiagonal<Operon::GaussianGradientCostFunction>);
 static_assert(!Operon::Concepts::GradientCost<Operon::GaussianLikelihood<Operon::Scalar>>);
 static_assert(Operon::Concepts::Likelihood<Operon::GaussianLikelihood<Operon::Scalar>>);
-static_assert(Operon::Concepts::HasFisherMatrix<Operon::GaussianLikelihood<Operon::Scalar>>);
+static_assert(Operon::Concepts::HasFisherDiagonal<Operon::GaussianLikelihood<Operon::Scalar>>);
 
 } // namespace
 

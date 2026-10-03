@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2026-present Bogdan Burlacu and contributors
 
-// Covers LeastSquaresCostFunction, ComputeDiagnostics, and ComputeFisherMatrix.
+// Covers LeastSquaresCostFunction, ValidateWeights, ComputeDiagnostics, ComputeGradient, and ComputeFisherMatrix.
 
 #include <array>
 #include <atomic>
@@ -9,6 +9,7 @@
 #include <future>
 #include <random>
 #include <thread>
+#include <limits>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
@@ -56,7 +57,7 @@ public:
             if (jacobian->extent(0) != x_.size() || jacobian->extent(1) != NumParameters()) {
                 return tl::unexpected(Operon::LeastSquaresError {
                     .Code = Operon::LeastSquaresErrorCode::InvalidShape, .Expected = x_.size(), .Actual = jacobian->extent(0),
-                    .Row = 0, .Column = NumParameters() });
+                    .Row = x_.size(), .Column = NumParameters() });
             }
             for (std::size_t i = 0; i < x_.size(); ++i) {
                 Operon::At(*jacobian, i, 0) = Operon::Scalar { 1 };
@@ -277,7 +278,9 @@ TEST_CASE("ComputeDiagnostics: shape and finiteness errors", "[least-squares][di
         std::vector<Operon::Scalar> weights { 1, 2 };
         auto result = Operon::ComputeDiagnostics(residuals, std::nullopt, weights);
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error().Code == Operon::LeastSquaresErrorCode::InvalidShape);
+        CHECK(result.error().Code == Operon::LeastSquaresErrorCode::InvalidWeights);
+        CHECK(result.error().Expected == residuals.size());
+        CHECK(result.error().Actual == weights.size());
     }
 
     SECTION("non-finite residual") {
@@ -291,7 +294,8 @@ TEST_CASE("ComputeDiagnostics: shape and finiteness errors", "[least-squares][di
         std::vector<Operon::Scalar> weights { 1, -1, 1 };
         auto result = Operon::ComputeDiagnostics(residuals, std::nullopt, weights);
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error().Code == Operon::LeastSquaresErrorCode::NonFiniteEvaluation);
+        CHECK(result.error().Code == Operon::LeastSquaresErrorCode::InvalidWeights);
+        CHECK(result.error().Row == 1);
     }
 }
 
@@ -359,7 +363,7 @@ TEST_CASE("ComputeGradient: invalid shapes are rejected", "[least-squares][gradi
         std::array<Operon::Scalar, 2> gradient {};
         auto result = Operon::ComputeGradient(residuals, jac, gradient, weights);
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error().Code == Operon::LeastSquaresErrorCode::InvalidShape);
+        CHECK(result.error().Code == Operon::LeastSquaresErrorCode::InvalidWeights);
     }
 }
 
@@ -383,7 +387,56 @@ TEST_CASE("ComputeGradient: non-finite residual, Jacobian, or weight is rejected
         Operon::ConstScalarMatrixView jac { jacBuffer.data(), Mapping { Extents { 2, 2 }, std::array<std::size_t, 2> { 2, 1 } } };
         auto result = Operon::ComputeGradient(residuals, jac, gradient, weights);
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error().Code == Operon::LeastSquaresErrorCode::NonFiniteEvaluation);
+        CHECK(result.error().Code == Operon::LeastSquaresErrorCode::InvalidWeights);
+        CHECK(result.error().Row == 1);
+    }
+}
+
+TEST_CASE("ValidateWeights: accepts empty, scalar broadcast, and per-row; rejects everything else with distinct codes", "[least-squares][weights]")
+{
+    constexpr std::size_t rows = 4;
+    constexpr auto nan = std::numeric_limits<Operon::Scalar>::quiet_NaN();
+    constexpr auto inf = std::numeric_limits<Operon::Scalar>::infinity();
+
+    SECTION("accepted shapes") {
+        CHECK(Operon::ValidateWeights({}, rows).has_value());
+        std::vector<Operon::Scalar> scalar { 2 };
+        CHECK(Operon::ValidateWeights(scalar, rows).has_value());
+        std::vector<Operon::Scalar> perRow { 0, 1, 2.5, 3 }; // zero is a valid weight
+        CHECK(Operon::ValidateWeights(perRow, rows).has_value());
+    }
+
+    SECTION("a size other than 0, 1, or rows is a SizeMismatch carrying both sizes") {
+        std::vector<Operon::Scalar> wrong { 1, 2, 3 };
+        auto result = Operon::ValidateWeights(wrong, rows);
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error().Code == Operon::WeightErrorCode::SizeMismatch);
+        CHECK(result.error().Expected == rows);
+        CHECK(result.error().Actual == wrong.size());
+    }
+
+    SECTION("value violations are classified distinctly and locate the first offender") {
+        auto const classify = [&](Operon::Scalar bad) -> Operon::WeightError {
+            std::vector<Operon::Scalar> weights { 1, 1, 1, 1 };
+            weights[2] = bad;
+            weights[3] = nan; // a later offender must not mask the first one
+            auto result = Operon::ValidateWeights(weights, rows);
+            REQUIRE_FALSE(result.has_value());
+            return result.error();
+        };
+        CHECK(classify(Operon::Scalar { -1 }).Code == Operon::WeightErrorCode::NegativeValue);
+        CHECK(classify(nan).Code == Operon::WeightErrorCode::NotANumber);
+        CHECK(classify(inf).Code == Operon::WeightErrorCode::Infinite);
+        CHECK(classify(-inf).Code == Operon::WeightErrorCode::Infinite);
+        CHECK(classify(Operon::Scalar { -1 }).Row == 2);
+    }
+
+    SECTION("a scalar weight is validated too") {
+        std::vector<Operon::Scalar> scalar { Operon::Scalar { -3 } };
+        auto result = Operon::ValidateWeights(scalar, rows);
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error().Code == Operon::WeightErrorCode::NegativeValue);
+        CHECK(result.error().Row == 0);
     }
 }
 
@@ -465,34 +518,41 @@ auto MakePaddedJacobian(std::size_t rows, std::size_t cols, std::size_t padding,
 
 } // namespace
 
-TEST_CASE("ComputeFisherMatrix matches GaussianLikelihood for uniform, per-row, and no sigma", "[least-squares][fisher]")
+TEST_CASE("ComputeFisherMatrix matches the closed form and ComputeFisherDiagonal for uniform, per-row, and no sigma", "[least-squares][fisher]")
 {
     constexpr std::size_t n = 9;
     constexpr std::size_t p = 4;
     std::mt19937 rng { 7 }; // NOLINT
     auto [buffer, jac] = MakePaddedJacobian(n, p, 2, rng); // noncontiguous Jacobian view
 
-    Eigen::Matrix<Operon::Scalar, -1, -1> refJac(static_cast<Eigen::Index>(n), static_cast<Eigen::Index>(p));
-    for (std::size_t i = 0; i < n; ++i) {
-        for (std::size_t j = 0; j < p; ++j) {
-            refJac(static_cast<Eigen::Index>(i), static_cast<Eigen::Index>(j)) = Operon::At(jac, i, j);
-        }
-    }
-    std::vector<Operon::Scalar> pred(n, Operon::Scalar { 0 }); // GaussianLikelihood infers rows from pred.size() only
+    std::vector<Operon::Scalar> pred(n, Operon::Scalar { 0 }); // ComputeFisherDiagonal infers rows from pred.size() only
 
-    auto runAndCompare = [&](std::vector<Operon::Scalar> const& sigma, std::vector<Operon::Scalar> const& sigmaForEigen) -> void {
+    // sigmaForDiagonal is never empty: ComputeFisherDiagonal requires an explicit sigma, so "no sigma"
+    // is compared against the equivalent unit sigma.
+    auto runAndCompare = [&](std::vector<Operon::Scalar> const& sigma, std::vector<Operon::Scalar> const& sigmaForDiagonal) -> void {
         std::vector<Operon::Scalar> fisherBuffer(p * p);
         Operon::ScalarMatrixView fisher { fisherBuffer.data(), Mapping { Extents { p, p }, std::array<std::size_t, 2> { p, 1 } } };
         auto result = Operon::ComputeFisherMatrix(jac, sigma, fisher);
         REQUIRE(result.has_value());
 
-        auto reference = Operon::GaussianLikelihood<Operon::Scalar>::ComputeFisherMatrix(
-            { pred.data(), pred.size() }, { refJac.data(), static_cast<std::size_t>(refJac.size()) }, sigmaForEigen);
+        // Independent closed form: F(a,b) = sum_i J(i,a) J(i,b) / sigma_i^2.
+        auto const reference = [&](std::size_t a, std::size_t b) -> double {
+            double sum = 0.0;
+            for (std::size_t i = 0; i < n; ++i) {
+                auto const s = static_cast<double>(sigmaForDiagonal.size() == 1 ? sigmaForDiagonal[0] : sigmaForDiagonal[i]);
+                sum += static_cast<double>(Operon::At(jac, i, a)) * static_cast<double>(Operon::At(jac, i, b)) / (s * s);
+            }
+            return sum;
+        };
+        std::vector<Operon::Scalar> diagonal(p);
+        auto diagonalResult = Operon::GaussianLikelihood<Operon::Scalar>::ComputeFisherDiagonal(
+            pred, jac, sigmaForDiagonal, diagonal);
+        REQUIRE(diagonalResult.has_value());
 
         for (std::size_t a = 0; a < p; ++a) {
+            CHECK_THAT(static_cast<double>(diagonal[a]), Catch::Matchers::WithinRel(reference(a, a), 1e-3));
             for (std::size_t b = 0; b < p; ++b) {
-                CHECK_THAT(static_cast<double>(Operon::At(fisher, a, b)),
-                    Catch::Matchers::WithinRel(static_cast<double>(reference(static_cast<Eigen::Index>(a), static_cast<Eigen::Index>(b))), 1e-3));
+                CHECK_THAT(static_cast<double>(Operon::At(fisher, a, b)), Catch::Matchers::WithinRel(reference(a, b), 1e-3));
             }
         }
         // Exact symmetry: both (a,b) and (b,a) are written from the same

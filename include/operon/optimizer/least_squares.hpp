@@ -8,6 +8,7 @@
 #include <cmath>
 #include <concepts>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <optional>
 #include <span>
@@ -23,11 +24,27 @@ namespace Operon {
 enum class LeastSquaresErrorCode : std::uint8_t {
     InvalidShape,
     InvalidView,
+    InvalidWeights,
     NonFiniteEvaluation,
     NumericalFailure,
     EvaluationFailure,
 };
 
+/**
+ * Typed least-squares failure. Code selects the failure; every other field is
+ * interpreted relative to it and to the cost that produced the error:
+ *  - Expected/Actual are the required and observed value of whatever Code
+ *    checks (a size, a count), zero when not applicable.
+ *  - Row/Column are NOT a fixed coordinate system. Depending on Code and the
+ *    producing cost they are a residual/Jacobian element (first non-finite
+ *    residual: Row; first non-finite Jacobian entry: Row and Column), the first
+ *    offending weight (InvalidWeights: Row), a selector/index pair
+ *    (JitLeastSquaresCostFunction column arrays: Row = kernel, Column = first
+ *    null pointer), or the expected extents of a mismatched view. They are
+ *    zero when unused, so a zero Row/Column does not by itself mean "element
+ *    0". Read them only together with Code and the cost's documentation.
+ *  - Cause carries the original InterpreterError for EvaluationFailure.
+ */
 struct LeastSquaresError {
     LeastSquaresErrorCode Code {LeastSquaresErrorCode::InvalidShape};
     std::size_t Expected {};
@@ -36,6 +53,64 @@ struct LeastSquaresError {
     std::size_t Column {};
     std::optional<InterpreterError> Cause {};
 };
+
+enum class WeightErrorCode : std::uint8_t {
+    SizeMismatch,
+    NegativeValue,
+    NotANumber,
+    Infinite,
+};
+
+/**
+ * Typed weight/exposure validation failure. Expected is the accepted
+ * per-row size and Actual the supplied size (both set for every code);
+ * Row is the index of the first offending entry within the validated span
+ * (0 for a size mismatch or a broadcast scalar). The coordinate frame is
+ * therefore that of whichever span was validated: the caller's weight span
+ * for FitLeastSquares and LeastSquaresLMAdapter, the training-range slice
+ * (index 0 = first training row) for the optimizers' FitConfigurationError,
+ * and the absolute whole-dataset-column row for a gradient cost's
+ * GradientErrorCode::InvalidWeights.
+ */
+struct WeightError {
+    WeightErrorCode Code {WeightErrorCode::SizeMismatch};
+    std::size_t Expected {};
+    std::size_t Actual {};
+    std::size_t Row {};
+};
+
+/**
+ * The single accepted weight shape convention: empty (all ones), one value
+ * (broadcast), or exactly `rows` values (per-row). Every value must be finite
+ * and nonnegative. The first offending entry is reported; non-finite values
+ * are classified before the sign check, so -inf is Infinite, not NegativeValue.
+ * Eigen-free and allocation-free.
+ */
+[[nodiscard]] inline auto ValidateWeights(ConstScalarSpan weights, std::size_t rows) -> tl::expected<void, WeightError>
+{
+    if (!weights.empty() && weights.size() != 1 && weights.size() != rows) {
+        return tl::unexpected(WeightError { .Code = WeightErrorCode::SizeMismatch, .Expected = rows, .Actual = weights.size() });
+    }
+    for (std::size_t i = 0; i < weights.size(); ++i) {
+        auto const w = static_cast<double>(weights[i]);
+        auto code = WeightErrorCode::NegativeValue;
+        if (std::isnan(w)) {
+            code = WeightErrorCode::NotANumber;
+        } else if (std::isinf(w)) {
+            code = WeightErrorCode::Infinite;
+        } else if (w >= 0.0) {
+            continue;
+        }
+        return tl::unexpected(WeightError { .Code = code, .Expected = rows, .Actual = weights.size(), .Row = i });
+    }
+    return {};
+}
+
+/** Wraps a WeightError as LeastSquaresErrorCode::InvalidWeights, preserving size and Row. */
+[[nodiscard]] inline auto ToLeastSquaresError(WeightError const& error) -> LeastSquaresError
+{
+    return LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidWeights, .Expected = error.Expected, .Actual = error.Actual, .Row = error.Row };
+}
 
 /**
  * Backend-neutral least-squares cost contract.
@@ -81,11 +156,10 @@ namespace Concepts {
 } // namespace Concepts
 
 namespace detail {
-    // Finite, and nonnegative when requireNonnegative is set.
-    [[nodiscard]] inline auto AllFinite(ConstScalarSpan values, bool requireNonnegative) -> bool
+    [[nodiscard]] inline auto AllFinite(ConstScalarSpan values) -> bool
     {
-        return std::ranges::all_of(values, [requireNonnegative](Scalar v) -> bool {
-            return std::isfinite(static_cast<double>(v)) && (!requireNonnegative || v >= Scalar { 0 });
+        return std::ranges::all_of(values, [](Scalar v) -> bool {
+            return std::isfinite(static_cast<double>(v));
         });
     }
 } // namespace detail
@@ -99,12 +173,14 @@ struct LeastSquaresDiagnostics {
 
 /**
  * Computes Cost = 0.5 * sum(w_i * r_i^2) and writes gradient = J^T (w .* r).
- * weights is empty (unweighted), size 1 (uniform), or residuals.size()
- * (per-row); values must be finite and nonnegative. jacobian must have
- * residuals.size() rows; gradient must have jacobian's column count.
- * Returns InvalidShape for a dimension mismatch, NonFiniteEvaluation for a
- * non-finite input or accumulated result, NumericalFailure if an
- * accumulated component does not narrow to a finite Scalar.
+ * weights follow ValidateWeights (empty, size 1, or residuals.size();
+ * finite and nonnegative). jacobian must have residuals.size() rows;
+ * gradient must have jacobian's column count.
+ * Returns InvalidShape for a Jacobian/gradient dimension mismatch,
+ * InvalidWeights for a weight violation (Row = first offending entry),
+ * NonFiniteEvaluation for a non-finite residual or accumulated result,
+ * NumericalFailure if an accumulated component does not narrow to a finite
+ * Scalar.
  */
 [[nodiscard]] inline auto ComputeGradient(
     ConstScalarSpan residuals,
@@ -121,10 +197,10 @@ struct LeastSquaresDiagnostics {
     if (gradient.size() != p) {
         return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape, .Expected = p, .Actual = gradient.size() });
     }
-    if (!weights.empty() && weights.size() != 1 && weights.size() != n) {
-        return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape, .Expected = n, .Actual = weights.size() });
+    if (auto validWeights = ValidateWeights(weights, n); !validWeights) {
+        return tl::unexpected(ToLeastSquaresError(validWeights.error()));
     }
-    if (!detail::AllFinite(residuals, false) || !detail::AllFinite(weights, true)) {
+    if (!detail::AllFinite(residuals)) {
         return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::NonFiniteEvaluation });
     }
 
@@ -170,13 +246,13 @@ struct LeastSquaresDiagnostics {
     -> tl::expected<LeastSquaresDiagnostics, LeastSquaresError>
 {
     auto const n = residuals.size();
-    if (!weights.empty() && weights.size() != 1 && weights.size() != n) {
-        return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape, .Expected = n, .Actual = weights.size() });
+    if (auto validWeights = ValidateWeights(weights, n); !validWeights) {
+        return tl::unexpected(ToLeastSquaresError(validWeights.error()));
     }
     if (jacobian && jacobian->extent(0) != n) {
         return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape, .Expected = n, .Actual = jacobian->extent(0) });
     }
-    if (!detail::AllFinite(residuals, false) || !detail::AllFinite(weights, true)) {
+    if (!detail::AllFinite(residuals)) {
         return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::NonFiniteEvaluation });
     }
 

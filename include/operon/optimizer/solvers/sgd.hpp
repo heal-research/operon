@@ -670,8 +670,17 @@ struct SGDSolver {
 
         static constexpr auto tol { 1e-8 };
 
+        converged_ = false;
         for (epochs_ = 0; epochs_ < epochs; ++epochs_) {
-            std::invoke(*fun, x, grad);
+            auto const cost = std::invoke(*fun, x, grad);
+            // A failed or non-finite evaluation leaves the gradient
+            // indeterminate (NaN-filled by the cost). Stop before it reaches
+            // the update rule or the iterate: applying it would poison both x
+            // and the rule's moment state. x is the last finite iterate and
+            // Epochs() is the number of updates applied so far.
+            if (!std::isfinite(cost) || !grad.isFinite().all()) {
+                break;
+            }
             // apply learning rate to grad and write result in beta
             rule_->Update(grad, beta);
             if ((beta.abs() < tol).all()) {
@@ -684,6 +693,10 @@ struct SGDSolver {
         return x;
     }
 
+    // Number of parameter updates applied by the last Optimize() call: each one
+    // is a single gradient step (on whatever batch the functor evaluated), not
+    // a pass over the data. A converging step or a failed/non-finite evaluation
+    // applies no update and is not counted.
     auto Epochs() const { return epochs_; }
 
 private:

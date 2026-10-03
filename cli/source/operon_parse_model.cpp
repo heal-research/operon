@@ -96,24 +96,23 @@ namespace {
         -> Operon::Cli::Result<std::unique_ptr<Operon::OptimizerBase>>
     {
         if (optimizer == "lm") {
-            // Eigen backend, matching operon_gp/operon_nsgp/operon_enum
-            // (all hardcode OptimizerType::Eigen) - not the class template's
-            // own default (Tiny), so "lm" means the same thing everywhere.
+            // Use Eigen for the shipped non-JIT LM default: Tiny remains
+            // available through the explicit template/API backend choice.
             return std::make_unique<Operon::LevenbergMarquardtOptimizer<Operon::ScalarDispatch, Operon::OptimizerType::Eigen>>(dtable, problem);
         }
         if (optimizer == "lbfgs") {
             if (likelihood == "gaussian") {
-                return std::make_unique<Operon::LBFGSOptimizer<Operon::ScalarDispatch, Operon::GaussianGradientCostFunction<Operon::Scalar>>>(dtable, problem);
+                return std::make_unique<Operon::LBFGSOptimizer<Operon::ScalarDispatch, Operon::GaussianGradientCostFunction>>(dtable, problem);
             }
             if (likelihood == "poisson") {
-                return std::make_unique<Operon::LBFGSOptimizer<Operon::ScalarDispatch, Operon::PoissonGradientCostFunction<Operon::Scalar>>>(dtable, problem);
+                return std::make_unique<Operon::LBFGSOptimizer<Operon::ScalarDispatch, Operon::PoissonGradientCostFunction<>>>(dtable, problem);
             }
         } else if (optimizer == "sgd") {
             if (likelihood == "gaussian") {
-                return std::make_unique<Operon::SGDOptimizer<Operon::ScalarDispatch, Operon::GaussianGradientCostFunction<Operon::Scalar>>>(dtable, problem);
+                return std::make_unique<Operon::SGDOptimizer<Operon::ScalarDispatch, Operon::GaussianGradientCostFunction>>(dtable, problem);
             }
             if (likelihood == "poisson") {
-                return std::make_unique<Operon::SGDOptimizer<Operon::ScalarDispatch, Operon::PoissonGradientCostFunction<Operon::Scalar>>>(dtable, problem);
+                return std::make_unique<Operon::SGDOptimizer<Operon::ScalarDispatch, Operon::PoissonGradientCostFunction<>>>(dtable, problem);
             }
         } else {
             return tl::unexpected(Operon::Cli::Error{
@@ -406,7 +405,7 @@ namespace {
         if (optimizer->Iterations() > 0) {
             auto const& diag = Operon::Diagnostics(summary);
             if (summary.has_value()) {
-                fmt::print("optimized_model {:infix:roundtrip}\n", Operon::Fmt::WithNames{model, ds});
+                fmt::print("optimized_model {:infix:roundtrip}\n", Operon::Fmt::TreeFormatArgs{model, ds});
             }
             fmt::print("optimization summary:\n");
             fmt::print("status: {}\n", summary.has_value());
@@ -455,7 +454,7 @@ auto Run(int argc, char** argv) -> int
 
     if (result["debug"].as<bool>()) {
         fmt::print("\nInput string:\n{}\n", infix);
-        fmt::print("Parsed tree:\n{:infix:roundtrip}\n", Operon::Fmt::WithNames{model, ds});
+        fmt::print("Parsed tree:\n{:infix:roundtrip}\n", Operon::Fmt::TreeFormatArgs{model, ds});
         fmt::print("Data range: {}:{}\n", range.Start(), range.End());
         fmt::print("Scale: {}\n", result["scale"].count() > 0 ? result["scale"].as<std::string>() : std::string("auto"));
     }

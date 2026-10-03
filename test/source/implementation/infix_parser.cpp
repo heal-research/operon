@@ -40,7 +40,7 @@ TEST_CASE("Parser roundtrip correctness", "[parser]")
     Operon::Vector<Operon::Tree> parsedTrees;
     parsedTrees.reserve(nTrees);
     std::transform(trees.begin(), trees.end(), std::back_inserter(parsedTrees), [&](const auto& tree) -> auto {
-        auto parsed = InfixParser::ParseOrThrow(fmt::format("{:infix:50}", Operon::Fmt::WithNames{tree, ds}), ds);
+        auto parsed = InfixParser::ParseOrThrow(fmt::format("{:infix:50}", Operon::Fmt::TreeFormatArgs{tree, ds}), ds);
         CHECK(parsed.Validate());
         return parsed;
     });
@@ -103,7 +103,7 @@ TEST_CASE("Parse specific expressions", "[parser]")
         t.UpdateNodes();
 
         Dataset const ds("./data/Poly-10.csv", true);
-        auto s1 = fmt::format("{:infix:5}", Operon::Fmt::WithNames{t, ds});
+        auto s1 = fmt::format("{:infix:5}", Operon::Fmt::TreeFormatArgs{t, ds});
         auto t2 = InfixParser::ParseOrThrow(s1);
 
         // Roundtrip: same number of nodes
@@ -224,7 +224,7 @@ TEST_CASE("Formatter output", "[parser]")
 
         for (int i = 0; i < 100; ++i) {
             auto tree = btc(rng, 20, 1, 10);
-            auto s = fmt::format("{:infix:5}", Operon::Fmt::WithNames{tree, ds});
+            auto s = fmt::format("{:infix:5}", Operon::Fmt::TreeFormatArgs{tree, ds});
             CHECK(validateString(s));
         }
     }
@@ -254,7 +254,7 @@ TEST_CASE("Formatter output", "[parser]")
         Operon::Tree tree({nx, ny, mul, refX, add});
         tree.UpdateNodes();
 
-        auto const s = fmt::format("{:infix:3}", Operon::Fmt::WithNames{tree, names});
+        auto const s = fmt::format("{:infix:3}", Operon::Fmt::TreeFormatArgs{tree, names});
         CHECK(s.find('y') != std::string::npos); // from x*y
         // Formatted string must reference x twice (once from x*y, once from
         // ref(x)) -- a formatter that follows i-1 instead of RefTo would
@@ -297,7 +297,7 @@ TEST_CASE("Formatter output", "[parser]")
         };
 
         SECTION("PostfixFormatter replays the referenced subtree's tokens") {
-            auto const s = fmt::format("{:postfix:2}", Operon::Fmt::WithNames{tree, names});
+            auto const s = fmt::format("{:postfix:2}", Operon::Fmt::TreeFormatArgs{tree, names});
             // x*y contributes one "x", ref(x) must replay x's token again --
             // a formatter following i-1 instead of RefTo would instead
             // duplicate the "y" (or mul) token and never emit a second x.
@@ -306,13 +306,13 @@ TEST_CASE("Formatter output", "[parser]")
         }
 
         SECTION("TreeFormatter nests the referenced subtree under the Ref leaf") {
-            auto const s = fmt::format("{:tree:2}", Operon::Fmt::WithNames{tree, names});
+            auto const s = fmt::format("{:tree:2}", Operon::Fmt::TreeFormatArgs{tree, names});
             CHECK(countOccurrences(s, "x D:") == 2);
         }
 
         SECTION("DotFormatter points edges at the shared node, not a duplicate/dangling Ref box") {
-            auto const s = fmt::format("{:dot:2}", Operon::Fmt::WithNames{tree, names});
-            CHECK_NOTHROW(fmt::format("{:dot:2}", Operon::Fmt::WithNames{tree, names}));
+            auto const s = fmt::format("{:dot:2}", Operon::Fmt::TreeFormatArgs{tree, names});
+            CHECK_NOTHROW(fmt::format("{:dot:2}", Operon::Fmt::TreeFormatArgs{tree, names}));
             CHECK(s.find("3 [label=") == std::string::npos); // no box for the Ref node itself
             CHECK(s.find("0 -> 4") != std::string::npos); // nx -> add, resolved through the Ref
             CHECK(s.find("3 ->") == std::string::npos);

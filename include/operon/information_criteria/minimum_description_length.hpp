@@ -54,7 +54,7 @@ inline auto StructureDescriptionLength(Tree const& tree) -> double
 // derived from the diagonal Fisher information. `fisherDiag` is the diagonal of the
 // Fisher information matrix for `coeffs`, in the same order as the tree's
 // Optimize-flagged nodes - likelihood-agnostic: pass whatever Fisher diagonal your
-// likelihood model produces (see GaussianLikelihood/PoissonLikelihood::ComputeFisherMatrix).
+// likelihood model produces (see GaussianLikelihood/PoissonLikelihood::ComputeFisherDiagonal).
 // Returns NaN if the Fisher diagonal violates its PSD invariant (see the noise-floor
 // comment below) - propagate, don't silently charge zero cost.
 template<typename FisherDiag>
@@ -72,7 +72,7 @@ auto ParameterDescriptionLength(Operon::Span<Operon::Scalar const> coeffs, Fishe
     auto const p = static_cast<double>(coeffs.size());
     auto cParameters = 0.0;
     for (auto pi = 0; pi < static_cast<int>(coeffs.size()); ++pi) {
-        auto fi = static_cast<double>(fisherDiag(pi));
+        auto fi = static_cast<double>(fisherDiag[pi]);
         // fi == 0 is legitimate (a parameter with zero Fisher information
         // truly carries no cost — handled below via the ordinary
         // isfinite(di) quantization check, since sqrt(12/0) = inf).

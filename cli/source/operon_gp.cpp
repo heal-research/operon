@@ -408,7 +408,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
                                                            : shapeViolationStorage->Measure(best.Genotype).Feasible;
             fmt::print(stderr, "shape-constraints: final model is {}\n", feasible ? "feasible" : "INFEASIBLE (not certified over the domain box)");
         }
-        auto const model = fmt::format("{:infix:roundtrip}", Operon::Fmt::WithNames{best.Genotype, *problem.GetDataset()});
+        auto const model = fmt::format("{:infix:roundtrip}", Operon::Fmt::TreeFormatArgs{best.Genotype, *problem.GetDataset()});
         fmt::print("{}\n", model);
         if (result.contains("report-json")) {
             reporter.SetSymbolicModel(model);

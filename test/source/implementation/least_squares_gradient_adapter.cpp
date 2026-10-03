@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2026-present Bogdan Burlacu and contributors
 
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <utility>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
@@ -190,4 +192,66 @@ TEST_CASE("LeastSquaresGradientAdapter: repeated full-batch evaluations are dete
         CHECK(*cost2 == *firstCost);
         CHECK(gradient == firstGradient);
     }
+}
+
+TEST_CASE("ToGradientError maps every LeastSquaresErrorCode to a distinct GradientErrorCode and preserves location", "[least-squares][gradient-adapter]")
+{
+    using LS = Operon::LeastSquaresErrorCode;
+    using GR = Operon::GradientErrorCode;
+    constexpr std::array<std::pair<LS, GR>, 6> table { {
+        { LS::InvalidShape, GR::InvalidShape },
+        { LS::InvalidView, GR::InvalidView },
+        { LS::InvalidWeights, GR::InvalidWeights },
+        { LS::NonFiniteEvaluation, GR::NonFiniteEvaluation },
+        { LS::NumericalFailure, GR::NumericalFailure },
+        { LS::EvaluationFailure, GR::EvaluationFailure },
+    } };
+
+    std::vector<GR> seen;
+    for (auto const& [source, expected] : table) {
+        Operon::LeastSquaresError error {
+            .Code = source, .Expected = 11, .Actual = 7, .Row = 3, .Column = 5,
+            .Cause = Operon::InterpreterError { .Kind = Operon::InterpreterError::Code::MissingVariable, .Hash = 42 }
+        };
+        auto const converted = Operon::ToGradientError(error);
+        CHECK(converted.Code == expected);
+        CHECK(converted.Expected == 11);
+        CHECK(converted.Actual == 7);
+        CHECK(converted.Row == 3);
+        CHECK(converted.Column == 5);
+        REQUIRE(converted.Cause.has_value());
+        CHECK(converted.Cause->Kind == Operon::InterpreterError::Code::MissingVariable);
+        CHECK(converted.Cause->Hash == 42);
+        CHECK(std::ranges::count(seen, converted.Code) == 0);
+        seen.push_back(converted.Code);
+    }
+    CHECK(seen.size() == table.size());
+}
+
+TEST_CASE("ToGradientError(WeightError) reports InvalidWeights with size and row", "[least-squares][gradient-adapter]")
+{
+    auto const converted = Operon::ToGradientError(Operon::WeightError {
+        .Code = Operon::WeightErrorCode::NegativeValue, .Expected = 9, .Actual = 9, .Row = 4 });
+    CHECK(converted.Code == Operon::GradientErrorCode::InvalidWeights);
+    CHECK(converted.Expected == 9);
+    CHECK(converted.Actual == 9);
+    CHECK(converted.Row == 4);
+    CHECK_FALSE(converted.Cause.has_value());
+}
+
+TEST_CASE("LeastSquaresGradientAdapter: invalid weights are a typed InvalidWeights error with NaN gradient", "[least-squares][gradient-adapter]")
+{
+    auto cost = MakeLinearFixture(6, Operon::Scalar { 0.4 }, Operon::Scalar { -0.6 });
+    std::vector<Operon::Scalar> weights(6, Operon::Scalar { 1 });
+    weights[4] = Operon::Scalar { -2 };
+
+    Operon::LeastSquaresGradientAdapter adapter { &cost, weights };
+    std::array<Operon::Scalar, 2> params { 0.1, 0.2 };
+    std::array<Operon::Scalar, 2> gradient {};
+    auto result = adapter.Evaluate(params, gradient);
+
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error().Code == Operon::GradientErrorCode::InvalidWeights);
+    CHECK(result.error().Row == 4);
+    for (auto g : gradient) { CHECK(std::isnan(static_cast<double>(g))); }
 }

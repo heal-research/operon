@@ -5,13 +5,15 @@
 #ifndef OPERON_EVALUATOR_HPP
 #define OPERON_EVALUATOR_HPP
 
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <functional>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <utility>
-#include <vector>
 #include <tl/expected.hpp>
 
 #include "operon/collections/projection.hpp"
@@ -512,6 +514,18 @@ namespace detail {
         std::optional<LinearScaling> Scaling;
     };
 
+    inline auto ValidateSigma(Operon::Span<Operon::Scalar const> sigma, bool required = false) -> void
+    {
+        if (required && sigma.empty()) {
+            throw std::invalid_argument("sigma must not be empty");
+        }
+        for (std::size_t i = 0; i < sigma.size(); ++i) {
+            if (!std::isfinite(static_cast<double>(sigma[i])) || sigma[i] <= Operon::Scalar {}) {
+                throw std::invalid_argument("sigma[" + std::to_string(i) + "] must be finite and greater than zero");
+            }
+        }
+    }
+
     inline auto PrepareScaledValues(
         Operon::Problem const& problem, ScoreContext ctx, std::optional<EvaluatedBuffer>& evaluated) -> ScaledValues
     {
@@ -531,7 +545,7 @@ namespace detail {
 } // namespace detail
 
 template <typename DTable, Concepts::Likelihood Lik>
-    requires Concepts::HasFisherMatrix<Lik>
+    requires Concepts::HasFisherDiagonal<Lik>
 class OPERON_EXPORT MinimumDescriptionLengthEvaluator final : public Evaluator<DTable> {
     // Scores the same fitted linear-scaled model as pareto_front.cpp export and shape certification,
     // closing the previous in-search/exported MDL divergence for the same individual.
@@ -544,7 +558,13 @@ public:
     }
 
     auto Sigma() const { return std::span<Operon::Scalar const> { sigma_ }; }
-    auto SetSigma(std::vector<Operon::Scalar> sigma) const -> void { sigma_ = std::move(sigma); }
+    auto SetSigma(std::vector<Operon::Scalar> sigma) const -> void
+    {
+        if constexpr (Lik::UsesSigma) {
+            detail::ValidateSigma(sigma);
+        }
+        sigma_ = std::move(sigma);
+    }
 
     auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const ->
         typename EvaluatorBase::ReturnType override
@@ -557,7 +577,6 @@ public:
         auto const& tree = ctx.Ind.Genotype;
         auto parameters = tree.GetCoefficients();
 
-        auto const p { static_cast<double>(parameters.size()) };
 
         auto [trainingRange, yPred, yTrue, weights, scaling] = detail::PrepareScaledValues(*problem, ctx, evaluated);
 
@@ -571,20 +590,41 @@ public:
             : std::span<Operon::Scalar const> { sigma_ }; // fixed scalar, per-sample, or empty (Poisson unweighted)
 
         ++Base::JacobianEvaluations;
+        auto const columns = parameters.size();
+        auto jacobianStorage = std::vector<Operon::Scalar>(trainingRange.Size() * columns);
+        using Extents = std::dextents<MemoryIndex, 2>;
+        using Mapping = std::layout_stride::mapping<Extents>;
+        // Column stride must stay nonzero for an empty training range (extent 0
+        // addresses no element, but a zero stride violates layout_stride preconditions).
+        auto const columnStride = std::max<MemoryIndex>(trainingRange.Size(), MemoryIndex {1});
+        auto jacobian = ScalarMatrixView {jacobianStorage.data(),
+            Mapping {Extents {trainingRange.Size(), columns}, std::array<MemoryIndex, 2> {1, columnStride}}};
         Operon::Interpreter<Operon::Scalar, DTable> const interpreter { dtable, dataset, &tree };
-        auto jacobian = interpreter.JacRev(parameters, trainingRange);
-        if (!jacobian) { return typename EvaluatorBase::ReturnType { EvaluatorBase::ErrMax }; }
-        Eigen::Matrix<Operon::Scalar, -1, -1> jac = std::move(*jacobian);
-        if (scaling) {
-            jac *= static_cast<Operon::Scalar>(scaling->Scale); // d(a*tree)/d(coeffs) = a * d(tree)/d(coeffs)
+        if (auto result = interpreter.JacRev(parameters, trainingRange, jacobianStorage); !result) {
+            return typename EvaluatorBase::ReturnType { EvaluatorBase::ErrMax };
         }
-        auto fisherMatrix
-            = Lik::ComputeFisherMatrix(yPred, { jac.data(), static_cast<std::size_t>(jac.size()) }, effectiveSigma);
-        auto fisherDiag = fisherMatrix.diagonal().array();
-        ENSURE(fisherDiag.size() == p);
+        if (scaling) {
+            for (std::size_t row = 0; row < trainingRange.Size(); ++row) {
+                for (std::size_t column = 0; column < columns; ++column) {
+                    At(jacobian, row, column) *= static_cast<Operon::Scalar>(scaling->Scale);
+                }
+            }
+        }
+        auto fisherDiagonal = std::vector<Operon::Scalar>(columns);
+        if (auto result = Lik::ComputeFisherDiagonal(yPred, jacobian, effectiveSigma, fisherDiagonal); !result) {
+            // Candidate-local numerical failures score ErrMax. A length
+            // mismatch (InvalidShape, e.g. a wrong-length SetSigma) is a
+            // configuration error and must not silently rank every
+            // individual at ErrMax; MakeMdlScorer and WriteParetoFront throw too.
+            if (result.error().Code == FisherErrorCode::NonFiniteResult
+                || (sigma_.empty() && Lik::UsesSigma && result.error().Code == FisherErrorCode::InvalidSigma)) {
+                return typename EvaluatorBase::ReturnType { EvaluatorBase::ErrMax };
+            }
+            throw std::runtime_error("failed to compute Fisher diagonal");
+        }
 
         auto cLikelihood = Lik::ComputeLikelihood(yPred, yTrue, effectiveSigma);
-        auto mdl = Operon::MinimumDescriptionLength(tree, parameters, fisherDiag, static_cast<double>(cLikelihood));
+        auto mdl = Operon::MinimumDescriptionLength(tree, parameters, fisherDiagonal, static_cast<double>(cLikelihood));
         if (!std::isfinite(mdl)) {
             mdl = EvaluatorBase::ErrMax;
         }
@@ -596,7 +636,6 @@ private:
 };
 
 template <typename DTable, Concepts::Likelihood Lik>
-    requires Concepts::HasFisherMatrix<Lik>
 class OPERON_EXPORT FractionalBayesFactorEvaluator final : public Evaluator<DTable> {
     // Scores the same fitted linear-scaled model as pareto_front.cpp export and shape certification,
     // closing the previous in-search/exported FBF divergence for the same individual.
@@ -609,7 +648,13 @@ public:
     }
 
     auto Sigma() const { return std::span<Operon::Scalar const> { sigma_ }; }
-    auto SetSigma(std::vector<Operon::Scalar> sigma) const -> void { sigma_ = std::move(sigma); }
+    auto SetSigma(std::vector<Operon::Scalar> sigma) const -> void
+    {
+        if constexpr (Lik::UsesSigma) {
+            detail::ValidateSigma(sigma);
+        }
+        sigma_ = std::move(sigma);
+    }
 
     auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const ->
         typename EvaluatorBase::ReturnType override
@@ -702,7 +747,13 @@ public:
     }
 
     auto Sigma() const { return std::span<Operon::Scalar const> { sigma_ }; }
-    auto SetSigma(std::vector<Operon::Scalar> sigma) const -> void { sigma_ = std::move(sigma); }
+    auto SetSigma(std::vector<Operon::Scalar> sigma) const -> void
+    {
+        if constexpr (Likelihood::UsesSigma) {
+            detail::ValidateSigma(sigma, true);
+        }
+        sigma_ = std::move(sigma);
+    }
 
 private:
     mutable std::vector<Operon::Scalar> sigma_;

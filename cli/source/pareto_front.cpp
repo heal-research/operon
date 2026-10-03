@@ -98,7 +98,9 @@ auto WriteParetoFront(std::string const& path,
         auto const k = WeightedComplexity(ind->Genotype).first; // fComplexity: computed internally by MDL/FBF below
 
         auto const n        = static_cast<double>(trainRange.Size());
-        auto const sigmaArr = std::array<Scalar, 1>{static_cast<Scalar>(std::sqrt(mseTrain))};
+        auto const profiledSigma = std::max(
+            static_cast<Scalar>(std::sqrt(mseTrain)), std::numeric_limits<Scalar>::epsilon());
+        auto const sigmaArr = std::array<Scalar, 1>{profiledSigma};
         auto const nll      = static_cast<double>(GaussianLikelihood<Scalar>::ComputeLikelihood(
                                   {estimTrain.data(), estimTrain.size()},
                                   targetTrain,
@@ -106,16 +108,33 @@ auto WriteParetoFront(std::string const& path,
 
         auto const fbf = FractionalBayesFactor(ind->Genotype, n, nll);
 
-        auto const coeffs  = ind->Genotype.GetCoefficients();
-        auto jacResult = interp.JacRev(coeffs, trainRange);
-        if (!jacResult) { throw std::runtime_error(FormatInterpreterError(jacResult.error())); }
-        auto jac = std::move(*jacResult);
-        jac *= scale;
-        auto fisherMatrix  = GaussianLikelihood<Scalar>::ComputeFisherMatrix(
-                                  {estimTrain.data(), estimTrain.size()},
-                                  {jac.data(), static_cast<std::size_t>(jac.size())},
-                                  {sigmaArr.data(), sigmaArr.size()});
-        auto const mdl = MinimumDescriptionLength(ind->Genotype, coeffs, fisherMatrix.diagonal().array(), nll);
+        auto const coeffs = ind->Genotype.GetCoefficients();
+        auto const columns = coeffs.size();
+        auto jacobianStorage = std::vector<Scalar>(trainRange.Size() * columns);
+        using Extents = std::dextents<MemoryIndex, 2>;
+        using Mapping = std::layout_stride::mapping<Extents>;
+        // Column stride must stay nonzero for an empty training range (extent 0
+        // addresses no element, but a zero stride violates layout_stride preconditions).
+        auto const columnStride = std::max<MemoryIndex>(trainRange.Size(), MemoryIndex {1});
+        auto jacobian = ScalarMatrixView {jacobianStorage.data(),
+            Mapping {Extents {trainRange.Size(), columns}, std::array<MemoryIndex, 2> {1, columnStride}}};
+        if (auto result = interp.JacRev(coeffs, trainRange, jacobianStorage); !result) {
+            throw std::runtime_error(FormatInterpreterError(result.error()));
+        }
+        for (std::size_t row = 0; row < trainRange.Size(); ++row) {
+            for (std::size_t column = 0; column < columns; ++column) {
+                At(jacobian, row, column) *= scale;
+            }
+        }
+        auto fisherDiagonal = std::vector<Scalar>(columns);
+        auto mdl = std::numeric_limits<double>::quiet_NaN(); // exported as null for a degenerate member
+        if (auto result = GaussianLikelihood<Scalar>::ComputeFisherDiagonal(
+                estimTrain, jacobian, sigmaArr, fisherDiagonal); result) {
+            mdl = MinimumDescriptionLength(ind->Genotype, coeffs, fisherDiagonal, nll);
+        } else if (result.error().Code != FisherErrorCode::NonFiniteResult
+                   && result.error().Code != FisherErrorCode::InvalidSigma) {
+            throw std::runtime_error("failed to compute Fisher diagonal");
+        }
 
         std::string objArr = "[";
         for (auto j = 0UL; j < ind->Fitness.size(); ++j) {
@@ -132,7 +151,7 @@ auto WriteParetoFront(std::string const& path,
             "   \"nmse_train\": {}, \"nmse_test\": {},\n"
             "   \"mae_train\": {}, \"mae_test\": {},\n"
             "   \"mdl\": {}, \"fbf\": {}}}",
-            i, EscapeJson(fmt::format("{:infix:roundtrip}", Fmt::WithNames{ind->Genotype, *ds})),
+            i, EscapeJson(fmt::format("{:infix:roundtrip}", Fmt::TreeFormatArgs{ind->Genotype, *ds})),
             ind->Genotype.AdjustedLength(), static_cast<size_t>(k), objArr,
             jsonNum(r2Train), jsonNum(r2Test),
             jsonNum(mseTrain), jsonNum(mseTest),

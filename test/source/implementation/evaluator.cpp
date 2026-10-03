@@ -183,35 +183,100 @@ TEST_CASE("Poisson likelihood static methods", "[likelihood]")
         CHECK_THAT(static_cast<double>(nll), Catch::Matchers::WithinRel(expected, 1e-5));
     }
 
-    SECTION("FisherMatrix LogInput=true: pred=0, J=I => F=I") {
-        // F = J^T · diag(exp(pred)) · J; exp(0)=1 => F = I
+    SECTION("Fisher diagonal LogInput=true: pred=log(i+1), J=I => diag(F)_i = exp(pred_i) = i+1") {
+        // F = J^T · diag(exp(pred)) · J; with J = I the diagonal is exp(pred).
         using Lik = PoissonLikelihood<Operon::Scalar>;
-        constexpr auto m { 10 };
-        std::vector<Operon::Scalar> pred(m, 0.0F);
-        Eigen::Matrix<Operon::Scalar, -1, -1> jac = Eigen::Matrix<Operon::Scalar, -1, -1>::Identity(m, m);
-        auto fisher = Lik::ComputeFisherMatrix(pred, {jac.data(), static_cast<std::size_t>(jac.size())}, {});
-        REQUIRE(fisher.rows() == m);
-        REQUIRE(fisher.cols() == m);
-        CHECK_THAT(static_cast<double>(fisher.diagonal().minCoeff()), Catch::Matchers::WithinRel(1.0, 1e-5));
-        CHECK_THAT(static_cast<double>(fisher.diagonal().maxCoeff()), Catch::Matchers::WithinRel(1.0, 1e-5));
-        auto const offDiag = (fisher - Eigen::Matrix<Operon::Scalar, -1, -1>::Identity(m, m)).norm();
-        CHECK_THAT(static_cast<double>(offDiag), Catch::Matchers::WithinAbs(0.0, 1e-5));
+        using Extents = std::dextents<std::size_t, 2>;
+        using Mapping = std::layout_stride::mapping<Extents>;
+        constexpr std::size_t m { 10 };
+        std::vector<Operon::Scalar> pred(m);
+        std::vector<Operon::Scalar> jac(m * m, 0.0F);
+        for (std::size_t i = 0; i < m; ++i) {
+            pred[i] = static_cast<Operon::Scalar>(std::log(static_cast<double>(i + 1)));
+            jac[(i * m) + i] = 1.0F;
+        }
+        Operon::ConstScalarMatrixView const view { jac.data(), Mapping { Extents { m, m }, std::array<std::size_t, 2> { m, 1 } } };
+        std::vector<Operon::Scalar> diagonal(m);
+        REQUIRE(Lik::ComputeFisherDiagonal(pred, view, {}, diagonal).has_value());
+        for (std::size_t i = 0; i < m; ++i) {
+            CHECK_THAT(static_cast<double>(diagonal[i]), Catch::Matchers::WithinRel(static_cast<double>(i + 1), 1e-5));
+        }
     }
 
-    SECTION("FisherMatrix LogInput=false: pred=1, J=I => F=I") {
-        // F = J^T · diag(1/pred) · J; 1/1=1 => F = I
+    SECTION("Fisher diagonal LogInput=false: pred=i+1, J=I => diag(F)_i = 1/pred_i") {
+        // F = J^T · diag(1/pred) · J; with J = I the diagonal is 1/pred.
         using Lik = PoissonLikelihood<Operon::Scalar, false>;
-        constexpr auto m { 10 };
-        std::vector<Operon::Scalar> pred(m, 1.0F);
-        Eigen::Matrix<Operon::Scalar, -1, -1> jac = Eigen::Matrix<Operon::Scalar, -1, -1>::Identity(m, m);
-        auto fisher = Lik::ComputeFisherMatrix(pred, {jac.data(), static_cast<std::size_t>(jac.size())}, {});
-        REQUIRE(fisher.rows() == m);
-        REQUIRE(fisher.cols() == m);
-        CHECK_THAT(static_cast<double>(fisher.diagonal().minCoeff()), Catch::Matchers::WithinRel(1.0, 1e-5));
-        CHECK_THAT(static_cast<double>(fisher.diagonal().maxCoeff()), Catch::Matchers::WithinRel(1.0, 1e-5));
-        auto const offDiag = (fisher - Eigen::Matrix<Operon::Scalar, -1, -1>::Identity(m, m)).norm();
-        CHECK_THAT(static_cast<double>(offDiag), Catch::Matchers::WithinAbs(0.0, 1e-5));
+        using Extents = std::dextents<std::size_t, 2>;
+        using Mapping = std::layout_stride::mapping<Extents>;
+        constexpr std::size_t m { 10 };
+        std::vector<Operon::Scalar> pred(m);
+        std::vector<Operon::Scalar> jac(m * m, 0.0F);
+        for (std::size_t i = 0; i < m; ++i) {
+            pred[i] = static_cast<Operon::Scalar>(i + 1);
+            jac[(i * m) + i] = 1.0F;
+        }
+        Operon::ConstScalarMatrixView const view { jac.data(), Mapping { Extents { m, m }, std::array<std::size_t, 2> { m, 1 } } };
+        std::vector<Operon::Scalar> diagonal(m);
+        REQUIRE(Lik::ComputeFisherDiagonal(pred, view, {}, diagonal).has_value());
+        for (std::size_t i = 0; i < m; ++i) {
+            CHECK_THAT(static_cast<double>(diagonal[i]), Catch::Matchers::WithinRel(1.0 / static_cast<double>(i + 1), 1e-5));
+        }
     }
+}
+
+TEST_CASE("Likelihood Fisher diagonals use canonical strided views", "[likelihood][fisher]")
+{
+    using Extents = std::dextents<std::size_t, 2>;
+    using Mapping = std::layout_stride::mapping<Extents>;
+    auto storage = std::array<Operon::Scalar, 6> {1, 0, -7, 0, 1, -7};
+    auto const jacobian = Operon::ConstScalarMatrixView {storage.data(),
+        Mapping {Extents {2, 2}, std::array<std::size_t, 2> {3, 1}}};
+    auto diagonal = std::array<Operon::Scalar, 2> {};
+
+    SECTION("Gaussian") {
+        auto const prediction = std::array<Operon::Scalar, 2> {0, 0};
+        auto const sigma = std::array<Operon::Scalar, 1> {2};
+        REQUIRE(Operon::GaussianLikelihood<Operon::Scalar>::ComputeFisherDiagonal(
+                    prediction, jacobian, sigma, diagonal)
+                    .has_value());
+        CHECK(diagonal[0] == Catch::Approx(0.25F));
+        CHECK(diagonal[1] == Catch::Approx(0.25F));
+    }
+
+    SECTION("Poisson log-rate") {
+        auto const prediction = std::array<Operon::Scalar, 2> {0, 0};
+        REQUIRE(Operon::PoissonLikelihood<Operon::Scalar>::ComputeFisherDiagonal(
+                    prediction, jacobian, {}, diagonal)
+                    .has_value());
+        CHECK(diagonal[0] == Catch::Approx(1));
+        CHECK(diagonal[1] == Catch::Approx(1));
+    }
+
+    SECTION("Poisson rate") {
+        auto const prediction = std::array<Operon::Scalar, 2> {1, 1};
+        REQUIRE(Operon::PoissonLikelihood<Operon::Scalar, false>::ComputeFisherDiagonal(
+                    prediction, jacobian, {}, diagonal)
+                    .has_value());
+        CHECK(diagonal[0] == Catch::Approx(1));
+        CHECK(diagonal[1] == Catch::Approx(1));
+    }
+}
+
+TEST_CASE("Gaussian Fisher diagonal accepts the profiled perfect-fit sigma", "[likelihood][fisher]")
+{
+    auto const prediction = std::array<Operon::Scalar, 2> {3, 5};
+    auto const sigma = std::array<Operon::Scalar, 1> {std::numeric_limits<Operon::Scalar>::epsilon()};
+    auto const jacobianStorage = std::array<Operon::Scalar, 2> {1, 1};
+    using Extents = std::dextents<std::size_t, 2>;
+    using Mapping = std::layout_stride::mapping<Extents>;
+    auto const jacobian = Operon::ConstScalarMatrixView {jacobianStorage.data(),
+        Mapping {Extents {2, 1}, std::array<std::size_t, 2> {1, 2}}};
+    auto diagonal = std::array<Operon::Scalar, 1> {};
+
+    REQUIRE(Operon::GaussianLikelihood<Operon::Scalar>::ComputeFisherDiagonal(
+                prediction, jacobian, sigma, diagonal)
+                .has_value());
+    CHECK(std::isfinite(static_cast<double>(diagonal[0])));
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -241,16 +306,24 @@ TEST_CASE("Gaussian per-sample sigma", "[likelihood]")
         CHECK(std::isnan(static_cast<double>(nll)));
     }
 
-    SECTION("ComputeFisherMatrix: uniform per-sample sigma matches scalar sigma") {
-        constexpr auto m { 10 };
+    SECTION("ComputeFisherDiagonal: uniform per-sample sigma matches scalar sigma") {
+        using Extents = std::dextents<std::size_t, 2>;
+        using Mapping = std::layout_stride::mapping<Extents>;
+        constexpr std::size_t m { 10 };
         std::vector<Operon::Scalar> p(m, 0.0F);
-        Eigen::Matrix<Operon::Scalar, -1, -1> jac = Eigen::Matrix<Operon::Scalar, -1, -1>::Identity(m, m);
+        std::vector<Operon::Scalar> jac(m * m, 0.0F);
+        for (std::size_t i = 0; i < m; ++i) { jac[(i * m) + i] = 1.0F; }
+        Operon::ConstScalarMatrixView const view { jac.data(), Mapping { Extents { m, m }, std::array<std::size_t, 2> { m, 1 } } };
         std::vector<Operon::Scalar> sig1(1, s);
         std::vector<Operon::Scalar> sigN(m, s);
-        auto const f1 = Lik::ComputeFisherMatrix(p, {jac.data(), static_cast<std::size_t>(jac.size())}, sig1);
-        auto const fN = Lik::ComputeFisherMatrix(p, {jac.data(), static_cast<std::size_t>(jac.size())}, sigN);
-        auto const diff = (f1 - fN).norm();
-        CHECK_THAT(static_cast<double>(diff), Catch::Matchers::WithinAbs(0.0, 1e-5));
+        std::vector<Operon::Scalar> d1(m);
+        std::vector<Operon::Scalar> dN(m);
+        REQUIRE(Lik::ComputeFisherDiagonal(p, view, sig1, d1).has_value());
+        REQUIRE(Lik::ComputeFisherDiagonal(p, view, sigN, dN).has_value());
+        for (std::size_t i = 0; i < m; ++i) {
+            CHECK_THAT(static_cast<double>(d1[i]), Catch::Matchers::WithinAbs(static_cast<double>(dN[i]), 1e-5));
+            CHECK_THAT(static_cast<double>(d1[i]), Catch::Matchers::WithinRel(1.0 / (static_cast<double>(s) * static_cast<double>(s)), 1e-5));
+        }
     }
 }
 
@@ -284,6 +357,20 @@ TEST_CASE("MDL evaluator", "[evaluator][information-criteria]")
         CHECK(result[0] > 0);
     }
 
+    SECTION("Gaussian / invalid fixed sigma is rejected at configuration") {
+        MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
+        CHECK_THROWS_AS(ev.SetSigma({0.F}), std::invalid_argument);
+        CHECK_THROWS_AS(ev.SetSigma({std::numeric_limits<Operon::Scalar>::quiet_NaN()}), std::invalid_argument);
+        CHECK_THROWS_AS(ev.SetSigma({std::numeric_limits<Operon::Scalar>::infinity()}), std::invalid_argument);
+    }
+
+    SECTION("Gaussian / wrong-length sigma is a configuration error, not a silent ErrMax") {
+        MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
+        ev.SetSigma({0.5F, 0.5F}); // neither scalar nor one value per training row
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
+        CHECK_THROWS_AS(ev(fix.rng, ind), std::runtime_error);
+    }
+
     SECTION("Poisson: finite result") {
         MinimumDescriptionLengthEvaluator<DTable, PoissonLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
         auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
@@ -304,7 +391,7 @@ TEST_CASE("MDL evaluator", "[evaluator][information-criteria]")
     // detail::ProfileSigma in isolation): EvaluatorBase::operator()'s contract
     // permits buf.size() > TrainingRange().Size(), and the operator() body
     // now slices down to exactly TrainingRange().Size() before using it
-    // anywhere (interpreter output, ComputeFisherMatrix's row-count
+    // anywhere (interpreter output, the Fisher diagonal's row-count
     // inference) - so an oversized buffer must produce the same result as
     // an exactly-sized one, not crash or silently diverge.
     SECTION("Gaussian / profiled sigma: oversized buffer matches exact-size buffer") {
@@ -359,11 +446,18 @@ TEST_CASE("MDL evaluator", "[evaluator][information-criteria]")
         REQUIRE(jac);
         auto jacobian = std::move(*jac);
         jacobian *= scale; // same scaled-Jacobian step used by pareto_front.cpp's MDL export
-        auto const fisherMatrix = GaussianLikelihood<Operon::Scalar>::ComputeFisherMatrix(
-            {estimTrain.data(), estimTrain.size()},
-            {jacobian.data(), static_cast<std::size_t>(jacobian.size())},
-            {sigmaArr.data(), sigmaArr.size()});
-        auto const expected = Operon::MinimumDescriptionLength(ind.Genotype, coeffs, fisherMatrix.diagonal().array(), nll);
+        using Extents = std::dextents<std::size_t, 2>;
+        using Mapping = std::layout_stride::mapping<Extents>;
+        auto const rows = estimTrain.size();
+        auto const cols = static_cast<std::size_t>(jacobian.cols());
+        Operon::ConstScalarMatrixView const jacobianView { jacobian.data(), Mapping { Extents { rows, cols }, std::array<std::size_t, 2> { 1, rows } } };
+        std::vector<Operon::Scalar> fisherDiagonal(cols);
+        auto const fisherResult = GaussianLikelihood<Operon::Scalar>::ComputeFisherDiagonal(
+            {estimTrain.data(), estimTrain.size()}, jacobianView, {sigmaArr.data(), sigmaArr.size()}, fisherDiagonal);
+        auto expected = std::numeric_limits<double>::quiet_NaN();
+        if (fisherResult) {
+            expected = Operon::MinimumDescriptionLength(ind.Genotype, coeffs, fisherDiagonal, nll);
+        }
 
         if (std::isfinite(expected)) {
             CHECK(result[0] == Catch::Approx(expected));
@@ -465,6 +559,12 @@ TEST_CASE("LikelihoodEvaluator", "[evaluator]")
         auto const result = ev(fix.rng, ind, buf);
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
+    }
+
+    SECTION("Gaussian: invalid configured sigma is rejected") {
+        GaussianLikelihoodEvaluator<DTable> const ev{&fix.problem, &fix.dtable};
+        CHECK_THROWS_AS(ev.SetSigma({}), std::invalid_argument);
+        CHECK_THROWS_AS(ev.SetSigma({0.F}), std::invalid_argument);
     }
 
     // Same regression guard as MDL/FBF's - see MinimumDescriptionLengthEvaluator's

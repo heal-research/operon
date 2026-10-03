@@ -190,7 +190,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     fmt::print("\nBest model (MSE={:.6f}, length={}):\n  {:infix:roundtrip}\n",
         best->Fitness[0],
         best->Genotype.Length(),
-        Operon::Fmt::WithNames{best->Genotype, dataset});
+        Operon::Fmt::TreeFormatArgs{best->Genotype, dataset});
 
     return 0;
 }

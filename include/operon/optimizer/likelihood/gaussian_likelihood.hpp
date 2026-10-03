@@ -11,7 +11,9 @@
 
 #include "operon/core/concepts.hpp"
 #include "operon/core/contracts.hpp"
+#include "operon/core/memory_view.hpp"
 #include "operon/core/types.hpp"
+#include "operon/optimizer/fisher_information.hpp"
 #include "operon/error_metrics/sum_of_squared_errors.hpp"
 #include <vstat/vstat.hpp>
 
@@ -25,13 +27,6 @@ namespace detail {
             auto const e = x - y;
             return e * e;
         }
-
-        template <Operon::Concepts::Arithmetic T>
-        auto operator()(T const x, T const y, T const w) const -> T
-        {
-            auto const e = w * (x - y);
-            return e * e;
-        }
     };
 } // namespace detail
 
@@ -41,8 +36,6 @@ namespace detail {
 template <typename T = Operon::Scalar>
 struct GaussianLikelihood {
     using Scalar = T;
-    using Matrix = Eigen::Matrix<Scalar, -1, -1>;
-    using Vector = Eigen::Matrix<Scalar, -1, 1>;
 
     static constexpr bool UsesSigma = true; // sigma is required; empty span is invalid
 
@@ -74,23 +67,48 @@ struct GaussianLikelihood {
         return std::numeric_limits<Operon::Scalar>::quiet_NaN();
     }
 
-    static auto ComputeFisherMatrix(Span<Scalar const> pred, Span<Scalar const> jac, Span<Scalar const> sigma) -> Matrix
+    /**
+     * Canonical Fisher-diagonal contract for callers that only need the
+     * per-coefficient MDL term. This overload is available only for
+     * `Operon::Scalar`, matching the canonical view contract. `jacobian` is
+     * logically (row, coefficient) with arbitrary valid strides; `diagonal`
+     * has exactly one element per coefficient. Sigma is scalar or per row and
+     * must be finite positive.
+     */
+    static auto ComputeFisherDiagonal(Span<Scalar const> pred, ConstScalarMatrixView jacobian,
+        Span<Scalar const> sigma, ScalarSpan diagonal) -> tl::expected<void, FisherError>
+        requires std::same_as<Scalar, Operon::Scalar>
     {
-        EXPECT(!sigma.empty());
         auto const rows = pred.size();
-        auto const cols = jac.size() / pred.size();
-        Eigen::Map<Matrix const> m(jac.data(), rows, cols);
-        if (sigma.size() == 1) {
-            auto const s2 = sigma[0] * sigma[0];
-            Matrix f = m.transpose() * m;
-            f.array() /= s2;
-            return f;
+        auto const columns = jacobian.extent(1);
+        if (jacobian.extent(0) != rows) {
+            return tl::unexpected(FisherError { .Code = FisherErrorCode::InvalidShape, .Expected = rows, .Actual = jacobian.extent(0) });
         }
-        EXPECT(sigma.size() == rows);
-        Eigen::Map<Vector const> s { sigma.data(), std::ssize(pred) };
-        // F = J^T diag(1/σᵢ²) J = (diag(1/σᵢ) J)^T (diag(1/σᵢ) J)
-        Matrix scaledJ = s.array().inverse().matrix().asDiagonal() * m;
-        return scaledJ.transpose() * scaledJ;
+        if (diagonal.size() != columns) {
+            return tl::unexpected(FisherError { .Code = FisherErrorCode::InvalidShape, .Expected = columns, .Actual = diagonal.size() });
+        }
+        if (sigma.empty() || (sigma.size() != 1 && sigma.size() != rows)) {
+            return tl::unexpected(FisherError { .Code = FisherErrorCode::InvalidShape, .Expected = rows, .Actual = sigma.size() });
+        }
+        for (auto const value : sigma) {
+            if (!std::isfinite(static_cast<double>(value)) || value <= Scalar { 0 }) {
+                return tl::unexpected(FisherError { .Code = FisherErrorCode::InvalidSigma });
+            }
+        }
+        for (std::size_t column = 0; column < columns; ++column) {
+            AccumulationScalar sum {};
+            for (std::size_t row = 0; row < rows; ++row) {
+                auto const value = static_cast<AccumulationScalar>(At(jacobian, row, column));
+                auto const sigmaAt = static_cast<AccumulationScalar>(sigma.size() == 1 ? sigma.front() : sigma[row]);
+                sum += (value * value) / (sigmaAt * sigmaAt);
+            }
+            auto const result = static_cast<Scalar>(sum);
+            if (!std::isfinite(sum) || !std::isfinite(static_cast<double>(result))) {
+                return tl::unexpected(FisherError { .Code = FisherErrorCode::NonFiniteResult });
+            }
+            diagonal[column] = result;
+        }
+        return {};
     }
 };
 

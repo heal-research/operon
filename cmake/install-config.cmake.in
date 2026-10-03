@@ -27,49 +27,101 @@ if(NOT "@BUILD_SHARED_LIBS@")
     endif()
 endif()
 
-# A component request for core alone must not even discover backend
-# dependencies. The default package request remains the full aggregate.
-set(_operon_require_backend TRUE)
-if(operon_FIND_COMPONENTS)
-    set(_operon_require_backend FALSE)
+# A component request for core alone must not discover backend dependencies.
+# The default package request remains the full aggregate. Backend components
+# requested explicitly as OPTIONAL_COMPONENTS are probed without making their
+# dependencies mandatory; required backend requests retain REQUIRED behavior.
+set(_operon_backend_requested FALSE)
+set(_operon_backend_required FALSE)
+if(NOT operon_FIND_COMPONENTS)
+    set(_operon_backend_requested TRUE)
+    set(_operon_backend_required TRUE)
+else()
     foreach(_operon_component IN LISTS operon_FIND_COMPONENTS)
         if(NOT _operon_component STREQUAL "core")
-            set(_operon_require_backend TRUE)
+            set(_operon_backend_requested TRUE)
+            if(operon_FIND_REQUIRED_${_operon_component})
+                set(_operon_backend_required TRUE)
+            endif()
         endif()
     endforeach()
 endif()
 
-if(_operon_require_backend)
-    # already covered unconditionally above (core needs them too).
-    find_dependency(Eigen3 CONFIG REQUIRED)
-    if(@HAVE_ASMJIT@)
-        find_dependency(asmjit CONFIG REQUIRED)
-    endif()
-    find_dependency(lbfgs CONFIG REQUIRED)
-    find_dependency(infix-parser CONFIG REQUIRED)
-    find_dependency(vstat CONFIG REQUIRED)
-    find_dependency(pappus CONFIG REQUIRED)
-
-    # operon::backend_adapter (INTERFACE) dependencies
-    find_dependency(eve CONFIG REQUIRED)
-
-    # operon::backend_adapter (PRIVATE) dependencies (needed for static library)
-    if(NOT "@BUILD_SHARED_LIBS@")
-        find_dependency(AriaCsvParser CONFIG REQUIRED)
-        find_dependency(Taskflow CONFIG REQUIRED)
-        find_dependency(cpp-sort CONFIG REQUIRED)
-        find_dependency(glaze CONFIG REQUIRED)
-        find_dependency(ndsort CONFIG REQUIRED)
-        find_dependency(gtl CONFIG REQUIRED)
+if(_operon_backend_requested)
+    if(_operon_backend_required)
+        find_dependency(Eigen3 CONFIG REQUIRED)
+        if(@HAVE_ASMJIT@)
+            find_dependency(asmjit CONFIG REQUIRED)
+        endif()
+        find_dependency(lbfgs CONFIG REQUIRED)
+        find_dependency(infix-parser CONFIG REQUIRED)
+        find_dependency(vstat CONFIG REQUIRED)
+        find_dependency(pappus CONFIG REQUIRED)
+        find_dependency(eve CONFIG REQUIRED)
+        if(NOT "@BUILD_SHARED_LIBS@")
+            find_dependency(AriaCsvParser CONFIG REQUIRED)
+            find_dependency(Taskflow CONFIG REQUIRED)
+            find_dependency(cpp-sort CONFIG REQUIRED)
+            find_dependency(glaze CONFIG REQUIRED)
+            find_dependency(ndsort CONFIG REQUIRED)
+            find_dependency(gtl CONFIG REQUIRED)
+        endif()
+    else()
+        find_package(Eigen3 CONFIG QUIET)
+        if(@HAVE_ASMJIT@)
+            find_package(asmjit CONFIG QUIET)
+        endif()
+        find_package(lbfgs CONFIG QUIET)
+        find_package(infix-parser CONFIG QUIET)
+        find_package(vstat CONFIG QUIET)
+        find_package(pappus CONFIG QUIET)
+        find_package(eve CONFIG QUIET)
+        if(NOT "@BUILD_SHARED_LIBS@")
+            find_package(AriaCsvParser CONFIG QUIET)
+            find_package(Taskflow CONFIG QUIET)
+            find_package(cpp-sort CONFIG QUIET)
+            find_package(glaze CONFIG QUIET)
+            find_package(ndsort CONFIG QUIET)
+            find_package(gtl CONFIG QUIET)
+        endif()
     endif()
 endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/operonTargets.cmake")
 
-# Exported targets are the package components. Explicitly mark their
-# component variables before check_required_components() evaluates a
-# core-only request.
+# Exported targets are the package components. Explicitly mark core as found.
+# The single export set always defines operon::backend_adapter and
+# operon::operon, but their link interfaces reference third-party targets that
+# an optional request may not have discovered. Report a backend component as
+# found only when every one of those targets is usable, so consumers can gate
+# on operon_<component>_FOUND instead of hitting an unresolved-target error.
 set(operon_core_FOUND TRUE)
-set(operon_backend_adapter_FOUND TRUE)
-set(operon_operon_FOUND TRUE)
+set(_operon_backend_targets
+    Eigen3::Eigen
+    lbfgs::lbfgs
+    infix-parser::infix-parser
+    vstat::vstat
+    pappus::pappus
+    eve::eve
+)
+if(@HAVE_ASMJIT@)
+    list(APPEND _operon_backend_targets asmjit::asmjit)
+endif()
+if(NOT "@BUILD_SHARED_LIBS@")
+    list(APPEND _operon_backend_targets
+        AriaCsvParser::AriaCsvParser
+        Taskflow::Taskflow
+        cpp-sort::cpp-sort
+        glaze::glaze
+        ndsort::ndsort
+    )
+endif()
+set(_operon_backend_available TRUE)
+foreach(_operon_backend_target IN LISTS _operon_backend_targets)
+    if(NOT TARGET ${_operon_backend_target})
+        set(_operon_backend_available FALSE)
+    endif()
+endforeach()
+set(operon_backend_adapter_FOUND ${_operon_backend_available})
+set(operon_operon_FOUND ${_operon_backend_available})
 check_required_components(operon)

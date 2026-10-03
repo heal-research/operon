@@ -67,16 +67,25 @@ public:
         }
 
         if (jacobian) {
+            auto const& view = *jacobian;
+            // The interpreter writes column-major (stride {1, n}). A view with
+            // exactly that layout is filled in place; any other stride pattern
+            // goes through scratch and a logical (row, column) copy.
+            if (n > 0 && view.stride(0) == 1 && view.stride(1) == n) {
+                auto jacResult = interpreter_->JacRev(parameters, range_, ScalarSpan { view.data_handle(), n * numParameters_ });
+                if (!jacResult) {
+                    return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::EvaluationFailure, .Cause = jacResult.error() });
+                }
+                return {};
+            }
             jacobianScratch_.resize(n * numParameters_);
             auto jacResult = interpreter_->JacRev(parameters, range_, jacobianScratch_);
             if (!jacResult) {
                 return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::EvaluationFailure, .Cause = jacResult.error() });
             }
-            // Interpreter writes column-major (stride {1, n}); copy into the
-            // caller's arbitrary-stride view.
             for (std::size_t j = 0; j < numParameters_; ++j) {
                 for (std::size_t i = 0; i < n; ++i) {
-                    At(*jacobian, i, j) = jacobianScratch_[(j * n) + i];
+                    At(view, i, j) = jacobianScratch_[(j * n) + i];
                 }
             }
         }

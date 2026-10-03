@@ -5,10 +5,12 @@
 #ifndef OPERON_ALGORITHMS_ENUMERATION_HPP
 #define OPERON_ALGORITHMS_ENUMERATION_HPP
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <mutex>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -99,12 +101,23 @@ struct EnumerationScore {
 using EnumerationScorer
     = Operon::MoveOnlyFunction<EnumerationScore(Operon::RandomGenerator&, Tree const&, double, Span<Scalar>)>;
 
-// Builds an MDL scorer. Empty sigma profiles Gaussian noise; otherwise sigma is fixed.
+// Builds an MDL scorer. Empty sigma profiles Gaussian noise; otherwise sigma is fixed
+// (one entry, or one per training row). A non-empty sigma is validated once, here:
+// every entry must be finite and positive, else std::invalid_argument is thrown at
+// construction so a static caller misconfiguration surfaces before enumeration starts
+// instead of from a Taskflow worker mid-run. A sigma length that matches neither 1 nor
+// the per-candidate row count cannot be known until scoring and still throws there.
 template <typename DTable, Concepts::Likelihood Lik>
-    requires Concepts::HasFisherMatrix<Lik>
+    requires Concepts::HasFisherDiagonal<Lik>
 auto MakeMdlScorer(gsl::not_null<Operon::Problem const*> problem, gsl::not_null<DTable const*> dtable,
     std::vector<Operon::Scalar> sigma = {}) -> EnumerationScorer
 {
+    for (std::size_t i = 0; i < sigma.size(); ++i) {
+        if (!std::isfinite(static_cast<double>(sigma[i])) || sigma[i] <= Operon::Scalar { 0 }) {
+            throw std::invalid_argument(
+                "MakeMdlScorer: sigma[" + std::to_string(i) + "] must be finite and positive");
+        }
+    }
     return [problem, dtable, sigma = std::move(sigma)](Operon::RandomGenerator& /*rng*/, Operon::Tree const& tree,
                double structureBits, Operon::Span<Operon::Scalar> buf) -> EnumerationScore {
         auto const trainingRange = problem->TrainingRange();
@@ -133,19 +146,43 @@ auto MakeMdlScorer(gsl::not_null<Operon::Problem const*> problem, gsl::not_null<
             ? Operon::Span<Operon::Scalar const> { &profiledSigma, 1 }
             : Operon::Span<Operon::Scalar const> { sigma };
 
-        auto jacobian = interpreter.JacRev(parameters, trainingRange);
-        if (!jacobian) { throw std::runtime_error(FormatInterpreterError(jacobian.error())); }
-        Eigen::Matrix<Operon::Scalar, -1, -1> jac = std::move(*jacobian);
-        if (scaling) {
-            jac *= static_cast<Operon::Scalar>(scaling->Scale);
+        auto const columns = parameters.size();
+        auto jacobianStorage = std::vector<Operon::Scalar>(trainingRange.Size() * columns);
+        using Extents = std::dextents<MemoryIndex, 2>;
+        using Mapping = std::layout_stride::mapping<Extents>;
+        // Column stride must stay nonzero for an empty training range (extent 0
+        // addresses no element, but a zero stride violates layout_stride preconditions).
+        auto const columnStride = std::max<MemoryIndex>(trainingRange.Size(), MemoryIndex {1});
+        auto jacobianView = ScalarMatrixView {jacobianStorage.data(),
+            Mapping {Extents {trainingRange.Size(), columns}, std::array<MemoryIndex, 2> {1, columnStride}}};
+        if (auto result = interpreter.JacRev(parameters, trainingRange, jacobianStorage); !result) {
+            throw std::runtime_error(FormatInterpreterError(result.error()));
         }
-        auto fisherMatrix
-            = Lik::ComputeFisherMatrix(yPred, { jac.data(), static_cast<std::size_t>(jac.size()) }, effectiveSigma);
-        auto fisherDiag = fisherMatrix.diagonal().array();
-        EXPECT(static_cast<std::size_t>(fisherDiag.size()) == parameters.size());
+        if (scaling) {
+            for (std::size_t row = 0; row < trainingRange.Size(); ++row) {
+                for (std::size_t column = 0; column < columns; ++column) {
+                    At(jacobianView, row, column) *= static_cast<Operon::Scalar>(scaling->Scale);
+                }
+            }
+        }
+        auto fisherDiagonal = std::vector<Operon::Scalar>(columns);
+        if (auto result = Lik::ComputeFisherDiagonal(yPred, jacobianView, effectiveSigma, fisherDiagonal); !result) {
+            // Candidate-local numerical failures must not abort Taskflow's
+            // enumeration. This includes an overflowing Fisher accumulation
+            // and a non-finite profiled Gaussian sigma; both reached MDL as
+            // NaN through the legacy Eigen facade and ranked at ErrMax.
+            // Caller-supplied sigma values are rejected at MakeMdlScorer
+            // construction; a length mismatch (InvalidShape) is only knowable
+            // per candidate and still throws here.
+            if (result.error().Code == FisherErrorCode::NonFiniteResult
+                || (sigma.empty() && Lik::UsesSigma && result.error().Code == FisherErrorCode::InvalidSigma)) {
+                return EnumerationScore { .Score = EvaluatorBase::ErrMax };
+            }
+            throw std::runtime_error("failed to compute Fisher diagonal");
+        }
 
         auto const nllNats = static_cast<double>(Lik::ComputeLikelihood(yPred, yTrue, effectiveSigma));
-        auto const paramNats = Operon::ParameterDescriptionLength(parameters, fisherDiag);
+        auto const paramNats = Operon::ParameterDescriptionLength(parameters, fisherDiagonal);
 
         constexpr double Ln2 = 0.6931471805599453094;
         auto const paramBits = paramNats / Ln2;

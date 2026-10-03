@@ -22,7 +22,7 @@ namespace Operon::Test {
 // MinimumDescriptionLength, or the parameter-cost term silently loses a
 // log(a) contribution per significant parameter. This locks in that
 // invariant directly against MinimumDescriptionLength/GaussianLikelihood::
-// ComputeFisherMatrix, independent of any CLI/evaluator glue code.
+// ComputeFisherDiagonal, independent of any CLI/evaluator glue code.
 TEST_CASE("Minimum description length reflects Jacobian scale", "[information-criteria][mdl]")
 {
     Operon::Dataset ds(std::vector<std::string>{"x1"},
@@ -59,16 +59,28 @@ TEST_CASE("Minimum description length reflects Jacobian scale", "[information-cr
     auto const nll = static_cast<double>(Operon::GaussianLikelihood<Operon::Scalar>::ComputeLikelihood(
         {pred.data(), pred.size()}, {pred.data(), pred.size()}, {sigmaArr.data(), sigmaArr.size()}));
 
-    auto const fisherUnscaled = Operon::GaussianLikelihood<Operon::Scalar>::ComputeFisherMatrix(
-        {pred.data(), pred.size()}, {jac.data(), static_cast<std::size_t>(jac.size())}, {sigmaArr.data(), sigmaArr.size()});
-    auto const mdlUnscaled = Operon::MinimumDescriptionLength(tree, coeffs, fisherUnscaled.diagonal().array(), nll);
+    // Column-major Jacobian (rows x coefficients) exposed as a strided view.
+    using Extents = std::dextents<std::size_t, 2>;
+    using Mapping = std::layout_stride::mapping<Extents>;
+    auto const rows = static_cast<std::size_t>(jac.rows());
+    auto const cols = static_cast<std::size_t>(jac.cols());
+    auto const fisherDiagonal = [&](auto const& jacobian) -> std::vector<Operon::Scalar> {
+        Operon::ConstScalarMatrixView const view { jacobian.data(), Mapping { Extents { rows, cols }, std::array<std::size_t, 2> { 1, rows } } };
+        std::vector<Operon::Scalar> diagonal(cols);
+        auto const result = Operon::GaussianLikelihood<Operon::Scalar>::ComputeFisherDiagonal(
+            {pred.data(), pred.size()}, view, {sigmaArr.data(), sigmaArr.size()}, diagonal);
+        REQUIRE(result.has_value());
+        return diagonal;
+    };
+
+    auto const fisherUnscaled = fisherDiagonal(jac);
+    auto const mdlUnscaled = Operon::MinimumDescriptionLength(tree, coeffs, fisherUnscaled, nll);
 
     constexpr auto a = Operon::Scalar{3.0F};
     auto jacScaled = jac;
     jacScaled *= a; // what WriteParetoFront's "jac *= scale" does for a fitted y = a*tree(x;coeffs)+b
-    auto const fisherScaled = Operon::GaussianLikelihood<Operon::Scalar>::ComputeFisherMatrix(
-        {pred.data(), pred.size()}, {jacScaled.data(), static_cast<std::size_t>(jacScaled.size())}, {sigmaArr.data(), sigmaArr.size()});
-    auto const mdlScaled = Operon::MinimumDescriptionLength(tree, coeffs, fisherScaled.diagonal().array(), nll);
+    auto const fisherScaled = fisherDiagonal(jacScaled);
+    auto const mdlScaled = Operon::MinimumDescriptionLength(tree, coeffs, fisherScaled, nll);
 
     // fisherScaled = a^2 * fisherUnscaled, so the (single, well above its
     // quantization threshold at this sigma/coefficient magnitude)

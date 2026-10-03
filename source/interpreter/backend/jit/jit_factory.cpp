@@ -36,9 +36,7 @@ auto MakeJitObjects(
     } else if (mode == "jac") {
         // Evaluator stays null — caller creates the interpreter evaluator.
         out.OptimizerJacEval = std::make_unique<JitEvaluator>(&problem, jzp, metric);
-        out.Optimizer = std::make_unique<JitLevenbergMarquardtOptimizer<Operon::ScalarDispatch,
-                                                                         Operon::OptimizerType::Eigen,
-                                                                         /*JacobianOnly=*/true>>(
+        out.Optimizer = std::make_unique<JitLevenbergMarquardtOptimizer<Operon::ScalarDispatch, /*JacobianOnly=*/true>>(
             &dtable, &problem,
             static_cast<JitEvaluator*>(out.OptimizerJacEval.get())); // NOLINT(cppcoreguidelines-pro-type-static-cast-downcast)
     } else {

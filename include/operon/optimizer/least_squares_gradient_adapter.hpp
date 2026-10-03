@@ -11,6 +11,7 @@
 #include <limits>
 #include <optional>
 #include <vector>
+#include <utility>
 
 #include <gsl/pointers>
 
@@ -19,26 +20,71 @@
 
 namespace Operon {
 
-namespace detail {
-    [[nodiscard]] inline auto ToGradientError(LeastSquaresError const& error) -> GradientError
-    {
-        auto code = GradientErrorCode::EvaluationFailure;
+/**
+ * Total, location-preserving conversion: every LeastSquaresErrorCode maps to
+ * the GradientErrorCode of the same name, and Expected/Actual/Row/Column/Cause
+ * are carried over unchanged.
+ */
+[[nodiscard]] inline auto ToGradientError(LeastSquaresError const& error) -> GradientError
+{
+    auto const code = [&error]() -> GradientErrorCode {
         switch (error.Code) {
         case LeastSquaresErrorCode::InvalidShape:
+            return GradientErrorCode::InvalidShape;
         case LeastSquaresErrorCode::InvalidView:
-            code = GradientErrorCode::InvalidShape;
-            break;
+            return GradientErrorCode::InvalidView;
+        case LeastSquaresErrorCode::InvalidWeights:
+            return GradientErrorCode::InvalidWeights;
         case LeastSquaresErrorCode::NonFiniteEvaluation:
-            code = GradientErrorCode::NonFiniteEvaluation;
-            break;
+            return GradientErrorCode::NonFiniteEvaluation;
         case LeastSquaresErrorCode::NumericalFailure:
-            code = GradientErrorCode::NumericalFailure;
-            break;
+            return GradientErrorCode::NumericalFailure;
         case LeastSquaresErrorCode::EvaluationFailure:
-            code = GradientErrorCode::EvaluationFailure;
-            break;
+            return GradientErrorCode::EvaluationFailure;
         }
-        return GradientError { .Code = code, .Expected = error.Expected, .Actual = error.Actual, .Cause = error.Cause };
+        // Unreachable for a valid enumerator; an out-of-range value is a
+        // generic evaluation failure rather than undefined behavior.
+        return GradientErrorCode::EvaluationFailure;
+    }();
+    return GradientError { .Code = code, .Expected = error.Expected, .Actual = error.Actual, .Row = error.Row, .Column = error.Column, .Cause = error.Cause };
+}
+
+/** Weight violations surface as GradientErrorCode::InvalidWeights with Expected/Actual/Row preserved. */
+[[nodiscard]] inline auto ToGradientError(WeightError const& error) -> GradientError
+{
+    return ToGradientError(ToLeastSquaresError(error));
+}
+
+namespace detail {
+    /**
+     * Validates a whole-dataset-column weight/exposure span for the batch
+     * [start, start + count) and returns the span a cost should use for it:
+     * the column itself when it is empty or a broadcast scalar, otherwise the
+     * batch-local slice. A per-row column must have exactly columnRows entries;
+     * only the batch slice is domain-checked (rows outside the training range
+     * may legitimately hold placeholder values). Violations are
+     * GradientErrorCode::InvalidWeights; for a per-row column Row is the
+     * absolute column row of the first offending entry.
+     */
+    [[nodiscard]] inline auto ValidatedBatchWeights(ConstScalarSpan column, std::size_t columnRows, std::size_t start, std::size_t count)
+        -> tl::expected<ConstScalarSpan, GradientError>
+    {
+        if (column.empty() || column.size() == 1) {
+            if (auto valid = ValidateWeights(column, count); !valid) {
+                return tl::unexpected(ToGradientError(valid.error()));
+            }
+            return column;
+        }
+        if (column.size() != columnRows) {
+            return tl::unexpected(ToGradientError(WeightError { .Code = WeightErrorCode::SizeMismatch, .Expected = columnRows, .Actual = column.size() }));
+        }
+        auto const slice = column.subspan(start, count);
+        if (auto valid = ValidateWeights(slice, count); !valid) {
+            auto error = ToGradientError(valid.error());
+            error.Row += start;
+            return tl::unexpected(std::move(error));
+        }
+        return slice;
     }
 } // namespace detail
 
@@ -95,7 +141,7 @@ public:
 private:
     auto Fail(LeastSquaresError const& error, ScalarSpan gradient) const -> tl::expected<Scalar, GradientError>
     {
-        auto gradientError = detail::ToGradientError(error);
+        auto gradientError = ToGradientError(error);
         if (!error_) {
             error_ = gradientError;
         }
