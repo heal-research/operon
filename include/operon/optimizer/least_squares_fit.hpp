@@ -77,10 +77,10 @@ namespace detail {
     //
     // A problem whose residual count the backends' int ABI cannot represent
     // (cf.ExceedsBackendLimit()) is rejected first, on both backends and for
-    // zero parameters, before any solver, buffer, or counter: the cost's own
-    // stored error if it has one (cf.RecordOversized()), else InvalidShape with
-    // Expected == the backend limit and Actual == NumResiduals(); NaN costs,
-    // FinalParameters == InitialParameters, zero counters.
+    // zero parameters, before any solver, buffer, cost evaluation, or counter:
+    // InvalidShape with Expected == the backend limit and Actual ==
+    // NumResiduals(), NaN costs, FinalParameters == InitialParameters, and
+    // zero counters.
     //
     // If the initial evaluation fails there is no valid initial cost: both
     // costs are NaN and Iterations is 0.
@@ -249,12 +249,9 @@ struct LeastSquaresFitOptions {
  *        cost.NumResiduals(). Tiny has no such restriction.
  *      - a residual count above LeastSquaresLMAdapter<>::MaxBackendResiduals
  *        (INT_MAX; the backends' int ABI), on both backends and for zero
- *        parameters. The cost is probed once with an empty residual span: a
- *        cost that stored its own construction error (such as an invalid
- *        JitLeastSquaresCostFunction) has that error reported unchanged
- *        (Code/Expected/Actual/Row/Column as the cost set them); otherwise the
- *        error is GradientErrorCode::InvalidShape with Expected ==
- *        MaxBackendResiduals and Actual == cost.NumResiduals().
+ *        parameters. The cost is not evaluated; the error is
+ *        GradientErrorCode::InvalidShape with Expected == MaxBackendResiduals
+ *        and Actual == cost.NumResiduals().
  *
  * Costs: InitialCost and FinalCost use the 0.5 * sum(w_i * r_i^2)
  * convention (never gradient-norm or statistical likelihood values).

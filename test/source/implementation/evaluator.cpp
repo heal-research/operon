@@ -561,6 +561,12 @@ TEST_CASE("LikelihoodEvaluator", "[evaluator]")
         CHECK(std::isfinite(result[0]));
     }
 
+    SECTION("Gaussian: invalid configured sigma is rejected") {
+        GaussianLikelihoodEvaluator<DTable> const ev{&fix.problem, &fix.dtable};
+        CHECK_THROWS_AS(ev.SetSigma({}), std::invalid_argument);
+        CHECK_THROWS_AS(ev.SetSigma({0.F}), std::invalid_argument);
+    }
+
     // Same regression guard as MDL/FBF's - see MinimumDescriptionLengthEvaluator's
     // operator() for why the slice fix is needed.
     SECTION("Gaussian: oversized buffer matches exact-size buffer") {

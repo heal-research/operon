@@ -253,10 +253,8 @@ TEST_CASE("LeastSquaresLMAdapter rejects nonfinite canonical outputs", "[least-s
     CHECK(adapter.Error()->Code == Operon::LeastSquaresErrorCode::NonFiniteEvaluation);
 }
 
-TEST_CASE("LeastSquaresLMAdapter reaches the cost's stored error for an oversized problem without allocating", "[least-squares][lm-adapter]")
+TEST_CASE("LeastSquaresLMAdapter reports the backend limit for an oversized problem without calling the cost", "[least-squares][lm-adapter]")
 {
-    // The cost reports a residual count no allocation could satisfy and fails
-    // every Evaluate() with a stored error, as an invalid JIT cost does.
     class OversizedInvalidCost final : public Operon::LeastSquaresCostFunction {
     public:
         [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return 2; }
@@ -265,8 +263,11 @@ TEST_CASE("LeastSquaresLMAdapter reaches the cost's stored error for an oversize
             std::optional<Operon::ScalarMatrixView>) const
             -> tl::expected<void, Operon::LeastSquaresError> override
         {
+            ++calls;
             return tl::unexpected(Operon::LeastSquaresError { .Code = Operon::LeastSquaresErrorCode::InvalidShape, .Expected = 9, .Actual = 4, .Row = 1, .Column = 2 });
         }
+
+        mutable std::size_t calls {};
     } cost;
 
     // Construction must neither allocate nor throw.
@@ -276,17 +277,19 @@ TEST_CASE("LeastSquaresLMAdapter reaches the cost's stored error for an oversize
     CHECK(adapter.ExceedsBackendLimit());
     CHECK_FALSE(adapter.Error().has_value());
 
-    // A Jacobian-only call needs internal scratch; it must surface the stored error instead.
+    // A Jacobian-only call needs internal scratch; it must reject the
+    // oversized shape before calling the cost.
     std::array<Operon::Scalar, 2> const parameters { 0, 0 };
     CHECK_FALSE(adapter.Evaluate(parameters.data(), nullptr, nullptr));
     REQUIRE(adapter.Error().has_value());
     CHECK(adapter.Error()->Code == Operon::LeastSquaresErrorCode::InvalidShape);
-    CHECK(adapter.Error()->Expected == 9);
-    CHECK(adapter.Error()->Actual == 4);
-    CHECK(adapter.Error()->Row == 1);
-    CHECK(adapter.Error()->Column == 2);
+    CHECK(adapter.Error()->Expected == decltype(adapter)::MaxBackendResiduals);
+    CHECK(adapter.Error()->Actual == std::numeric_limits<std::size_t>::max());
+    CHECK(adapter.Error()->Row == 0);
+    CHECK(adapter.Error()->Column == 0);
     CHECK(adapter.ResidualCalls() == 0);
     CHECK(adapter.JacobianCalls() == 0);
+    CHECK(cost.calls == 0);
 }
 
 TEST_CASE("LeastSquaresLMAdapter recovers nonfinite solver trials when enabled", "[least-squares][lm-adapter]")

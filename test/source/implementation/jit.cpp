@@ -1523,8 +1523,8 @@ TEST_CASE("FitLeastSquares propagates JIT cost configuration errors as typed eva
     // configuration error is only observable by evaluating the cost, so the
     // adapter counts that one failed call (Tiny's first evaluation requests
     // residuals and Jacobian together; Eigen's minimizeInit requests residuals
-    // only). An oversized problem is rejected before any evaluation is
-    // counted, so both counters stay at zero.
+    // only). An oversized problem is rejected before any evaluation, even when
+    // its cost has a stored construction error, so both counters stay at zero.
     auto const checkFit = [&](JitLeastSquaresCostFunction const& cost, bool reachesCost, Operon::GradientErrorCode code,
                               std::size_t expected, std::size_t actual, std::size_t column) {
         for (auto backend : { Operon::OptimizerType::Tiny, Operon::OptimizerType::Eigen }) {
@@ -1566,15 +1566,14 @@ TEST_CASE("FitLeastSquares propagates JIT cost configuration errors as typed eva
         checkFit(cost, true, Operon::GradientErrorCode::InvalidShape, JitCostFixture::NRows, 32, 0);
     }
 
-    SECTION("range far beyond INT_MAX rows overruns the target")
+    SECTION("range far beyond INT_MAX rows")
     {
-        // 2^40 rows requested from a 64-row target. The residual count is not
-        // representable by either backend, so any adapter scratch or solver
-        // buffer sized from it would fail; the stored error must come back.
+        // 2^40 rows cannot be represented by either backend, so the driver
+        // reports its backend limit without evaluating the invalid JIT cost.
         constexpr std::size_t Rows = std::size_t { 1 } << 40;
         JitLeastSquaresCostFunction cost { fx.Base(), &CountingResidualKernel, fx.Columns(), fx.Target(), Range { 0, Rows }, &CountingJacobianKernel, fx.Columns() };
         REQUIRE(cost.NumResiduals() == Rows);
-        checkFit(cost, false, Operon::GradientErrorCode::InvalidShape, Rows, JitCostFixture::NRows, 0);
+        checkFit(cost, false, Operon::GradientErrorCode::InvalidShape, std::numeric_limits<int>::max(), Rows, 0);
     }
 
     SECTION("oversized range with no kernels (interpreter path)")
@@ -1582,7 +1581,7 @@ TEST_CASE("FitLeastSquares propagates JIT cost configuration errors as typed eva
         constexpr std::size_t Rows = std::size_t { 1 } << 40;
         JitLeastSquaresCostFunction cost { fx.Base(), nullptr, {}, fx.Target(), Range { 0, Rows } };
         REQUIRE(cost.NumResiduals() == Rows);
-        checkFit(cost, false, Operon::GradientErrorCode::InvalidShape, Rows, JitCostFixture::NRows, 0);
+        checkFit(cost, false, Operon::GradientErrorCode::InvalidShape, std::numeric_limits<int>::max(), Rows, 0);
     }
 
     SECTION("range past INT_MAX rows exceeds the kernels' int32 row limit")
@@ -1594,7 +1593,7 @@ TEST_CASE("FitLeastSquares propagates JIT cost configuration errors as typed eva
         ConstScalarSpan const hugeTarget { &dummy, Rows };
         JitLeastSquaresCostFunction cost { fx.Base(), &CountingResidualKernel, fx.Columns(), hugeTarget, Range { 0, Rows }, &CountingJacobianKernel, fx.Columns() };
         REQUIRE(cost.NumResiduals() == Rows);
-        checkFit(cost, false, Operon::GradientErrorCode::InvalidShape, Rows - 8, Rows, 0);
+        checkFit(cost, false, Operon::GradientErrorCode::InvalidShape, std::numeric_limits<int>::max(), Rows, 0);
     }
 }
 

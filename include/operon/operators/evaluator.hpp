@@ -514,8 +514,11 @@ namespace detail {
         std::optional<LinearScaling> Scaling;
     };
 
-    inline auto ValidateSigma(Operon::Span<Operon::Scalar const> sigma) -> void
+    inline auto ValidateSigma(Operon::Span<Operon::Scalar const> sigma, bool required = false) -> void
     {
+        if (required && sigma.empty()) {
+            throw std::invalid_argument("sigma must not be empty");
+        }
         for (std::size_t i = 0; i < sigma.size(); ++i) {
             if (!std::isfinite(static_cast<double>(sigma[i])) || sigma[i] <= Operon::Scalar {}) {
                 throw std::invalid_argument("sigma[" + std::to_string(i) + "] must be finite and greater than zero");
@@ -747,7 +750,7 @@ public:
     auto SetSigma(std::vector<Operon::Scalar> sigma) const -> void
     {
         if constexpr (Likelihood::UsesSigma) {
-            detail::ValidateSigma(sigma);
+            detail::ValidateSigma(sigma, true);
         }
         sigma_ = std::move(sigma);
     }

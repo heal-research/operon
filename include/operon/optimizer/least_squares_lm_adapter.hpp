@@ -146,7 +146,7 @@ struct LeastSquaresLMAdapter final : public detail::LMBackendFunctor<LeastSquare
         }
         // A Jacobian-only call needs internal residual scratch. Beyond the
         // backend limit that scratch would be an unreasonable (or failing)
-        // allocation, so surface the wrapped cost's own error instead.
+        // allocation, so reject the shape before evaluating the wrapped cost.
         if (residuals == nullptr && ExceedsBackendLimit()) {
             RecordOversized(parameters);
             poisonOutputs();

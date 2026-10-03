@@ -71,8 +71,7 @@ static_assert(std::same_as<Scalar, float>, "JIT least-squares costs require Oper
  * Oversized ranges. An invalid range can make NumResiduals() larger than any
  * solver backend can represent (> INT_MAX). The constructor still allocates
  * nothing in that case (it returns before sizing any scratch), and
- * FitLeastSquares probes the cost before allocating any solver or residual
- * buffer, so the stored error above is what the caller sees.
+ * FitLeastSquares rejects the shape before allocating or evaluating the cost.
  *
  * Through FitLeastSquares, a stored configuration error that is not an
  * oversized range is observed by evaluating the cost once, so the adapter
