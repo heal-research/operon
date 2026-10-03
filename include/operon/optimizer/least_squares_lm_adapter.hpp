@@ -218,33 +218,16 @@ struct LeastSquaresLMAdapter final : public detail::LMBackendFunctor<LeastSquare
     }
 
     // Records, as the first error, why an ExceedsBackendLimit() problem cannot
-    // run, without allocating or counting a call. The wrapped cost is probed
-    // once with an empty residual span and no Jacobian, so a cost that stored
-    // its own construction error (JitLeastSquaresCostFunction) reports it
-    // unchanged. A cost that merely rejects the empty span (InvalidShape,
-    // Expected == NumResiduals(), Actual == 0, no location or cause) is a
-    // valid but oversized problem and is reported as InvalidShape with
-    // Expected = MaxBackendResiduals, Actual = NumResiduals(). An existing
-    // error is kept (first error wins). Parameters must hold NumParameters()
-    // values.
-    void RecordOversized(Scalar const* parameters) const
+    // run, without allocating, evaluating the wrapped cost, or counting a call.
+    // The backend residual limit is the reported expected size. Parameters must
+    // hold NumParameters() values.
+    void RecordOversized(Scalar const* /*parameters*/) const
     {
-        if (error_) {
-            return;
+        if (!error_) {
+            error_ = LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape,
+                .Expected = MaxBackendResiduals,
+                .Actual = this->numResiduals_ };
         }
-        Operon::Span<Scalar const> params { parameters, this->numParameters_ };
-        auto const probe = cost_->Evaluate(params, ScalarSpan {}, std::nullopt);
-        if (!probe) {
-            auto const& e = probe.error();
-            bool const emptySpanRejection = e.Code == LeastSquaresErrorCode::InvalidShape
-                && e.Expected == this->numResiduals_ && e.Actual == 0
-                && e.Row == 0 && e.Column == 0 && !e.Cause;
-            if (!emptySpanRejection) {
-                error_ = e;
-                return;
-            }
-        }
-        error_ = LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape, .Expected = MaxBackendResiduals, .Actual = this->numResiduals_ };
     }
 
 private:

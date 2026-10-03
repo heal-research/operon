@@ -357,6 +357,13 @@ TEST_CASE("MDL evaluator", "[evaluator][information-criteria]")
         CHECK(result[0] > 0);
     }
 
+    SECTION("Gaussian / invalid fixed sigma is rejected at configuration") {
+        MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
+        CHECK_THROWS_AS(ev.SetSigma({0.F}), std::invalid_argument);
+        CHECK_THROWS_AS(ev.SetSigma({std::numeric_limits<Operon::Scalar>::quiet_NaN()}), std::invalid_argument);
+        CHECK_THROWS_AS(ev.SetSigma({std::numeric_limits<Operon::Scalar>::infinity()}), std::invalid_argument);
+    }
+
     SECTION("Gaussian / wrong-length sigma is a configuration error, not a silent ErrMax") {
         MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
         ev.SetSigma({0.5F, 0.5F}); // neither scalar nor one value per training row

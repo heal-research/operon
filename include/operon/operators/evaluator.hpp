@@ -12,8 +12,8 @@
 #include <functional>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <utility>
-#include <vector>
 #include <tl/expected.hpp>
 
 #include "operon/collections/projection.hpp"
@@ -514,6 +514,15 @@ namespace detail {
         std::optional<LinearScaling> Scaling;
     };
 
+    inline auto ValidateSigma(Operon::Span<Operon::Scalar const> sigma) -> void
+    {
+        for (std::size_t i = 0; i < sigma.size(); ++i) {
+            if (!std::isfinite(static_cast<double>(sigma[i])) || sigma[i] <= Operon::Scalar {}) {
+                throw std::invalid_argument("sigma[" + std::to_string(i) + "] must be finite and greater than zero");
+            }
+        }
+    }
+
     inline auto PrepareScaledValues(
         Operon::Problem const& problem, ScoreContext ctx, std::optional<EvaluatedBuffer>& evaluated) -> ScaledValues
     {
@@ -546,7 +555,13 @@ public:
     }
 
     auto Sigma() const { return std::span<Operon::Scalar const> { sigma_ }; }
-    auto SetSigma(std::vector<Operon::Scalar> sigma) const -> void { sigma_ = std::move(sigma); }
+    auto SetSigma(std::vector<Operon::Scalar> sigma) const -> void
+    {
+        if constexpr (Lik::UsesSigma) {
+            detail::ValidateSigma(sigma);
+        }
+        sigma_ = std::move(sigma);
+    }
 
     auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const ->
         typename EvaluatorBase::ReturnType override
@@ -630,7 +645,13 @@ public:
     }
 
     auto Sigma() const { return std::span<Operon::Scalar const> { sigma_ }; }
-    auto SetSigma(std::vector<Operon::Scalar> sigma) const -> void { sigma_ = std::move(sigma); }
+    auto SetSigma(std::vector<Operon::Scalar> sigma) const -> void
+    {
+        if constexpr (Lik::UsesSigma) {
+            detail::ValidateSigma(sigma);
+        }
+        sigma_ = std::move(sigma);
+    }
 
     auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const ->
         typename EvaluatorBase::ReturnType override
@@ -723,7 +744,13 @@ public:
     }
 
     auto Sigma() const { return std::span<Operon::Scalar const> { sigma_ }; }
-    auto SetSigma(std::vector<Operon::Scalar> sigma) const -> void { sigma_ = std::move(sigma); }
+    auto SetSigma(std::vector<Operon::Scalar> sigma) const -> void
+    {
+        if constexpr (Likelihood::UsesSigma) {
+            detail::ValidateSigma(sigma);
+        }
+        sigma_ = std::move(sigma);
+    }
 
 private:
     mutable std::vector<Operon::Scalar> sigma_;

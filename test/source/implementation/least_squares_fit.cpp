@@ -375,17 +375,13 @@ TEST_CASE("FitLeastSquares reports consistent diagnostics for a parameterless co
 }
 
 namespace {
-// Reports a residual count no solver backend can represent. Like any conforming
-// cost it rejects a residual span of the wrong size, so a driver that allocates
-// buffers or evaluates it would fail these tests; optionally it stores a
-// construction error that every Evaluate() returns first (the way an invalid
-// JitLeastSquaresCostFunction does).
+// Reports a residual count no solver backend can represent. The driver must
+// reject this before evaluating the cost or allocating a residual buffer.
 class OversizedCost final : public Operon::LeastSquaresCostFunction {
 public:
-    OversizedCost(std::size_t residuals, std::size_t parameters, std::optional<Operon::LeastSquaresError> stored = std::nullopt)
+    OversizedCost(std::size_t residuals, std::size_t parameters)
         : residuals_(residuals)
         , parameters_(parameters)
-        , stored_(std::move(stored))
     {
     }
 
@@ -399,9 +395,6 @@ public:
         -> tl::expected<void, Operon::LeastSquaresError> override
     {
         ++calls;
-        if (stored_) {
-            return tl::unexpected(*stored_);
-        }
         if (residuals.size() != residuals_) {
             return tl::unexpected(Operon::LeastSquaresError { .Code = Operon::LeastSquaresErrorCode::InvalidShape, .Expected = residuals_, .Actual = residuals.size() });
         }
@@ -413,7 +406,6 @@ public:
 private:
     std::size_t residuals_;
     std::size_t parameters_;
-    std::optional<Operon::LeastSquaresError> stored_;
 };
 } // namespace
 
@@ -443,7 +435,7 @@ TEST_CASE("FitLeastSquares rejects an oversized residual count before allocating
                     CHECK(error->JacobianEvaluations == 0);
                 };
 
-                // Valid but oversized cost: InvalidShape against the backend limit.
+                // Oversized costs are rejected without calling user code.
                 {
                     OversizedCost cost { rows, parameters };
                     auto const outcome = Operon::FitLeastSquares(cost, start, { .Backend = backend });
@@ -452,20 +444,7 @@ TEST_CASE("FitLeastSquares rejects an oversized residual count before allocating
                     CHECK(error->Error.Code == Operon::GradientErrorCode::InvalidShape);
                     CHECK(error->Error.Expected == limit);
                     CHECK(error->Error.Actual == rows);
-                    CHECK(cost.calls == 1); // the single empty-span probe
-                }
-
-                // A stored construction error is reported unchanged.
-                {
-                    OversizedCost cost { rows, parameters, Operon::LeastSquaresError { .Code = Operon::LeastSquaresErrorCode::InvalidView, .Expected = 5, .Actual = 6, .Row = 1, .Column = 3 } };
-                    auto const outcome = Operon::FitLeastSquares(cost, start, { .Backend = backend });
-                    checkUnevaluated(outcome);
-                    auto const* error = Operon::EvaluationError(outcome);
-                    CHECK(error->Error.Code == Operon::GradientErrorCode::InvalidView);
-                    CHECK(error->Error.Expected == 5);
-                    CHECK(error->Error.Actual == 6);
-                    CHECK(error->Error.Row == 1);
-                    CHECK(error->Error.Column == 3);
+                    CHECK(cost.calls == 0);
                 }
             }
         }
