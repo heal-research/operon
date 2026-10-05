@@ -4,8 +4,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <fmt/format.h>
 #include <array>
+#include <fmt/format.h>
 #include <numbers>
 #include <random>
 #include <vector>
@@ -32,15 +32,19 @@ auto MakeFriedmanDataset(int rows, std::mt19937& rng) -> Operon::Dataset
     std::uniform_real_distribution<Operon::Scalar> u(0.F, 1.F);
     std::vector<std::vector<Operon::Scalar>> cols(NVARS + 1, std::vector<Operon::Scalar>(rows));
     for (int r = 0; r < rows; ++r) {
-        std::array<Operon::Scalar, NVARS> x{};
-        for (int i = 0; i < NVARS; ++i) { x[i] = u(rng); cols[i][r] = x[i]; }  // NOLINT(cppcoreguidelines-pro-bounds-constant-array-index)
-        cols[NVARS][r] = (10.F * std::sin(std::numbers::pi_v<Operon::Scalar> * x[0] * x[1]))  // NOLINT
-                       + (20.F * (x[2] - .5F) * (x[2] - .5F))
-                       + (10.F * x[3]) + (5.F * x[4]);
+        std::array<Operon::Scalar, NVARS> x {};
+        for (int i = 0; i < NVARS; ++i) {
+            x[i] = u(rng);
+            cols[i][r] = x[i];
+        } // NOLINT(cppcoreguidelines-pro-bounds-constant-array-index)
+        cols[NVARS][r] = (10.F * std::sin(std::numbers::pi_v<Operon::Scalar> * x[0] * x[1])) // NOLINT
+            + (20.F * (x[2] - .5F) * (x[2] - .5F)) + (10.F * x[3]) + (5.F * x[4]);
     }
     std::vector<std::string> names;
     names.reserve(static_cast<std::size_t>(NVARS + 1));
-    for (int i = 0; i < NVARS; ++i) { names.push_back(fmt::format("x{}", i + 1)); }
+    for (int i = 0; i < NVARS; ++i) {
+        names.push_back(fmt::format("x{}", i + 1));
+    }
     names.push_back("Y");
     return Operon::Dataset(names, cols);
 }
@@ -51,28 +55,28 @@ auto MakeFriedmanDataset(int rows, std::mt19937& rng) -> Operon::Dataset
 TEST_CASE("JIT compile time distribution", "[performance][jit][breakeven]")
 {
 #ifdef HAVE_ASMJIT
-    constexpr int MAX_SIZE   = 50;
+    constexpr int MAX_SIZE = 50;
     constexpr int N_PER_SIZE = 200;
 
-    std::mt19937 rng(42);  // NOLINT(cert-msc51-cpp)
+    std::mt19937 rng(42); // NOLINT(cert-msc51-cpp)
     auto ds = MakeFriedmanDataset(1000, rng);
 
     auto inputs = ds.VariableHashes();
     inputs.pop_back();
 
-    Operon::Problem problem{&ds};
-    problem.SetTrainingRange({0, 1000});
+    Operon::Problem problem { &ds };
+    problem.SetTrainingRange({ 0, 1000 });
     problem.SetTarget("Y");
     problem.SetLinearScalingEnabled(false);
     problem.ConfigurePrimitiveSet(Operon::PrimitiveSet::Arithmetic);
 
-    Operon::RandomGenerator zrng(42);  // NOLINT(cert-msc51-cpp)
+    Operon::RandomGenerator zrng(42); // NOLINT(cert-msc51-cpp)
     Operon::JIT::JitZobrist zobrist(zrng, MAX_SIZE, inputs);
-    Operon::JIT::JitEvaluator jitEval(&problem, &zobrist, Operon::MSE{});
+    Operon::JIT::JitEvaluator jitEval(&problem, &zobrist, Operon::MSE {});
     jitEval.SetBudget(std::numeric_limits<std::size_t>::max());
 
     Operon::BalancedTreeCreator creator(&problem.GetPrimitiveSet(), inputs, 0.0, MAX_SIZE);
-    Operon::RandomGenerator treeRng(123);  // NOLINT(cert-msc51-cpp)
+    Operon::RandomGenerator treeRng(123); // NOLINT(cert-msc51-cpp)
 
     nb::Bench bench;
     bench.title("compile").batch(1);
@@ -104,26 +108,26 @@ TEST_CASE("JIT compile time distribution", "[performance][jit][breakeven]")
 // The crossover row count is the JIT break-even point for that tree size.
 TEST_CASE("JIT vs interpreter break-even", "[performance][jit][breakeven]")
 {
-    constexpr int MAX_ROWS    = 100'000;
-    constexpr int POOL_SIZE   = 20;   // trees per size, rotated to avoid compile-cache warmth
-    constexpr std::array SIZES{ 10, 25, 50 };
-    constexpr int MAX_SIZE    = SIZES.back();
+    constexpr int MAX_ROWS = 100'000;
+    constexpr int POOL_SIZE = 20; // trees per size, rotated to avoid compile-cache warmth
+    constexpr std::array SIZES { 10, 25, 50 };
+    constexpr int MAX_SIZE = SIZES.back();
 
-    std::mt19937 rng(42);  // NOLINT(cert-msc51-cpp)
+    std::mt19937 rng(42); // NOLINT(cert-msc51-cpp)
     auto ds = MakeFriedmanDataset(MAX_ROWS, rng);
 
     auto inputs = ds.VariableHashes();
     inputs.pop_back();
 
-    Operon::Problem problem{&ds};
-    problem.SetTrainingRange({0, static_cast<std::size_t>(MAX_ROWS)});
+    Operon::Problem problem { &ds };
+    problem.SetTrainingRange({ 0, static_cast<std::size_t>(MAX_ROWS) });
     problem.SetTarget("Y");
     problem.SetLinearScalingEnabled(false);
     problem.ConfigurePrimitiveSet(Operon::PrimitiveSet::Arithmetic);
 
-    Operon::RandomGenerator zrng(42);   // NOLINT(cert-msc51-cpp)
+    Operon::RandomGenerator zrng(42); // NOLINT(cert-msc51-cpp)
     Operon::BalancedTreeCreator creator(&problem.GetPrimitiveSet(), inputs, 0.0, MAX_SIZE);
-    Operon::RandomGenerator treeRng(456);  // NOLINT(cert-msc51-cpp)
+    Operon::RandomGenerator treeRng(456); // NOLINT(cert-msc51-cpp)
 
     Operon::ScalarDispatch dtable;
 
@@ -133,7 +137,7 @@ TEST_CASE("JIT vs interpreter break-even", "[performance][jit][breakeven]")
 
 #ifdef HAVE_ASMJIT
     Operon::JIT::JitZobrist zobrist(zrng, MAX_SIZE, inputs);
-    Operon::JIT::JitEvaluator jitEval(&problem, &zobrist, Operon::MSE{});
+    Operon::JIT::JitEvaluator jitEval(&problem, &zobrist, Operon::MSE {});
     jitEval.SetBudget(std::numeric_limits<std::size_t>::max());
 #endif
 
@@ -149,16 +153,22 @@ TEST_CASE("JIT vs interpreter break-even", "[performance][jit][breakeven]")
         }
 
         std::vector<std::vector<Operon::Scalar>> poolCoeffs(POOL_SIZE);
-        for (int k = 0; k < POOL_SIZE; ++k) { pool[k].GetCoefficients(poolCoeffs[k]); }
+        for (int k = 0; k < POOL_SIZE; ++k) {
+            pool[k].GetCoefficients(poolCoeffs[k]);
+        }
 
         // Interpreter objects (one per tree in pool)
         std::vector<Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>> interps;
         interps.reserve(POOL_SIZE);
-        for (auto const& t : pool) { interps.emplace_back(&dtable, &ds, &t); }
+        for (auto const& t : pool) {
+            interps.emplace_back(&dtable, &ds, &t);
+        }
 
 #ifdef HAVE_ASMJIT
         // Pre-build column pointer arrays using VarOrder (no compilation needed).
-        struct ColPtrs { std::vector<Operon::Scalar const*> Ptrs; };
+        struct ColPtrs {
+            std::vector<Operon::Scalar const*> Ptrs;
+        };
         std::vector<ColPtrs> colPtrPool(POOL_SIZE);
         for (int k = 0; k < POOL_SIZE; ++k) {
             auto const order = Operon::JIT::VarOrder(pool[k]);
@@ -172,11 +182,11 @@ TEST_CASE("JIT vs interpreter break-even", "[performance][jit][breakeven]")
         int idx = 0;
 
         for (int rows = 1000; rows <= MAX_ROWS; rows += 1000) {
-            Operon::Range const range{0, static_cast<std::size_t>(rows)};
+            Operon::Range const range { 0, static_cast<std::size_t>(rows) };
 
             bench.run(fmt::format("interp sz={:02d} rows={:06d}", sz, rows), [&] {
                 int const i = idx % POOL_SIZE;
-                Operon::Span<Operon::Scalar const> cs{poolCoeffs[i].data(), poolCoeffs[i].size()};
+                Operon::Span<Operon::Scalar const> cs { poolCoeffs[i].data(), poolCoeffs[i].size() };
                 static_cast<void>(interps[i].Evaluate(cs, range, buf));
                 nb::doNotOptimizeAway(buf.data());
             });
@@ -208,34 +218,34 @@ TEST_CASE("JIT vs interpreter break-even", "[performance][jit][breakeven]")
 TEST_CASE("JIT vs interpreter Jacobian break-even", "[performance][jit][breakeven]")
 {
 #ifdef HAVE_ASMJIT
-    constexpr int MAX_ROWS  = 100'000;
+    constexpr int MAX_ROWS = 100'000;
     constexpr int POOL_SIZE = 20;
-    constexpr std::array SIZES{ 10, 25, 50 };
-    constexpr int MAX_SIZE  = SIZES.back();
+    constexpr std::array SIZES { 10, 25, 50 };
+    constexpr int MAX_SIZE = SIZES.back();
 
-    std::mt19937 rng(42);  // NOLINT(cert-msc51-cpp)
+    std::mt19937 rng(42); // NOLINT(cert-msc51-cpp)
     auto ds = MakeFriedmanDataset(MAX_ROWS, rng);
 
     auto inputs = ds.VariableHashes();
     inputs.pop_back();
 
-    Operon::Problem problem{&ds};
-    problem.SetTrainingRange({0, static_cast<std::size_t>(MAX_ROWS)});
+    Operon::Problem problem { &ds };
+    problem.SetTrainingRange({ 0, static_cast<std::size_t>(MAX_ROWS) });
     problem.SetTarget("Y");
     problem.SetLinearScalingEnabled(false);
     problem.ConfigurePrimitiveSet(Operon::PrimitiveSet::Arithmetic);
 
-    Operon::RandomGenerator zrng(42);  // NOLINT(cert-msc51-cpp)
+    Operon::RandomGenerator zrng(42); // NOLINT(cert-msc51-cpp)
     Operon::JIT::JitZobrist zobrist(zrng, MAX_SIZE, inputs);
 
     Operon::BalancedTreeCreator creator(&problem.GetPrimitiveSet(), inputs, 0.0, MAX_SIZE);
-    Operon::RandomGenerator treeRng(789);  // NOLINT(cert-msc51-cpp)
+    Operon::RandomGenerator treeRng(789); // NOLINT(cert-msc51-cpp)
 
     Operon::ScalarDispatch dtable;
 
     auto const nRowsPadMax = static_cast<std::size_t>((static_cast<unsigned>(MAX_ROWS) + 7U) & ~7U);
 
-    Operon::JIT::JitEvaluator jitEval(&problem, &zobrist, Operon::MSE{});
+    Operon::JIT::JitEvaluator jitEval(&problem, &zobrist, Operon::MSE {});
     jitEval.SetBudget(std::numeric_limits<std::size_t>::max());
 
     nb::Bench bench;
@@ -249,14 +259,20 @@ TEST_CASE("JIT vs interpreter Jacobian break-even", "[performance][jit][breakeve
         }
 
         std::vector<std::vector<Operon::Scalar>> poolCoeffs(POOL_SIZE);
-        for (int k = 0; k < POOL_SIZE; ++k) { pool[k].GetCoefficients(poolCoeffs[k]); }
+        for (int k = 0; k < POOL_SIZE; ++k) {
+            pool[k].GetCoefficients(poolCoeffs[k]);
+        }
 
         // Build interpreters and pre-discover jacColPtrs for JIT path.
         std::vector<Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>> interps;
         interps.reserve(POOL_SIZE);
-        for (auto const& t : pool) { interps.emplace_back(&dtable, &ds, &t); }
+        for (auto const& t : pool) {
+            interps.emplace_back(&dtable, &ds, &t);
+        }
 
-        struct JacColPtrs { std::vector<Operon::Scalar const*> Ptrs; };
+        struct JacColPtrs {
+            std::vector<Operon::Scalar const*> Ptrs;
+        };
         std::vector<JacColPtrs> jacColPtrPool(POOL_SIZE);
         for (int k = 0; k < POOL_SIZE; ++k) {
             auto const order = Operon::JIT::VarOrder(pool[k]);
@@ -269,21 +285,22 @@ TEST_CASE("JIT vs interpreter Jacobian break-even", "[performance][jit][breakeve
         int idx = 0;
 
         for (int rows = 1000; rows <= MAX_ROWS; rows += 1000) {
-            Operon::Range const range{0, static_cast<std::size_t>(rows)};
+            Operon::Range const range { 0, static_cast<std::size_t>(rows) };
             auto const nRowsPad = static_cast<int>((static_cast<unsigned>(rows) + 7U) & ~7U);
-            auto const nCoeffs  = static_cast<std::size_t>(pool[0].CoefficientsCount());
+            auto const nCoeffs = static_cast<std::size_t>(pool[0].CoefficientsCount());
 
             // Allocate Jacobian output buffers (nRows × nCoeffs, col-major).
-            std::vector<Operon::Scalar>              jacBufInterp(static_cast<std::size_t>(rows) * nCoeffs);
-            std::vector<std::vector<Operon::Scalar>> jacColBufsJit(nCoeffs,
-                std::vector<Operon::Scalar>(nRowsPadMax));
+            std::vector<Operon::Scalar> jacBufInterp(static_cast<std::size_t>(rows) * nCoeffs);
+            std::vector<std::vector<Operon::Scalar>> jacColBufsJit(nCoeffs, std::vector<Operon::Scalar>(nRowsPadMax));
             std::vector<float*> jacOutPtrs(nCoeffs);
-            for (std::size_t k = 0; k < nCoeffs; ++k) { jacOutPtrs[k] = jacColBufsJit[k].data(); }
+            for (std::size_t k = 0; k < nCoeffs; ++k) {
+                jacOutPtrs[k] = jacColBufsJit[k].data();
+            }
 
             bench.run(fmt::format("jacrev sz={:02d} rows={:06d}", sz, rows), [&] {
                 int const i = idx % POOL_SIZE;
-                Operon::Span<Operon::Scalar const> cs{ poolCoeffs[i].data(), poolCoeffs[i].size() };
-                Operon::Span<Operon::Scalar> jac{ jacBufInterp.data(), jacBufInterp.size() };
+                Operon::Span<Operon::Scalar const> cs { poolCoeffs[i].data(), poolCoeffs[i].size() };
+                Operon::Span<Operon::Scalar> jac { jacBufInterp.data(), jacBufInterp.size() };
                 static_cast<void>(interps[i].JacRev(cs, range, jac));
                 nb::doNotOptimizeAway(jacBufInterp.data());
             });

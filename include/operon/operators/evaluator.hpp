@@ -13,8 +13,8 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <utility>
 #include <tl/expected.hpp>
+#include <utility>
 
 #include "operon/collections/projection.hpp"
 #include "operon/core/concepts.hpp"
@@ -42,10 +42,7 @@ struct OPERON_EXPORT ErrorMetric {
     using Iterator = Operon::Scalar const*;
     using ProjIterator = ProjectionIterator<Iterator>;
 
-    explicit ErrorMetric(ErrorType type)
-        : type_(type)
-    {
-    }
+    explicit ErrorMetric(ErrorType type) : type_(type) {}
 
     [[nodiscard]] auto Type() const noexcept -> ErrorType { return type_; }
 
@@ -67,52 +64,31 @@ private:
 };
 
 struct OPERON_EXPORT SSE : public ErrorMetric {
-    SSE()
-        : ErrorMetric(ErrorType::SSE)
-    {
-    }
+    SSE() : ErrorMetric(ErrorType::SSE) {}
 };
 
 struct OPERON_EXPORT MSE : public ErrorMetric {
-    MSE()
-        : ErrorMetric(ErrorType::MSE)
-    {
-    }
+    MSE() : ErrorMetric(ErrorType::MSE) {}
 };
 
 struct OPERON_EXPORT NMSE : public ErrorMetric {
-    NMSE()
-        : ErrorMetric(ErrorType::NMSE)
-    {
-    }
+    NMSE() : ErrorMetric(ErrorType::NMSE) {}
 };
 
 struct OPERON_EXPORT RMSE : public ErrorMetric {
-    RMSE()
-        : ErrorMetric(ErrorType::RMSE)
-    {
-    }
+    RMSE() : ErrorMetric(ErrorType::RMSE) {}
 };
 
 struct OPERON_EXPORT MAE : public ErrorMetric {
-    MAE()
-        : ErrorMetric(ErrorType::MAE)
-    {
-    }
+    MAE() : ErrorMetric(ErrorType::MAE) {}
 };
 
 struct OPERON_EXPORT R2 : public ErrorMetric {
-    R2()
-        : ErrorMetric(ErrorType::R2)
-    {
-    }
+    R2() : ErrorMetric(ErrorType::R2) {}
 };
 
 struct OPERON_EXPORT C2 : public ErrorMetric {
-    C2()
-        : ErrorMetric(ErrorType::C2)
-    {
-    }
+    C2() : ErrorMetric(ErrorType::C2) {}
 };
 
 auto OPERON_EXPORT FitLeastSquares(Operon::Span<float const> estimated, Operon::Span<float const> target) noexcept
@@ -129,9 +105,7 @@ auto OPERON_EXPORT FitLeastSquares(Operon::Span<double const> estimated, Operon:
 class EvaluatedBuffer {
 public:
     EvaluatedBuffer(EvaluatedBuffer const&) = delete;
-    EvaluatedBuffer(EvaluatedBuffer&& other) noexcept
-        : individual_(other.individual_)
-        , span_(other.span_)
+    EvaluatedBuffer(EvaluatedBuffer&& other) noexcept : individual_(other.individual_), span_(other.span_)
     {
         other.individual_ = nullptr;
         other.span_ = {};
@@ -149,8 +123,8 @@ public:
     }
     ~EvaluatedBuffer() = default;
 
-    [[nodiscard]] auto Values(Operon::Individual const& individual, Operon::Span<Operon::Scalar> scratch) const
-        noexcept -> Operon::Span<Operon::Scalar>
+    [[nodiscard]] auto Values(Operon::Individual const& individual, Operon::Span<Operon::Scalar> scratch) const noexcept
+        -> Operon::Span<Operon::Scalar>
     {
         ENSURE(Matches(individual, scratch));
         return span_;
@@ -165,8 +139,8 @@ private:
     {
     }
 
-    [[nodiscard]] auto Matches(Operon::Individual const& individual, Operon::Span<Operon::Scalar> scratch) const
-        noexcept -> bool
+    [[nodiscard]] auto Matches(
+        Operon::Individual const& individual, Operon::Span<Operon::Scalar> scratch) const noexcept -> bool
     {
         return individual_ == &individual && span_.data() == scratch.data() && span_.size() <= scratch.size();
     }
@@ -208,10 +182,7 @@ struct EvaluatorBase
     // by pointer throughout (EvaluatorBase const*) and never copied or moved.
     ~EvaluatorBase() override = default;
 
-    explicit EvaluatorBase(gsl::not_null<Problem const*> problem)
-        : problem_(problem)
-    {
-    }
+    explicit EvaluatorBase(gsl::not_null<Problem const*> problem) : problem_(problem) {}
 
     // Closes out OperatorBase's pure-virtual 3-arg operator() by composing the
     // two phase hooks below. `final` so no subclass can re-declare operator()
@@ -240,6 +211,7 @@ struct EvaluatorBase
     // value-based override must ENSURE(evaluated.has_value()) and read
     // evaluated->Values(ctx.Ind, ctx.Scratch), not `ctx.Scratch`. Each override increments CallCount exactly once.
     virtual auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const -> ReturnType = 0;
+
 protected:
     [[nodiscard]] static auto MarkEvaluated(Operon::Individual const& individual, Operon::Span<Operon::Scalar> values)
         -> EvaluatedBuffer
@@ -248,7 +220,6 @@ protected:
     }
 
 public:
-
     // Non-virtual deducing-this 2-arg facade: allocates a TrainingRange()-sized scratch
     // buffer and forwards to the 3-arg operator() above.
     template <typename Self>
@@ -389,10 +360,7 @@ public:
     // of concatenating into a multi-objective vector.
     enum class AggregateType : int { Min, Max, Median, Mean, HarmonicMean, Sum };
 
-    explicit MultiEvaluator(Problem const* problem)
-        : EvaluatorBase(problem)
-    {
-    }
+    explicit MultiEvaluator(Problem const* problem) : EvaluatorBase(problem) {}
 
     auto Add(EvaluatorBase const* evaluator) { evaluators_.emplace_back(evaluator); }
 
@@ -539,8 +507,9 @@ namespace detail {
             scaling = Operon::FitLinearScaling(yPred, yTrue, weights, problem.LinearScalingOmitsNonFinite());
             scaling->ApplyInPlace(yPred);
         }
-        return { .TrainingRange = trainingRange, .YPred = yPred, .YTrue = yTrue, .Weights = weights,
-            .Scaling = scaling };
+        return {
+            .TrainingRange = trainingRange, .YPred = yPred, .YTrue = yTrue, .Weights = weights, .Scaling = scaling
+        };
     }
 } // namespace detail
 
@@ -577,7 +546,6 @@ public:
         auto const& tree = ctx.Ind.Genotype;
         auto parameters = tree.GetCoefficients();
 
-
         auto [trainingRange, yPred, yTrue, weights, scaling] = detail::PrepareScaledValues(*problem, ctx, evaluated);
 
         Operon::Scalar profiledSigma {};
@@ -596,9 +564,9 @@ public:
         using Mapping = std::layout_stride::mapping<Extents>;
         // Column stride must stay nonzero for an empty training range (extent 0
         // addresses no element, but a zero stride violates layout_stride preconditions).
-        auto const columnStride = std::max<MemoryIndex>(trainingRange.Size(), MemoryIndex {1});
-        auto jacobian = ScalarMatrixView {jacobianStorage.data(),
-            Mapping {Extents {trainingRange.Size(), columns}, std::array<MemoryIndex, 2> {1, columnStride}}};
+        auto const columnStride = std::max<MemoryIndex>(trainingRange.Size(), MemoryIndex { 1 });
+        auto jacobian = ScalarMatrixView { jacobianStorage.data(),
+            Mapping { Extents { trainingRange.Size(), columns }, std::array<MemoryIndex, 2> { 1, columnStride } } };
         Operon::Interpreter<Operon::Scalar, DTable> const interpreter { dtable, dataset, &tree };
         if (auto result = interpreter.JacRev(parameters, trainingRange, jacobianStorage); !result) {
             return typename EvaluatorBase::ReturnType { EvaluatorBase::ErrMax };

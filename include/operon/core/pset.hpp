@@ -5,11 +5,11 @@
 #ifndef OPERON_PSET_HPP
 #define OPERON_PSET_HPP
 
-#include <fmt/format.h>
 #include <atomic>
-#include <stdexcept>
-#include <mutex>
+#include <fmt/format.h>
 #include <memory>
+#include <mutex>
+#include <stdexcept>
 
 #include "contracts.hpp"
 #include "node.hpp"
@@ -17,13 +17,12 @@
 namespace Operon {
 
 class PrimitiveSet {
-    using Primitive = std::tuple<
-        Node,
+    using Primitive = std::tuple<Node,
         size_t, // 1: frequency
         size_t, // 2: min arity
-        size_t  // 3: max arity
+        size_t // 3: max arity
         >;
-    enum { NODE = 0, FREQUENCY = 1, MINARITY = 2, MAXARITY = 3}; // for accessing tuple elements more easily
+    enum { NODE = 0, FREQUENCY = 1, MINARITY = 2, MAXARITY = 3 }; // for accessing tuple elements more easily
 
     Operon::Map<Operon::Hash, Primitive> pset_;
     mutable std::mutex reachableMutex_;
@@ -35,8 +34,8 @@ class PrimitiveSet {
     mutable std::atomic_bool reachableDirty_ { true };
 
     void InvalidateReachability() noexcept { reachableDirty_.store(true, std::memory_order_release); }
-    template<typename Self>
-    [[nodiscard]] auto GetPrimitive(this Self& self, Operon::Hash hash) -> decltype(auto) {
+    template <typename Self> [[nodiscard]] auto GetPrimitive(this Self& self, Operon::Hash hash) -> decltype(auto)
+    {
         auto it = self.pset_.find(hash);
         if (it == self.pset_.end()) {
             throw std::runtime_error(fmt::format("Unknown node hash {}\n", hash));
@@ -45,27 +44,28 @@ class PrimitiveSet {
     }
 
 public:
-    static constexpr PrimitiveSetConfig Arithmetic = NodeType::Constant | NodeType::Variable | BuiltinOp::Add | BuiltinOp::Sub | BuiltinOp::Mul | BuiltinOp::Div;
-    static constexpr PrimitiveSetConfig TypeCoherent = Arithmetic | BuiltinOp::Pow | BuiltinOp::Exp | BuiltinOp::Log | BuiltinOp::Sin | BuiltinOp::Cos | BuiltinOp::Square;
-    static constexpr PrimitiveSetConfig Full = TypeCoherent | BuiltinOp::Aq | BuiltinOp::Tan | BuiltinOp::Tanh | BuiltinOp::Sqrt | BuiltinOp::Cbrt;
+    static constexpr PrimitiveSetConfig Arithmetic
+        = NodeType::Constant | NodeType::Variable | BuiltinOp::Add | BuiltinOp::Sub | BuiltinOp::Mul | BuiltinOp::Div;
+    static constexpr PrimitiveSetConfig TypeCoherent = Arithmetic | BuiltinOp::Pow | BuiltinOp::Exp | BuiltinOp::Log
+        | BuiltinOp::Sin | BuiltinOp::Cos | BuiltinOp::Square;
+    static constexpr PrimitiveSetConfig Full
+        = TypeCoherent | BuiltinOp::Aq | BuiltinOp::Tan | BuiltinOp::Tanh | BuiltinOp::Sqrt | BuiltinOp::Cbrt;
     PrimitiveSet() = default;
     OPERON_CORE_EXPORT PrimitiveSet(PrimitiveSet const& other);
     OPERON_CORE_EXPORT PrimitiveSet(PrimitiveSet&& other) noexcept;
     OPERON_CORE_EXPORT auto operator=(PrimitiveSet const& other) -> PrimitiveSet&;
     OPERON_CORE_EXPORT auto operator=(PrimitiveSet&& other) noexcept -> PrimitiveSet&;
 
-
-    explicit PrimitiveSet(PrimitiveSetConfig config)
-    {
-        SetConfig(config);
-    }
+    explicit PrimitiveSet(PrimitiveSetConfig config) { SetConfig(config); }
 
     [[nodiscard]] auto Primitives() const -> decltype(pset_) const& { return pset_; }
 
     auto AddPrimitive(Operon::Node node, size_t frequency, size_t minArity, size_t maxArity) -> bool
     {
         auto [_, ok] = pset_.insert({ node.HashValue, Primitive { node, frequency, minArity, maxArity } });
-        if (ok) { InvalidateReachability(); }
+        if (ok) {
+            InvalidateReachability();
+        }
         return ok;
     }
 
@@ -78,17 +78,22 @@ public:
 
     void RemovePrimitive(Operon::Node node)
     {
-        if (pset_.erase(node.HashValue) != 0) { InvalidateReachability(); }
+        if (pset_.erase(node.HashValue) != 0) {
+            InvalidateReachability();
+        }
     }
 
     void RemovePrimitive(Operon::Hash hash)
     {
-        if (pset_.erase(hash) != 0) { InvalidateReachability(); }
+        if (pset_.erase(hash) != 0) {
+            InvalidateReachability();
+        }
     }
 
     OPERON_CORE_EXPORT void SetConfig(PrimitiveSetConfig config);
 
-    [[nodiscard]] auto EnabledPrimitives() const -> std::vector<Node> {
+    [[nodiscard]] auto EnabledPrimitives() const -> std::vector<Node>
+    {
         std::vector<Node> nodes;
         for (auto const& [k, v] : pset_) {
             auto [node, freq, min_arity, max_arity] = v;
@@ -101,7 +106,7 @@ public:
 
     [[nodiscard]] auto Config() const -> PrimitiveSetConfig
     {
-        PrimitiveSetConfig conf{};
+        PrimitiveSetConfig conf {};
         for (auto [k, v] : pset_) {
             auto const& [node, freq, min_arity, max_arity] = v;
             if (node.IsEnabled && freq > 0) {
@@ -143,22 +148,17 @@ public:
         }
     }
 
-    void Enable(Operon::Hash hash)
-    {
-        SetEnabled(hash, /*enabled=*/true);
-    }
+    void Enable(Operon::Hash hash) { SetEnabled(hash, /*enabled=*/true); }
 
-    void Disable(Operon::Hash hash)
-    {
-        SetEnabled(hash, /*enabled=*/false);
-    }
+    void Disable(Operon::Hash hash) { SetEnabled(hash, /*enabled=*/false); }
 
     // Returns whether each length in [1, maxLength] is achievable with the
     // current enabled function arities. The table is rebuilt lazily after a
     // pset mutation and shared by all creators using this PrimitiveSet.
     // Configure the PrimitiveSet before concurrent tree construction; mutation
     // concurrent with cache reads is not supported.
-    [[nodiscard]] OPERON_CORE_EXPORT auto ReachableLengths(size_t maxLength) const -> std::shared_ptr<std::vector<bool> const>;
+    [[nodiscard]] OPERON_CORE_EXPORT auto ReachableLengths(size_t maxLength) const
+        -> std::shared_ptr<std::vector<bool> const>;
 
     // Returns the largest tree length <= targetLen achievable with the current
     // pset. A length n is achievable if n == 1 (a single leaf, assuming the
@@ -172,14 +172,17 @@ public:
         auto minArity = std::numeric_limits<size_t>::max();
         auto maxArity = std::numeric_limits<size_t>::min();
         for (auto const& [key, val] : pset_) {
-            if (std::get<NODE>(val).IsLeaf()) { continue; }
+            if (std::get<NODE>(val).IsLeaf()) {
+                continue;
+            }
             minArity = std::min(minArity, std::get<MINARITY>(val));
             maxArity = std::max(maxArity, std::get<MAXARITY>(val));
         }
         return { minArity, maxArity };
     }
 
-    OPERON_CORE_EXPORT auto SampleRandomSymbol(Operon::RandomGenerator& random, size_t minArity, size_t maxArity) const -> Operon::Node;
+    OPERON_CORE_EXPORT auto SampleRandomSymbol(Operon::RandomGenerator& random, size_t minArity, size_t maxArity) const
+        -> Operon::Node;
 
     void SetMinimumArity(Operon::Hash hash, size_t minArity)
     {
@@ -241,16 +244,10 @@ public:
     void Enable(Operon::Node node) { SetEnabled(node, /*enabled=*/true); }
     void Disable(Operon::Node node) { SetEnabled(node, /*enabled=*/false); }
 
-    void SetMinimumArity(Operon::Node node, size_t minArity)
-    {
-        SetMinimumArity(node.HashValue, minArity);
-    }
+    void SetMinimumArity(Operon::Node node, size_t minArity) { SetMinimumArity(node.HashValue, minArity); }
     [[nodiscard]] auto MinimumArity(Operon::Node node) const -> size_t { return MinimumArity(node.HashValue); }
 
-    void SetMaximumArity(Operon::Node node, size_t maxArity)
-    {
-        SetMaximumArity(node.HashValue, maxArity);
-    }
+    void SetMaximumArity(Operon::Node node, size_t maxArity) { SetMaximumArity(node.HashValue, maxArity); }
     [[nodiscard]] auto MaximumArity(Operon::Node node) const -> size_t { return MaximumArity(node.HashValue); }
 
     [[nodiscard]] auto MinMaxArity(Operon::Node node) const -> std::tuple<size_t, size_t>

@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
-#include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
 
 #include "../operon_test.hpp"
 #include "operon/core/dataset.hpp"
@@ -25,11 +25,10 @@ namespace Operon::Test {
 // ComputeFisherDiagonal, independent of any CLI/evaluator glue code.
 TEST_CASE("Minimum description length reflects Jacobian scale", "[information-criteria][mdl]")
 {
-    Operon::Dataset ds(std::vector<std::string>{"x1"},
-                       std::vector<std::vector<Operon::Scalar>>{
-                           {-1.8F, -1.1F, -0.4F, 0.3F, 1.0F, 1.7F}});
+    Operon::Dataset ds(std::vector<std::string> { "x1" },
+        std::vector<std::vector<Operon::Scalar>> { { -1.8F, -1.1F, -0.4F, 0.3F, 1.0F, 1.7F } });
     Operon::DispatchTable<Operon::Scalar> dtable;
-    Operon::Range const range{0, ds.Rows<std::size_t>()};
+    Operon::Range const range { 0, ds.Rows<std::size_t>() };
     auto const x1Hash = ds.GetVariable("x1")->Hash;
 
     // A single weighted-variable leaf node (Value = weight != 1) is one
@@ -40,24 +39,24 @@ TEST_CASE("Minimum description length reflects Jacobian scale", "[information-cr
     Operon::Node v(Operon::NodeType::Variable);
     v.HashValue = v.CalculatedHashValue = x1Hash;
     v.Value = 15.0F;
-    Operon::Tree tree{ Operon::Vector<Operon::Node>{v} };
+    Operon::Tree tree { Operon::Vector<Operon::Node> { v } };
 
     auto coeffs = tree.GetCoefficients();
     REQUIRE(coeffs.size() == 1);
 
     using Interp = Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>>;
-    Interp const interpreter{&dtable, &ds, &tree};
+    Interp const interpreter { &dtable, &ds, &tree };
 
     auto pred = interpreter.Evaluate(coeffs, range).value();
-    auto jac  = interpreter.JacRev(coeffs, range).value(); // d(tree)/d(coeffs), unscaled
+    auto jac = interpreter.JacRev(coeffs, range).value(); // d(tree)/d(coeffs), unscaled
 
     // Trivial fit (target == prediction) so nll is identical whether or not
     // the Jacobian is scaled — isolates the effect on the Fisher/parameter
     // cost term, which is what the fix touches.
     constexpr Operon::Scalar sigma = 0.1F;
-    auto const sigmaArr = std::array<Operon::Scalar, 1>{sigma};
+    auto const sigmaArr = std::array<Operon::Scalar, 1> { sigma };
     auto const nll = static_cast<double>(Operon::GaussianLikelihood<Operon::Scalar>::ComputeLikelihood(
-        {pred.data(), pred.size()}, {pred.data(), pred.size()}, {sigmaArr.data(), sigmaArr.size()}));
+        { pred.data(), pred.size() }, { pred.data(), pred.size() }, { sigmaArr.data(), sigmaArr.size() }));
 
     // Column-major Jacobian (rows x coefficients) exposed as a strided view.
     using Extents = std::dextents<std::size_t, 2>;
@@ -65,10 +64,11 @@ TEST_CASE("Minimum description length reflects Jacobian scale", "[information-cr
     auto const rows = static_cast<std::size_t>(jac.rows());
     auto const cols = static_cast<std::size_t>(jac.cols());
     auto const fisherDiagonal = [&](auto const& jacobian) -> std::vector<Operon::Scalar> {
-        Operon::ConstScalarMatrixView const view { jacobian.data(), Mapping { Extents { rows, cols }, std::array<std::size_t, 2> { 1, rows } } };
+        Operon::ConstScalarMatrixView const view { jacobian.data(),
+            Mapping { Extents { rows, cols }, std::array<std::size_t, 2> { 1, rows } } };
         std::vector<Operon::Scalar> diagonal(cols);
         auto const result = Operon::GaussianLikelihood<Operon::Scalar>::ComputeFisherDiagonal(
-            {pred.data(), pred.size()}, view, {sigmaArr.data(), sigmaArr.size()}, diagonal);
+            { pred.data(), pred.size() }, view, { sigmaArr.data(), sigmaArr.size() }, diagonal);
         REQUIRE(result.has_value());
         return diagonal;
     };
@@ -76,7 +76,7 @@ TEST_CASE("Minimum description length reflects Jacobian scale", "[information-cr
     auto const fisherUnscaled = fisherDiagonal(jac);
     auto const mdlUnscaled = Operon::MinimumDescriptionLength(tree, coeffs, fisherUnscaled, nll);
 
-    constexpr auto a = Operon::Scalar{3.0F};
+    constexpr auto a = Operon::Scalar { 3.0F };
     auto jacScaled = jac;
     jacScaled *= a; // what WriteParetoFront's "jac *= scale" does for a fitted y = a*tree(x;coeffs)+b
     auto const fisherScaled = fisherDiagonal(jacScaled);

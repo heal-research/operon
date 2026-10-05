@@ -16,8 +16,8 @@ namespace Operon {
 enum class NodeType : uint8_t {
     Constant,
     Variable,
-    Ref,      // structural sharing: a backward reference to another node by index
-    Function  // any named operation (built-in math op or user-registered), identified by HashValue
+    Ref, // structural sharing: a backward reference to another node by index
+    Function // any named operation (built-in math op or user-registered), identified by HashValue
 };
 
 // Stable compile-time Operon::Hash constants for every built-in math op.
@@ -83,16 +83,13 @@ static auto constexpr BuiltinOpCount = static_cast<Operon::Hash>(BuiltinOp::Squa
 // hash landing here too) — so a param leaf can never collide with a
 // dataset-bound Variable or a user-registered Function.
 static auto constexpr kMaxComposedFunctionArity = 2UL;
-constexpr auto ParamHash(std::size_t index) -> Operon::Hash
-{
-    return BuiltinOpCount + index;
-}
+constexpr auto ParamHash(std::size_t index) -> Operon::Hash { return BuiltinOpCount + index; }
 
 // Sentinel "not a real op" value (mirrors NodeTypes::NoType), distinguishable
 // from every genuine BuiltinOp value — used as a default template argument
 // where "no specific op" needs a nameable type, e.g. Dispatch::Func/Diff's
 // primary (unspecialized, "missing this specialization") templates.
-static auto constexpr NoBuiltinOp = static_cast<BuiltinOp>(~Operon::Hash{0});
+static auto constexpr NoBuiltinOp = static_cast<BuiltinOp>(~Operon::Hash { 0 });
 
 using UnderlyingNodeType = std::underlying_type_t<NodeType>;
 
@@ -101,12 +98,9 @@ struct NodeTypes {
     static auto constexpr Count = static_cast<std::size_t>(NodeType::Function) + 1UL;
 
     // returns the index of the given type in the NodeType enum
-    static constexpr auto GetIndex(NodeType type) -> size_t
-    {
-        return static_cast<std::size_t>(type);
-    }
+    static constexpr auto GetIndex(NodeType type) -> size_t { return static_cast<std::size_t>(type); }
 
-    static auto constexpr NoType{static_cast<NodeType>(0xFFU)};
+    static auto constexpr NoType { static_cast<NodeType>(0xFFU) };
 };
 
 // A bitset over "which built-in ops / terminal categories are enabled",
@@ -124,14 +118,14 @@ using PrimitiveSetConfig = Bitset<BuiltinOpCount + NodeTypes::Count>;
 
 constexpr auto ToConfig(BuiltinOp op) -> PrimitiveSetConfig
 {
-    PrimitiveSetConfig c{};
+    PrimitiveSetConfig c {};
     c.Set(static_cast<std::size_t>(op));
     return c;
 }
 
 constexpr auto ToConfig(NodeType type) -> PrimitiveSetConfig
 {
-    PrimitiveSetConfig c{};
+    PrimitiveSetConfig c {};
     c.Set(BuiltinOpCount + NodeTypes::GetIndex(type));
     return c;
 }
@@ -161,12 +155,21 @@ constexpr auto operator|(BuiltinOp lhs, NodeType rhs) -> PrimitiveSetConfig { re
 constexpr auto operator|(PrimitiveSetConfig lhs, BuiltinOp rhs) -> PrimitiveSetConfig { return lhs | ToConfig(rhs); }
 constexpr auto operator|(PrimitiveSetConfig lhs, NodeType rhs) -> PrimitiveSetConfig { return lhs | ToConfig(rhs); }
 
-constexpr auto operator|=(PrimitiveSetConfig& lhs, BuiltinOp rhs) -> PrimitiveSetConfig& { lhs = lhs | rhs; return lhs; }
-constexpr auto operator|=(PrimitiveSetConfig& lhs, NodeType rhs) -> PrimitiveSetConfig& { lhs = lhs | rhs; return lhs; }
+constexpr auto operator|=(PrimitiveSetConfig& lhs, BuiltinOp rhs) -> PrimitiveSetConfig&
+{
+    lhs = lhs | rhs;
+    return lhs;
+}
+constexpr auto operator|=(PrimitiveSetConfig& lhs, NodeType rhs) -> PrimitiveSetConfig&
+{
+    lhs = lhs | rhs;
+    return lhs;
+}
 
 struct Node {
     Operon::Hash HashValue; // needs to be unique for each node type
-    Operon::Hash mutable CalculatedHashValue; // for arithmetic terminal nodes whose hash value depends on their children
+    Operon::Hash mutable CalculatedHashValue; // for arithmetic terminal nodes whose hash value depends on their
+                                              // children
     Operon::Scalar Value; // value for constants or weighting factor for variables
     uint16_t Arity; // 0-65535
     uint16_t Length; // 0-65535
@@ -198,18 +201,19 @@ struct Node {
     static auto constexpr DefaultHash(NodeType type) noexcept -> Operon::Hash
     {
         switch (type) {
-        case NodeType::Constant: return Operon::Hash{0x00000000434F4E53ULL}; // "CONS"
-        case NodeType::Variable: return Operon::Hash{0x0000000056415249ULL}; // "VARI"
-        case NodeType::Ref:      return Operon::Hash{0x0000000000524546ULL}; // "REF"
-        case NodeType::Function: return Operon::Hash{0x0000000046554E43ULL}; // "FUNC"
+        case NodeType::Constant:
+            return Operon::Hash { 0x00000000434F4E53ULL }; // "CONS"
+        case NodeType::Variable:
+            return Operon::Hash { 0x0000000056415249ULL }; // "VARI"
+        case NodeType::Ref:
+            return Operon::Hash { 0x0000000000524546ULL }; // "REF"
+        case NodeType::Function:
+            return Operon::Hash { 0x0000000046554E43ULL }; // "FUNC"
         }
-        return Operon::Hash{0};
+        return Operon::Hash { 0 };
     }
 
-    explicit Node(NodeType type) noexcept
-        : Node(type, DefaultHash(type))
-    {
-    }
+    explicit Node(NodeType type) noexcept : Node(type, DefaultHash(type)) {}
 
     explicit Node(NodeType type, Operon::Hash hashValue) noexcept
         : HashValue(hashValue)
@@ -237,7 +241,7 @@ struct Node {
     static auto Ref(uint16_t target) noexcept
     {
         Node node(NodeType::Ref);
-        node.RefTo    = target;
+        node.RefTo = target;
         return node;
     }
 
@@ -255,7 +259,7 @@ struct Node {
     static auto Function(Operon::Hash hash, uint16_t arity) noexcept
     {
         Node node(NodeType::Function, hash);
-        node.Arity  = arity;
+        node.Arity = arity;
         node.Length = arity;
         // The two-arg ctor computes Optimize from Arity=0 (leaf) before
         // this factory overrides Arity to the real value above - recompute
@@ -275,41 +279,28 @@ struct Node {
     static OPERON_CORE_EXPORT void RegisterName(Operon::Hash hash, std::string name, std::string desc = {});
 
     // comparison operators
-    auto operator==(const Node& rhs) const noexcept -> bool
-    {
-        return CalculatedHashValue == rhs.CalculatedHashValue;
-    }
+    auto operator==(const Node& rhs) const noexcept -> bool { return CalculatedHashValue == rhs.CalculatedHashValue; }
 
-    auto operator!=(const Node& rhs) const noexcept -> bool
-    {
-        return !((*this) == rhs);
-    }
+    auto operator!=(const Node& rhs) const noexcept -> bool { return !((*this) == rhs); }
 
     auto operator<(const Node& rhs) const noexcept -> bool
     {
         return std::tie(HashValue, CalculatedHashValue) < std::tie(rhs.HashValue, rhs.CalculatedHashValue);
     }
 
-    auto operator<=(const Node& rhs) const noexcept -> bool
-    {
-        return ((*this) == rhs || (*this) < rhs);
-    }
+    auto operator<=(const Node& rhs) const noexcept -> bool { return ((*this) == rhs || (*this) < rhs); }
 
-    auto operator>(const Node& rhs) const noexcept -> bool
-    {
-        return !((*this) <= rhs);
-    }
+    auto operator>(const Node& rhs) const noexcept -> bool { return !((*this) <= rhs); }
 
-    auto operator>=(const Node& rhs) const noexcept -> bool
-    {
-        return !((*this) < rhs);
-    }
+    auto operator>=(const Node& rhs) const noexcept -> bool { return !((*this) < rhs); }
 
     [[nodiscard]] auto IsLeaf() const noexcept -> bool { return Arity == 0; }
-    [[nodiscard]] auto IsCommutative() const noexcept -> bool { return IsOp<BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Fmin, BuiltinOp::Fmax>(); }
+    [[nodiscard]] auto IsCommutative() const noexcept -> bool
+    {
+        return IsOp<BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Fmin, BuiltinOp::Fmax>();
+    }
 
-    template <NodeType... T>
-    [[nodiscard]] auto Is() const -> bool { return ((Type == T) || ...); }
+    template <NodeType... T> [[nodiscard]] auto Is() const -> bool { return ((Type == T) || ...); }
 
     // BuiltinOp counterpart of Is<NodeType...>() above: compares HashValue
     // instead of Type. Equivalent to the NodeType overload for any node
@@ -336,12 +327,14 @@ struct Node {
     // the collision entirely; this is a compiler ABI limitation, not
     // something fixable by choosing different enum values (any two enums
     // with overlapping value ranges will eventually collide again).
-    template <BuiltinOp... Op>
-    [[nodiscard]] auto IsOp() const -> bool { return ((HashValue == static_cast<Operon::Hash>(Op)) || ...); }
+    template <BuiltinOp... Op> [[nodiscard]] auto IsOp() const -> bool
+    {
+        return ((HashValue == static_cast<Operon::Hash>(Op)) || ...);
+    }
 
     [[nodiscard]] auto IsConstant() const -> bool { return Is<NodeType::Constant>(); }
     [[nodiscard]] auto IsVariable() const -> bool { return Is<NodeType::Variable>(); }
-    [[nodiscard]] auto IsRef()      const -> bool { return Is<NodeType::Ref>(); }
+    [[nodiscard]] auto IsRef() const -> bool { return Is<NodeType::Ref>(); }
     [[nodiscard]] auto IsAddition() const -> bool { return IsOp<BuiltinOp::Add>(); }
     [[nodiscard]] auto IsSubtraction() const -> bool { return IsOp<BuiltinOp::Sub>(); }
     [[nodiscard]] auto IsMultiplication() const -> bool { return IsOp<BuiltinOp::Mul>(); }
@@ -366,14 +359,11 @@ struct Node {
     // counterpart: BuiltinOp only covers the math-op subset, never the
     // terminal categories (Constant/Variable/Ref) that IsNullary used to
     // distinguish — use `!Is<NodeType::Function>()` for that instead.
-    template<BuiltinOp Op>
-    static auto constexpr IsNaryOp = Op <= BuiltinOp::Fmax;
+    template <BuiltinOp Op> static auto constexpr IsNaryOp = Op <= BuiltinOp::Fmax;
 
-    template<BuiltinOp Op>
-    static auto constexpr IsBinaryOp = Op > BuiltinOp::Fmax && Op <= BuiltinOp::Powabs;
+    template <BuiltinOp Op> static auto constexpr IsBinaryOp = Op > BuiltinOp::Fmax&& Op <= BuiltinOp::Powabs;
 
-    template<BuiltinOp Op>
-    static auto constexpr IsUnaryOp = Op > BuiltinOp::Powabs;
+    template <BuiltinOp Op> static auto constexpr IsUnaryOp = Op > BuiltinOp::Powabs;
 };
 } // namespace Operon
 #endif

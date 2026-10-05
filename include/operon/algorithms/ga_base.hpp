@@ -5,12 +5,12 @@
 #ifndef GA_BASE_HPP
 #define GA_BASE_HPP
 
-#include <string>
-#include <operon/operon_export.hpp>
+#include "config.hpp"
 #include "operon/core/types.hpp"
 #include "operon/operators/generator.hpp"
-#include "config.hpp"
 #include "stoppable.hpp"
+#include <operon/operon_export.hpp>
+#include <string>
 
 namespace Operon {
 
@@ -54,7 +54,9 @@ public:
     GeneticAlgorithmBase(GeneticAlgorithmBase&&) = delete;
     auto operator=(GeneticAlgorithmBase const& other) -> GeneticAlgorithmBase&
     {
-        if (this == &other) { return *this; }
+        if (this == &other) {
+            return *this;
+        }
         StoppableAlgorithm::operator=(other);
         config_ = other.config_;
         problem_ = other.problem_;
@@ -74,7 +76,9 @@ public:
     }
     auto operator=(GeneticAlgorithmBase&&) -> GeneticAlgorithmBase& = delete;
 
-    GeneticAlgorithmBase(GeneticAlgorithmConfig config, gsl::not_null<Problem const*> problem, gsl::not_null<TreeInitializerBase const*> treeInit, gsl::not_null<CoefficientInitializerBase const*> coeffInit, gsl::not_null<OffspringGeneratorBase const*> generator, gsl::not_null<ReinserterBase const*> reinserter)
+    GeneticAlgorithmBase(GeneticAlgorithmConfig config, gsl::not_null<Problem const*> problem,
+        gsl::not_null<TreeInitializerBase const*> treeInit, gsl::not_null<CoefficientInitializerBase const*> coeffInit,
+        gsl::not_null<OffspringGeneratorBase const*> generator, gsl::not_null<ReinserterBase const*> reinserter)
         : config_(config)
         , problem_(problem)
         , treeInit_(treeInit)
@@ -106,11 +110,19 @@ public:
     // compiles here (Self deduces to a const type, so Self& becomes
     // Self const&, which binds a const rvalue same as it always could) -
     // this only closes off the mutable-rvalue case, not rvalues generally.
-    template<typename Self>
-    [[nodiscard]] auto Parents(this Self& self) -> Operon::Span<std::conditional_t<std::is_const_v<Self>, Individual const, Individual>> { return self.parents_; }
+    template <typename Self>
+    [[nodiscard]] auto Parents(this Self& self)
+        -> Operon::Span<std::conditional_t<std::is_const_v<Self>, Individual const, Individual>>
+    {
+        return self.parents_;
+    }
 
-    template<typename Self>
-    [[nodiscard]] auto Offspring(this Self& self) -> Operon::Span<std::conditional_t<std::is_const_v<Self>, Individual const, Individual>> { return self.offspring_; }
+    template <typename Self>
+    [[nodiscard]] auto Offspring(this Self& self)
+        -> Operon::Span<std::conditional_t<std::is_const_v<Self>, Individual const, Individual>>
+    {
+        return self.offspring_;
+    }
 
     // Individuals()/WorkerRngs()/Timings() only ever changed reference
     // qualification (T& vs T const&) between overloads (never by-value, so
@@ -129,19 +141,26 @@ public:
     // member-access return expression it yields the *declared* member type
     // by value (a silent copy), losing reference identity entirely - see
     // Nodes() in tree.hpp for the full explanation.
-    template<typename Self>
-    [[nodiscard]] auto&& Individuals(this Self&& self) { return std::forward<Self>(self).individuals_; }
+    template <typename Self> [[nodiscard]] auto&& Individuals(this Self&& self)
+    {
+        return std::forward<Self>(self).individuals_;
+    }
 
     [[nodiscard]] auto GetProblem() const -> const Problem* { return problem_.get(); }
     [[nodiscard]] auto GetConfig() const -> GeneticAlgorithmConfig { return config_; }
 
     [[nodiscard]] auto GetTreeInitializer() const -> TreeInitializerBase const* { return treeInit_.get(); }
-    [[nodiscard]] auto GetCoefficientInitializer() const -> CoefficientInitializerBase const* { return coeffInit_.get(); }
+    [[nodiscard]] auto GetCoefficientInitializer() const -> CoefficientInitializerBase const*
+    {
+        return coeffInit_.get();
+    }
     [[nodiscard]] auto GetGenerator() const -> OffspringGeneratorBase const* { return generator_.get(); }
     [[nodiscard]] auto GetReinserter() const -> ReinserterBase const* { return reinserter_.get(); }
 
-    template<typename Self>
-    [[nodiscard]] auto&& WorkerRngs(this Self&& self) { return std::forward<Self>(self).workerRngs_; }
+    template <typename Self> [[nodiscard]] auto&& WorkerRngs(this Self&& self)
+    {
+        return std::forward<Self>(self).workerRngs_;
+    }
 
     // Generation()/Elapsed()/IsFitted() are trivially-copyable scalars whose
     // non-const overload existed only to allow direct assignment (e.g.
@@ -164,17 +183,31 @@ public:
     // return *type* on constness alone (ignoring value category) is enough
     // to reproduce the original by-value-for-const/reference-for-mutable
     // split exactly, for all four Self×value-category combinations.
-    template<typename Self>
-    [[nodiscard]] auto Generation(this Self&& self) -> std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, size_t, size_t&> { return self.generation_; } // NOLINT(cppcoreguidelines-missing-std-forward)
+    template <typename Self>
+    [[nodiscard]] auto Generation(this Self&& self)
+        -> std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, size_t, size_t&>
+    {
+        return self.generation_;
+    } // NOLINT(cppcoreguidelines-missing-std-forward)
 
-    template<typename Self>
-    [[nodiscard]] auto Elapsed(this Self&& self) -> std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, double, double&> { return self.elapsed_; } // NOLINT(cppcoreguidelines-missing-std-forward)
+    template <typename Self>
+    [[nodiscard]] auto Elapsed(this Self&& self)
+        -> std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, double, double&>
+    {
+        return self.elapsed_;
+    } // NOLINT(cppcoreguidelines-missing-std-forward)
 
-    template<typename Self>
-    [[nodiscard]] auto&& Timings(this Self&& self) { return std::forward<Self>(self).phaseTimes_; }
+    template <typename Self> [[nodiscard]] auto&& Timings(this Self&& self)
+    {
+        return std::forward<Self>(self).phaseTimes_;
+    }
 
-    template<typename Self>
-    [[nodiscard]] auto IsFitted(this Self&& self) -> std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, bool, bool&> { return self.isFitted_; } // NOLINT(cppcoreguidelines-missing-std-forward)
+    template <typename Self>
+    [[nodiscard]] auto IsFitted(this Self&& self)
+        -> std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, bool, bool&>
+    {
+        return self.isFitted_;
+    } // NOLINT(cppcoreguidelines-missing-std-forward)
 
     // StopRequested()/RequestStop() are inherited from StoppableAlgorithm.
 
@@ -193,12 +226,12 @@ public:
     auto RestoreIndividuals(std::vector<Individual> inds) -> void
     {
         EXPECT(inds.size() == config_.PoolSize + config_.PopulationSize,
-                "Mismatched number of individuals (must match pool/population sizes)");
+            "Mismatched number of individuals (must match pool/population sizes)");
         individuals_ = std::move(inds);
         parents_ = Operon::Span<Individual>(individuals_.data(), config_.PopulationSize);
         offspring_ = Operon::Span<Individual>(individuals_.data() + config_.PopulationSize, config_.PoolSize);
     }
-    
+
 private:
     GeneticAlgorithmConfig config_;
 
@@ -213,10 +246,10 @@ private:
     Operon::Span<Individual> offspring_;
 
     std::vector<Operon::RandomGenerator> workerRngs_;
-    size_t generation_{0};
-    double elapsed_{0};
+    size_t generation_ { 0 };
+    double elapsed_ { 0 };
     Operon::Map<std::string, double> phaseTimes_;
-    bool isFitted_{false};
+    bool isFitted_ { false };
 };
 
 } // namespace Operon

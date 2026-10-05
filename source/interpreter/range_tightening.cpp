@@ -22,28 +22,35 @@ namespace {
         // Add/Mul/Sub handle arbitrary arity in Deriv(); Div only arity 1-2
         // (Deriv() explicitly returns Zero for arity > 2); Pow is hardcoded
         // for exactly arity 2 (indexes children[1] unconditionally).
-        if (n.IsAddition() || n.IsMultiplication() || n.IsSubtraction()) { return true; }
-        if (n.IsDivision()) { return n.Arity <= 2; }
-        if (n.IsPow()) { return n.Arity == 2; }
+        if (n.IsAddition() || n.IsMultiplication() || n.IsSubtraction()) {
+            return true;
+        }
+        if (n.IsDivision()) {
+            return n.Arity <= 2;
+        }
+        if (n.IsPow()) {
+            return n.Arity == 2;
+        }
         if (n.IsAq() || n.IsPowabs() || n.IsOp<BuiltinOp::Fmin, BuiltinOp::Fmax>()) {
             return false;
         }
-        if (n.Arity == 1) { return HasUnarySymbolicDeriv(n.HashValue); }
-        if (n.Arity == 2) { return HasBinarySymbolicDeriv(n.HashValue); }
+        if (n.Arity == 1) {
+            return HasUnarySymbolicDeriv(n.HashValue);
+        }
+        if (n.Arity == 2) {
+            return HasBinarySymbolicDeriv(n.HashValue);
+        }
         // Deriv() itself falls through to Zero here (no hardcoded or
         // registered rule can apply to arity >= 3 beyond Add/Mul/Sub/Div
         // above) - sound-by-default, matching that.
         return false;
     }
 
-    auto EvaluateGradientColumn(
-        VariableGradientDag const& gdag, std::size_t root,
-        IntervalEvaluator<Scalar>::DomainMap const& domains, Operon::Span<Operon::Scalar const> coeff
-    ) -> Interval
+    auto EvaluateGradientColumn(VariableGradientDag const& gdag, std::size_t root,
+        IntervalEvaluator<Scalar>::DomainMap const& domains, Operon::Span<Operon::Scalar const> coeff) -> Interval
     {
-        Operon::Vector<Node> subnodes(
-            gdag.Nodes.cbegin(), gdag.Nodes.cbegin() + static_cast<std::ptrdiff_t>(root) + 1);
-        Tree const gradTree{std::move(subnodes)};
+        Operon::Vector<Node> subnodes(gdag.Nodes.cbegin(), gdag.Nodes.cbegin() + static_cast<std::ptrdiff_t>(root) + 1);
+        Tree const gradTree { std::move(subnodes) };
         return IntervalEvaluator<Scalar>(&gradTree, domains).Evaluate(coeff);
     }
 
@@ -57,17 +64,12 @@ struct RangeCache::Entry {
     Interval Value;
 };
 
-RangeCache::RangeCache(Zobrist const& zobrist)
-    : zobrist_(&zobrist)
-    , cache_(std::make_unique<ZobristCache<Entry>>())
-{ }
+RangeCache::RangeCache(Zobrist const& zobrist) : zobrist_(&zobrist), cache_(std::make_unique<ZobristCache<Entry>>()) {}
 
 RangeCache::~RangeCache() = default;
 
-auto RangeCache::ComputeKey(
-    Tree const& tree, Operon::Span<Operon::Scalar const> coeff,
-    IntervalEvaluator<Scalar>::DomainMap const& domains, Operon::Hash variant
-) const -> Operon::Hash
+auto RangeCache::ComputeKey(Tree const& tree, Operon::Span<Operon::Scalar const> coeff,
+    IntervalEvaluator<Scalar>::DomainMap const& domains, Operon::Hash variant) const -> Operon::Hash
 {
     auto h = zobrist_->ComputeHash(tree);
     // Zobrist::ComputeHash intentionally excludes Node::Value (it hashes
@@ -86,54 +88,49 @@ auto RangeCache::ComputeKey(
     }
     // Domain contribution is order-independent (XOR-folded per entry) since
     // DomainMap has no fixed iteration order.
-    Operon::Hash domainMix{0};
+    Operon::Hash domainMix { 0 };
     for (auto const& [varHash, dom] : domains) {
-        auto const entry = MixHash(
-            MixHash(varHash, std::bit_cast<std::uint64_t>(static_cast<double>(dom.first))),
+        auto const entry = MixHash(MixHash(varHash, std::bit_cast<std::uint64_t>(static_cast<double>(dom.first))),
             std::bit_cast<std::uint64_t>(static_cast<double>(dom.second)));
         domainMix ^= entry;
     }
     return MixHash(MixHash(h, domainMix), variant);
 }
 
-auto RangeCache::TryGet(
-    Tree const& tree, Operon::Span<Operon::Scalar const> coeff,
-    IntervalEvaluator<Scalar>::DomainMap const& domains, Interval& out, Operon::Hash variant
-) const -> bool
+auto RangeCache::TryGet(Tree const& tree, Operon::Span<Operon::Scalar const> coeff,
+    IntervalEvaluator<Scalar>::DomainMap const& domains, Interval& out, Operon::Hash variant) const -> bool
 {
     auto const key = ComputeKey(tree, coeff, domains, variant);
     return cache_->IfContains(key, [&](Entry const& e) { out = e.Value; });
 }
 
-auto RangeCache::Insert(
-    Tree const& tree, Operon::Span<Operon::Scalar const> coeff,
-    IntervalEvaluator<Scalar>::DomainMap const& domains, Interval const& val, Operon::Hash variant
-) -> void
+auto RangeCache::Insert(Tree const& tree, Operon::Span<Operon::Scalar const> coeff,
+    IntervalEvaluator<Scalar>::DomainMap const& domains, Interval const& val, Operon::Hash variant) -> void
 {
     auto const key = ComputeKey(tree, coeff, domains, variant);
-    cache_->LazyEmplace(key,
-        [](Entry&) { }, // first writer wins on a genuine race, same as the fitness cache
+    cache_->LazyEmplace(
+        key, [](Entry&) {}, // first writer wins on a genuine race, same as the fitness cache
         [&](Entry& e) { e.Value = val; });
 }
 
 auto RangeCache::Size() const -> std::size_t { return cache_->Size(); }
 auto RangeCache::Clear() -> void { cache_->Clear(); }
 
-auto TightenRange(
-    Tree const& tree,
-    IntervalEvaluator<Scalar>::DomainMap const& domains,
-    Operon::Span<Operon::Scalar const> coeff,
-    RangeCache* cache
-) -> Interval
+auto TightenRange(Tree const& tree, IntervalEvaluator<Scalar>::DomainMap const& domains,
+    Operon::Span<Operon::Scalar const> coeff, RangeCache* cache) -> Interval
 {
     constexpr Operon::Hash flatVariant = 0;
     if (cache != nullptr) {
         Interval cached;
-        if (cache->TryGet(tree, coeff, domains, cached, flatVariant)) { return cached; }
+        if (cache->TryGet(tree, coeff, domains, cached, flatVariant)) {
+            return cached;
+        }
     }
 
     auto const finish = [&](Interval const& result) -> Interval {
-        if (cache != nullptr) { cache->Insert(tree, coeff, domains, result, flatVariant); }
+        if (cache != nullptr) {
+            cache->Insert(tree, coeff, domains, result, flatVariant);
+        }
         return result;
     };
 
@@ -144,40 +141,52 @@ auto TightenRange(
     // back nonzero but understate the true partial, so this is checked
     // structurally rather than via BuildVariableGradientDag's root value.
     for (auto const& n : tree.Nodes()) {
-        if (n.IsLeaf() || n.IsRef()) { continue; }
-        if (!IsSymbolicallyDifferentiable(n)) { return finish(naive); }
+        if (n.IsLeaf() || n.IsRef()) {
+            continue;
+        }
+        if (!IsSymbolicallyDifferentiable(n)) {
+            return finish(naive);
+        }
     }
 
     auto const gdag = BuildVariableGradientDag(tree, coeff);
-    if (gdag.Variables.empty()) { return finish(naive); } // no input variables: naive is already exact
+    if (gdag.Variables.empty()) {
+        return finish(naive);
+    } // no input variables: naive is already exact
 
     // F(m) via a degenerate (lo == hi) domain map, reusing IntervalEvaluator.
     IntervalEvaluator<Scalar>::DomainMap midpoints;
     midpoints.reserve(domains.size());
     for (auto const& [hash, domain] : domains) {
-        auto const m = Interval{domain.first, domain.second}.mid();
-        midpoints.insert_or_assign(hash, IntervalEvaluator<Scalar>::Domain{m, m});
+        auto const m = Interval { domain.first, domain.second }.mid();
+        midpoints.insert_or_assign(hash, IntervalEvaluator<Scalar>::Domain { m, m });
     }
     auto const fm = IntervalEvaluator<Scalar>(&tree, midpoints).Evaluate(coeff);
 
     auto meanValue = fm;
     for (std::size_t k = 0; k < gdag.Variables.size(); ++k) {
         auto const root = gdag.Roots[k];
-        if (root == NoGrad) { continue; } // genuinely zero, given the pre-check above
+        if (root == NoGrad) {
+            continue;
+        } // genuinely zero, given the pre-check above
 
         auto const hash = gdag.Variables[k];
-        auto const dit  = domains.find(hash);
-        if (dit == domains.end()) { return finish(naive); } // defensive: naive would already have thrown
+        auto const dit = domains.find(hash);
+        if (dit == domains.end()) {
+            return finish(naive);
+        } // defensive: naive would already have thrown
         auto const& [lo, hi] = dit->second;
-        auto const m = Interval{lo, hi}.mid();
+        auto const m = Interval { lo, hi }.mid();
 
         auto const gradInterval = EvaluateGradientColumn(gdag, root, domains, coeff);
-        auto const xkMinusM = pappus::ops::sub<Scalar>(
-            pappus::ops::variable<Scalar>(lo, hi), pappus::ops::constant<Scalar>(m));
+        auto const xkMinusM
+            = pappus::ops::sub<Scalar>(pappus::ops::variable<Scalar>(lo, hi), pappus::ops::constant<Scalar>(m));
         meanValue = pappus::ops::add<Scalar>(meanValue, pappus::ops::mul<Scalar>(gradInterval, xkMinusM));
     }
 
-    if (meanValue.is_empty()) { return finish(naive); }
+    if (meanValue.is_empty()) {
+        return finish(naive);
+    }
 
     // Soundness guard (2026-08-09 Fuel_flow finding): a gradient column's
     // interval evaluation can silently collapse to a degenerate near-zero
@@ -196,23 +205,20 @@ auto TightenRange(
     // corrupted somewhere and the whole tightened bound must be discarded.
     for (auto const& [hash, domain] : domains) {
         auto probe = midpoints;
-        probe[hash] = IntervalEvaluator<Scalar>::Domain{domain.first, domain.first};
+        probe[hash] = IntervalEvaluator<Scalar>::Domain { domain.first, domain.first };
         auto const flo = IntervalEvaluator<Scalar>(&tree, probe).Evaluate(coeff);
-        probe[hash] = IntervalEvaluator<Scalar>::Domain{domain.second, domain.second};
+        probe[hash] = IntervalEvaluator<Scalar>::Domain { domain.second, domain.second };
         auto const fhi = IntervalEvaluator<Scalar>(&tree, probe).Evaluate(coeff);
-        if (!meanValue.contains(flo) || !meanValue.contains(fhi)) { return finish(naive); }
+        if (!meanValue.contains(flo) || !meanValue.contains(fhi)) {
+            return finish(naive);
+        }
     }
 
     return finish(naive & meanValue);
 }
 
-auto TightenRangeBisected(
-    Tree const& tree,
-    IntervalEvaluator<Scalar>::DomainMap domains,
-    Operon::Span<Operon::Scalar const> coeff,
-    int maxDepth,
-    RangeCache* cache
-) -> Interval
+auto TightenRangeBisected(Tree const& tree, IntervalEvaluator<Scalar>::DomainMap domains,
+    Operon::Span<Operon::Scalar const> coeff, int maxDepth, RangeCache* cache) -> Interval
 {
     // Distinguishes this call's own (tighter, depth-dependent) result from
     // TightenRange's flat one in the same cache - same (tree, coeff,
@@ -220,51 +226,73 @@ auto TightenRangeBisected(
     auto const bisectedVariant = MixHash(0x62697365637465ULL /* "bisecte" */, static_cast<std::uint64_t>(maxDepth));
     if (cache != nullptr) {
         Interval cached;
-        if (cache->TryGet(tree, coeff, domains, cached, bisectedVariant)) { return cached; }
+        if (cache->TryGet(tree, coeff, domains, cached, bisectedVariant)) {
+            return cached;
+        }
     }
 
     auto const finish = [&](Interval const& result) -> Interval {
-        if (cache != nullptr) { cache->Insert(tree, coeff, domains, result, bisectedVariant); }
+        if (cache != nullptr) {
+            cache->Insert(tree, coeff, domains, result, bisectedVariant);
+        }
         return result;
     };
 
     auto const result = TightenRange(tree, domains, coeff, cache);
-    if (maxDepth <= 0 || result.is_empty()) { return finish(result); }
+    if (maxDepth <= 0 || result.is_empty()) {
+        return finish(result);
+    }
 
     auto const gdag = BuildVariableGradientDag(tree, coeff);
-    if (gdag.Variables.empty()) { return finish(result); }
+    if (gdag.Variables.empty()) {
+        return finish(result);
+    }
 
     // Pick the variable whose gradient interval straddles zero with the
     // largest diameter: it's both sign-ambiguous (mean-value form is
     // loosest there) and contributes the most to that ambiguity.
-    Operon::Hash splitVar{};
-    Scalar bestDiameter{0};
+    Operon::Hash splitVar {};
+    Scalar bestDiameter { 0 };
     bool found = false;
     for (std::size_t k = 0; k < gdag.Variables.size(); ++k) {
         auto const root = gdag.Roots[k];
-        if (root == NoGrad) { continue; }
+        if (root == NoGrad) {
+            continue;
+        }
         auto const gradInterval = EvaluateGradientColumn(gdag, root, domains, coeff);
-        if (!gradInterval.contains(Scalar{0})) { continue; }
+        if (!gradInterval.contains(Scalar { 0 })) {
+            continue;
+        }
         auto const d = gradInterval.diameter();
-        if (d > bestDiameter) { bestDiameter = d; splitVar = gdag.Variables[k]; found = true; }
+        if (d > bestDiameter) {
+            bestDiameter = d;
+            splitVar = gdag.Variables[k];
+            found = true;
+        }
     }
-    if (!found) { return finish(result); } // every gradient is sign-definite already
+    if (!found) {
+        return finish(result);
+    } // every gradient is sign-definite already
 
     auto const dit = domains.find(splitVar);
-    if (dit == domains.end()) { return finish(result); }
+    if (dit == domains.end()) {
+        return finish(result);
+    }
     auto const [lo, hi] = dit->second;
-    auto const mid = Interval{lo, hi}.mid();
+    auto const mid = Interval { lo, hi }.mid();
 
     auto leftDomains = domains;
-    leftDomains[splitVar] = {lo, mid};
+    leftDomains[splitVar] = { lo, mid };
     auto rightDomains = domains;
-    rightDomains[splitVar] = {mid, hi};
+    rightDomains[splitVar] = { mid, hi };
 
-    auto const left  = TightenRangeBisected(tree, leftDomains, coeff, maxDepth - 1, cache);
+    auto const left = TightenRangeBisected(tree, leftDomains, coeff, maxDepth - 1, cache);
     auto const right = TightenRangeBisected(tree, rightDomains, coeff, maxDepth - 1, cache);
     auto const unioned = left | right;
 
-    if (unioned.is_empty()) { return finish(result); }
+    if (unioned.is_empty()) {
+        return finish(result);
+    }
     return finish(result & unioned);
 }
 

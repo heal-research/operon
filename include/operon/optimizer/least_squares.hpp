@@ -46,7 +46,7 @@ enum class LeastSquaresErrorCode : std::uint8_t {
  *  - Cause carries the original InterpreterError for EvaluationFailure.
  */
 struct LeastSquaresError {
-    LeastSquaresErrorCode Code {LeastSquaresErrorCode::InvalidShape};
+    LeastSquaresErrorCode Code { LeastSquaresErrorCode::InvalidShape };
     std::size_t Expected {};
     std::size_t Actual {};
     std::size_t Row {};
@@ -73,7 +73,7 @@ enum class WeightErrorCode : std::uint8_t {
  * GradientErrorCode::InvalidWeights.
  */
 struct WeightError {
-    WeightErrorCode Code {WeightErrorCode::SizeMismatch};
+    WeightErrorCode Code { WeightErrorCode::SizeMismatch };
     std::size_t Expected {};
     std::size_t Actual {};
     std::size_t Row {};
@@ -89,7 +89,8 @@ struct WeightError {
 [[nodiscard]] inline auto ValidateWeights(ConstScalarSpan weights, std::size_t rows) -> tl::expected<void, WeightError>
 {
     if (!weights.empty() && weights.size() != 1 && weights.size() != rows) {
-        return tl::unexpected(WeightError { .Code = WeightErrorCode::SizeMismatch, .Expected = rows, .Actual = weights.size() });
+        return tl::unexpected(
+            WeightError { .Code = WeightErrorCode::SizeMismatch, .Expected = rows, .Actual = weights.size() });
     }
     for (std::size_t i = 0; i < weights.size(); ++i) {
         auto const w = static_cast<double>(weights[i]);
@@ -109,7 +110,10 @@ struct WeightError {
 /** Wraps a WeightError as LeastSquaresErrorCode::InvalidWeights, preserving size and Row. */
 [[nodiscard]] inline auto ToLeastSquaresError(WeightError const& error) -> LeastSquaresError
 {
-    return LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidWeights, .Expected = error.Expected, .Actual = error.Actual, .Row = error.Row };
+    return LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidWeights,
+        .Expected = error.Expected,
+        .Actual = error.Actual,
+        .Row = error.Row };
 }
 
 /**
@@ -133,11 +137,9 @@ public:
     virtual ~LeastSquaresCostFunction() = default;
     [[nodiscard]] virtual auto NumParameters() const noexcept -> std::size_t = 0;
     [[nodiscard]] virtual auto NumResiduals() const noexcept -> std::size_t = 0;
-    [[nodiscard]] virtual auto Evaluate(
-        std::span<Scalar const> parameters,
-        std::span<Scalar> residuals,
-        std::optional<ScalarMatrixView> jacobian)
-        const -> tl::expected<void, LeastSquaresError> = 0;
+    [[nodiscard]] virtual auto Evaluate(std::span<Scalar const> parameters, std::span<Scalar> residuals,
+        std::optional<ScalarMatrixView> jacobian) const -> tl::expected<void, LeastSquaresError>
+        = 0;
 };
 
 namespace Concepts {
@@ -145,10 +147,7 @@ namespace Concepts {
     // likelihood, Fisher, or statistical requirement.
     template <typename T>
     concept LeastSquaresCost = requires(
-        T const& cost,
-        ConstScalarSpan parameters,
-        ScalarSpan residuals,
-        std::optional<ScalarMatrixView> jacobian) {
+        T const& cost, ConstScalarSpan parameters, ScalarSpan residuals, std::optional<ScalarMatrixView> jacobian) {
         { cost.NumParameters() } -> std::same_as<std::size_t>;
         { cost.NumResiduals() } -> std::same_as<std::size_t>;
         { cost.Evaluate(parameters, residuals, jacobian) } -> std::same_as<tl::expected<void, LeastSquaresError>>;
@@ -158,9 +157,7 @@ namespace Concepts {
 namespace detail {
     [[nodiscard]] inline auto AllFinite(ConstScalarSpan values) -> bool
     {
-        return std::ranges::all_of(values, [](Scalar v) -> bool {
-            return std::isfinite(static_cast<double>(v));
-        });
+        return std::ranges::all_of(values, [](Scalar v) -> bool { return std::isfinite(static_cast<double>(v)); });
     }
 } // namespace detail
 
@@ -182,20 +179,18 @@ struct LeastSquaresDiagnostics {
  * NumericalFailure if an accumulated component does not narrow to a finite
  * Scalar.
  */
-[[nodiscard]] inline auto ComputeGradient(
-    ConstScalarSpan residuals,
-    ConstScalarMatrixView jacobian,
-    ScalarSpan gradient,
-    ConstScalarSpan weights = {})
-    -> tl::expected<AccumulationScalar, LeastSquaresError>
+[[nodiscard]] inline auto ComputeGradient(ConstScalarSpan residuals, ConstScalarMatrixView jacobian,
+    ScalarSpan gradient, ConstScalarSpan weights = {}) -> tl::expected<AccumulationScalar, LeastSquaresError>
 {
     auto const n = residuals.size();
     auto const p = jacobian.extent(1);
     if (jacobian.extent(0) != n) {
-        return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape, .Expected = n, .Actual = jacobian.extent(0) });
+        return tl::unexpected(LeastSquaresError {
+            .Code = LeastSquaresErrorCode::InvalidShape, .Expected = n, .Actual = jacobian.extent(0) });
     }
     if (gradient.size() != p) {
-        return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape, .Expected = p, .Actual = gradient.size() });
+        return tl::unexpected(LeastSquaresError {
+            .Code = LeastSquaresErrorCode::InvalidShape, .Expected = p, .Actual = gradient.size() });
     }
     if (auto validWeights = ValidateWeights(weights, n); !validWeights) {
         return tl::unexpected(ToLeastSquaresError(validWeights.error()));
@@ -205,12 +200,14 @@ struct LeastSquaresDiagnostics {
     }
 
     auto const weightAt = [&weights](std::size_t i) -> AccumulationScalar {
-        if (weights.empty()) { return AccumulationScalar { 1 }; }
+        if (weights.empty()) {
+            return AccumulationScalar { 1 };
+        }
         return static_cast<AccumulationScalar>(weights.size() == 1 ? weights[0] : weights[i]);
     };
 
     std::vector<AccumulationScalar> accum(p, AccumulationScalar { 0 });
-    AccumulationScalar cost {0};
+    AccumulationScalar cost { 0 };
     for (std::size_t i = 0; i < n; ++i) {
         auto const r = static_cast<AccumulationScalar>(residuals[i]);
         auto const w = weightAt(i);
@@ -226,7 +223,8 @@ struct LeastSquaresDiagnostics {
     }
     for (std::size_t j = 0; j < p; ++j) {
         if (!std::isfinite(accum[j])) {
-            return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::NonFiniteEvaluation, .Column = j });
+            return tl::unexpected(
+                LeastSquaresError { .Code = LeastSquaresErrorCode::NonFiniteEvaluation, .Column = j });
         }
         auto const value = static_cast<Scalar>(accum[j]);
         if (!std::isfinite(static_cast<double>(value))) {
@@ -239,24 +237,22 @@ struct LeastSquaresDiagnostics {
 }
 
 /** Cost = 0.5 * sum(w_i * r_i^2); GradientNorm = ||J^T (w .* r)||_2 when jacobian is supplied. */
-[[nodiscard]] inline auto ComputeDiagnostics(
-    ConstScalarSpan residuals,
-    std::optional<ConstScalarMatrixView> jacobian,
-    ConstScalarSpan weights = {})
-    -> tl::expected<LeastSquaresDiagnostics, LeastSquaresError>
+[[nodiscard]] inline auto ComputeDiagnostics(ConstScalarSpan residuals, std::optional<ConstScalarMatrixView> jacobian,
+    ConstScalarSpan weights = {}) -> tl::expected<LeastSquaresDiagnostics, LeastSquaresError>
 {
     auto const n = residuals.size();
     if (auto validWeights = ValidateWeights(weights, n); !validWeights) {
         return tl::unexpected(ToLeastSquaresError(validWeights.error()));
     }
     if (jacobian && jacobian->extent(0) != n) {
-        return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape, .Expected = n, .Actual = jacobian->extent(0) });
+        return tl::unexpected(LeastSquaresError {
+            .Code = LeastSquaresErrorCode::InvalidShape, .Expected = n, .Actual = jacobian->extent(0) });
     }
     if (!detail::AllFinite(residuals)) {
         return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::NonFiniteEvaluation });
     }
 
-    AccumulationScalar sumSquares {0};
+    AccumulationScalar sumSquares { 0 };
     for (auto const r : residuals) {
         auto const rr = static_cast<AccumulationScalar>(r);
         sumSquares += rr * rr;
@@ -273,7 +269,7 @@ struct LeastSquaresDiagnostics {
             return tl::unexpected(result.error());
         }
         diagnostics.Cost = *result;
-        AccumulationScalar gradientSumSquares {0};
+        AccumulationScalar gradientSumSquares { 0 };
         for (auto const g : gradient) {
             auto const gg = static_cast<AccumulationScalar>(g);
             gradientSumSquares += gg * gg;
@@ -281,10 +277,12 @@ struct LeastSquaresDiagnostics {
         diagnostics.GradientNorm = std::sqrt(gradientSumSquares);
     } else {
         auto const weightAt = [&weights](std::size_t i) -> AccumulationScalar {
-            if (weights.empty()) { return AccumulationScalar { 1 }; }
+            if (weights.empty()) {
+                return AccumulationScalar { 1 };
+            }
             return static_cast<AccumulationScalar>(weights.size() == 1 ? weights[0] : weights[i]);
         };
-        AccumulationScalar cost {0};
+        AccumulationScalar cost { 0 };
         for (std::size_t i = 0; i < n; ++i) {
             auto const r = static_cast<AccumulationScalar>(residuals[i]);
             cost += 0.5 * weightAt(i) * r * r;

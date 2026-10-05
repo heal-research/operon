@@ -27,27 +27,32 @@ namespace {
     constexpr std::size_t S = Dispatch::DefaultBatchSize<T>;
     constexpr std::size_t NumBatch = 4096;
 
-    struct alignas(32) Buf { std::array<T, S> v; };
+    struct alignas(32) Buf {
+        std::array<T, S> v;
+    };
 
-    using UnaryFn = void(*)(T*, T, T const*);
+    using UnaryFn = void (*)(T*, T, T const*);
 
-    auto MakeBuffers() {
+    auto MakeBuffers()
+    {
         auto src = std::vector<Buf>(NumBatch);
         auto dst = std::vector<Buf>(NumBatch);
         for (auto b = 0UL; b < NumBatch; ++b) {
             for (auto i = 0UL; i < S; ++i) {
                 // values in (0.1, 1.0] — safe for log/sqrt
-                src[b].v[i] = static_cast<T>(0.1 + 0.9 * static_cast<double>(b * S + i) / static_cast<double>(NumBatch * S));
+                src[b].v[i]
+                    = static_cast<T>(0.1 + 0.9 * static_cast<double>(b * S + i) / static_cast<double>(NumBatch * S));
             }
         }
-        return std::pair{src, dst};
+        return std::pair { src, dst };
     }
 
-    void BenchFn(nb::Bench& b, std::string const& name, UnaryFn fn, std::vector<Buf>& src, std::vector<Buf>& dst) {
+    void BenchFn(nb::Bench& b, std::string const& name, UnaryFn fn, std::vector<Buf>& src, std::vector<Buf>& dst)
+    {
         b.batch(static_cast<double>(NumBatch * S));
         b.run(name, [&] {
             for (auto i = 0UL; i < NumBatch; ++i) {
-                fn(dst[i].v.data(), T{1}, src[i].v.data());
+                fn(dst[i].v.data(), T { 1 }, src[i].v.data());
             }
         });
     }
@@ -60,16 +65,19 @@ TEST_CASE("Primitive throughput", "[performance][primitives]")
     nb::Bench b;
     b.title("Primitive throughput").relative(true).performanceCounters(true).minEpochIterations(100);
 
-    struct Case { const char* name; UnaryFn fn; };
-    std::array cases{
-        Case{ "Exp",   Backend::Exp<T, S>  },
-        Case{ "Log",   Backend::Log<T, S>  },
-        Case{ "Sin",   Backend::Sin<T, S>  },
-        Case{ "Cos",   Backend::Cos<T, S>  },
-        Case{ "Sqrt",  Backend::Sqrt<T, S> },
-        Case{ "Tanh",  Backend::Tanh<T, S> },
-        Case{ "Abs",   Backend::Abs<T, S>  },
-        Case{ "Square",Backend::Square<T,S>},
+    struct Case {
+        const char* name;
+        UnaryFn fn;
+    };
+    std::array cases {
+        Case { "Exp", Backend::Exp<T, S> },
+        Case { "Log", Backend::Log<T, S> },
+        Case { "Sin", Backend::Sin<T, S> },
+        Case { "Cos", Backend::Cos<T, S> },
+        Case { "Sqrt", Backend::Sqrt<T, S> },
+        Case { "Tanh", Backend::Tanh<T, S> },
+        Case { "Abs", Backend::Abs<T, S> },
+        Case { "Square", Backend::Square<T, S> },
     };
 
     for (auto& [name, fn] : cases) {

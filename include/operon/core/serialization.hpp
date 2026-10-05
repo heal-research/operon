@@ -12,8 +12,8 @@
 #include <string_view>
 #include <vector>
 
-#include "operon/operon_export.hpp"
 #include "operon/core/individual.hpp"
+#include "operon/operon_export.hpp"
 
 namespace Operon::Serialization {
 
@@ -42,10 +42,10 @@ OPERON_EXPORT auto IndividualFromBeve(std::string_view data) -> std::optional<In
 // ---- Checkpoint (algorithm save / resume) ----
 
 struct OPERON_EXPORT Checkpoint {
-    std::array<uint64_t, 4>                   RngState{};
-    uint64_t                                  Generation{0};
-    Operon::Vector<Individual>                Population;
-    std::vector<std::array<uint64_t, 4>>      WorkerRngStates;
+    std::array<uint64_t, 4> RngState {};
+    uint64_t Generation { 0 };
+    Operon::Vector<Individual> Population;
+    std::vector<std::array<uint64_t, 4>> WorkerRngStates;
 };
 
 OPERON_EXPORT auto ToBeve(Checkpoint const&) -> std::string;

@@ -8,7 +8,6 @@
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/optimizer/likelihood/statistical_concepts.hpp"
 
-
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
@@ -24,25 +23,22 @@ class QuadraticBowlCost final : public Operon::GradientCostFunction {
 public:
     using Scalar = Operon::Scalar;
 
-    explicit QuadraticBowlCost(std::vector<Operon::Scalar> target)
-        : target_(std::move(target))
-    {
-    }
+    explicit QuadraticBowlCost(std::vector<Operon::Scalar> target) : target_(std::move(target)) {}
 
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return target_.size(); }
 
-    [[nodiscard]] auto Evaluate(
-        Operon::ConstScalarSpan parameters,
-        Operon::ScalarSpan gradient) const
+    [[nodiscard]] auto Evaluate(Operon::ConstScalarSpan parameters, Operon::ScalarSpan gradient) const
         -> tl::expected<Operon::Scalar, Operon::GradientError> override
     {
         if (parameters.size() != target_.size()) {
-            return tl::unexpected(Operon::GradientError {
-                .Code = Operon::GradientErrorCode::InvalidShape, .Expected = target_.size(), .Actual = parameters.size() });
+            return tl::unexpected(Operon::GradientError { .Code = Operon::GradientErrorCode::InvalidShape,
+                .Expected = target_.size(),
+                .Actual = parameters.size() });
         }
         if (gradient.size() != target_.size()) {
-            return tl::unexpected(Operon::GradientError {
-                .Code = Operon::GradientErrorCode::InvalidShape, .Expected = target_.size(), .Actual = gradient.size() });
+            return tl::unexpected(Operon::GradientError { .Code = Operon::GradientErrorCode::InvalidShape,
+                .Expected = target_.size(),
+                .Actual = gradient.size() });
         }
         double cost = 0.0;
         for (std::size_t i = 0; i < target_.size(); ++i) {
@@ -64,9 +60,7 @@ public:
 
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return 2; }
 
-    [[nodiscard]] auto Evaluate(
-        Operon::ConstScalarSpan /*parameters*/,
-        Operon::ScalarSpan /*gradient*/) const
+    [[nodiscard]] auto Evaluate(Operon::ConstScalarSpan /*parameters*/, Operon::ScalarSpan /*gradient*/) const
         -> tl::expected<Operon::Scalar, Operon::GradientError> override
     {
         return tl::unexpected(Operon::GradientError { .Code = Operon::GradientErrorCode::EvaluationFailure });
@@ -108,7 +102,7 @@ static_assert(Operon::Concepts::HasFisherDiagonal<Operon::GaussianLikelihood<Ope
 
 TEST_CASE("GradientCostFunction: objective and gradient match a known quadratic minimum", "[gradient-cost]")
 {
-    QuadraticBowlCost cost({1.0, -2.0, 0.5});
+    QuadraticBowlCost cost({ 1.0, -2.0, 0.5 });
     std::vector<Operon::Scalar> parameters { 2.0, -2.0, 3.0 };
     std::vector<Operon::Scalar> gradient(3);
 
@@ -122,21 +116,24 @@ TEST_CASE("GradientCostFunction: objective and gradient match a known quadratic 
 
 TEST_CASE("GradientCostFunction: at the target the objective and gradient are zero", "[gradient-cost]")
 {
-    QuadraticBowlCost cost({1.0, -2.0, 0.5});
+    QuadraticBowlCost cost({ 1.0, -2.0, 0.5 });
     std::vector<Operon::Scalar> parameters { 1.0, -2.0, 0.5 };
     std::vector<Operon::Scalar> gradient(3);
 
     auto result = cost.Evaluate(parameters, gradient);
     REQUIRE(result.has_value());
     CHECK_THAT(static_cast<double>(*result), Catch::Matchers::WithinAbs(0.0, 1e-9));
-    for (auto g : gradient) { CHECK_THAT(static_cast<double>(g), Catch::Matchers::WithinAbs(0.0, 1e-9)); }
+    for (auto g : gradient) {
+        CHECK_THAT(static_cast<double>(g), Catch::Matchers::WithinAbs(0.0, 1e-9));
+    }
 }
 
 TEST_CASE("GradientCostFunction: invalid parameter/gradient shapes are rejected", "[gradient-cost]")
 {
-    QuadraticBowlCost cost({1.0, -2.0});
+    QuadraticBowlCost cost({ 1.0, -2.0 });
 
-    SECTION("wrong parameter count") {
+    SECTION("wrong parameter count")
+    {
         std::vector<Operon::Scalar> parameters { 1.0 };
         std::vector<Operon::Scalar> gradient(2);
         auto result = cost.Evaluate(parameters, gradient);
@@ -144,7 +141,8 @@ TEST_CASE("GradientCostFunction: invalid parameter/gradient shapes are rejected"
         CHECK(result.error().Code == Operon::GradientErrorCode::InvalidShape);
     }
 
-    SECTION("wrong gradient count") {
+    SECTION("wrong gradient count")
+    {
         std::vector<Operon::Scalar> parameters { 1.0, 2.0 };
         std::vector<Operon::Scalar> gradient(1);
         auto result = cost.Evaluate(parameters, gradient);

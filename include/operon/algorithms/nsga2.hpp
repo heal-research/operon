@@ -5,21 +5,23 @@
 #ifndef OPERON_NSGA2_HPP
 #define OPERON_NSGA2_HPP
 
-#include <functional>                      // for reference_wrapper, function
-#include <operon/operon_export.hpp>        // for OPERON_EXPORT
-#include <thread>                          // for thread
-#include <utility>                         // for move
-#include <vector>                          // for vector
+#include <functional> // for reference_wrapper, function
+#include <operon/operon_export.hpp> // for OPERON_EXPORT
+#include <thread> // for thread
+#include <utility> // for move
+#include <vector> // for vector
 
-#include "operon/algorithms/config.hpp"    // for GeneticAlgorithmConfig
+#include "operon/algorithms/config.hpp" // for GeneticAlgorithmConfig
 #include "operon/algorithms/ga_base.hpp"
-#include "operon/core/individual.hpp"      // for Individual
-#include "operon/core/types.hpp"           // for Span, Vector, RandomGenerator
-#include "operon/operators/evaluator.hpp"  // for EvaluatorBase
-#include "operon/operators/generator.hpp"  // for OffspringGeneratorBase
+#include "operon/core/individual.hpp" // for Individual
+#include "operon/core/types.hpp" // for Span, Vector, RandomGenerator
+#include "operon/operators/evaluator.hpp" // for EvaluatorBase
+#include "operon/operators/generator.hpp" // for OffspringGeneratorBase
 
 // forward declaration
-namespace tf { class Executor; }
+namespace tf {
+class Executor;
+}
 
 namespace Operon {
 
@@ -38,8 +40,12 @@ class OPERON_EXPORT NSGA2 : public GeneticAlgorithmBase {
     auto Sort(Operon::Span<Individual> pop) -> void;
 
 public:
-    NSGA2(GeneticAlgorithmConfig config, gsl::not_null<Problem const*> problem, gsl::not_null<TreeInitializerBase const*> treeInit, gsl::not_null<CoefficientInitializerBase const*> coeffInit, gsl::not_null<OffspringGeneratorBase const*> generator, gsl::not_null<ReinserterBase const*> reinserter, gsl::not_null<NondominatedSorterBase const*> sorter)
-        : GeneticAlgorithmBase(config, problem, treeInit, coeffInit, generator, reinserter), sorter_(sorter)
+    NSGA2(GeneticAlgorithmConfig config, gsl::not_null<Problem const*> problem,
+        gsl::not_null<TreeInitializerBase const*> treeInit, gsl::not_null<CoefficientInitializerBase const*> coeffInit,
+        gsl::not_null<OffspringGeneratorBase const*> generator, gsl::not_null<ReinserterBase const*> reinserter,
+        gsl::not_null<NondominatedSorterBase const*> sorter)
+        : GeneticAlgorithmBase(config, problem, treeInit, coeffInit, generator, reinserter)
+        , sorter_(sorter)
     {
         auto const n { GetGenerator()->Evaluator()->ObjectiveCount() };
         for (auto& ind : Individuals()) {
@@ -49,8 +55,10 @@ public:
 
     [[nodiscard]] auto Best() const -> Operon::Span<Individual const> { return { best_.data(), best_.size() }; }
 
-    auto Run(tf::Executor& /*executor*/, Operon::RandomGenerator&/*rng*/, Operon::ReportCallback /*report*/ = nullptr, /*warmStart*/ bool = false) -> void;
-    auto Run(Operon::RandomGenerator& /*rng*/, Operon::ReportCallback /*report*/ = nullptr, size_t /*threads*/= 0, /*warmStart*/ bool = false) -> void;
+    auto Run(tf::Executor& /*executor*/, Operon::RandomGenerator& /*rng*/, Operon::ReportCallback /*report*/ = nullptr,
+        /*warmStart*/ bool = false) -> void;
+    auto Run(Operon::RandomGenerator& /*rng*/, Operon::ReportCallback /*report*/ = nullptr, size_t /*threads*/ = 0,
+        /*warmStart*/ bool = false) -> void;
 };
 } // namespace Operon
 

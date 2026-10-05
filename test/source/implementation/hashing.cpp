@@ -2,15 +2,15 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
-#include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
 
 #include <unordered_set>
 
-#include "operon/core/tree.hpp"
 #include "operon/core/dataset.hpp"
 #include "operon/core/distance.hpp"
 #include "operon/core/pset.hpp"
+#include "operon/core/tree.hpp"
 #include "operon/core/variable.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/operators/initializer.hpp"
@@ -28,7 +28,7 @@ TEST_CASE("Hash determinism", "[core]")
 
     constexpr size_t maxLength = 20;
     Operon::RandomGenerator rd(42);
-    BalancedTreeCreator const btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
+    BalancedTreeCreator const btc { &grammar, inputs, /* bias= */ 0.0, maxLength };
     Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> const initializer;
 
     auto tree1 = btc(rd, 20, 1, 1000);
@@ -65,7 +65,7 @@ TEST_CASE("Hash-based distance", "[core]")
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic);
 
-    auto const btc = BalancedTreeCreator{&grammar, inputs, /* bias= */ 0.0, maxLength};
+    auto const btc = BalancedTreeCreator { &grammar, inputs, /* bias= */ 0.0, maxLength };
     Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> const initializer;
 
     std::vector<Tree> trees(n);
@@ -84,7 +84,8 @@ TEST_CASE("Hash-based distance", "[core]")
     for (auto& t : trees) {
         Operon::Vector<Operon::Hash> hh(t.Length());
         (void)t.Hash(Operon::HashMode::Strict);
-        std::transform(t.Nodes().begin(), t.Nodes().end(), hh.begin(), [](auto& n) -> auto { return n.CalculatedHashValue; });
+        std::transform(
+            t.Nodes().begin(), t.Nodes().end(), hh.begin(), [](auto& n) -> auto { return n.CalculatedHashValue; });
         std::sort(hh.begin(), hh.end());
         treeHashes.push_back(hh);
     }
@@ -109,7 +110,7 @@ TEST_CASE("Jaccard/SorensenDice handle empty spans without UB or NaN", "[core]")
     // division. Convention: two empty sets are identical (distance 0); an
     // empty set vs. a non-empty one is maximally dissimilar (distance 1).
     Operon::Vector<Operon::Hash> const empty;
-    Operon::Vector<Operon::Hash> const nonEmpty{ 1, 2, 3 };
+    Operon::Vector<Operon::Hash> const nonEmpty { 1, 2, 3 };
 
     CHECK(Operon::Distance::Jaccard(empty, empty) == Catch::Approx(0.0));
     CHECK(Operon::Distance::Jaccard(empty, nonEmpty) == Catch::Approx(1.0));
@@ -131,7 +132,7 @@ TEST_CASE("Sorensen-Dice distance", "[core]")
 
     constexpr size_t maxLength = 20;
     Operon::RandomGenerator rd(1234);
-    BalancedTreeCreator const btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
+    BalancedTreeCreator const btc { &grammar, inputs, /* bias= */ 0.0, maxLength };
     Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> const initializer;
 
     auto tree1 = btc(rd, 20, 1, 1000);
@@ -144,8 +145,10 @@ TEST_CASE("Sorensen-Dice distance", "[core]")
 
     Operon::Vector<Operon::Hash> h1(tree1.Length());
     Operon::Vector<Operon::Hash> h2(tree2.Length());
-    std::transform(tree1.Nodes().begin(), tree1.Nodes().end(), h1.begin(), [](auto& n) -> auto { return n.CalculatedHashValue; });
-    std::transform(tree2.Nodes().begin(), tree2.Nodes().end(), h2.begin(), [](auto& n) -> auto { return n.CalculatedHashValue; });
+    std::transform(
+        tree1.Nodes().begin(), tree1.Nodes().end(), h1.begin(), [](auto& n) -> auto { return n.CalculatedHashValue; });
+    std::transform(
+        tree2.Nodes().begin(), tree2.Nodes().end(), h2.begin(), [](auto& n) -> auto { return n.CalculatedHashValue; });
     std::sort(h1.begin(), h1.end());
     std::sort(h2.begin(), h2.end());
 
@@ -180,9 +183,9 @@ TEST_CASE("Tree hash root collision resistance", "[core]")
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic);
 
-    auto const btc = BalancedTreeCreator{&grammar, inputs, /* bias= */ 0.0, maxLength};
+    auto const btc = BalancedTreeCreator { &grammar, inputs, /* bias= */ 0.0, maxLength };
     Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> const initializer;
-    initializer.ParameterizeDistribution(Operon::Scalar{-1}, Operon::Scalar{+1});
+    initializer.ParameterizeDistribution(Operon::Scalar { -1 }, Operon::Scalar { +1 });
 
     std::unordered_set<Operon::Hash> roots;
     for (size_t i = 0; i < n; ++i) {
@@ -205,7 +208,7 @@ TEST_CASE("Strict vs relaxed hashing modes", "[core]")
 
     constexpr size_t maxLength = 20;
     Operon::RandomGenerator rd(42);
-    BalancedTreeCreator const btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
+    BalancedTreeCreator const btc { &grammar, inputs, /* bias= */ 0.0, maxLength };
     Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> const initializer;
 
     auto tree = btc(rd, 20, 1, 1000);

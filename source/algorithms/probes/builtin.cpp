@@ -50,7 +50,8 @@ auto RegisterBuiltinProbes(ProbeRegistry& registry) -> void
             if (m == "relaxed") {
                 mode = HashMode::Relaxed;
             } else if (m != "strict") {
-                throw std::runtime_error(fmt::format("structural_diversity: unknown hash_mode '{}' (expected 'strict' or 'relaxed')", m));
+                throw std::runtime_error(
+                    fmt::format("structural_diversity: unknown hash_mode '{}' (expected 'strict' or 'relaxed')", m));
             }
         }
         return std::make_unique<StructuralDiversityProbe>(mode);

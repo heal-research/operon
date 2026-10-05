@@ -15,8 +15,8 @@
 #include <tl/expected.hpp>
 
 #include "contracts.hpp"
-#include "subtree.hpp"
 #include "operon/core_export.hpp"
+#include "subtree.hpp"
 
 namespace Operon {
 enum class TreeValidationError : std::uint8_t {
@@ -39,22 +39,13 @@ enum class TreeValidationError : std::uint8_t {
 class OPERON_CORE_EXPORT Tree { // NOLINT
 public:
     Tree() = default;
-    Tree(std::initializer_list<Node> list)
-        : nodes_(list)
-    {
-    }
-    explicit Tree(Operon::Vector<Node> vec)
-        : nodes_(std::move(vec))
-    {
-    }
+    Tree(std::initializer_list<Node> list) : nodes_(list) {}
+    explicit Tree(Operon::Vector<Node> vec) : nodes_(std::move(vec)) {}
     Tree(Tree const& rhs) // NOLINT
         : nodes_(rhs.nodes_)
     {
     }
-    Tree(Tree&& rhs) noexcept
-        : nodes_(std::move(rhs.nodes_))
-    {
-    }
+    Tree(Tree&& rhs) noexcept : nodes_(std::move(rhs.nodes_)) {}
 
     ~Tree() = default;
 
@@ -65,10 +56,7 @@ public:
     }
     // no need for move assignment operator because we use the copy-swap idiom
 
-    friend void Swap(Tree& lhs, Tree& rhs) noexcept
-    {
-        std::swap(lhs.nodes_, rhs.nodes_);
-    }
+    friend void Swap(Tree& lhs, Tree& rhs) noexcept { std::swap(lhs.nodes_, rhs.nodes_); }
 
     auto UpdateNodes() -> Tree&;
 
@@ -116,8 +104,7 @@ public:
     // from Vector<Node>&& to a by-value Vector<Node> prvalue. `auto&&`
     // performs ordinary forwarding-reference deduction instead, which
     // reproduces all three original reference types exactly.
-    template<typename Self>
-    [[nodiscard]] auto&& Nodes(this Self&& self) { return std::forward<Self>(self).nodes_; }
+    template <typename Self> [[nodiscard]] auto&& Nodes(this Self&& self) { return std::forward<Self>(self).nodes_; }
 
     [[nodiscard]] auto CoefficientsCount() const
     {
@@ -130,51 +117,63 @@ public:
 
     [[nodiscard]] auto ApplyCoefficients(Operon::Span<Operon::Scalar const> coefficients) const
     {
-        auto tree{ *this };
+        auto tree { *this };
         tree.SetCoefficients(coefficients);
         return tree;
     }
 
-    template<typename Self>
-    auto operator[](this Self& self, size_t i) noexcept -> decltype(auto) { return (self.nodes_[i]); }
+    template <typename Self> auto operator[](this Self& self, size_t i) noexcept -> decltype(auto)
+    {
+        return (self.nodes_[i]);
+    }
 
     [[nodiscard]] auto Length() const noexcept -> size_t { return nodes_.size(); }
-    [[nodiscard]] auto AdjustedLength() const noexcept -> size_t {
+    [[nodiscard]] auto AdjustedLength() const noexcept -> size_t
+    {
         auto length = [](auto const& n) {
-            if (n.IsConstant() || n.IsRef()) { return 1; }
-            return n.Value == Operon::Scalar{1} ? 1 : 3;
+            if (n.IsConstant() || n.IsRef()) {
+                return 1;
+            }
+            return n.Value == Operon::Scalar { 1 } ? 1 : 3;
         };
-        return std::transform_reduce(nodes_.begin(), nodes_.end(), 0UL, std::plus{}, length);
+        return std::transform_reduce(nodes_.begin(), nodes_.end(), 0UL, std::plus {}, length);
     }
     [[nodiscard]] auto VisitationLength() const noexcept -> size_t;
     [[nodiscard]] auto Depth() const noexcept -> size_t;
     [[nodiscard]] auto Empty() const noexcept -> bool { return nodes_.empty(); }
 
-    [[nodiscard]] auto HashValue() const -> Operon::Hash { return nodes_.empty() ? 0 : nodes_.back().CalculatedHashValue; }
-
-    template<typename Self>
-    [[nodiscard]] auto Children(this Self& self, size_t i) {
-        return Subtree<std::conditional_t<std::is_const_v<Self>, Node const, Node>>{self.nodes_, i}.Nodes();
+    [[nodiscard]] auto HashValue() const -> Operon::Hash
+    {
+        return nodes_.empty() ? 0 : nodes_.back().CalculatedHashValue;
     }
-    [[nodiscard]] auto Indices(size_t i) const { return Subtree<Node const>{nodes_, i}.Indices(); }
+
+    template <typename Self> [[nodiscard]] auto Children(this Self& self, size_t i)
+    {
+        return Subtree<std::conditional_t<std::is_const_v<Self>, Node const, Node>> { self.nodes_, i }.Nodes();
+    }
+    [[nodiscard]] auto Indices(size_t i) const { return Subtree<Node const> { nodes_, i }.Indices(); }
 
     // convenience methods
-    static auto Indices(auto const& nodes, auto i) {
-        return Subtree<Node const>{ nodes, static_cast<std::size_t>(i) }.Indices();
+    static auto Indices(auto const& nodes, auto i)
+    {
+        return Subtree<Node const> { nodes, static_cast<std::size_t>(i) }.Indices();
     }
 
-    static auto EnumerateIndices(auto const& nodes, auto i) {
-        return Subtree<Node const>{ nodes, static_cast<std::size_t>(i) }.EnumerateIndices();
+    static auto EnumerateIndices(auto const& nodes, auto i)
+    {
+        return Subtree<Node const> { nodes, static_cast<std::size_t>(i) }.EnumerateIndices();
     }
 
-    static auto Nodes(auto&& nodes, auto i) {
+    static auto Nodes(auto&& nodes, auto i)
+    {
         using NodeT = std::conditional_t<std::is_const_v<std::remove_reference_t<decltype(nodes)>>, Node const, Node>;
-        return Subtree<NodeT>{ nodes, static_cast<std::size_t>(i) }.Nodes();
+        return Subtree<NodeT> { nodes, static_cast<std::size_t>(i) }.Nodes();
     }
 
-    static auto EnumerateNodes(auto&& nodes, auto i) {
+    static auto EnumerateNodes(auto&& nodes, auto i)
+    {
         using NodeT = std::conditional_t<std::is_const_v<std::remove_reference_t<decltype(nodes)>>, Node const, Node>;
-        return Subtree<NodeT>{ nodes, static_cast<std::size_t>(i) }.EnumerateNodes();
+        return Subtree<NodeT> { nodes, static_cast<std::size_t>(i) }.EnumerateNodes();
     }
 
 private:

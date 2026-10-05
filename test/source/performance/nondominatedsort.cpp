@@ -21,19 +21,19 @@ namespace Operon::Test {
 
 namespace {
 
-template<typename Dist>
-auto InitializePop(Operon::RandomGenerator& random, Dist& dist, size_t n, size_t m) -> std::vector<Individual>
-{
-    std::vector<Individual> individuals(n);
-    for (auto& individual : individuals) {
-        individual.Fitness.resize(m);
-        for (size_t j = 0; j < m; ++j) {
-            individual[j] = static_cast<Operon::Scalar>(dist(random));
+    template <typename Dist>
+    auto InitializePop(Operon::RandomGenerator& random, Dist& dist, size_t n, size_t m) -> std::vector<Individual>
+    {
+        std::vector<Individual> individuals(n);
+        for (auto& individual : individuals) {
+            individual.Fitness.resize(m);
+            for (size_t j = 0; j < m; ++j) {
+                individual[j] = static_cast<Operon::Scalar>(dist(random));
+            }
+            ENSURE(individual.Fitness.size() == m);
         }
-        ENSURE(individual.Fitness.size() == m);
+        return individuals;
     }
-    return individuals;
-}
 
 } // namespace
 
@@ -44,7 +44,7 @@ auto InitializePop(Operon::RandomGenerator& random, Dist& dist, size_t n, size_t
 // Run with: operon_test "[performance][ndsort]"
 TEST_CASE("Non-dominated sort performance", "[performance][ndsort]")
 {
-    Operon::RandomGenerator rd{0};
+    Operon::RandomGenerator rd { 0 };
 
     auto runSorter = [&](nb::Bench& bench, std::string const& name, auto&& sorter, int n, int m) -> auto {
         std::uniform_real_distribution<Operon::Scalar> dist(-1.F, 1.F);
@@ -58,48 +58,52 @@ TEST_CASE("Non-dominated sort performance", "[performance][ndsort]")
     std::vector<int> ns;
     std::ranges::transform(std::views::iota(1, 21), std::back_inserter(ns), [](auto i) -> auto { return 1000 * i; });
 
-    SECTION("2 objectives") {
+    SECTION("2 objectives")
+    {
         nb::Bench bench;
         bench.title("2 objectives").minEpochIterations(20);
-        const int m{2};
+        const int m { 2 };
         for (auto n : ns) {
-            runSorter(bench, "RS",     Operon::RankIntersectSorter{},    n, m);
-            runSorter(bench, "MS",     Operon::MergeSorter{},            n, m);
-            runSorter(bench, "ENS-SS", Operon::EfficientSequentialSorter{}, n, m);
-            runSorter(bench, "ENS-BS", Operon::EfficientBinarySorter{},  n, m);
+            runSorter(bench, "RS", Operon::RankIntersectSorter {}, n, m);
+            runSorter(bench, "MS", Operon::MergeSorter {}, n, m);
+            runSorter(bench, "ENS-SS", Operon::EfficientSequentialSorter {}, n, m);
+            runSorter(bench, "ENS-BS", Operon::EfficientBinarySorter {}, n, m);
         }
         bench.render(ankerl::nanobench::templates::csv(), std::cout);
     }
 
-    SECTION("3 objectives") {
+    SECTION("3 objectives")
+    {
         nb::Bench bench;
         bench.title("3 objectives").minEpochIterations(20);
-        const int m{3};
+        const int m { 3 };
         for (auto n : ns) {
-            runSorter(bench, "RS", Operon::RankIntersectSorter{}, n, m);
-            runSorter(bench, "MS", Operon::MergeSorter{},         n, m);
+            runSorter(bench, "RS", Operon::RankIntersectSorter {}, n, m);
+            runSorter(bench, "MS", Operon::MergeSorter {}, n, m);
         }
         bench.render(ankerl::nanobench::templates::csv(), std::cout);
     }
 
-    SECTION("4 objectives") {
+    SECTION("4 objectives")
+    {
         nb::Bench bench;
         bench.title("4 objectives").minEpochIterations(20);
-        const int m{4};
+        const int m { 4 };
         for (auto n : ns) {
-            runSorter(bench, "RS", Operon::RankIntersectSorter{}, n, m);
-            runSorter(bench, "MS", Operon::MergeSorter{},         n, m);
+            runSorter(bench, "RS", Operon::RankIntersectSorter {}, n, m);
+            runSorter(bench, "MS", Operon::MergeSorter {}, n, m);
         }
         bench.render(ankerl::nanobench::templates::csv(), std::cout);
     }
 
-    SECTION("5 objectives") {
+    SECTION("5 objectives")
+    {
         nb::Bench bench;
         bench.title("5 objectives").minEpochIterations(20);
-        const int m{5};
+        const int m { 5 };
         for (auto n : ns) {
-            runSorter(bench, "RS", Operon::RankIntersectSorter{}, n, m);
-            runSorter(bench, "MS", Operon::MergeSorter{},         n, m);
+            runSorter(bench, "RS", Operon::RankIntersectSorter {}, n, m);
+            runSorter(bench, "MS", Operon::MergeSorter {}, n, m);
         }
         bench.render(ankerl::nanobench::templates::csv(), std::cout);
     }
@@ -110,7 +114,7 @@ TEST_CASE("Non-dominated sort performance", "[performance][ndsort]")
 // Run with: operon_test "[.][ndsort-extended]"
 TEST_CASE("Non-dominated sort performance (extended)", "[.][ndsort-extended]")
 {
-    Operon::RandomGenerator rd{0};
+    Operon::RandomGenerator rd { 0 };
 
     auto runSorter = [&](nb::Bench& bench, std::string const& name, auto&& sorter, int n, int m) -> auto {
         std::uniform_real_distribution<Operon::Scalar> dist(-1.F, 1.F);
@@ -124,52 +128,56 @@ TEST_CASE("Non-dominated sort performance (extended)", "[.][ndsort-extended]")
     std::vector<int> ns;
     std::ranges::transform(std::views::iota(1, 21), std::back_inserter(ns), [](auto i) -> auto { return 1000 * i; });
 
-    SECTION("2 objectives") {
+    SECTION("2 objectives")
+    {
         nb::Bench bench;
-        const int m{2};
+        const int m { 2 };
         for (auto n : ns) {
-            runSorter(bench, "RS",     Operon::RankIntersectSorter{},       n, m);
-            runSorter(bench, "MS",     Operon::MergeSorter{},               n, m);
-            runSorter(bench, "RO",     Operon::RankOrdinalSorter{},         n, m);
-            runSorter(bench, "BOS",    Operon::BestOrderSorter{},           n, m);
-            runSorter(bench, "ENS-SS", Operon::EfficientSequentialSorter{}, n, m);
-            runSorter(bench, "ENS-BS", Operon::EfficientBinarySorter{},     n, m);
+            runSorter(bench, "RS", Operon::RankIntersectSorter {}, n, m);
+            runSorter(bench, "MS", Operon::MergeSorter {}, n, m);
+            runSorter(bench, "RO", Operon::RankOrdinalSorter {}, n, m);
+            runSorter(bench, "BOS", Operon::BestOrderSorter {}, n, m);
+            runSorter(bench, "ENS-SS", Operon::EfficientSequentialSorter {}, n, m);
+            runSorter(bench, "ENS-BS", Operon::EfficientBinarySorter {}, n, m);
         }
         bench.render(ankerl::nanobench::templates::csv(), std::cout);
     }
 
-    SECTION("3 objectives") {
+    SECTION("3 objectives")
+    {
         nb::Bench bench;
-        const int m{3};
+        const int m { 3 };
         for (auto n : ns) {
-            runSorter(bench, "RS",  Operon::RankIntersectSorter{}, n, m);
-            runSorter(bench, "MS",  Operon::MergeSorter{},         n, m);
-            runSorter(bench, "RO",  Operon::RankOrdinalSorter{},   n, m);
-            runSorter(bench, "BOS", Operon::BestOrderSorter{},     n, m);
+            runSorter(bench, "RS", Operon::RankIntersectSorter {}, n, m);
+            runSorter(bench, "MS", Operon::MergeSorter {}, n, m);
+            runSorter(bench, "RO", Operon::RankOrdinalSorter {}, n, m);
+            runSorter(bench, "BOS", Operon::BestOrderSorter {}, n, m);
         }
         bench.render(ankerl::nanobench::templates::csv(), std::cout);
     }
 
-    SECTION("4 objectives") {
+    SECTION("4 objectives")
+    {
         nb::Bench bench;
-        const int m{4};
+        const int m { 4 };
         for (auto n : ns) {
-            runSorter(bench, "RS",  Operon::RankIntersectSorter{}, n, m);
-            runSorter(bench, "MS",  Operon::MergeSorter{},         n, m);
-            runSorter(bench, "RO",  Operon::RankOrdinalSorter{},   n, m);
-            runSorter(bench, "BOS", Operon::BestOrderSorter{},     n, m);
+            runSorter(bench, "RS", Operon::RankIntersectSorter {}, n, m);
+            runSorter(bench, "MS", Operon::MergeSorter {}, n, m);
+            runSorter(bench, "RO", Operon::RankOrdinalSorter {}, n, m);
+            runSorter(bench, "BOS", Operon::BestOrderSorter {}, n, m);
         }
         bench.render(ankerl::nanobench::templates::csv(), std::cout);
     }
 
-    SECTION("5 objectives") {
+    SECTION("5 objectives")
+    {
         nb::Bench bench;
-        const int m{5};
+        const int m { 5 };
         for (auto n : ns) {
-            runSorter(bench, "RS",  Operon::RankIntersectSorter{}, n, m);
-            runSorter(bench, "MS",  Operon::MergeSorter{},         n, m);
-            runSorter(bench, "RO",  Operon::RankOrdinalSorter{},   n, m);
-            runSorter(bench, "BOS", Operon::BestOrderSorter{},     n, m);
+            runSorter(bench, "RS", Operon::RankIntersectSorter {}, n, m);
+            runSorter(bench, "MS", Operon::MergeSorter {}, n, m);
+            runSorter(bench, "RO", Operon::RankOrdinalSorter {}, n, m);
+            runSorter(bench, "BOS", Operon::BestOrderSorter {}, n, m);
         }
         bench.render(ankerl::nanobench::templates::csv(), std::cout);
     }
@@ -181,31 +189,29 @@ TEST_CASE("Single front benchmarks", "[performance]")
     std::vector<Operon::Individual> pop(n);
 
     for (auto i = 0; i < n; ++i) {
-        pop[i].Fitness = {static_cast<float>(i), n - static_cast<float>(i) - 1};
+        pop[i].Fitness = { static_cast<float>(i), n - static_cast<float>(i) - 1 };
     }
 
     nb::Bench bench;
 
-    SECTION("RS") {
-        bench.run("RS single front", [&]() -> void {
-            RankIntersectSorter{}(pop, 0);
-        });
+    SECTION("RS")
+    {
+        bench.run("RS single front", [&]() -> void { RankIntersectSorter {}(pop, 0); });
     }
 
-    SECTION("MS") {
-        bench.run("MS single front", [&]() -> void {
-            MergeSorter{}(pop, 0);
-        });
+    SECTION("MS")
+    {
+        bench.run("MS single front", [&]() -> void { MergeSorter {}(pop, 0); });
     }
 }
 
 TEST_CASE("Non-dominated sort complexity", "[performance]")
 {
-    Operon::RandomGenerator rd{0};
+    Operon::RandomGenerator rd { 0 };
     std::uniform_real_distribution<Operon::Scalar> dist(-1.F, 1.F);
 
     auto checkComplexity = [&](size_t m, auto&& sorter) -> auto {
-        std::vector<size_t> const sizes{500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000};
+        std::vector<size_t> const sizes { 500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000 };
         nb::Bench bench;
         bench.minEpochIterations(10);
 
@@ -216,14 +222,16 @@ TEST_CASE("Non-dominated sort complexity", "[performance]")
         std::cout << bench.complexityBigO() << "\n";
     };
 
-    SECTION("M=2") {
-        checkComplexity(2, RankIntersectSorter{});
-        checkComplexity(2, MergeSorter{});
+    SECTION("M=2")
+    {
+        checkComplexity(2, RankIntersectSorter {});
+        checkComplexity(2, MergeSorter {});
     }
 
-    SECTION("M=3") {
-        checkComplexity(3, RankIntersectSorter{});
-        checkComplexity(3, MergeSorter{});
+    SECTION("M=3")
+    {
+        checkComplexity(3, RankIntersectSorter {});
+        checkComplexity(3, MergeSorter {});
     }
 }
 

@@ -8,9 +8,9 @@
 
 #include "operon/core/pset.hpp"
 #include "operon/formatter/formatter.hpp"
-#include <fmt/format.h>
 #include "operon/operators/creator.hpp"
 #include "operon/parser/infix.hpp"
+#include <fmt/format.h>
 
 namespace nb = ankerl::nanobench;
 
@@ -18,10 +18,10 @@ namespace Operon::Test {
 
 TEST_CASE("Parser throughput", "[performance]")
 {
-    constexpr auto nTrees{1000};
-    constexpr auto maxLength{50};
-    constexpr auto nrow{10};
-    constexpr auto ncol{10};
+    constexpr auto nTrees { 1000 };
+    constexpr auto maxLength { 50 };
+    constexpr auto nrow { 10 };
+    constexpr auto ncol { 10 };
 
     Operon::RandomGenerator rng(1234UL);
     auto ds = Util::RandomDataset(rng, nrow, ncol);
@@ -29,20 +29,20 @@ TEST_CASE("Parser throughput", "[performance]")
     Operon::PrimitiveSet pset;
     pset.SetConfig(PrimitiveSet::Arithmetic | BuiltinOp::Exp | BuiltinOp::Log | NodeType::Variable);
 
-    BalancedTreeCreator const creator{&pset, ds.VariableHashes(), /* bias= */ 0.0, maxLength};
+    BalancedTreeCreator const creator { &pset, ds.VariableHashes(), /* bias= */ 0.0, maxLength };
     std::uniform_int_distribution<size_t> dist(1, maxLength);
 
     // Pre-generate infix strings
     std::vector<std::string> strings;
     strings.reserve(nTrees);
-    size_t totalNodes{0};
+    size_t totalNodes { 0 };
     for (auto i = 0; i < nTrees; ++i) {
         auto tree = creator(rng, dist(rng), 0, 10);
         totalNodes += tree.Length();
-        strings.push_back(fmt::format("{:infix:20}", Operon::Fmt::TreeFormatArgs{tree, ds}));
+        strings.push_back(fmt::format("{:infix:20}", Operon::Fmt::TreeFormatArgs { tree, ds }));
     }
 
-    size_t idx{0};
+    size_t idx { 0 };
     nb::Bench bench;
     bench.run("parse", [&]() -> void {
         auto tree = InfixParser::ParseOrThrow(strings[idx], ds);

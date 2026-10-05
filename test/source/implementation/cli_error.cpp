@@ -26,22 +26,25 @@ TEST_CASE("Cli::Invoke converts exceptions and passes values through", "[cli]")
     using Operon::Cli::ErrorCode;
     using Operon::Cli::Invoke;
 
-    SECTION("throwing lambda becomes a Cli::Error instead of escaping") {
-        auto const result = Invoke([]() -> int { throw std::runtime_error("boom"); },
-            ErrorCode::Input, "infix expression");
+    SECTION("throwing lambda becomes a Cli::Error instead of escaping")
+    {
+        auto const result
+            = Invoke([]() -> int { throw std::runtime_error("boom"); }, ErrorCode::Input, "infix expression");
         CHECK_FALSE(result);
         CHECK(result.error().Code == ErrorCode::Input);
         CHECK(result.error().Context == "infix expression");
         CHECK(result.error().Message == "boom");
     }
 
-    SECTION("non-throwing lambda's return value passes through unchanged") {
+    SECTION("non-throwing lambda's return value passes through unchanged")
+    {
         auto const result = Invoke([] { return 42; }, ErrorCode::Runtime, "unused");
         REQUIRE(result);
         CHECK(*result == 42);
     }
 
-    SECTION("void-returning lambda yields a successful Result<void>") {
+    SECTION("void-returning lambda yields a successful Result<void>")
+    {
         // Invoke's return type is Result<decltype(fn())> = tl::expected<void,
         // Error> here: the void instantiation must compile and report success.
         bool ran = false;
@@ -71,21 +74,20 @@ TEST_CASE("Cli::Report prints the error and returns EXIT_FAILURE", "[cli]")
         ::close(saved);
         ::close(fd);
         std::ifstream in(path);
-        std::string text{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
-        return {code, text};
+        std::string text { std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>() };
+        return { code, text };
     };
 
-    auto const [codeWithContext, textWithContext] =
-        capture({Operon::Cli::ErrorCode::Configuration, "shape-constraints config", "bad json"});
+    auto const [codeWithContext, textWithContext]
+        = capture({ Operon::Cli::ErrorCode::Configuration, "shape-constraints config", "bad json" });
     CHECK(codeWithContext == EXIT_FAILURE);
     CHECK(textWithContext.find("error: shape-constraints config: bad json") != std::string::npos);
 
-    auto const [codeBare, textBare] =
-        capture({Operon::Cli::ErrorCode::Input, "", "no context"});
+    auto const [codeBare, textBare] = capture({ Operon::Cli::ErrorCode::Input, "", "no context" });
     CHECK(codeBare == EXIT_FAILURE);
     CHECK(textBare.find("error: no context") != std::string::npos);
 #else
-    CHECK(Operon::Cli::Report({Operon::Cli::ErrorCode::Input, "", "no context"}) == EXIT_FAILURE);
+    CHECK(Operon::Cli::Report({ Operon::Cli::ErrorCode::Input, "", "no context" }) == EXIT_FAILURE);
 #endif
 }
 

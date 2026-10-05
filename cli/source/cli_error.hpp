@@ -27,8 +27,7 @@ struct Error {
     std::string Message;
 };
 
-template<typename T>
-using Result = tl::expected<T, Error>;
+template <typename T> using Result = tl::expected<T, Error>;
 
 inline auto Report(Error const& error) -> int
 {
@@ -42,8 +41,7 @@ inline auto Report(Error const& error) -> int
 
 // Transitional adapter for legacy APIs. New CLI-facing APIs return Result<T>
 // directly; this boundary prevents a legacy exception from escaping main.
-template<typename F>
-auto Invoke(F&& fn, ErrorCode code, std::string context) -> Result<decltype(fn())>
+template <typename F> auto Invoke(F&& fn, ErrorCode code, std::string context) -> Result<decltype(fn())>
 {
     try {
         if constexpr (std::is_void_v<decltype(fn())>) {
@@ -53,7 +51,7 @@ auto Invoke(F&& fn, ErrorCode code, std::string context) -> Result<decltype(fn()
             return std::forward<F>(fn)();
         }
     } catch (std::exception const& error) {
-        return tl::unexpected(Error{code, std::move(context), error.what()});
+        return tl::unexpected(Error { code, std::move(context), error.what() });
     }
 }
 

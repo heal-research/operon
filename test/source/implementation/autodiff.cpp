@@ -2,14 +2,14 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
-#include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
 
+#include "../operon_test.hpp"
 #include <array>
 #include <cmath>
 #include <limits>
 #include <random>
-#include "../operon_test.hpp"
 
 #include "operon/core/pset.hpp"
 #include "operon/core/tree.hpp"
@@ -22,14 +22,15 @@ namespace Operon::Test {
 
 TEST_CASE("Autodiff specific expressions", "[autodiff]") // NOLINT(readability-function-cognitive-complexity)
 {
-    Operon::Dataset ds(std::vector<std::string>{"x", "y"},
-                       std::vector<std::vector<Operon::Scalar>>{{1}, {1}});
-    Operon::RandomGenerator rng(0UL); // NOLINT(misc-const-correctness) — captured by ref in lambda, passed to non-const distribution calls
+    Operon::Dataset ds(
+        std::vector<std::string> { "x", "y" }, std::vector<std::vector<Operon::Scalar>> { { 1 }, { 1 } });
+    Operon::RandomGenerator rng(
+        0UL); // NOLINT(misc-const-correctness) — captured by ref in lambda, passed to non-const distribution calls
     Operon::DispatchTable<Operon::Scalar> dtable;
-    Operon::Range const range{0, ds.Rows<std::size_t>()};
+    Operon::Range const range { 0, ds.Rows<std::size_t>() };
 
     auto derive = [&](std::string const& expr) -> void {
-        auto tree = Operon::InfixParser::ParseOrThrow(expr, ds, Operon::InfixParseOptions{.Reduce = true});
+        auto tree = Operon::InfixParser::ParseOrThrow(expr, ds, Operon::InfixParseOptions { .Reduce = true });
         for (auto& n : tree.Nodes()) {
             n.Optimize = n.IsLeaf();
         }
@@ -37,11 +38,13 @@ TEST_CASE("Autodiff specific expressions", "[autodiff]") // NOLINT(readability-f
         auto parameters = tree.GetCoefficients();
         auto [res, jac] = Util::Autodiff(tree, ds, range);
 
-        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter{&dtable, &ds, &tree};
+        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter { &dtable, &ds,
+            &tree };
         auto rev = interpreter.JacRev(parameters, range).value();
         auto fwd = interpreter.JacFwd(parameters, range).value();
 
-        Eigen::Map<Eigen::Array<Operon::Scalar, -1, -1>> const jjet(jac.data(), static_cast<Eigen::Index>(range.Size()), static_cast<Eigen::Index>(parameters.size()));
+        Eigen::Map<Eigen::Array<Operon::Scalar, -1, -1>> const jjet(
+            jac.data(), static_cast<Eigen::Index>(range.Size()), static_cast<Eigen::Index>(parameters.size()));
 
         auto f1 = std::isfinite(jjet.sum());
         auto f2 = std::isfinite(rev.sum());
@@ -74,31 +77,36 @@ TEST_CASE("Autodiff specific expressions", "[autodiff]") // NOLINT(readability-f
 
 TEST_CASE("Autodiff APIs report missing derivatives", "[autodiff]")
 {
-    Operon::Dataset ds({"x"}, {{1.0F}});
+    Operon::Dataset ds({ "x" }, { { 1.0F } });
     Operon::DispatchTable<Operon::Scalar> standard;
     Operon::DispatchTable<Operon::Scalar> dtable;
     auto tree = Operon::InfixParser::ParseOrThrow("sin(x)", ds);
     auto coeff = tree.GetCoefficients();
-    Operon::Range const range{0, 1};
+    Operon::Range const range { 0, 1 };
     auto const sinHash = tree.Nodes().back().HashValue;
     dtable.RegisterFunction<Operon::Scalar>(sinHash, standard.GetFunction<Operon::Scalar>(sinHash));
-    Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> interpreter{&dtable, &ds, &tree};
+    Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> interpreter { &dtable, &ds, &tree };
     CHECK(interpreter.JacFwd(coeff, range).error().Kind == Operon::InterpreterError::Code::MissingDerivative);
-    CHECK(interpreter.JacRevVariable(coeff, range, ds.GetVariable("x")->Hash).error().Kind == Operon::InterpreterError::Code::MissingDerivative);
-    CHECK(interpreter.JacFwdVariable(coeff, range, ds.GetVariable("x")->Hash).error().Kind == Operon::InterpreterError::Code::MissingDerivative);
+    CHECK(interpreter.JacRevVariable(coeff, range, ds.GetVariable("x")->Hash).error().Kind
+        == Operon::InterpreterError::Code::MissingDerivative);
+    CHECK(interpreter.JacFwdVariable(coeff, range, ds.GetVariable("x")->Hash).error().Kind
+        == Operon::InterpreterError::Code::MissingDerivative);
 }
 
 TEST_CASE("Interpreter reports invalid coefficient, output, and root sizes", "[autodiff]")
 {
-    Operon::Dataset ds({"x"}, {{1.0F, 2.0F}});
+    Operon::Dataset ds({ "x" }, { { 1.0F, 2.0F } });
     Operon::DispatchTable<Operon::Scalar> dtable;
     auto tree = Operon::InfixParser::ParseOrThrow("2 * x", ds);
     for (auto& node : tree.Nodes()) {
-        if (node.IsConstant()) { node.Optimize = true; break; }
+        if (node.IsConstant()) {
+            node.Optimize = true;
+            break;
+        }
     }
     tree.UpdateNodes();
-    Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> interpreter{&dtable, &ds, &tree};
-    Operon::Range const range{0, 2};
+    Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> interpreter { &dtable, &ds, &tree };
+    Operon::Range const range { 0, 2 };
     auto const coeff = tree.GetCoefficients();
     Operon::Vector<Operon::Scalar> wrongCoeff(coeff.size() + 1, 1.0F);
     auto const invalidCoeff = interpreter.Evaluate(wrongCoeff, range);
@@ -109,16 +117,17 @@ TEST_CASE("Interpreter reports invalid coefficient, output, and root sizes", "[a
     auto const invalidOutput = interpreter.Evaluate(coeff, range, output);
     REQUIRE_FALSE(invalidOutput);
     Operon::Vector<Operon::Scalar> jacobian(range.Size() * coeff.size());
-    auto const invalidJacobian = interpreter.JacRev(coeff, range, Operon::Span<Operon::Scalar>{jacobian.data() + 1, jacobian.size() - 1});
+    auto const invalidJacobian
+        = interpreter.JacRev(coeff, range, Operon::Span<Operon::Scalar> { jacobian.data() + 1, jacobian.size() - 1 });
     REQUIRE_FALSE(invalidJacobian);
     CHECK(invalidJacobian.error().Kind == Operon::InterpreterError::Code::InvalidOutputSize);
 
-    std::array<std::size_t, 2> roots{0, std::numeric_limits<std::size_t>::max()};
+    std::array<std::size_t, 2> roots { 0, std::numeric_limits<std::size_t>::max() };
     auto const evaluatedRoots = interpreter.EvaluateRoots(coeff, range, roots);
     REQUIRE(evaluatedRoots);
     CHECK(evaluatedRoots->col(1).isZero());
 
-    std::array<std::size_t, 1> invalidRoots{tree.Nodes().size()};
+    std::array<std::size_t, 1> invalidRoots { tree.Nodes().size() };
     auto const invalidRoot = interpreter.EvaluateRoots(coeff, range, invalidRoots);
     REQUIRE_FALSE(invalidRoot);
     CHECK(invalidRoot.error().Kind == Operon::InterpreterError::Code::InvalidRootIndex);
@@ -126,19 +135,19 @@ TEST_CASE("Interpreter reports invalid coefficient, output, and root sizes", "[a
 
 TEST_CASE("Autodiff forward vs reverse consistency", "[autodiff]")
 {
-    Operon::Dataset ds(std::vector<std::string>{"x", "y"},
-                       std::vector<std::vector<Operon::Scalar>>{{1}, {1}});
+    Operon::Dataset ds(
+        std::vector<std::string> { "x", "y" }, std::vector<std::vector<Operon::Scalar>> { { 1 }, { 1 } });
     Operon::RandomGenerator rng(0UL);
 
     Operon::DispatchTable<Operon::Scalar> dtable;
-    Operon::Range const range{0, ds.Rows<std::size_t>()};
+    Operon::Range const range { 0, ds.Rows<std::size_t>() };
 
     using Operon::NodeType;
     Operon::PrimitiveSet pset;
 
     auto generateTrees = [&](auto pset, auto n, auto l) -> auto {
-        constexpr auto mindepth{1};
-        constexpr auto maxdepth{1000};
+        constexpr auto mindepth { 1 };
+        constexpr auto maxdepth { 1000 };
         std::uniform_int_distribution<size_t> const length(1, l);
         std::bernoulli_distribution bernoulli(0.5); // NOLINT
         std::uniform_real_distribution<Operon::Scalar> dist(-10.F, +10.F);
@@ -160,11 +169,12 @@ TEST_CASE("Autodiff forward vs reverse consistency", "[autodiff]")
         return trees;
     };
 
-    constexpr auto n{100'000};
-    constexpr auto epsilon{1e-4F};
+    constexpr auto n { 100'000 };
+    constexpr auto epsilon { 1e-4F };
 
     // unary
-    pset.SetConfig(BuiltinOp::Exp | BuiltinOp::Log | BuiltinOp::Sin | BuiltinOp::Cos | BuiltinOp::Sqrt | BuiltinOp::Tanh | NodeType::Constant);
+    pset.SetConfig(BuiltinOp::Exp | BuiltinOp::Log | BuiltinOp::Sin | BuiltinOp::Cos | BuiltinOp::Sqrt | BuiltinOp::Tanh
+        | NodeType::Constant);
     auto trees = generateTrees(pset, n / 2, 2);
 
     // binary
@@ -172,43 +182,48 @@ TEST_CASE("Autodiff forward vs reverse consistency", "[autodiff]")
     auto tmp = generateTrees(pset, n / 2, 3);
     std::ranges::copy(tmp, std::back_inserter(trees));
 
-    size_t finiteMismatch{0};  // f1 finite, f2 non-finite
-    size_t finiteDiverge{0};   // both finite but |rev - fwd| > epsilon
+    size_t finiteMismatch { 0 }; // f1 finite, f2 non-finite
+    size_t finiteDiverge { 0 }; // both finite but |rev - fwd| > epsilon
     for (auto const& tree : trees) {
         auto parameters = tree.GetCoefficients();
         auto [res, jac] = Util::Autodiff(tree, ds, range);
-        Eigen::Map<Eigen::Array<Operon::Scalar, -1, -1>> const jjet(jac.data(), static_cast<Eigen::Index>(range.Size()), static_cast<Eigen::Index>(parameters.size()));
+        Eigen::Map<Eigen::Array<Operon::Scalar, -1, -1>> const jjet(
+            jac.data(), static_cast<Eigen::Index>(range.Size()), static_cast<Eigen::Index>(parameters.size()));
 
-        Operon::Interpreter<Operon::Scalar, decltype(dtable)> const interpreter{&dtable, &ds, &tree};
+        Operon::Interpreter<Operon::Scalar, decltype(dtable)> const interpreter { &dtable, &ds, &tree };
         Eigen::Array<Operon::Scalar, -1, -1> const jrev = interpreter.JacRev(parameters, range).value();
 
         auto f1 = std::isfinite(jjet.sum());
         auto f2 = std::isfinite(jrev.sum());
-        if (f1 && !f2) { ++finiteMismatch; }
-        else if (f1 && f2 && !jrev.isApprox(jjet, epsilon)) { ++finiteDiverge; }
+        if (f1 && !f2) {
+            ++finiteMismatch;
+        } else if (f1 && f2 && !jrev.isApprox(jjet, epsilon)) {
+            ++finiteDiverge;
+        }
     }
     auto const total = trees.size();
     INFO("finiteness mismatches: " << finiteMismatch << " / " << total);
-    INFO("finite but diverging:  " << finiteDiverge  << " / " << total);
-    constexpr auto maxDivergeRate{0.02};
+    INFO("finite but diverging:  " << finiteDiverge << " / " << total);
+    constexpr auto maxDivergeRate { 0.02 };
     CHECK(finiteMismatch == 0);
     CHECK(static_cast<double>(finiteDiverge) / static_cast<double>(total) < maxDivergeRate);
 }
 
 TEST_CASE("Autodiff variable-wise derivative", "[autodiff]")
 {
-    Operon::Dataset ds(std::vector<std::string>{"x", "y"},
-                       std::vector<std::vector<Operon::Scalar>>{{1.3F, -0.6F, 2.0F}, {0.4F, 1.1F, -0.9F}});
+    Operon::Dataset ds(std::vector<std::string> { "x", "y" },
+        std::vector<std::vector<Operon::Scalar>> { { 1.3F, -0.6F, 2.0F }, { 0.4F, 1.1F, -0.9F } });
     Operon::DispatchTable<Operon::Scalar> dtable;
-    Operon::Range const range{0, ds.Rows<std::size_t>()};
+    Operon::Range const range { 0, ds.Rows<std::size_t>() };
     auto const xHash = ds.GetVariable("x")->Hash;
     auto const yHash = ds.GetVariable("y")->Hash;
 
     // JacRevVariable/JacFwdVariable against hand-derived analytic derivatives.
     auto checkAnalytic = [&](std::string const& expr, Operon::Hash variable, auto analytic) -> void {
-        auto tree = Operon::InfixParser::ParseOrThrow(expr, ds, Operon::InfixParseOptions{});
+        auto tree = Operon::InfixParser::ParseOrThrow(expr, ds, Operon::InfixParseOptions {});
         auto coeff = tree.GetCoefficients();
-        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter{&dtable, &ds, &tree};
+        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter { &dtable, &ds,
+            &tree };
 
         auto rev = interpreter.JacRevVariable(coeff, range, variable).value();
         auto fwd = interpreter.JacFwdVariable(coeff, range, variable).value();
@@ -222,19 +237,24 @@ TEST_CASE("Autodiff variable-wise derivative", "[autodiff]")
         }
     };
 
-    SECTION("d/dx(x^2) = 2x") {
+    SECTION("d/dx(x^2) = 2x")
+    {
         checkAnalytic("x ^ 2", xHash, [](auto x, auto /*y*/) { return 2 * x; });
     }
-    SECTION("d/dx(sin(x)) = cos(x)") {
+    SECTION("d/dx(sin(x)) = cos(x)")
+    {
         checkAnalytic("sin(x)", xHash, [](auto x, auto /*y*/) { return std::cos(x); });
     }
-    SECTION("d/dx(x*y) w.r.t. x = y") {
+    SECTION("d/dx(x*y) w.r.t. x = y")
+    {
         checkAnalytic("x * y", xHash, [](auto /*x*/, auto y) { return y; });
     }
-    SECTION("d/dx(x + x*x) = 1 + 2x (multiple occurrences summed)") {
+    SECTION("d/dx(x + x*x) = 1 + 2x (multiple occurrences summed)")
+    {
         checkAnalytic("x + x * x", xHash, [](auto x, auto /*y*/) { return 1 + 2 * x; });
     }
-    SECTION("d/dy(x*y) w.r.t. y = x") {
+    SECTION("d/dy(x*y) w.r.t. y = x")
+    {
         checkAnalytic("x * y", yHash, [](auto x, auto /*y*/) { return x; });
     }
 
@@ -246,7 +266,8 @@ TEST_CASE("Autodiff variable-wise derivative", "[autodiff]")
     // only Variable node (and thus the only one BuildColumns assigns a
     // column to); node 1 is a Ref to node 0, so its contribution must flow
     // back through the Ref-accumulation path for the result to match d/dx(x^2).
-    SECTION("d/dx(x*Ref(x)) = 2x (shared subtree via Ref node)") {
+    SECTION("d/dx(x*Ref(x)) = 2x (shared subtree via Ref node)")
+    {
         Operon::Vector<Operon::Node> nodes;
         Operon::Node v(Operon::NodeType::Variable);
         v.HashValue = v.CalculatedHashValue = xHash;
@@ -256,10 +277,11 @@ TEST_CASE("Autodiff variable-wise derivative", "[autodiff]")
         nodes.push_back(v);
         nodes.push_back(ref);
         nodes.push_back(mul);
-        Operon::Tree tree{nodes};
+        Operon::Tree tree { nodes };
 
         auto coeff = tree.GetCoefficients();
-        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter{&dtable, &ds, &tree};
+        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter { &dtable, &ds,
+            &tree };
         auto rev = interpreter.JacRevVariable(coeff, range, xHash).value();
         auto fwd = interpreter.JacFwdVariable(coeff, range, xHash).value();
 
@@ -273,27 +295,36 @@ TEST_CASE("Autodiff variable-wise derivative", "[autodiff]")
 
     // Cross-check against central finite differences on a larger expression,
     // as a sanity net beyond the hand-derived cases above.
-    SECTION("central finite-difference cross-check") {
+    SECTION("central finite-difference cross-check")
+    {
         // Separate all-positive-x dataset — the check expression below uses
         // log(x), which is NaN for the negative x row in the outer `ds`.
-        Operon::Dataset dsPos(std::vector<std::string>{"x", "y"},
-                              std::vector<std::vector<Operon::Scalar>>{{1.3F, 0.6F, 2.0F}, {0.4F, 1.1F, -0.9F}});
-        Operon::Range const rangePos{0, dsPos.Rows<std::size_t>()};
+        Operon::Dataset dsPos(std::vector<std::string> { "x", "y" },
+            std::vector<std::vector<Operon::Scalar>> { { 1.3F, 0.6F, 2.0F }, { 0.4F, 1.1F, -0.9F } });
+        Operon::Range const rangePos { 0, dsPos.Rows<std::size_t>() };
 
-        auto tree = Operon::InfixParser::ParseOrThrow("log(x) + x * y - sin(y) + exp(x * 0.3)", dsPos, Operon::InfixParseOptions{});
+        auto tree = Operon::InfixParser::ParseOrThrow(
+            "log(x) + x * y - sin(y) + exp(x * 0.3)", dsPos, Operon::InfixParseOptions {});
         auto coeff = tree.GetCoefficients();
-        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter{&dtable, &dsPos, &tree};
+        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter { &dtable, &dsPos,
+            &tree };
         auto rev = interpreter.JacRevVariable(coeff, rangePos, xHash).value();
 
         constexpr Operon::Scalar h = 1e-3F;
         auto const xs = dsPos.GetValues("x");
         std::vector<Operon::Scalar> xPlus(xs.begin(), xs.end());
         std::vector<Operon::Scalar> xMinus(xs.begin(), xs.end());
-        for (auto& v : xPlus) { v += h; }
-        for (auto& v : xMinus) { v -= h; }
+        for (auto& v : xPlus) {
+            v += h;
+        }
+        for (auto& v : xMinus) {
+            v -= h;
+        }
         auto const ys = dsPos.GetValues("y");
-        Operon::Dataset dsPlus(std::vector<std::string>{"x", "y"}, std::vector<std::vector<Operon::Scalar>>{xPlus, std::vector<Operon::Scalar>(ys.begin(), ys.end())});
-        Operon::Dataset dsMinus(std::vector<std::string>{"x", "y"}, std::vector<std::vector<Operon::Scalar>>{xMinus, std::vector<Operon::Scalar>(ys.begin(), ys.end())});
+        Operon::Dataset dsPlus(std::vector<std::string> { "x", "y" },
+            std::vector<std::vector<Operon::Scalar>> { xPlus, std::vector<Operon::Scalar>(ys.begin(), ys.end()) });
+        Operon::Dataset dsMinus(std::vector<std::string> { "x", "y" },
+            std::vector<std::vector<Operon::Scalar>> { xMinus, std::vector<Operon::Scalar>(ys.begin(), ys.end()) });
 
         using Interp = Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>>;
         auto fPlus = Interp::Evaluate(tree, dsPlus, rangePos, coeff).value();
@@ -308,7 +339,8 @@ TEST_CASE("Autodiff variable-wise derivative", "[autodiff]")
 
 TEST_CASE("Autodiff poly-10 expression", "[autodiff]")
 {
-    std::string const expr = "((0.78 / ((-1.12) * X8)) / (((((-0.61) * X3) * 0.82) / (((-0.22) * X6) / 1.77)) / (((-0.16) - 0.50) - (((-0.46) * X4) - ((-0.03) * X9)))))";
+    std::string const expr = "((0.78 / ((-1.12) * X8)) / (((((-0.61) * X3) * 0.82) / (((-0.22) * X6) / 1.77)) / "
+                             "(((-0.16) - 0.50) - (((-0.46) * X4) - ((-0.03) * X9)))))";
 
     Operon::Dataset ds("./data/Poly-10.csv", /*hasHeader=*/true);
     auto tree = InfixParser::ParseOrThrow(expr, ds);
@@ -316,8 +348,12 @@ TEST_CASE("Autodiff poly-10 expression", "[autodiff]")
     Operon::Range range(0, 10); // NOLINT
 
     DispatchTable<Operon::Scalar> dt;
-    auto jacrev = Operon::Interpreter<Operon::Scalar, DispatchTable<Operon::Scalar>>{&dt, &ds, &tree}.JacRev(coeff, range).value();
-    auto jacfwd = Operon::Interpreter<Operon::Scalar, DispatchTable<Operon::Scalar>>{&dt, &ds, &tree}.JacFwd(coeff, range).value();
+    auto jacrev = Operon::Interpreter<Operon::Scalar, DispatchTable<Operon::Scalar>> { &dt, &ds, &tree }
+                      .JacRev(coeff, range)
+                      .value();
+    auto jacfwd = Operon::Interpreter<Operon::Scalar, DispatchTable<Operon::Scalar>> { &dt, &ds, &tree }
+                      .JacFwd(coeff, range)
+                      .value();
 
     // Forward and reverse should agree
     auto f1 = std::isfinite(jacrev.sum());
@@ -340,44 +376,46 @@ TEST_CASE("Autodiff poly-10 expression", "[autodiff]")
 // itself error-prone.
 TEST_CASE("Autodiff: non-unit outer weight (double-weighted-derivative regression)", "[autodiff]")
 {
-    Operon::Dataset ds(std::vector<std::string>{"x", "y"},
-                       std::vector<std::vector<Operon::Scalar>>{{1.3F}, {0.4F}});
+    Operon::Dataset ds(
+        std::vector<std::string> { "x", "y" }, std::vector<std::vector<Operon::Scalar>> { { 1.3F }, { 0.4F } });
     Operon::DispatchTable<Operon::Scalar> dtable;
-    Operon::Range const range{0, ds.Rows<std::size_t>()};
+    Operon::Range const range { 0, ds.Rows<std::size_t>() };
     auto const xHash = ds.GetVariable("x")->Hash;
     auto const yHash = ds.GetVariable("y")->Hash;
 
     // expectedY may be omitted (defaults to 0) for unary expressions.
-    auto checkWeighted = [&](std::string const& expr, Operon::Scalar expectedX, Operon::Scalar expectedY = Operon::Scalar{0}) {
-        auto tree = Operon::InfixParser::ParseOrThrow(expr, ds, Operon::InfixParseOptions{});
-        tree.Nodes().back().Value = 3.7F; // non-unit weight on the outermost op
-        auto coeff = tree.GetCoefficients();
-        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter{&dtable, &ds, &tree};
+    auto checkWeighted
+        = [&](std::string const& expr, Operon::Scalar expectedX, Operon::Scalar expectedY = Operon::Scalar { 0 }) {
+              auto tree = Operon::InfixParser::ParseOrThrow(expr, ds, Operon::InfixParseOptions {});
+              tree.Nodes().back().Value = 3.7F; // non-unit weight on the outermost op
+              auto coeff = tree.GetCoefficients();
+              Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter { &dtable,
+                  &ds, &tree };
 
-        auto revX = interpreter.JacRevVariable(coeff, range, xHash).value();
-        auto fwdX = interpreter.JacFwdVariable(coeff, range, xHash).value();
-        CHECK(revX[0] == Catch::Approx(expectedX).margin(1e-4));
-        CHECK(fwdX[0] == Catch::Approx(expectedX).margin(1e-4));
+              auto revX = interpreter.JacRevVariable(coeff, range, xHash).value();
+              auto fwdX = interpreter.JacFwdVariable(coeff, range, xHash).value();
+              CHECK(revX[0] == Catch::Approx(expectedX).margin(1e-4));
+              CHECK(fwdX[0] == Catch::Approx(expectedX).margin(1e-4));
 
-        if (expectedY != Operon::Scalar{0}) {
-            auto revY = interpreter.JacRevVariable(coeff, range, yHash).value();
-            auto fwdY = interpreter.JacFwdVariable(coeff, range, yHash).value();
-            CHECK(revY[0] == Catch::Approx(expectedY).margin(1e-4));
-            CHECK(fwdY[0] == Catch::Approx(expectedY).margin(1e-4));
-        }
-    };
+              if (expectedY != Operon::Scalar { 0 }) {
+                  auto revY = interpreter.JacRevVariable(coeff, range, yHash).value();
+                  auto fwdY = interpreter.JacFwdVariable(coeff, range, yHash).value();
+                  CHECK(revY[0] == Catch::Approx(expectedY).margin(1e-4));
+                  CHECK(fwdY[0] == Catch::Approx(expectedY).margin(1e-4));
+              }
+          };
 
-    SECTION("exp(x)")           { checkWeighted("exp(x)", 13.576398F); }
-    SECTION("sqrt(x)")          { checkWeighted("sqrt(x)", 1.622557F); }
-    SECTION("sqrtabs(x)")       { checkWeighted("sqrtabs(x)", 1.622557F); }
-    SECTION("cbrt(x)")          { checkWeighted("cbrt(x)", 1.035424F); }
-    SECTION("tan(x)")           { checkWeighted("tan(x)", 51.708026F); }
-    SECTION("tanh(x)")          { checkWeighted("tanh(x)", 0.952503F); }
-    SECTION("x * y")            { checkWeighted("x * y", 1.480000F, 4.810000F); }
-    SECTION("x / y")            { checkWeighted("x / y", 9.250000F, -30.062500F); }
-    SECTION("x ^ y")            { checkWeighted("x ^ y", 1.264433F, 1.078161F); }
-    SECTION("powabs(x, y)")     { checkWeighted("powabs(x, y)", 1.264433F, 1.078161F); }
-    SECTION("aq(x, y)")         { checkWeighted("aq(x, y)", 3.435364F, -1.539991F); }
+    SECTION("exp(x)") { checkWeighted("exp(x)", 13.576398F); }
+    SECTION("sqrt(x)") { checkWeighted("sqrt(x)", 1.622557F); }
+    SECTION("sqrtabs(x)") { checkWeighted("sqrtabs(x)", 1.622557F); }
+    SECTION("cbrt(x)") { checkWeighted("cbrt(x)", 1.035424F); }
+    SECTION("tan(x)") { checkWeighted("tan(x)", 51.708026F); }
+    SECTION("tanh(x)") { checkWeighted("tanh(x)", 0.952503F); }
+    SECTION("x * y") { checkWeighted("x * y", 1.480000F, 4.810000F); }
+    SECTION("x / y") { checkWeighted("x / y", 9.250000F, -30.062500F); }
+    SECTION("x ^ y") { checkWeighted("x ^ y", 1.264433F, 1.078161F); }
+    SECTION("powabs(x, y)") { checkWeighted("powabs(x, y)", 1.264433F, 1.078161F); }
+    SECTION("aq(x, y)") { checkWeighted("aq(x, y)", 3.435364F, -1.539991F); }
 }
 
 // A zero outer weight means the model evaluates to 0*f(x[,y]) — the
@@ -389,18 +427,19 @@ TEST_CASE("Autodiff: non-unit outer weight (double-weighted-derivative regressio
 // recover from that (0 * NaN = NaN in IEEE-754, not 0).
 TEST_CASE("Autodiff: zero outer weight yields exact zero gradient, not NaN", "[autodiff]")
 {
-    Operon::Dataset ds(std::vector<std::string>{"x", "y"},
-                       std::vector<std::vector<Operon::Scalar>>{{1.3F}, {0.4F}});
+    Operon::Dataset ds(
+        std::vector<std::string> { "x", "y" }, std::vector<std::vector<Operon::Scalar>> { { 1.3F }, { 0.4F } });
     Operon::DispatchTable<Operon::Scalar> dtable;
-    Operon::Range const range{0, ds.Rows<std::size_t>()};
+    Operon::Range const range { 0, ds.Rows<std::size_t>() };
     auto const xHash = ds.GetVariable("x")->Hash;
     auto const yHash = ds.GetVariable("y")->Hash;
 
     auto checkZeroWeighted = [&](std::string const& expr, bool hasY = false) {
-        auto tree = Operon::InfixParser::ParseOrThrow(expr, ds, Operon::InfixParseOptions{});
+        auto tree = Operon::InfixParser::ParseOrThrow(expr, ds, Operon::InfixParseOptions {});
         tree.Nodes().back().Value = 0.0F; // zero weight on the outermost op
         auto coeff = tree.GetCoefficients();
-        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter{&dtable, &ds, &tree};
+        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter { &dtable, &ds,
+            &tree };
 
         auto revX = interpreter.JacRevVariable(coeff, range, xHash).value();
         auto fwdX = interpreter.JacFwdVariable(coeff, range, xHash).value();
@@ -415,15 +454,15 @@ TEST_CASE("Autodiff: zero outer weight yields exact zero gradient, not NaN", "[a
         }
     };
 
-    SECTION("exp(x)")           { checkZeroWeighted("exp(x)"); }
-    SECTION("sqrt(x)")          { checkZeroWeighted("sqrt(x)"); }
-    SECTION("sqrtabs(x)")       { checkZeroWeighted("sqrtabs(x)"); }
-    SECTION("cbrt(x)")          { checkZeroWeighted("cbrt(x)"); }
-    SECTION("x * y")            { checkZeroWeighted("x * y", /*hasY=*/true); }
-    SECTION("x / y")            { checkZeroWeighted("x / y", /*hasY=*/true); }
-    SECTION("x ^ y")            { checkZeroWeighted("x ^ y", /*hasY=*/true); }
-    SECTION("powabs(x, y)")     { checkZeroWeighted("powabs(x, y)", /*hasY=*/true); }
-    SECTION("aq(x, y)")         { checkZeroWeighted("aq(x, y)", /*hasY=*/true); }
+    SECTION("exp(x)") { checkZeroWeighted("exp(x)"); }
+    SECTION("sqrt(x)") { checkZeroWeighted("sqrt(x)"); }
+    SECTION("sqrtabs(x)") { checkZeroWeighted("sqrtabs(x)"); }
+    SECTION("cbrt(x)") { checkZeroWeighted("cbrt(x)"); }
+    SECTION("x * y") { checkZeroWeighted("x * y", /*hasY=*/true); }
+    SECTION("x / y") { checkZeroWeighted("x / y", /*hasY=*/true); }
+    SECTION("x ^ y") { checkZeroWeighted("x ^ y", /*hasY=*/true); }
+    SECTION("powabs(x, y)") { checkZeroWeighted("powabs(x, y)", /*hasY=*/true); }
+    SECTION("aq(x, y)") { checkZeroWeighted("aq(x, y)", /*hasY=*/true); }
 }
 
 // An optimized zero constant remains a differentiable parameter. Reverse
@@ -431,10 +470,10 @@ TEST_CASE("Autodiff: zero outer weight yields exact zero gradient, not NaN", "[a
 // as primal(a) / a, which is 0 / 0 when a is zero.
 TEST_CASE("Autodiff: zero optimized coefficient retains finite Jacobian", "[autodiff]")
 {
-    Operon::Dataset ds(std::vector<std::string>{"r"},
-                       std::vector<std::vector<Operon::Scalar>>{{-2.0F, 0.5F, 3.0F}});
+    Operon::Dataset ds(
+        std::vector<std::string> { "r" }, std::vector<std::vector<Operon::Scalar>> { { -2.0F, 0.5F, 3.0F } });
     Operon::DispatchTable<Operon::Scalar> dtable;
-    Operon::Range const range{0, ds.Rows<std::size_t>()};
+    Operon::Range const range { 0, ds.Rows<std::size_t>() };
     auto const rHash = ds.GetVariable("r")->Hash;
 
     auto checkCoefficientJacobian = [&](Operon::Scalar coefficient) {
@@ -446,14 +485,15 @@ TEST_CASE("Autodiff: zero optimized coefficient retains finite Jacobian", "[auto
         variable.Optimize = false;
         auto product = Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Mul), 2);
         product.Value = 2.5F; // weighted function: d(2.5 * a * r) / da = 2.5 * r
-        Operon::Tree tree{constant, variable, product};
+        Operon::Tree tree { constant, variable, product };
         tree.UpdateNodes();
 
         auto const coeff = tree.GetCoefficients();
         REQUIRE(coeff.size() == 1);
         REQUIRE(coeff[0] == coefficient);
 
-        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter{&dtable, &ds, &tree};
+        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter { &dtable, &ds,
+            &tree };
         auto const jac = interpreter.JacRev(coeff, range).value();
         REQUIRE(jac.cols() == 1);
 
@@ -463,7 +503,6 @@ TEST_CASE("Autodiff: zero optimized coefficient retains finite Jacobian", "[auto
             CHECK(derivative == Catch::Approx(2.5F * rs[row]).margin(1e-5));
         }
     };
-
 
     SECTION("zero constant coefficient") { checkCoefficientJacobian(0.0F); }
     SECTION("nonzero constant coefficient") { checkCoefficientJacobian(-1.75F); }

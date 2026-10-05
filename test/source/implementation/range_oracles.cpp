@@ -83,12 +83,14 @@ namespace {
                 if (fields.size() != 6) {
                     throw std::runtime_error("malformed range oracle record");
                 }
-                oracles.push_back({ fields[1], fields[2], {}, { Number(fields[3]), Number(fields[4]) }, Number(fields[5]) });
+                oracles.push_back(
+                    { fields[1], fields[2], {}, { Number(fields[3]), Number(fields[4]) }, Number(fields[5]) });
             } else if (fields.front() == "domain") {
                 if (fields.size() != 5) {
                     throw std::runtime_error("malformed range oracle domain");
                 }
-                auto const it = std::find_if(oracles.begin(), oracles.end(), [&](auto const& oracle) { return oracle.id == fields[1]; });
+                auto const it = std::find_if(
+                    oracles.begin(), oracles.end(), [&](auto const& oracle) { return oracle.id == fields[1]; });
                 if (it == oracles.end()) {
                     throw std::runtime_error("domain precedes its range oracle");
                 }
@@ -137,7 +139,10 @@ namespace {
         for (auto const& domain : oracle.domains) {
             constraints.Domains.emplace(domain.name, std::pair { domain.lo, domain.hi });
         }
-        constraints.Constraints.push_back({ .Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair { S { -1e6 }, S { 1e6 } } });
+        constraints.Constraints.push_back({ .Op = ShapeConstraintOp::Identity,
+            .Variable = "",
+            .Sign = std::nullopt,
+            .Bound = std::pair { S { -1e6 }, S { 1e6 } } });
         ShapeConstrainedEvaluator evaluator(&metric, &dtable, constraints);
         evaluator.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
         evaluator.SetBoundOptions({ .BisectionDepth = 5 });

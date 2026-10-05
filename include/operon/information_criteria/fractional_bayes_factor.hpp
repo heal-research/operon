@@ -23,17 +23,21 @@ namespace Operon {
 // negative log-likelihood).
 inline auto FractionalBayesFactor(Tree const& tree, double n, double nll) -> double
 {
-    if (!(n > 0.0) || !std::isfinite(n)) { return std::numeric_limits<double>::quiet_NaN(); }
+    if (!(n > 0.0) || !std::isfinite(n)) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
 
-    auto const p = static_cast<double>(std::count_if(tree.Nodes().begin(), tree.Nodes().end(),
-                                                       [](auto const& node) -> bool { return node.Optimize; }));
+    auto const p = static_cast<double>(std::count_if(
+        tree.Nodes().begin(), tree.Nodes().end(), [](auto const& node) -> bool { return node.Optimize; }));
     auto [k, fCompl] = WeightedComplexity(tree);
     (void)k;
 
-    auto const b             = 1.0 / std::sqrt(n);
-    auto const fbfParams     = (p / 2.0) * ((0.5 * std::log(n)) + std::log(Operon::Math::Tau) + 1.0 - std::log(3.0)); // NOLINT(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+    auto const b = 1.0 / std::sqrt(n);
+    auto const fbfParams = (p / 2.0)
+        * ((0.5 * std::log(n)) + std::log(Operon::Math::Tau) + 1.0
+            - std::log(3.0)); // NOLINT(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
     auto const fbfLikelihood = (1.0 - b) * nll;
-    auto const fbf           = fCompl + fbfParams + fbfLikelihood;
+    auto const fbf = fCompl + fbfParams + fbfLikelihood;
     return std::isfinite(fbf) ? fbf : std::numeric_limits<double>::quiet_NaN();
 }
 

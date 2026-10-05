@@ -7,14 +7,13 @@
 
 #include <exception>
 #include <filesystem>
-#include <optional>
-#include <utility>
 #include <fmt/core.h>
 #include <glaze/glaze.hpp>
+#include <optional>
+#include <utility>
 
 // Ensure the enumerate below stays in sync with NodeType additions.
-static_assert(Operon::NodeTypes::Count == 4,
-              "NodeType count changed — update glz::meta<Operon::NodeType>");
+static_assert(Operon::NodeTypes::Count == 4, "NodeType count changed — update glz::meta<Operon::NodeType>");
 
 // glz::meta specializations — all glaze details stay in this translation unit.
 //
@@ -36,45 +35,43 @@ static_assert(Operon::NodeTypes::Count == 4,
 // IndividualBeveProxy guards below. Pre-versioning .beve Tree/Individual
 // exports are intentionally rejected; a dedicated legacy reader translating
 // old ordinals to the new BuiltinOp/Function representation is not implemented.
-template <>
-struct glz::meta<Operon::NodeType> {
-    static constexpr auto value = glz::enumerate(
-        "Constant", Operon::NodeType::Constant,
-        "Variable", Operon::NodeType::Variable,
-        "Ref",      Operon::NodeType::Ref,
-        "Function", Operon::NodeType::Function
-    );
+template <> struct glz::meta<Operon::NodeType> {
+    static constexpr auto value = glz::enumerate("Constant", Operon::NodeType::Constant, "Variable",
+        Operon::NodeType::Variable, "Ref", Operon::NodeType::Ref, "Function", Operon::NodeType::Function);
 };
 
 // Serialization proxies — exclude fields recomputed by UpdateNodes().
 // Member names are CamelCase; serialized key names (in glz::meta) are lowercase.
 namespace {
 struct NodeProxy {
-    Operon::NodeType Type{};
-    Operon::Hash     HashValue{};
-    Operon::Scalar   Value{};
+    Operon::NodeType Type {};
+    Operon::Hash HashValue {};
+    Operon::Scalar Value {};
     // Explicit as of the NodeType collapse: Node's two-arg constructor no
     // longer infers Arity from Type's position in the enum (there is no
     // longer a position to infer from - every Function node has the same
     // Type). Without this field every deserialized Function node would get
     // Arity=0, silently corrupting the tree structure.
-    uint16_t         Arity{0};
-    bool             IsEnabled{true};
-    bool             Optimize{false};
-    uint16_t         RefTo{0};
+    uint16_t Arity { 0 };
+    bool IsEnabled { true };
+    bool Optimize { false };
+    uint16_t RefTo { 0 };
 
-    static auto FromNode(Operon::Node const& n) noexcept -> NodeProxy {
+    static auto FromNode(Operon::Node const& n) noexcept -> NodeProxy
+    {
         return { n.Type, n.HashValue, n.Value, n.Arity, n.IsEnabled, n.Optimize, n.RefTo };
     }
 
-    auto ToNode() const noexcept -> Operon::Node {
+    auto ToNode() const noexcept -> Operon::Node
+    {
         Operon::Node n(Type, HashValue);
-        n.Value     = Value;
-        n.Arity     = Arity;
-        n.Length    = Arity; // leaf-level Length; Tree::UpdateNodes() (called by ProxiesToTree) recomputes the real subtree Length
+        n.Value = Value;
+        n.Arity = Arity;
+        n.Length = Arity; // leaf-level Length; Tree::UpdateNodes() (called by ProxiesToTree) recomputes the real
+                          // subtree Length
         n.IsEnabled = IsEnabled;
-        n.Optimize  = Optimize;
-        n.RefTo     = RefTo;
+        n.Optimize = Optimize;
+        n.RefTo = RefTo;
         return n;
     }
 };
@@ -84,61 +81,67 @@ struct TreeProxy {
 };
 
 struct IndividualProxy {
-    TreeProxy                      Tree;
+    TreeProxy Tree;
     Operon::Vector<Operon::Scalar> Fitness;
-    uint64_t                       Rank{};
-    Operon::Scalar                 Distance{};
+    uint64_t Rank {};
+    Operon::Scalar Distance {};
 };
 
 // Bump a payload version whenever its matching on-disk layout changes.
-constexpr uint32_t CheckpointMagic   = 0x4F50434BU; // "OPCK"
+constexpr uint32_t CheckpointMagic = 0x4F50434BU; // "OPCK"
 constexpr uint32_t CheckpointVersion = 2U;
-constexpr uint32_t TreeMagic         = 0x4F505452U; // "OPTR"
-constexpr uint32_t IndividualMagic   = 0x4F50494EU; // "OPIN"
-constexpr uint32_t PopulationMagic   = 0x4F505046U; // "OPPF"
+constexpr uint32_t TreeMagic = 0x4F505452U; // "OPTR"
+constexpr uint32_t IndividualMagic = 0x4F50494EU; // "OPIN"
+constexpr uint32_t PopulationMagic = 0x4F505046U; // "OPPF"
 constexpr uint32_t BevePayloadVersion = 1U;
 
 struct TreeBeveProxy {
-    uint32_t Magic{TreeMagic};
-    uint32_t Version{BevePayloadVersion};
+    uint32_t Magic { TreeMagic };
+    uint32_t Version { BevePayloadVersion };
     TreeProxy Tree;
 };
 
 struct IndividualBeveProxy {
-    uint32_t Magic{IndividualMagic};
-    uint32_t Version{BevePayloadVersion};
+    uint32_t Magic { IndividualMagic };
+    uint32_t Version { BevePayloadVersion };
     IndividualProxy Individual;
 };
 
 struct PopulationBeveProxy {
-    uint32_t Magic{PopulationMagic};
-    uint32_t Version{BevePayloadVersion};
+    uint32_t Magic { PopulationMagic };
+    uint32_t Version { BevePayloadVersion };
     std::vector<IndividualProxy> Population;
 };
 
 struct CheckpointProxy {
-    uint32_t                                 Magic{CheckpointMagic};
-    uint32_t                                 Version{CheckpointVersion};
-    std::array<uint64_t, 4>                  RngState{};
-    uint64_t                                 Generation{0};
-    std::vector<IndividualProxy>             Population;
-    std::vector<std::array<uint64_t, 4>>     WorkerRngStates;
+    uint32_t Magic { CheckpointMagic };
+    uint32_t Version { CheckpointVersion };
+    std::array<uint64_t, 4> RngState {};
+    uint64_t Generation { 0 };
+    std::vector<IndividualProxy> Population;
+    std::vector<std::array<uint64_t, 4>> WorkerRngStates;
 };
 
 auto NodesToProxies(Operon::Vector<Operon::Node> const& nodes) -> std::vector<NodeProxy>
 {
     std::vector<NodeProxy> proxies;
     proxies.reserve(nodes.size());
-    for (auto const& n : nodes) { proxies.push_back(NodeProxy::FromNode(n)); }
+    for (auto const& n : nodes) {
+        proxies.push_back(NodeProxy::FromNode(n));
+    }
     return proxies;
 }
 
 auto ProxiesToTree(std::vector<NodeProxy> const& proxies) -> Operon::Tree
 {
-    if (proxies.empty()) { return {}; }
+    if (proxies.empty()) {
+        return {};
+    }
     Operon::Vector<Operon::Node> nodes;
     nodes.reserve(proxies.size());
-    for (auto const& p : proxies) { nodes.push_back(p.ToNode()); }
+    for (auto const& p : proxies) {
+        nodes.push_back(p.ToNode());
+    }
     return Operon::Tree(std::move(nodes)).UpdateNodes();
 }
 
@@ -151,73 +154,49 @@ auto ProxyToIndividual(IndividualProxy const& p) -> Operon::Individual
 {
     Operon::Individual ind;
     ind.Genotype = ProxiesToTree(p.Tree.Nodes);
-    ind.Fitness  = p.Fitness;
-    ind.Rank     = p.Rank;
+    ind.Fitness = p.Fitness;
+    ind.Rank = p.Rank;
     ind.Distance = p.Distance;
     return ind;
 }
 } // anonymous namespace
 
-template <>
-struct glz::meta<NodeProxy> {
+template <> struct glz::meta<NodeProxy> {
     using T = NodeProxy;
-    static constexpr auto value = glz::object(
-        "type",     &T::Type,
-        "hash",     &T::HashValue,
-        "value",    &T::Value,
-        "arity",    &T::Arity,
-        "enabled",  &T::IsEnabled,
-        "optimize", &T::Optimize,
-        "ref_to",   &T::RefTo
-    );
+    static constexpr auto value = glz::object("type", &T::Type, "hash", &T::HashValue, "value", &T::Value, "arity",
+        &T::Arity, "enabled", &T::IsEnabled, "optimize", &T::Optimize, "ref_to", &T::RefTo);
 };
 
-template <>
-struct glz::meta<TreeProxy> {
+template <> struct glz::meta<TreeProxy> {
     using T = TreeProxy;
     static constexpr auto value = glz::object("nodes", &T::Nodes);
 };
 
-template <>
-struct glz::meta<IndividualProxy> {
+template <> struct glz::meta<IndividualProxy> {
     using T = IndividualProxy;
-    static constexpr auto value = glz::object(
-        "tree",     &T::Tree,
-        "fitness",  &T::Fitness,
-        "rank",     &T::Rank,
-        "distance", &T::Distance
-    );
+    static constexpr auto value
+        = glz::object("tree", &T::Tree, "fitness", &T::Fitness, "rank", &T::Rank, "distance", &T::Distance);
 };
 
-template <>
-struct glz::meta<TreeBeveProxy> {
+template <> struct glz::meta<TreeBeveProxy> {
     using T = TreeBeveProxy;
     static constexpr auto value = glz::object("magic", &T::Magic, "version", &T::Version, "tree", &T::Tree);
 };
 
-template <>
-struct glz::meta<IndividualBeveProxy> {
+template <> struct glz::meta<IndividualBeveProxy> {
     using T = IndividualBeveProxy;
     static constexpr auto value = glz::object("magic", &T::Magic, "version", &T::Version, "individual", &T::Individual);
 };
 
-template <>
-struct glz::meta<PopulationBeveProxy> {
+template <> struct glz::meta<PopulationBeveProxy> {
     using T = PopulationBeveProxy;
     static constexpr auto value = glz::object("magic", &T::Magic, "version", &T::Version, "population", &T::Population);
 };
 
-template <>
-struct glz::meta<CheckpointProxy> {
+template <> struct glz::meta<CheckpointProxy> {
     using T = CheckpointProxy;
-    static constexpr auto value = glz::object(
-        "magic",            &T::Magic,
-        "version",          &T::Version,
-        "rng_state",        &T::RngState,
-        "generation",       &T::Generation,
-        "population",       &T::Population,
-        "worker_rng_states", &T::WorkerRngStates
-    );
+    static constexpr auto value = glz::object("magic", &T::Magic, "version", &T::Version, "rng_state", &T::RngState,
+        "generation", &T::Generation, "population", &T::Population, "worker_rng_states", &T::WorkerRngStates);
 };
 
 namespace Operon::Serialization {
@@ -226,7 +205,7 @@ namespace Operon::Serialization {
 
 auto ToJson(Tree const& tree) -> std::string
 {
-    TreeProxy tp{ NodesToProxies(tree.Nodes()) };
+    TreeProxy tp { NodesToProxies(tree.Nodes()) };
     auto result = glz::write_json(tp);
     return result ? std::move(*result) : "{}";
 }
@@ -242,7 +221,9 @@ auto ToJson(std::span<Individual const> front) -> std::string
 {
     std::vector<IndividualProxy> arr;
     arr.reserve(front.size());
-    for (auto const& ind : front) { arr.push_back(IndividualToProxy(ind)); }
+    for (auto const& ind : front) {
+        arr.push_back(IndividualToProxy(ind));
+    }
     auto result = glz::write_json(arr);
     return result ? std::move(*result) : "[]";
 }
@@ -271,25 +252,27 @@ auto IndividualFromJson(std::string_view json) -> std::optional<Individual>
 
 auto ToBeve(Tree const& tree) -> std::string
 {
-    TreeBeveProxy proxy{ .Tree = { NodesToProxies(tree.Nodes()) } };
+    TreeBeveProxy proxy { .Tree = { NodesToProxies(tree.Nodes()) } };
     auto result = glz::write_beve(proxy);
-    return result ? std::move(*result) : std::string{};
+    return result ? std::move(*result) : std::string {};
 }
 
 auto ToBeve(Individual const& individual) -> std::string
 {
-    IndividualBeveProxy proxy{ .Individual = IndividualToProxy(individual) };
+    IndividualBeveProxy proxy { .Individual = IndividualToProxy(individual) };
     auto result = glz::write_beve(proxy);
-    return result ? std::move(*result) : std::string{};
+    return result ? std::move(*result) : std::string {};
 }
 
 auto ToBeve(std::span<Individual const> front) -> std::string
 {
     PopulationBeveProxy proxy;
     proxy.Population.reserve(front.size());
-    for (auto const& ind : front) { proxy.Population.push_back(IndividualToProxy(ind)); }
+    for (auto const& ind : front) {
+        proxy.Population.push_back(IndividualToProxy(ind));
+    }
     auto result = glz::write_beve(proxy);
-    return result ? std::move(*result) : std::string{};
+    return result ? std::move(*result) : std::string {};
 }
 
 auto TreeFromBeve(std::string_view data) -> std::optional<Tree>
@@ -300,7 +283,8 @@ auto TreeFromBeve(std::string_view data) -> std::optional<Tree>
         return std::nullopt;
     }
     if (proxy.Magic != TreeMagic || proxy.Version != BevePayloadVersion) {
-        fmt::print(stderr, "error: incompatible tree BEVE format (magic={:#010x}, version={})\n", proxy.Magic, proxy.Version);
+        fmt::print(
+            stderr, "error: incompatible tree BEVE format (magic={:#010x}, version={})\n", proxy.Magic, proxy.Version);
         return std::nullopt;
     }
     return ProxiesToTree(proxy.Tree.Nodes);
@@ -314,7 +298,8 @@ auto IndividualFromBeve(std::string_view data) -> std::optional<Individual>
         return std::nullopt;
     }
     if (proxy.Magic != IndividualMagic || proxy.Version != BevePayloadVersion) {
-        fmt::print(stderr, "error: incompatible individual BEVE format (magic={:#010x}, version={})\n", proxy.Magic, proxy.Version);
+        fmt::print(stderr, "error: incompatible individual BEVE format (magic={:#010x}, version={})\n", proxy.Magic,
+            proxy.Version);
         return std::nullopt;
     }
     return ProxyToIndividual(proxy.Individual);
@@ -323,37 +308,41 @@ auto IndividualFromBeve(std::string_view data) -> std::optional<Individual>
 // ---- Checkpoint ----
 
 namespace {
-auto ToProxy(Checkpoint const& cp) -> CheckpointProxy
-{
-    CheckpointProxy proxy;
-    proxy.RngState        = cp.RngState;
-    proxy.Generation      = cp.Generation;
-    proxy.WorkerRngStates = cp.WorkerRngStates;
-    proxy.Population.reserve(cp.Population.size());
-    for (auto const& ind : cp.Population) { proxy.Population.push_back(IndividualToProxy(ind)); }
-    return proxy;
-}
-
-auto FromProxy(CheckpointProxy const& proxy) -> std::optional<Checkpoint>
-{
-    if (proxy.Magic != CheckpointMagic || proxy.Version != CheckpointVersion) {
-        fmt::print(stderr, "error: incompatible checkpoint format (magic={:#010x}, version={})\n",
-                     proxy.Magic, proxy.Version);
-        return std::nullopt;
+    auto ToProxy(Checkpoint const& cp) -> CheckpointProxy
+    {
+        CheckpointProxy proxy;
+        proxy.RngState = cp.RngState;
+        proxy.Generation = cp.Generation;
+        proxy.WorkerRngStates = cp.WorkerRngStates;
+        proxy.Population.reserve(cp.Population.size());
+        for (auto const& ind : cp.Population) {
+            proxy.Population.push_back(IndividualToProxy(ind));
+        }
+        return proxy;
     }
-    Checkpoint cp;
-    cp.RngState        = proxy.RngState;
-    cp.Generation      = proxy.Generation;
-    cp.WorkerRngStates = proxy.WorkerRngStates;
-    cp.Population.reserve(proxy.Population.size());
-    for (auto const& ip : proxy.Population) { cp.Population.push_back(ProxyToIndividual(ip)); }
-    return cp;
-}
+
+    auto FromProxy(CheckpointProxy const& proxy) -> std::optional<Checkpoint>
+    {
+        if (proxy.Magic != CheckpointMagic || proxy.Version != CheckpointVersion) {
+            fmt::print(stderr, "error: incompatible checkpoint format (magic={:#010x}, version={})\n", proxy.Magic,
+                proxy.Version);
+            return std::nullopt;
+        }
+        Checkpoint cp;
+        cp.RngState = proxy.RngState;
+        cp.Generation = proxy.Generation;
+        cp.WorkerRngStates = proxy.WorkerRngStates;
+        cp.Population.reserve(proxy.Population.size());
+        for (auto const& ip : proxy.Population) {
+            cp.Population.push_back(ProxyToIndividual(ip));
+        }
+        return cp;
+    }
 } // anonymous namespace
 
 auto ToBeve(Checkpoint const& cp) -> std::string
 {
-    auto proxy  = ToProxy(cp);
+    auto proxy = ToProxy(cp);
     auto result = glz::write_beve(proxy);
     if (!result) {
         fmt::print(stderr, "serialization error (ToBeve Checkpoint): {}\n", glz::format_error(result.error()));

@@ -46,8 +46,8 @@ namespace {
     constexpr std::size_t WorkingBudgetMargin = 2;
 } // namespace
 
-EnumerationEngine::EnumerationEngine(Operon::Grammar grammar, std::size_t maxComplexity, Operon::RandomGenerator& rng,
-    DomainPruningConfig pruning)
+EnumerationEngine::EnumerationEngine(
+    Operon::Grammar grammar, std::size_t maxComplexity, Operon::RandomGenerator& rng, DomainPruningConfig pruning)
     : grammar_(std::move(grammar))
     , maxComplexity_(maxComplexity)
     , workingCeiling_(maxComplexity_ + WorkingBudgetMargin)
@@ -293,7 +293,6 @@ GrammarEnumerationAlgorithm::GrammarEnumerationAlgorithm(EnumerationConfig confi
 void GrammarEnumerationAlgorithm::ConsiderBest(EnumerationResult result)
 {
 
-
     // TopK == 0 intentionally retains no results.
     if (config_.TopK == 0) {
         return;
@@ -355,7 +354,7 @@ void GrammarEnumerationAlgorithm::Run(
             return std::tie(lhs.HashValue, lhs.CalculatedHashValue, lhs.Value, lhs.Arity, lhs.Length, lhs.Depth,
                        lhs.Level, lhs.Parent, lhs.Type, lhs.IsEnabled, lhs.Optimize, lhs.RefTo)
                 < std::tie(rhs.HashValue, rhs.CalculatedHashValue, rhs.Value, rhs.Arity, rhs.Length, rhs.Depth,
-                       rhs.Level, rhs.Parent, rhs.Type, rhs.IsEnabled, rhs.Optimize, rhs.RefTo);
+                    rhs.Level, rhs.Parent, rhs.Type, rhs.IsEnabled, rhs.Optimize, rhs.RefTo);
         };
         return std::ranges::lexicographical_compare(a.Candidate.Nodes(), b.Candidate.Nodes(), lessNode);
     };
@@ -368,7 +367,9 @@ void GrammarEnumerationAlgorithm::Run(
         }
         for (auto const& tree : bucket) {
             auto canon = Operon::CanonicalizeEnumerationTree(tree);
-            ClassMember candidate { .Candidate = std::move(canon.Representative), .Complexity = budget, .BucketSize = bucket.size() };
+            ClassMember candidate {
+                .Candidate = std::move(canon.Representative), .Complexity = budget, .BucketSize = bucket.size()
+            };
             if (auto it = representatives.find(canon.Key); it != representatives.end()) {
                 if (better(candidate, it->second)) {
                     it->second = std::move(candidate);

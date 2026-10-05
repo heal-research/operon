@@ -6,8 +6,8 @@
 
 #ifdef HAVE_ASMJIT
 
-#include <asmjit/asmjit.h>
 #include <algorithm>
+#include <asmjit/asmjit.h>
 #include <atomic>
 #include <cstdint>
 #include <functional>
@@ -39,10 +39,11 @@ namespace Operon::JIT {
 // Windows preset), so the scalar JIT path this file used to also carry was
 // dead code on every officially-built platform — deleted rather than
 // ported to a registry.
-using JitUnaryCodegenFn  = std::function<asmjit::x86::Vec(asmjit::x86::Compiler&, asmjit::x86::Vec const&)>;
-using JitBinaryCodegenFn = std::function<asmjit::x86::Vec(asmjit::x86::Compiler&, asmjit::x86::Vec const&, asmjit::x86::Vec const&)>;
+using JitUnaryCodegenFn = std::function<asmjit::x86::Vec(asmjit::x86::Compiler&, asmjit::x86::Vec const&)>;
+using JitBinaryCodegenFn
+    = std::function<asmjit::x86::Vec(asmjit::x86::Compiler&, asmjit::x86::Vec const&, asmjit::x86::Vec const&)>;
 
-using JitUnaryCodegenRegistry  = HashRegistry<JitUnaryCodegenFn>;
+using JitUnaryCodegenRegistry = HashRegistry<JitUnaryCodegenFn>;
 using JitBinaryCodegenRegistry = HashRegistry<JitBinaryCodegenFn>;
 
 // Register an AVX2 codegen callback for a unary function (built-in or
@@ -71,22 +72,25 @@ OPERON_EXPORT auto HasBinaryJitCodegen(Operon::Hash hash) -> bool;
 //   cols:   float const*[nVars]  — indexed by VarOrder(tree)
 //   nRows:  int32_t
 //   consts: float const[nConsts]
-using EvalFn = void(*)(float* out, float const* const* cols, int32_t nRows, float const* consts);
+using EvalFn = void (*)(float* out, float const* const* cols, int32_t nRows, float const* consts);
 
 // Compiled Jacobian signature. outs[k][row] = ∂f/∂c_k(row).
 //   outs:   float*[nConsts]
 //   cols:   float const*[nVars]  — indexed by VarOrder(tree)
 //   nRows:  int32_t
 //   consts: float const[nConsts]
-using EvalJacFn = void(*)(float* const* outs, float const* const* cols, int32_t nRows, float const* consts);
+using EvalJacFn = void (*)(float* const* outs, float const* const* cols, int32_t nRows, float const* consts);
 
 // Returns the unique variables of a tree in first-occurrence (postfix) order.
 // This is the column ordering that compiled functions expect for their cols[] argument.
 // Derivable from the tree at any time — no need to store it alongside the compiled code.
-inline auto VarOrder(Operon::Tree const& tree) -> std::vector<Operon::Hash> {
+inline auto VarOrder(Operon::Tree const& tree) -> std::vector<Operon::Hash>
+{
     std::vector<Operon::Hash> order;
     for (auto const& n : tree.Nodes()) {
-        if (!n.IsVariable()) { continue; }
+        if (!n.IsVariable()) {
+            continue;
+        }
         if (std::ranges::find(order, n.HashValue) == order.end()) {
             order.push_back(n.HashValue);
         }
@@ -99,26 +103,39 @@ inline auto VarOrder(Operon::Tree const& tree) -> std::vector<Operon::Hash> {
 // rt* point into the JitRuntimePool owned by JitZobrist — must outlive this object.
 struct CompileMeta {
     asmjit::JitRuntime* rtTree = nullptr;
-    asmjit::JitRuntime* rtJac  = nullptr;
-    EvalFn    fn    = nullptr;
+    asmjit::JitRuntime* rtJac = nullptr;
+    EvalFn fn = nullptr;
     EvalJacFn jacFn = nullptr;
-    int nVars   = 0;
+    int nVars = 0;
     int nConsts = 0;
 
     CompileMeta() = default;
 
-    ~CompileMeta() {
-        if (fn    != nullptr && rtTree != nullptr) { rtTree->release(reinterpret_cast<void*>(fn));    } // NOLINT(*reinterpret-cast*)
-        if (jacFn != nullptr && rtJac  != nullptr) { rtJac ->release(reinterpret_cast<void*>(jacFn)); } // NOLINT(*reinterpret-cast*)
+    ~CompileMeta()
+    {
+        if (fn != nullptr && rtTree != nullptr) {
+            rtTree->release(reinterpret_cast<void*>(fn));
+        } // NOLINT(*reinterpret-cast*)
+        if (jacFn != nullptr && rtJac != nullptr) {
+            rtJac->release(reinterpret_cast<void*>(jacFn));
+        } // NOLINT(*reinterpret-cast*)
     }
 
-    CompileMeta(CompileMeta const&)            = delete;
+    CompileMeta(CompileMeta const&) = delete;
     CompileMeta& operator=(CompileMeta const&) = delete;
 
     CompileMeta(CompileMeta&& o) noexcept
-        : rtTree(o.rtTree), rtJac(o.rtJac), fn(o.fn), jacFn(o.jacFn)
-        , nVars(o.nVars), nConsts(o.nConsts)
-    { o.rtTree = o.rtJac = nullptr; o.fn = nullptr; o.jacFn = nullptr; }
+        : rtTree(o.rtTree)
+        , rtJac(o.rtJac)
+        , fn(o.fn)
+        , jacFn(o.jacFn)
+        , nVars(o.nVars)
+        , nConsts(o.nConsts)
+    {
+        o.rtTree = o.rtJac = nullptr;
+        o.fn = nullptr;
+        o.jacFn = nullptr;
+    }
 
     CompileMeta& operator=(CompileMeta&&) = delete;
 };
@@ -130,13 +147,15 @@ struct JitRuntimePool {
     static constexpr int PoolSize = 8;
 
     mutable std::array<asmjit::JitRuntime, PoolSize> runtimes;
-    mutable std::atomic<unsigned> next{0};
+    mutable std::atomic<unsigned> next { 0 };
 
-    auto pick() const noexcept -> asmjit::JitRuntime& {
+    auto pick() const noexcept -> asmjit::JitRuntime&
+    {
         return runtimes[next.fetch_add(1U, std::memory_order_relaxed) % static_cast<unsigned>(PoolSize)];
     }
 
-    [[nodiscard]] auto HasAVX2() const noexcept -> bool {
+    [[nodiscard]] auto HasAVX2() const noexcept -> bool
+    {
         return runtimes[0].cpu_features().x86().has(asmjit::CpuFeatures::X86::kAVX2);
     }
 };

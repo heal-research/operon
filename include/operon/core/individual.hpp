@@ -6,8 +6,8 @@
 #define OPERON_INDIVIDUAL_HPP
 
 #include "comparison.hpp"
-#include "tree.hpp" 
-#include "types.hpp" 
+#include "tree.hpp"
+#include "types.hpp"
 #include <cstddef>
 #include <functional>
 
@@ -18,37 +18,27 @@ struct LexicographicalComparison; // fwd def
 struct Individual {
     Tree Genotype;
     Operon::Vector<Operon::Scalar> Fitness;
-    size_t Rank{}; // domination rank; used by NSGA2
-    Operon::Scalar Distance{}; // crowding distance; used by NSGA2
+    size_t Rank {}; // domination rank; used by NSGA2
+    Operon::Scalar Distance {}; // crowding distance; used by NSGA2
 
-    template<typename Self>
-    auto operator[](this Self& self, size_t const i) noexcept -> decltype(auto) { return (self.Fitness[i]); }
+    template <typename Self> auto operator[](this Self& self, size_t const i) noexcept -> decltype(auto)
+    {
+        return (self.Fitness[i]);
+    }
 
     [[nodiscard]] inline auto Size() const noexcept -> size_t { return Fitness.size(); }
 
-    Individual()
-        : Individual(1)
-    {
-    }
-    explicit Individual(size_t nObj)
-        : Fitness(nObj, std::numeric_limits<Operon::Scalar>::max())
-    {
-    }
+    Individual() : Individual(1) {}
+    explicit Individual(size_t nObj) : Fitness(nObj, std::numeric_limits<Operon::Scalar>::max()) {}
 };
 
 struct SingleObjectiveComparison {
-    explicit SingleObjectiveComparison(size_t idx)
-        : obj_(idx)
-    {
-    }
-    SingleObjectiveComparison()
-        : SingleObjectiveComparison(0)
-    {
-    }
+    explicit SingleObjectiveComparison(size_t idx) : obj_(idx) {}
+    SingleObjectiveComparison() : SingleObjectiveComparison(0) {}
 
     auto operator()(Individual const& lhs, Individual const& rhs, Operon::Scalar eps = 0) const -> bool
     {
-        return Operon::Less{}(lhs[obj_], rhs[obj_], eps);
+        return Operon::Less {}(lhs[obj_], rhs[obj_], eps);
     }
 
     [[nodiscard]] auto GetObjectiveIndex() const -> size_t { return obj_; }
@@ -64,7 +54,7 @@ struct LexicographicalComparison {
         EXPECT(std::size(lhs.Fitness) == std::size(rhs.Fitness));
         auto const& fit1 = lhs.Fitness;
         auto const& fit2 = rhs.Fitness;
-        return Less{}(fit1.begin(), fit1.end(), fit2.begin(), fit2.end(), eps);
+        return Less {}(fit1.begin(), fit1.end(), fit2.begin(), fit2.end(), eps);
     }
 };
 
@@ -77,7 +67,7 @@ struct ParetoComparison {
         EXPECT(std::size(lhs.Fitness) == std::size(rhs.Fitness));
         auto const& fit1 = lhs.Fitness;
         auto const& fit2 = rhs.Fitness;
-        return ParetoDominance{}(fit1.begin(), fit1.end(), fit2.begin(), fit2.end(), eps) == Dominance::Left;
+        return ParetoDominance {}(fit1.begin(), fit1.end(), fit2.begin(), fit2.end(), eps) == Dominance::Left;
     }
 };
 
@@ -85,8 +75,10 @@ struct CrowdedComparison {
     auto operator()(Individual const& lhs, Individual const& rhs, Operon::Scalar eps = 0) const -> bool
     {
         EXPECT(std::size(lhs.Fitness) == std::size(rhs.Fitness));
-        if (lhs.Rank != rhs.Rank) { return lhs.Rank < rhs.Rank; }
-        return Operon::Less{}(rhs.Distance, lhs.Distance, eps);
+        if (lhs.Rank != rhs.Rank) {
+            return lhs.Rank < rhs.Rank;
+        }
+        return Operon::Less {}(rhs.Distance, lhs.Distance, eps);
     }
 };
 
@@ -118,7 +110,8 @@ using ComparisonCallback = std::function<bool(Individual const&, Individual cons
 struct FeasibilityFirstComparison {
     using FeasibilityPredicate = std::function<bool(Tree const&)>;
 
-    explicit FeasibilityFirstComparison(FeasibilityPredicate isFeasible, ComparisonCallback fallback = SingleObjectiveComparison{})
+    explicit FeasibilityFirstComparison(
+        FeasibilityPredicate isFeasible, ComparisonCallback fallback = SingleObjectiveComparison {})
         : isFeasible_(std::move(isFeasible))
         , fallback_(std::move(fallback))
     {
@@ -128,7 +121,9 @@ struct FeasibilityFirstComparison {
     {
         auto const lf = isFeasible_(lhs.Genotype);
         auto const rf = isFeasible_(rhs.Genotype);
-        if (lf != rf) { return lf; } // feasible (true) precedes infeasible (false)
+        if (lf != rf) {
+            return lf;
+        } // feasible (true) precedes infeasible (false)
         return fallback_(lhs, rhs);
     }
 

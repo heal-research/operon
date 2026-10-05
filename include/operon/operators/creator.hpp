@@ -30,7 +30,10 @@ struct OPERON_EXPORT CreatorBase : public OperatorBase<Tree, size_t, size_t, siz
     void SetPrimitiveSet(gsl::not_null<PrimitiveSet const*> pset);
 
     [[nodiscard]] auto GetVariables() const -> Operon::Span<Operon::Hash const> { return variables_; }
-    auto SetVariables(Operon::Span<Operon::Hash const> variables) { variables_ = std::vector<Operon::Hash>(variables.begin(), variables.end()); }
+    auto SetVariables(Operon::Span<Operon::Hash const> variables)
+    {
+        variables_ = std::vector<Operon::Hash>(variables.begin(), variables.end());
+    }
 
 protected:
     // Returns the largest tree length <= targetLen reachable with the current
@@ -39,7 +42,7 @@ protected:
 
 private:
     gsl::not_null<PrimitiveSet const*> pset_;
-    std::vector<Operon::Hash>          variables_;
+    std::vector<Operon::Hash> variables_;
 };
 
 // This tree creator expands breadth-wise using a "horizon" of open expansion slots.
@@ -48,13 +51,15 @@ private:
 // hard maximum depth; PTC2 can then return a shorter tree.
 class OPERON_EXPORT BalancedTreeCreator final : public CreatorBase {
 public:
-    BalancedTreeCreator(gsl::not_null<PrimitiveSet const*> pset, std::vector<Operon::Hash> variables, double bias, size_t maxLength)
+    BalancedTreeCreator(
+        gsl::not_null<PrimitiveSet const*> pset, std::vector<Operon::Hash> variables, double bias, size_t maxLength)
         : CreatorBase(pset, std::move(variables), maxLength)
         , irregularityBias_(bias)
     {
     }
 
-    auto operator()(Operon::RandomGenerator& random, size_t targetLen, size_t minDepth, size_t maxDepth) const -> Tree override;
+    auto operator()(Operon::RandomGenerator& random, size_t targetLen, size_t minDepth, size_t maxDepth) const
+        -> Tree override;
 
     void SetBias(double bias) { irregularityBias_ = bias; }
     [[nodiscard]] auto GetBias() const -> double { return irregularityBias_; }
@@ -64,23 +69,27 @@ private:
 };
 
 class OPERON_EXPORT GrowTreeCreator final : public CreatorBase {
-    public:
-        GrowTreeCreator(gsl::not_null<PrimitiveSet const*> pset, std::vector<Operon::Hash> variables, size_t maxLength)
-            : CreatorBase(pset, std::move(variables), maxLength)
-        { }
+public:
+    GrowTreeCreator(gsl::not_null<PrimitiveSet const*> pset, std::vector<Operon::Hash> variables, size_t maxLength)
+        : CreatorBase(pset, std::move(variables), maxLength)
+    {
+    }
 
-    auto operator()(Operon::RandomGenerator& random, size_t targetLen, size_t minDepth, size_t maxDepth) const -> Tree override;
+    auto operator()(Operon::RandomGenerator& random, size_t targetLen, size_t minDepth, size_t maxDepth) const
+        -> Tree override;
 };
 
 class OPERON_EXPORT ProbabilisticTreeCreator final : public CreatorBase {
 public:
-    ProbabilisticTreeCreator(gsl::not_null<PrimitiveSet const*> pset, std::vector<Operon::Hash> variables, double bias, size_t maxLength)
+    ProbabilisticTreeCreator(
+        gsl::not_null<PrimitiveSet const*> pset, std::vector<Operon::Hash> variables, double bias, size_t maxLength)
         : CreatorBase(pset, std::move(variables), maxLength)
         , irregularityBias_(bias)
     {
     }
 
-    auto operator()(Operon::RandomGenerator& random, size_t targetLen, size_t minDepth, size_t maxDepth) const -> Tree override;
+    auto operator()(Operon::RandomGenerator& random, size_t targetLen, size_t minDepth, size_t maxDepth) const
+        -> Tree override;
 
     void SetBias(double bias) { irregularityBias_ = bias; }
     [[nodiscard]] auto GetBias() const -> double { return irregularityBias_; }

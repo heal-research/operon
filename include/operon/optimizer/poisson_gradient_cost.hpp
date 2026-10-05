@@ -30,7 +30,8 @@ namespace detail {
     // gradient = J^T * chain, fixed-order double accumulation with checked
     // narrowing; unlike ComputeGradient this has no quadratic 0.5*r^2 cost
     // term, since chain is already the exact per-row d(nll)/d(prediction).
-    [[nodiscard]] inline auto AccumulateChainGradient(ConstScalarSpan chain, ConstScalarMatrixView jacobian, ScalarSpan gradient) -> bool
+    [[nodiscard]] inline auto AccumulateChainGradient(
+        ConstScalarSpan chain, ConstScalarMatrixView jacobian, ScalarSpan gradient) -> bool
     {
         auto const n = chain.size();
         auto const p = jacobian.extent(1);
@@ -80,19 +81,13 @@ namespace detail {
  * full-range; a nonzero batch size requires a non-null rng and selects a new
  * random subrange of range on every call. The scalar type is Operon::Scalar.
  */
-template <bool LogInput = true>
-class PoissonGradientCostFunction final : public GradientCostFunction {
+template <bool LogInput = true> class PoissonGradientCostFunction final : public GradientCostFunction {
 public:
     using Scalar = Operon::Scalar;
     static constexpr bool UsesDatasetWeights { false };
 
-    PoissonGradientCostFunction(
-        gsl::not_null<InterpreterBase<Scalar> const*> interpreter,
-        ConstScalarSpan target,
-        Range range,
-        RandomGenerator* rng = nullptr,
-        std::size_t batchSize = 0,
-        ConstScalarSpan exposure = {})
+    PoissonGradientCostFunction(gsl::not_null<InterpreterBase<Scalar> const*> interpreter, ConstScalarSpan target,
+        Range range, RandomGenerator* rng = nullptr, std::size_t batchSize = 0, ConstScalarSpan exposure = {})
         : interpreter_(interpreter)
         , target_(target)
         , range_(range)
@@ -120,7 +115,8 @@ public:
         predictionScratch_.resize(n);
         auto predicted = interpreter_->Evaluate(parameters, batch, predictionScratch_);
         if (!predicted) {
-            return Fail(GradientError { .Code = GradientErrorCode::EvaluationFailure, .Cause = predicted.error() }, gradient);
+            return Fail(
+                GradientError { .Code = GradientErrorCode::EvaluationFailure, .Cause = predicted.error() }, gradient);
         }
         auto const targetSlice = target_.subspan(batch.Start(), n);
         auto const exposureAt = [&](std::size_t i) -> Scalar {
@@ -147,7 +143,8 @@ public:
                 if (!std::isfinite(static_cast<double>(mu)) || mu <= Scalar { 0 }) {
                     return Fail(GradientError { .Code = GradientErrorCode::NonFiniteEvaluation }, gradient);
                 }
-                nll += static_cast<double>(mu) - (static_cast<double>(y) * std::log(static_cast<double>(mu))) + lgammaTerm;
+                nll += static_cast<double>(mu) - (static_cast<double>(y) * std::log(static_cast<double>(mu)))
+                    + lgammaTerm;
                 chainScratch_[i] = e * (Scalar { 1 } - (y / mu));
             }
         }
@@ -159,12 +156,14 @@ public:
         jacobianScratch_.resize(n * numParameters_);
         auto jacResult = interpreter_->JacRev(parameters, batch, jacobianScratch_);
         if (!jacResult) {
-            return Fail(GradientError { .Code = GradientErrorCode::EvaluationFailure, .Cause = jacResult.error() }, gradient);
+            return Fail(
+                GradientError { .Code = GradientErrorCode::EvaluationFailure, .Cause = jacResult.error() }, gradient);
         }
 
         using Extents = std::dextents<MemoryIndex, 2>;
         using Mapping = std::layout_stride::mapping<Extents>;
-        ScalarMatrixView jacobianView { jacobianScratch_.data(), Mapping { Extents { n, numParameters_ }, std::array<MemoryIndex, 2> { 1, n } } };
+        ScalarMatrixView jacobianView { jacobianScratch_.data(),
+            Mapping { Extents { n, numParameters_ }, std::array<MemoryIndex, 2> { 1, n } } };
 
         if (!detail::AccumulateChainGradient(chainScratch_, jacobianView, gradient)) {
             return Fail(GradientError { .Code = GradientErrorCode::NumericalFailure }, gradient);

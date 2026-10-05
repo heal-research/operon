@@ -2,23 +2,24 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <algorithm>
 #include <random>
 
-#include "operon/operators/creator.hpp"
-#include "operon/core/pset.hpp"
-#include "operon/core/tree.hpp"
 #include "operon/core/contracts.hpp"
 #include "operon/core/node.hpp"
+#include "operon/core/pset.hpp"
+#include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
+#include "operon/operators/creator.hpp"
 #include "operon/random/random.hpp"
 
 namespace Operon {
-auto GrowTreeCreator::operator()(Operon::RandomGenerator& random, size_t targetLen, size_t minDepth, size_t maxDepth) const -> Tree
+auto GrowTreeCreator::operator()(
+    Operon::RandomGenerator& random, size_t targetLen, size_t minDepth, size_t maxDepth) const -> Tree
 {
-    minDepth = std::max(size_t{1}, minDepth);
+    minDepth = std::max(size_t { 1 }, minDepth);
     EXPECT(minDepth <= maxDepth);
     auto const* pset = GetPrimitiveSet();
 
@@ -30,8 +31,7 @@ auto GrowTreeCreator::operator()(Operon::RandomGenerator& random, size_t targetL
     // size within a small constant factor of targetLen.
     if (targetLen > 1 && maxFunctionArity > 1) {
         auto const depthCap = static_cast<size_t>(
-            std::floor(std::log(static_cast<double>(targetLen))
-                     / std::log(static_cast<double>(maxFunctionArity))));
+            std::floor(std::log(static_cast<double>(targetLen)) / std::log(static_cast<double>(maxFunctionArity))));
         maxDepth = std::min(maxDepth, std::max(minDepth, depthCap));
     }
 

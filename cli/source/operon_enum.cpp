@@ -46,15 +46,15 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     // mean restructuring a utility shared by every existing CLI - out of scope
     // for this addition.
     auto opts = Operon::InitOptions("operon_enum", "Exhaustive grammar enumeration symbolic regression");
-    opts.add_options()
-        ("max-complexity", "Maximum expression complexity (count of all non-Constant nodes)", cxxopts::value<std::size_t>()->default_value("20"))
-        ("top-k", "Number of best-fitness models to report", cxxopts::value<std::size_t>()->default_value("5"))
-        ("function-set", "Enumeration function set: custom (default, from --enable-symbols/--disable-symbols), "
-                          "keep_duplicates, core_maths, ext_maths, osc_maths, base10_maths, base_e_maths",
-            cxxopts::value<std::string>()->default_value("custom"))
-        ("ranking", "Ranking criterion: mdl (default, uses --mdl-likelihood) or objective (uses --objective)",
-            cxxopts::value<std::string>()->default_value("mdl"))
-        ("dump-all", "Emit every canonical representative instead of only --top-k; intended for external enumeration comparison");
+    opts.add_options()("max-complexity", "Maximum expression complexity (count of all non-Constant nodes)",
+        cxxopts::value<std::size_t>()->default_value("20"))("top-k", "Number of best-fitness models to report",
+        cxxopts::value<std::size_t>()->default_value("5"))("function-set",
+        "Enumeration function set: custom (default, from --enable-symbols/--disable-symbols), "
+        "keep_duplicates, core_maths, ext_maths, osc_maths, base10_maths, base_e_maths",
+        cxxopts::value<std::string>()->default_value("custom"))("ranking",
+        "Ranking criterion: mdl (default, uses --mdl-likelihood) or objective (uses --objective)",
+        cxxopts::value<std::string>()->default_value("mdl"))("dump-all",
+        "Emit every canonical representative instead of only --top-k; intended for external enumeration comparison");
     auto result = Operon::ParseOptions(std::move(opts), argc, argv);
 
     // --- function-set resolution: no dataset access yet, so --show-primitives can exit before any
@@ -66,10 +66,11 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         return EXIT_FAILURE;
     }
 
-    Operon::EnumerationFunctionSet functions{};
+    Operon::EnumerationFunctionSet functions {};
     if (preset) {
         if (result.contains("enable-symbols") || result.contains("disable-symbols")) {
-            fmt::print(stderr, "error: --function-set {} conflicts with --enable-symbols/--disable-symbols\n", functionSetName);
+            fmt::print(stderr, "error: --function-set {} conflicts with --enable-symbols/--disable-symbols\n",
+                functionSetName);
             return EXIT_FAILURE;
         }
         functions = Operon::PresetFunctions(*preset);
@@ -78,14 +79,18 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             if (result.contains("enable-symbols")) {
                 for (auto const& s : Operon::Split(result["enable-symbols"].as<std::string>(), ',')) {
                     auto fn = Operon::ParseEnumerationFunction(s);
-                    if (!fn) { throw std::runtime_error(fmt::format("unrecognized symbol '{}'", s)); }
+                    if (!fn) {
+                        throw std::runtime_error(fmt::format("unrecognized symbol '{}'", s));
+                    }
                     functions |= *fn;
                 }
             }
             if (result.contains("disable-symbols")) {
                 for (auto const& s : Operon::Split(result["disable-symbols"].as<std::string>(), ',')) {
                     auto fn = Operon::ParseEnumerationFunction(s);
-                    if (!fn) { throw std::runtime_error(fmt::format("unrecognized symbol '{}'", s)); }
+                    if (!fn) {
+                        throw std::runtime_error(fmt::format("unrecognized symbol '{}'", s));
+                    }
                     functions &= ~Operon::ToFunctionSet(*fn);
                 }
             }
@@ -112,9 +117,15 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     std::string targetName;
 
     dataset = std::make_unique<Operon::Dataset>(result["dataset"].as<std::string>(), /*hasHeader=*/true);
-    if (result.contains("target")) { targetName = result["target"].as<std::string>(); }
-    if (result.contains("train"))  { trainingRange = Operon::ParseRange(result["train"].as<std::string>()); }
-    if (result.contains("test"))   { testRange = Operon::ParseRange(result["test"].as<std::string>()); }
+    if (result.contains("target")) {
+        targetName = result["target"].as<std::string>();
+    }
+    if (result.contains("train")) {
+        trainingRange = Operon::ParseRange(result["train"].as<std::string>());
+    }
+    if (result.contains("test")) {
+        testRange = Operon::ParseRange(result["test"].as<std::string>());
+    }
 
     try {
         auto const target = Operon::ResolveTarget(*dataset, targetName);
@@ -123,7 +134,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         Operon::SetupRanges(result, *dataset, trainingRange, testRange);
 
         if (trainingRange.Start() >= rows || trainingRange.End() > rows) {
-            fmt::print(stderr, "error: the training range {}:{} exceeds the available data range ({} rows)\n", trainingRange.Start(), trainingRange.End(), dataset->Rows());
+            fmt::print(stderr, "error: the training range {}:{} exceeds the available data range ({} rows)\n",
+                trainingRange.Start(), trainingRange.End(), dataset->Rows());
             return EXIT_FAILURE;
         }
         if (trainingRange.Start() > trainingRange.End()) {
@@ -152,16 +164,20 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         Operon::EnumerationConfig config;
         config.MaxComplexity = result["max-complexity"].as<std::size_t>();
         config.TopK = result["top-k"].as<std::size_t>();
-        if (result.contains("dump-all")) { config.TopK = std::numeric_limits<std::size_t>::max(); }
+        if (result.contains("dump-all")) {
+            config.TopK = std::numeric_limits<std::size_t>::max();
+        }
         if (config.TopK == 0) {
             fmt::print(stderr, "error: --top-k must be at least 1\n");
             return EXIT_FAILURE;
         }
-        config.Ranking = rankingName == "mdl" ? Operon::EnumerationRanking::MinimumDescriptionLength : Operon::EnumerationRanking::Objective;
+        config.Ranking = rankingName == "mdl" ? Operon::EnumerationRanking::MinimumDescriptionLength
+                                              : Operon::EnumerationRanking::Objective;
         config.EvaluationBufferSize = problem.TrainingRange().Size();
 
         Operon::ScalarDispatch dtable;
-        Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen> optimizer{ &dtable, &problem };
+        Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen> optimizer { &dtable,
+            &problem };
         // Enumeration always needs to fit coefficients (unlike GP, where
         // --iterations 0 sensibly means "no local search on top of the
         // evolved structure") - default to a reasonable non-zero iteration
@@ -177,9 +193,11 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         if (config.Ranking == Operon::EnumerationRanking::MinimumDescriptionLength) {
             auto const lik = result["mdl-likelihood"].as<std::string>();
             if (lik == "gaussian") {
-                scorer = Operon::MakeMdlScorer<Operon::ScalarDispatch, Operon::GaussianLikelihood<Operon::Scalar>>(&problem, &dtable);
+                scorer = Operon::MakeMdlScorer<Operon::ScalarDispatch, Operon::GaussianLikelihood<Operon::Scalar>>(
+                    &problem, &dtable);
             } else if (lik == "poisson") {
-                scorer = Operon::MakeMdlScorer<Operon::ScalarDispatch, Operon::PoissonLikelihood<Operon::Scalar>>(&problem, &dtable);
+                scorer = Operon::MakeMdlScorer<Operon::ScalarDispatch, Operon::PoissonLikelihood<Operon::Scalar>>(
+                    &problem, &dtable);
             } else {
                 fmt::print(stderr, "error: unknown --mdl-likelihood '{}' (expected gaussian or poisson)\n", lik);
                 return EXIT_FAILURE;
@@ -190,19 +208,24 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         }
 
         auto seed = result["seed"].as<Operon::RandomGenerator::result_type>();
-        if (seed == 0) { seed = std::random_device{}(); }
+        if (seed == 0) {
+            seed = std::random_device {}();
+        }
         Operon::RandomGenerator rng(seed);
 
         Operon::GrammarEnumerationAlgorithm algo(config, std::move(grammar), &optimizer, std::move(scorer), rng);
 
         auto const threads = result["threads"].as<std::size_t>();
-        algo.Run(rng, [&]() -> bool {
-            auto best = algo.BestTrees();
-            if (!best.empty()) {
-                fmt::print("best score so far: {:.6g}\n", best.front().Score);
-            }
-            return false;
-        }, threads);
+        algo.Run(
+            rng,
+            [&]() -> bool {
+                auto best = algo.BestTrees();
+                if (!best.empty()) {
+                    fmt::print("best score so far: {:.6g}\n", best.front().Score);
+                }
+                return false;
+            },
+            threads);
 
         auto best = algo.BestTrees();
         if (best.empty()) {
@@ -210,13 +233,17 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             return EXIT_FAILURE;
         }
         for (auto const& r : best) {
-            auto const keyPrefix = result.contains("dump-all") ? fmt::format("canonical_key={}\t", r.CanonicalKey) : std::string{};
+            auto const keyPrefix
+                = result.contains("dump-all") ? fmt::format("canonical_key={}\t", r.CanonicalKey) : std::string {};
             if (config.Ranking == Operon::EnumerationRanking::MinimumDescriptionLength) {
                 auto const nllBits = r.NegativeLogLikelihood / std::log(2.0);
-                fmt::print("{}mdl_bits={:.6g}\tnll_bits={:.6g}\tparameter_bits={:.6g}\tstructure_bits={:.6g}\t{:infix:roundtrip}\n",
-                    keyPrefix, r.Score, nllBits, r.ParameterCodeBits, r.StructureCodeBits, Operon::Fmt::TreeFormatArgs{r.Tree, *problem.GetDataset()});
+                fmt::print("{}mdl_bits={:.6g}\tnll_bits={:.6g}\tparameter_bits={:.6g}\tstructure_bits={:.6g}\t{:infix:"
+                           "roundtrip}\n",
+                    keyPrefix, r.Score, nllBits, r.ParameterCodeBits, r.StructureCodeBits,
+                    Operon::Fmt::TreeFormatArgs { r.Tree, *problem.GetDataset() });
             } else {
-                fmt::print("{}fitness={:.6g}\t{:infix:roundtrip}\n", keyPrefix, r.Score, Operon::Fmt::TreeFormatArgs{r.Tree, *problem.GetDataset()});
+                fmt::print("{}fitness={:.6g}\t{:infix:roundtrip}\n", keyPrefix, r.Score,
+                    Operon::Fmt::TreeFormatArgs { r.Tree, *problem.GetDataset() });
             }
         }
     } catch (std::exception& e) {

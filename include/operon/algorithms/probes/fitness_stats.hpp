@@ -22,7 +22,9 @@ public:
     auto operator()(ProbeContext& ctx) -> void override
     {
         auto parents = ctx.Parents();
-        if (parents.empty()) { return; }
+        if (parents.empty()) {
+            return;
+        }
 
         fitness_.clear();
         fitness_.reserve(parents.size());
@@ -33,12 +35,14 @@ public:
             length_.push_back(static_cast<std::int64_t>(ind.Genotype.Length()));
         }
 
-        std::ranges::sort(fitness_, Operon::Less<true>{});
+        std::ranges::sort(fitness_, Operon::Less<true> {});
         std::ranges::sort(length_);
 
         auto const n = fitness_.size();
-        auto const fitnessMedian = (n % 2 == 0) ? (fitness_[n/2 - 1] + fitness_[n/2]) / 2 : fitness_[n/2];
-        auto const lengthMedian = (n % 2 == 0) ? (static_cast<double>(length_[n/2 - 1]) + static_cast<double>(length_[n/2])) / 2 : static_cast<double>(length_[n/2]);
+        auto const fitnessMedian = (n % 2 == 0) ? (fitness_[n / 2 - 1] + fitness_[n / 2]) / 2 : fitness_[n / 2];
+        auto const lengthMedian = (n % 2 == 0)
+            ? (static_cast<double>(length_[n / 2 - 1]) + static_cast<double>(length_[n / 2])) / 2
+            : static_cast<double>(length_[n / 2]);
 
         ctx.Emit("fitness_best", fitness_.front());
         ctx.Emit("fitness_median", fitnessMedian);

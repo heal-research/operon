@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
-#include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
 
 #include "operon/core/node.hpp"
 #include "operon/core/pset.hpp"
@@ -17,13 +17,15 @@
 
 namespace Operon::Test {
 
-TEST_CASE("StandardLibrary populates dispatch tables and node names consistently", "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
+TEST_CASE("StandardLibrary populates dispatch tables and node names consistently",
+    "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
 {
     using DT = Operon::DispatchTable<Operon::Scalar>;
     using Scalar = Operon::Scalar;
     constexpr auto S = DT::BatchSize<Scalar>;
-    using FnPtr  = void (*)(Operon::Vector<Node> const&, Backend::View<Scalar, S>, size_t, Operon::Range);
-    using DfPtr  = void (*)(Operon::Vector<Node> const&, Backend::View<Scalar const, S>, Backend::View<Scalar, S>, int, int);
+    using FnPtr = void (*)(Operon::Vector<Node> const&, Backend::View<Scalar, S>, size_t, Operon::Range);
+    using DfPtr
+        = void (*)(Operon::Vector<Node> const&, Backend::View<Scalar const, S>, Backend::View<Scalar, S>, int, int);
 
     DT const dtDefault;
 
@@ -31,7 +33,8 @@ TEST_CASE("StandardLibrary populates dispatch tables and node names consistently
     dtRuntime.GetMap().clear();
     Operon::StandardLibrary::Register(dtRuntime);
 
-    SECTION("Both tables contain the same set of built-in hashes") {
+    SECTION("Both tables contain the same set of built-in hashes")
+    {
         for (auto i = 0UL; i < Operon::BuiltinOpCount; ++i) {
             auto const h = static_cast<Operon::Hash>(static_cast<Operon::BuiltinOp>(i));
             CHECK(dtDefault.Contains(h));
@@ -39,14 +42,18 @@ TEST_CASE("StandardLibrary populates dispatch tables and node names consistently
         }
     }
 
-    SECTION("Built-in names and descriptions are available through the unified hash registry") {
+    SECTION("Built-in names and descriptions are available through the unified hash registry")
+    {
         CHECK(Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Add), 2).Name() == "+");
-        CHECK(Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Add), 2).Desc() == "n-ary addition f(a,b,c,...) = a + b + c + ...");
-        CHECK(Operon::Node(Operon::NodeType::Function).Name() == "dyn"); // generic fallback, no specific hash registered
+        CHECK(Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Add), 2).Desc()
+            == "n-ary addition f(a,b,c,...) = a + b + c + ...");
+        CHECK(
+            Operon::Node(Operon::NodeType::Function).Name() == "dyn"); // generic fallback, no specific hash registered
         CHECK(Operon::Node(Operon::NodeType::Variable).Name() == "variable");
     }
 
-    SECTION("Registered callables are the identical compiled kernels (same function pointer target)") {
+    SECTION("Registered callables are the identical compiled kernels (same function pointer target)")
+    {
         for (auto i = 0UL; i < Operon::BuiltinOpCount; ++i) {
             auto const h = static_cast<Operon::Hash>(static_cast<Operon::BuiltinOp>(i));
 
@@ -68,27 +75,32 @@ TEST_CASE("StandardLibrary populates dispatch tables and node names consistently
         }
     }
 
-    SECTION("Evaluation results are identical across a representative expression set") {
-        std::string const x{"x"};
-        std::vector<Scalar> const v{0.3, 1.2, 2.7, -0.5, 4.1}; // NOLINT
-        Operon::Dataset const ds({x}, {v});
+    SECTION("Evaluation results are identical across a representative expression set")
+    {
+        std::string const x { "x" };
+        std::vector<Scalar> const v { 0.3, 1.2, 2.7, -0.5, 4.1 }; // NOLINT
+        Operon::Dataset const ds({ x }, { v });
 
         auto const exprs = {
-            "1 + 2 + 3 + 4",           // n-ary: Add
-            "2 * 3 * 4",               // n-ary: Mul
-            "10 - 3 - 2",              // n-ary: Sub
-            "100 / 5 / 2",             // n-ary: Div
-            "aq(6, 3)",                // binary: Aq
-            "pow(2, 3)",               // binary: Pow
-            "sin(x) + cos(x)",         // unary: Sin, Cos, plus Add
+            "1 + 2 + 3 + 4", // n-ary: Add
+            "2 * 3 * 4", // n-ary: Mul
+            "10 - 3 - 2", // n-ary: Sub
+            "100 / 5 / 2", // n-ary: Div
+            "aq(6, 3)", // binary: Aq
+            "pow(2, 3)", // binary: Pow
+            "sin(x) + cos(x)", // unary: Sin, Cos, plus Add
             "sqrt(abs(x)) * exp(log(4))", // unary chain
-            "tanh(x) / (1 + x * x)",   // mixed
+            "tanh(x) / (1 + x * x)", // mixed
         };
 
         for (auto const& expr : exprs) {
             auto t = InfixParser::ParseOrThrow(expr);
-            auto rDefault = Interpreter<Scalar, DT>(&dtDefault, &ds, &t).Evaluate(t.GetCoefficients(), Operon::Range(0, v.size())).value();
-            auto rRuntime = Interpreter<Scalar, DT>(&dtRuntime, &ds, &t).Evaluate(t.GetCoefficients(), Operon::Range(0, v.size())).value();
+            auto rDefault = Interpreter<Scalar, DT>(&dtDefault, &ds, &t)
+                                .Evaluate(t.GetCoefficients(), Operon::Range(0, v.size()))
+                                .value();
+            auto rRuntime = Interpreter<Scalar, DT>(&dtRuntime, &ds, &t)
+                                .Evaluate(t.GetCoefficients(), Operon::Range(0, v.size()))
+                                .value();
 
             REQUIRE(rDefault.size() == rRuntime.size());
             for (size_t i = 0; i < rDefault.size(); ++i) {
@@ -102,19 +114,19 @@ TEST_CASE("Unregistered Function nodes fall back to the generic name/desc", "[in
 {
     Operon::StandardLibrary::RegisterNames();
 
-    Operon::Hash const unregisteredHash = Operon::Hasher{}("test::unregistered_dynamic_fallback");
+    Operon::Hash const unregisteredHash = Operon::Hasher {}("test::unregistered_dynamic_fallback");
     Operon::Node const dynNode(Operon::NodeType::Function, unregisteredHash);
 
-    SECTION("Name() returns the generic \"dyn\" fallback") {
-        CHECK(dynNode.Name() == "dyn");
-    }
+    SECTION("Name() returns the generic \"dyn\" fallback") { CHECK(dynNode.Name() == "dyn"); }
 
-    SECTION("Desc() returns the generic \"user-defined function\" fallback") {
+    SECTION("Desc() returns the generic \"user-defined function\" fallback")
+    {
         CHECK(dynNode.Desc() == "user-defined function");
     }
 
-    SECTION("A registered Function node still resolves to its specific name") {
-        Operon::Hash const registeredHash = Operon::Hasher{}("test::registered_dynamic_fallback");
+    SECTION("A registered Function node still resolves to its specific name")
+    {
+        Operon::Hash const registeredHash = Operon::Hasher {}("test::registered_dynamic_fallback");
         Operon::Node::RegisterName(registeredHash, "myop", "my custom op");
         Operon::Node const registeredDyn(Operon::NodeType::Function, registeredHash);
         CHECK(registeredDyn.Name() == "myop");
@@ -136,15 +148,18 @@ TEST_CASE("StandardLibrary::ArityLimits agrees with IsNaryOp/IsBinaryOp/IsUnaryO
     // Spot-check a representative op from each category directly.
     {
         auto const [lo, hi] = Operon::StandardLibrary::ArityLimits(Operon::BuiltinOp::Add);
-        CHECK(lo == 2); CHECK(hi == 2);
+        CHECK(lo == 2);
+        CHECK(hi == 2);
     }
     {
         auto const [lo, hi] = Operon::StandardLibrary::ArityLimits(Operon::BuiltinOp::Pow);
-        CHECK(lo == 2); CHECK(hi == 2);
+        CHECK(lo == 2);
+        CHECK(hi == 2);
     }
     {
         auto const [lo, hi] = Operon::StandardLibrary::ArityLimits(Operon::BuiltinOp::Sin);
-        CHECK(lo == 1); CHECK(hi == 1);
+        CHECK(lo == 1);
+        CHECK(hi == 1);
     }
 }
 
@@ -158,10 +173,10 @@ TEST_CASE("PrimitiveSet preset configs source arity from the registry, not Node(
     auto const constHash = Operon::Node(Operon::NodeType::Constant).HashValue;
     auto const varHash = Operon::Node(Operon::NodeType::Variable).HashValue;
 
-    CHECK(pset.MinMaxArity(addHash) == std::tuple<size_t, size_t>{2, 2});
-    CHECK(pset.MinMaxArity(sinHash) == std::tuple<size_t, size_t>{1, 1});
-    CHECK(pset.MinMaxArity(constHash) == std::tuple<size_t, size_t>{0, 0});
-    CHECK(pset.MinMaxArity(varHash) == std::tuple<size_t, size_t>{0, 0});
+    CHECK(pset.MinMaxArity(addHash) == std::tuple<size_t, size_t> { 2, 2 });
+    CHECK(pset.MinMaxArity(sinHash) == std::tuple<size_t, size_t> { 1, 1 });
+    CHECK(pset.MinMaxArity(constHash) == std::tuple<size_t, size_t> { 0, 0 });
+    CHECK(pset.MinMaxArity(varHash) == std::tuple<size_t, size_t> { 0, 0 });
 }
 
 TEST_CASE("RegisterNaryFunction registers a variable-arity function end-to-end", "[interpreter]")
@@ -173,13 +188,8 @@ TEST_CASE("RegisterNaryFunction registers a variable-arity function end-to-end",
     Operon::PrimitiveSet pset;
     pset.SetConfig(Operon::PrimitiveSet::Arithmetic);
 
-    Operon::FunctionInfo const info{
-        .Name      = "sum3",
-        .Desc      = "n-ary sum",
-        .Arity     = 3,
-        .Frequency = 1
-    };
-    auto const hash = Operon::Hasher{}(info.Name);
+    Operon::FunctionInfo const info { .Name = "sum3", .Desc = "n-ary sum", .Arity = 3, .Frequency = 1 };
+    auto const hash = Operon::Hasher {}(info.Name);
     auto primal = [](auto acc, auto x) -> auto { return acc + x; };
 
     Operon::RegisterNaryFunction<DT, Scalar>(dt, pset, info, /*maxArity=*/5, primal);
@@ -194,16 +204,18 @@ TEST_CASE("RegisterNaryFunction registers a variable-arity function end-to-end",
         });
     };
 
-    SECTION("PrimitiveSet arity range widens to [Arity, maxArity]") {
+    SECTION("PrimitiveSet arity range widens to [Arity, maxArity]")
+    {
         CHECK(pset.MinimumArity(hash) == 3);
         CHECK(pset.MaximumArity(hash) == 5);
     }
 
-    SECTION("Evaluation folds children left-to-right") {
+    SECTION("Evaluation folds children left-to-right")
+    {
         auto const tree = makeTree();
 
-        std::string const x{"x"};
-        Operon::Dataset const ds({x}, {std::vector<Scalar>{0.0}});
+        std::string const x { "x" };
+        Operon::Dataset const ds({ x }, { std::vector<Scalar> { 0.0 } });
         auto coeff = tree.GetCoefficients();
         auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 1)).value();
 
@@ -211,11 +223,12 @@ TEST_CASE("RegisterNaryFunction registers a variable-arity function end-to-end",
         CHECK(r[0] == Catch::Approx(6.0).epsilon(1e-6)); // (1 + 2) + 3
     }
 
-    SECTION("Auto-diff assigns unit partials to every child (fn is linear)") {
+    SECTION("Auto-diff assigns unit partials to every child (fn is linear)")
+    {
         auto const tree = makeTree();
 
-        std::string const x{"x"};
-        Operon::Dataset const ds({x}, {std::vector<Scalar>{0.0}});
+        std::string const x { "x" };
+        Operon::Dataset const ds({ x }, { std::vector<Scalar> { 0.0 } });
         auto coeff = tree.GetCoefficients();
         auto jac = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).JacFwd(coeff, Operon::Range(0, 1)).value();
 
@@ -226,7 +239,8 @@ TEST_CASE("RegisterNaryFunction registers a variable-arity function end-to-end",
         }
     }
 
-    SECTION("Auto-diff seeds exactly one child per column (fn is non-linear)") {
+    SECTION("Auto-diff seeds exactly one child per column (fn is non-linear)")
+    {
         // Add's fold gives every child a partial of 1 regardless of seeding
         // correctness, so it can't tell a correct single-child seed apart
         // from the historical bug where every non-target child was also
@@ -235,13 +249,8 @@ TEST_CASE("RegisterNaryFunction registers a variable-arity function end-to-end",
         // closed-form product-rule partial for that position.
         DT dtProd;
         Operon::PrimitiveSet psetProd;
-        Operon::FunctionInfo const prodInfo{
-            .Name      = "prod3",
-            .Desc      = "n-ary product",
-            .Arity     = 3,
-            .Frequency = 1
-        };
-        auto const prodHash = Operon::Hasher{}(prodInfo.Name);
+        Operon::FunctionInfo const prodInfo { .Name = "prod3", .Desc = "n-ary product", .Arity = 3, .Frequency = 1 };
+        auto const prodHash = Operon::Hasher {}(prodInfo.Name);
         auto prodPrimal = [](auto acc, auto x) -> auto { return acc * x; };
         Operon::RegisterNaryFunction<DT, Scalar>(dtProd, psetProd, prodInfo, /*maxArity=*/3, prodPrimal);
 
@@ -253,16 +262,16 @@ TEST_CASE("RegisterNaryFunction registers a variable-arity function end-to-end",
             dyn,
         });
 
-        std::string const x{"x"};
-        Operon::Dataset const ds({x}, {std::vector<Scalar>{0.0}});
+        std::string const x { "x" };
+        Operon::Dataset const ds({ x }, { std::vector<Scalar> { 0.0 } });
         auto coeff = tree.GetCoefficients();
         auto jac = Operon::Interpreter<Scalar, DT>(&dtProd, &ds, &tree).JacFwd(coeff, Operon::Range(0, 1)).value();
 
         REQUIRE(jac.rows() == 1);
         REQUIRE(jac.cols() == 3);
         CHECK(jac(0, 0) == Catch::Approx(12.0).epsilon(1e-5)); // d(c0*c1*c2)/dc0 = c1*c2 = 3*4
-        CHECK(jac(0, 1) == Catch::Approx(8.0).epsilon(1e-5));  // d/dc1 = c0*c2 = 2*4
-        CHECK(jac(0, 2) == Catch::Approx(6.0).epsilon(1e-5));  // d/dc2 = c0*c1 = 2*3
+        CHECK(jac(0, 1) == Catch::Approx(8.0).epsilon(1e-5)); // d/dc1 = c0*c2 = 2*4
+        CHECK(jac(0, 2) == Catch::Approx(6.0).epsilon(1e-5)); // d/dc2 = c0*c1 = 2*3
     }
 }
 

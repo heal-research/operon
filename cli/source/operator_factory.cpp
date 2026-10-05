@@ -3,36 +3,46 @@
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include "operator_factory.hpp"
-#include <cmath>                           // for isfinite
-#include <stdexcept>                       // for runtime_error
-#include <fmt/format.h>                        // for format
-#include <scn/scan.h>
-#include "operon/operators/creator.hpp"    // for CreatorBase, BalancedTreeC...
-#include "operon/operators/evaluator.hpp"  // for Evaluator, EvaluatorBase
-#include "operon/operators/generator.hpp"  // for OffspringGeneratorBase
-#include "operon/operators/mutation.hpp"   // for MultiMutation, MutatorBase
-#include "operon/operators/reinserter.hpp"  // for OffspringGeneratorBase
-#include "operon/operators/selector.hpp"
+#include "operon/operators/creator.hpp" // for CreatorBase, BalancedTreeC...
+#include "operon/operators/evaluator.hpp" // for Evaluator, EvaluatorBase
+#include "operon/operators/generator.hpp" // for OffspringGeneratorBase
 #include "operon/operators/local_search.hpp"
+#include "operon/operators/mutation.hpp" // for MultiMutation, MutatorBase
+#include "operon/operators/reinserter.hpp" // for OffspringGeneratorBase
+#include "operon/operators/selector.hpp"
 #include "operon/optimizer/optimizer.hpp"
+#include <cmath> // for isfinite
+#include <fmt/format.h> // for format
+#include <scn/scan.h>
+#include <stdexcept> // for runtime_error
 
-
-
-namespace Operon { class PrimitiveSet; }
-namespace Operon { class Problem; }
-namespace Operon { struct CrossoverBase; }
-namespace Operon { struct MutatorBase; }
-namespace Operon { struct Variable; }
+namespace Operon {
+class PrimitiveSet;
+}
+namespace Operon {
+class Problem;
+}
+namespace Operon {
+struct CrossoverBase;
+}
+namespace Operon {
+struct MutatorBase;
+}
+namespace Operon {
+struct Variable;
+}
 
 namespace Operon {
 
 namespace {
-    auto GetErrorString(std::string const& name, std::string const& arg) {
+    auto GetErrorString(std::string const& name, std::string const& arg)
+    {
         return fmt::format("unable to parse {} argument '{}'", name, arg);
     }
 } // namespace
 
-auto ParseReinserter(std::string const& str, ComparisonCallback&& comp, size_t eliteCount) -> std::unique_ptr<ReinserterBase>
+auto ParseReinserter(std::string const& str, ComparisonCallback&& comp, size_t eliteCount)
+    -> std::unique_ptr<ReinserterBase>
 {
     std::unique_ptr<ReinserterBase> reinserter;
     if (str == "keep-best") {
@@ -50,10 +60,10 @@ auto ParseSelector(std::string const& str, ComparisonCallback&& comp) -> std::un
     auto tok = Split(str, ':');
     auto name = tok[0];
     std::unique_ptr<Operon::SelectorBase> selector;
-    constexpr size_t defaultTournamentSize{5};
+    constexpr size_t defaultTournamentSize { 5 };
     if (name == "tournament") {
         selector = std::make_unique<Operon::TournamentSelector>(std::move(comp));
-        size_t tournamentSize{defaultTournamentSize};
+        size_t tournamentSize { defaultTournamentSize };
         if (tok.size() > 1) {
             auto result = scn::scan<std::size_t>(tok[1], "{}");
             ENSURE(result);
@@ -76,10 +86,13 @@ auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<
     size_t defaultMaxLength, size_t defaultMinDepth, size_t defaultMaxDepth) -> CreatorConfig
 {
     auto tok = Split(str, ':');
-    if (tok.empty()) { throw std::invalid_argument(GetErrorString("creator", str)); }
-    auto const& name = tok[0]; // NOLINT(readability-identifier-length) - previously compared `str` itself here, which could never match once any param token was appended
+    if (tok.empty()) {
+        throw std::invalid_argument(GetErrorString("creator", str));
+    }
+    auto const& name = tok[0]; // NOLINT(readability-identifier-length) - previously compared `str` itself here, which
+                               // could never match once any param token was appended
 
-    double bias{0}; // irregularity bias (used by btc and ptc2)
+    double bias { 0 }; // irregularity bias (used by btc and ptc2)
     size_t maxLength = defaultMaxLength;
     size_t minDepth = defaultMinDepth;
     size_t maxDepth = defaultMaxDepth;
@@ -115,23 +128,28 @@ auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<
     } else {
         throw std::invalid_argument(GetErrorString("creator", str));
     }
-    return CreatorConfig{std::move(creator), maxLength, minDepth, maxDepth};
+    return CreatorConfig { std::move(creator), maxLength, minDepth, maxDepth };
 }
 
-auto ParseMutators(std::string const& str, std::unordered_map<std::string, MutatorBase*> const& available, MultiMutation& mutator) -> void
+auto ParseMutators(std::string const& str, std::unordered_map<std::string, MutatorBase*> const& available,
+    MultiMutation& mutator) -> void
 {
     for (auto const& spec : Split(str, ',')) {
         auto tok = Split(spec, ':');
-        if (tok.empty() || tok[0].empty()) { throw std::invalid_argument(GetErrorString("mutators", str)); }
+        if (tok.empty() || tok[0].empty()) {
+            throw std::invalid_argument(GetErrorString("mutators", str));
+        }
         auto const& name = tok[0];
 
-        double weight{1.0};
+        double weight { 1.0 };
         if (tok.size() > 1 && !tok[1].empty()) {
             auto res = scn::scan<double>(tok[1], "{}");
             ENSURE(res);
             weight = res->value();
         }
-        if (!(weight > 0)) { throw std::invalid_argument(GetErrorString("mutators", str)); }
+        if (!(weight > 0)) {
+            throw std::invalid_argument(GetErrorString("mutators", str));
+        }
 
         auto it = available.find(name);
         if (it == available.end()) {
@@ -139,42 +157,55 @@ auto ParseMutators(std::string const& str, std::unordered_map<std::string, Mutat
         }
         mutator.Add(it->second, weight);
     }
-    if (mutator.Count() == 0) { throw std::invalid_argument(GetErrorString("mutators", str)); }
+    if (mutator.Count() == 0) {
+        throw std::invalid_argument(GetErrorString("mutators", str));
+    }
 }
 
-auto ParseEvaluator(std::string const& str, Problem& problem, ScalarDispatch& dtable, bool skipNonFinite, double nonFinitePenaltyWeight) -> std::unique_ptr<EvaluatorBase>
+auto ParseEvaluator(std::string const& str, Problem& problem, ScalarDispatch& dtable, bool skipNonFinite,
+    double nonFinitePenaltyWeight) -> std::unique_ptr<EvaluatorBase>
 {
     using T = ScalarDispatch;
 
     if (skipNonFinite && (str == "r2" || str == "c2")) {
-        throw std::runtime_error(fmt::format("--skip-nonfinite is not supported with objective '{}': R2/C2 have no finite-subset semantics\n", str));
+        throw std::runtime_error(fmt::format(
+            "--skip-nonfinite is not supported with objective '{}': R2/C2 have no finite-subset semantics\n", str));
     }
 
     if (skipNonFinite && !(std::isfinite(nonFinitePenaltyWeight) && nonFinitePenaltyWeight >= 0.0)) {
-        throw std::runtime_error(fmt::format("--nonfinite-penalty-weight must be a finite, non-negative value (got {})\n", nonFinitePenaltyWeight));
+        throw std::runtime_error(fmt::format(
+            "--nonfinite-penalty-weight must be a finite, non-negative value (got {})\n", nonFinitePenaltyWeight));
     }
 
     std::unique_ptr<EvaluatorBase> evaluator;
     if (str == "r2") {
-        evaluator = std::make_unique<Operon::Evaluator<T>>(&problem, &dtable, Operon::R2{});
+        evaluator = std::make_unique<Operon::Evaluator<T>>(&problem, &dtable, Operon::R2 {});
     } else if (str == "c2") {
-        evaluator = std::make_unique<Operon::Evaluator<T>>(&problem, &dtable, Operon::C2{});
+        evaluator = std::make_unique<Operon::Evaluator<T>>(&problem, &dtable, Operon::C2 {});
     } else if (str == "nmse") {
-        evaluator = std::make_unique<Operon::Evaluator<T>>(&problem, &dtable, Operon::NMSE{}, skipNonFinite, nonFinitePenaltyWeight);
+        evaluator = std::make_unique<Operon::Evaluator<T>>(
+            &problem, &dtable, Operon::NMSE {}, skipNonFinite, nonFinitePenaltyWeight);
     } else if (str == "mse") {
-        evaluator = std::make_unique<Operon::Evaluator<T>>(&problem, &dtable, Operon::MSE{}, skipNonFinite, nonFinitePenaltyWeight);
+        evaluator = std::make_unique<Operon::Evaluator<T>>(
+            &problem, &dtable, Operon::MSE {}, skipNonFinite, nonFinitePenaltyWeight);
     } else if (str == "rmse") {
-        evaluator = std::make_unique<Operon::Evaluator<T>>(&problem, &dtable, Operon::RMSE{}, skipNonFinite, nonFinitePenaltyWeight);
+        evaluator = std::make_unique<Operon::Evaluator<T>>(
+            &problem, &dtable, Operon::RMSE {}, skipNonFinite, nonFinitePenaltyWeight);
     } else if (str == "mae") {
-        evaluator = std::make_unique<Operon::Evaluator<T>>(&problem, &dtable, Operon::MAE{}, skipNonFinite, nonFinitePenaltyWeight);
+        evaluator = std::make_unique<Operon::Evaluator<T>>(
+            &problem, &dtable, Operon::MAE {}, skipNonFinite, nonFinitePenaltyWeight);
     } else if (str == "mdl_gauss") {
-        evaluator = std::make_unique<Operon::MinimumDescriptionLengthEvaluator<T, GaussianLikelihood<Operon::Scalar>>>(&problem, &dtable);
+        evaluator = std::make_unique<Operon::MinimumDescriptionLengthEvaluator<T, GaussianLikelihood<Operon::Scalar>>>(
+            &problem, &dtable);
     } else if (str == "mdl_poisson") {
-        evaluator = std::make_unique<Operon::MinimumDescriptionLengthEvaluator<T, PoissonLikelihood<Operon::Scalar>>>(&problem, &dtable);
+        evaluator = std::make_unique<Operon::MinimumDescriptionLengthEvaluator<T, PoissonLikelihood<Operon::Scalar>>>(
+            &problem, &dtable);
     } else if (str == "fbf_gauss") {
-        evaluator = std::make_unique<Operon::FractionalBayesFactorEvaluator<T, GaussianLikelihood<Operon::Scalar>>>(&problem, &dtable);
+        evaluator = std::make_unique<Operon::FractionalBayesFactorEvaluator<T, GaussianLikelihood<Operon::Scalar>>>(
+            &problem, &dtable);
     } else if (str == "fbf_poisson") {
-        throw std::runtime_error("fbf_poisson is not supported: the fractional Bayes factor is derived under Gaussian assumptions");
+        throw std::runtime_error(
+            "fbf_poisson is not supported: the fractional Bayes factor is derived under Gaussian assumptions");
     } else if (str == "gauss") {
         evaluator = std::make_unique<Operon::GaussianLikelihoodEvaluator<T>>(&problem, &dtable);
     } else {
@@ -186,7 +217,7 @@ auto ParseEvaluator(std::string const& str, Problem& problem, ScalarDispatch& dt
 auto ParseErrorMetric(std::string const& str) -> std::tuple<std::unique_ptr<Operon::ErrorMetric>, bool>
 {
     std::unique_ptr<Operon::ErrorMetric> metric;
-    bool scale{true};
+    bool scale { true };
     if (str == "r2") {
         metric = std::make_unique<Operon::R2>();
     } else if (str == "c2") {
@@ -206,7 +237,9 @@ auto ParseErrorMetric(std::string const& str) -> std::tuple<std::unique_ptr<Oper
     return { std::move(metric), scale };
 }
 
-auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& cx, MutatorBase& mut, SelectorBase& femSel, SelectorBase& maleSel, CoefficientOptimizer const* coeffOptimizer = nullptr) -> std::unique_ptr<OffspringGeneratorBase>
+auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& cx, MutatorBase& mut,
+    SelectorBase& femSel, SelectorBase& maleSel, CoefficientOptimizer const* coeffOptimizer = nullptr)
+    -> std::unique_ptr<OffspringGeneratorBase>
 {
     std::unique_ptr<OffspringGeneratorBase> generator;
     auto tok = Split(str, ':');
@@ -214,8 +247,8 @@ auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& 
     if (name == "basic") {
         generator = std::make_unique<BasicOffspringGenerator>(&eval, &cx, &mut, &femSel, &maleSel, coeffOptimizer);
     } else if (name == "os") {
-        size_t maxSelectionPressure{100};
-        double comparisonFactor{0};
+        size_t maxSelectionPressure { 100 };
+        double comparisonFactor { 0 };
         if (tok.size() > 1) {
             maxSelectionPressure = scn::scan<size_t>(tok[1], "{}")->value();
         }
@@ -227,19 +260,22 @@ auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& 
         dynamic_cast<OffspringSelectionGenerator*>(generator.get())->ComparisonFactor(comparisonFactor);
     } else if (name == "brood") {
         generator = std::make_unique<BroodOffspringGenerator>(&eval, &cx, &mut, &femSel, &maleSel, coeffOptimizer);
-        size_t broodSize{BroodOffspringGenerator::DefaultBroodSize};
-        if (tok.size() > 1) { broodSize = scn::scan<size_t>(tok[1], "{}")->value(); }
+        size_t broodSize { BroodOffspringGenerator::DefaultBroodSize };
+        if (tok.size() > 1) {
+            broodSize = scn::scan<size_t>(tok[1], "{}")->value();
+        }
         dynamic_cast<BroodOffspringGenerator*>(generator.get())->BroodSize(broodSize);
     } else if (name == "poly") {
         generator = std::make_unique<PolygenicOffspringGenerator>(&eval, &cx, &mut, &femSel, &maleSel, coeffOptimizer);
-        size_t polygenicSize{PolygenicOffspringGenerator::DefaultBroodSize};
-        if (tok.size() > 1) { polygenicSize = scn::scan<size_t>(tok[1], "{}")->value(); }
+        size_t polygenicSize { PolygenicOffspringGenerator::DefaultBroodSize };
+        if (tok.size() > 1) {
+            polygenicSize = scn::scan<size_t>(tok[1], "{}")->value();
+        }
         dynamic_cast<PolygenicOffspringGenerator*>(generator.get())->PolygenicSize(polygenicSize);
     } else {
         throw std::invalid_argument(GetErrorString("generator", str));
     }
     return generator;
 }
-
 
 } // namespace Operon

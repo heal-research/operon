@@ -14,9 +14,8 @@ namespace {
     // Every named ESR preset enables these five binary ops on RecurringFactor
     // (RecurringFactor -> Op(SimpleExpr, SimpleExpr)) in addition to its own
     // unary set - see PresetFunctions().
-    constexpr EnumerationFunctionSet BinaryFunctions
-        = EnumerationFunction::Add | EnumerationFunction::Sub | EnumerationFunction::Mul
-        | EnumerationFunction::Div | EnumerationFunction::Pow;
+    constexpr EnumerationFunctionSet BinaryFunctions = EnumerationFunction::Add | EnumerationFunction::Sub
+        | EnumerationFunction::Mul | EnumerationFunction::Div | EnumerationFunction::Pow;
 
     // RecurringFactor production recipe for one EnumerationFunction value -
     // see grammar.hpp's EnumerationFunction doc comment for the mapping
@@ -25,77 +24,101 @@ namespace {
     {
         switch (f) {
         case EnumerationFunction::Add:
-            return Production{ .Op = BuiltinOp::Add, .Operands = { GrammarSymbol::SimpleExpr, GrammarSymbol::SimpleExpr }, .Commutative = true };
+            return Production { .Op = BuiltinOp::Add,
+                .Operands = { GrammarSymbol::SimpleExpr, GrammarSymbol::SimpleExpr },
+                .Commutative = true };
         case EnumerationFunction::Sub:
-            return Production{ .Op = BuiltinOp::Sub, .Operands = { GrammarSymbol::SimpleExpr, GrammarSymbol::SimpleExpr }, .Commutative = false };
+            return Production { .Op = BuiltinOp::Sub,
+                .Operands = { GrammarSymbol::SimpleExpr, GrammarSymbol::SimpleExpr },
+                .Commutative = false };
         case EnumerationFunction::Mul:
-            return Production{ .Op = BuiltinOp::Mul, .Operands = { GrammarSymbol::SimpleExpr, GrammarSymbol::SimpleExpr }, .Commutative = true };
+            return Production { .Op = BuiltinOp::Mul,
+                .Operands = { GrammarSymbol::SimpleExpr, GrammarSymbol::SimpleExpr },
+                .Commutative = true };
         case EnumerationFunction::Div:
-            return Production{ .Op = BuiltinOp::Div, .Operands = { GrammarSymbol::SimpleExpr, GrammarSymbol::SimpleExpr }, .Commutative = false };
+            return Production { .Op = BuiltinOp::Div,
+                .Operands = { GrammarSymbol::SimpleExpr, GrammarSymbol::SimpleExpr },
+                .Commutative = false };
         case EnumerationFunction::Pow:
-            return Production{ .Op = BuiltinOp::Pow, .Operands = { GrammarSymbol::SimpleExpr, GrammarSymbol::SimpleExpr }, .Commutative = false };
+            return Production { .Op = BuiltinOp::Pow,
+                .Operands = { GrammarSymbol::SimpleExpr, GrammarSymbol::SimpleExpr },
+                .Commutative = false };
         case EnumerationFunction::Inv: // 1/x - unary Div (see Tree::Simplify's Div-arity-1 handling)
-            return Production{ .Op = BuiltinOp::Div, .Operands = { GrammarSymbol::SimpleExpr } };
+            return Production { .Op = BuiltinOp::Div, .Operands = { GrammarSymbol::SimpleExpr } };
         case EnumerationFunction::Square:
-            return Production{ .Op = BuiltinOp::Square, .Operands = { GrammarSymbol::SimpleExpr } };
+            return Production { .Op = BuiltinOp::Square, .Operands = { GrammarSymbol::SimpleExpr } };
         case EnumerationFunction::Cube: // x^3 - Pow with a fixed, non-optimizable exponent operand
-            return Production{ .Op = BuiltinOp::Pow, .Operands = { GrammarSymbol::SimpleExpr, ProductionOperand::Fixed(Operon::Scalar{3}) } };
+            return Production { .Op = BuiltinOp::Pow,
+                .Operands = { GrammarSymbol::SimpleExpr, ProductionOperand::Fixed(Operon::Scalar { 3 }) } };
         case EnumerationFunction::SqrtAbs:
-            return Production{ .Op = BuiltinOp::Sqrtabs, .Operands = { GrammarSymbol::SimpleExpr } };
+            return Production { .Op = BuiltinOp::Sqrtabs, .Operands = { GrammarSymbol::SimpleExpr } };
         case EnumerationFunction::LogAbs:
-            return Production{ .Op = BuiltinOp::Logabs, .Operands = { GrammarSymbol::SimpleExpr } };
+            return Production { .Op = BuiltinOp::Logabs, .Operands = { GrammarSymbol::SimpleExpr } };
         case EnumerationFunction::Exp:
-            return Production{ .Op = BuiltinOp::Exp, .Operands = { GrammarSymbol::SimpleExpr } };
+            return Production { .Op = BuiltinOp::Exp, .Operands = { GrammarSymbol::SimpleExpr } };
         case EnumerationFunction::Sin:
-            return Production{ .Op = BuiltinOp::Sin, .Operands = { GrammarSymbol::SimpleExpr } };
+            return Production { .Op = BuiltinOp::Sin, .Operands = { GrammarSymbol::SimpleExpr } };
         case EnumerationFunction::Log10Abs: // log10|x| = logabs(x) * (1/ln(10))
-            return Production{ .Op = BuiltinOp::Logabs, .Operands = { GrammarSymbol::SimpleExpr }, .ResultScale = static_cast<Operon::Scalar>(1.0 / std::log(10.0)) };
+            return Production { .Op = BuiltinOp::Logabs,
+                .Operands = { GrammarSymbol::SimpleExpr },
+                .ResultScale = static_cast<Operon::Scalar>(1.0 / std::log(10.0)) };
         case EnumerationFunction::TenExp: // 10^x - Pow with a fixed, non-optimizable base operand
-            return Production{ .Op = BuiltinOp::Pow, .Operands = { ProductionOperand::Fixed(Operon::Scalar{10}), GrammarSymbol::SimpleExpr } };
+            return Production { .Op = BuiltinOp::Pow,
+                .Operands = { ProductionOperand::Fixed(Operon::Scalar { 10 }), GrammarSymbol::SimpleExpr } };
         case EnumerationFunction::Log:
-            return Production{ .Op = BuiltinOp::Log, .Operands = { GrammarSymbol::SimpleExpr } };
+            return Production { .Op = BuiltinOp::Log, .Operands = { GrammarSymbol::SimpleExpr } };
         case EnumerationFunction::Sqrt:
-            return Production{ .Op = BuiltinOp::Sqrt, .Operands = { GrammarSymbol::SimpleExpr } };
+            return Production { .Op = BuiltinOp::Sqrt, .Operands = { GrammarSymbol::SimpleExpr } };
         case EnumerationFunction::Cbrt:
-            return Production{ .Op = BuiltinOp::Cbrt, .Operands = { GrammarSymbol::SimpleExpr } };
+            return Production { .Op = BuiltinOp::Cbrt, .Operands = { GrammarSymbol::SimpleExpr } };
         case EnumerationFunction::Aq: // analytic quotient, x/sqrt(1+y^2) - same numerator/denominator shape as
-                                       // Div but no pole (denominator always >= 1); not part of any named preset.
-            return Production{ .Op = BuiltinOp::Aq, .Operands = { GrammarSymbol::SimpleExpr, GrammarSymbol::SimpleExpr }, .Commutative = false };
+                                      // Div but no pole (denominator always >= 1); not part of any named preset.
+            return Production { .Op = BuiltinOp::Aq,
+                .Operands = { GrammarSymbol::SimpleExpr, GrammarSymbol::SimpleExpr },
+                .Commutative = false };
         }
         std::unreachable();
     }
 
-constexpr std::array<std::pair<EnumerationFunction, std::string_view>, EnumerationFunctions::Count> NameTable {{
-    { EnumerationFunction::Add, "add" },
-    { EnumerationFunction::Sub, "sub" },
-    { EnumerationFunction::Mul, "mul" },
-    { EnumerationFunction::Div, "div" },
-    { EnumerationFunction::Pow, "pow" },
-    { EnumerationFunction::Inv, "inv" },
-    { EnumerationFunction::Square, "square" },
-    { EnumerationFunction::Cube, "cube" },
-    { EnumerationFunction::SqrtAbs, "sqrt_abs" },
-    { EnumerationFunction::LogAbs, "log_abs" },
-    { EnumerationFunction::Exp, "exp" },
-    { EnumerationFunction::Sin, "sin" },
-    { EnumerationFunction::Log10Abs, "log10_abs" },
-    { EnumerationFunction::TenExp, "tenexp" },
-    { EnumerationFunction::Log, "log" },
-    { EnumerationFunction::Sqrt, "sqrt" },
-    { EnumerationFunction::Cbrt, "cbrt" },
-    { EnumerationFunction::Aq, "aq" },
-}};
+    constexpr std::array<std::pair<EnumerationFunction, std::string_view>, EnumerationFunctions::Count> NameTable { {
+        { EnumerationFunction::Add, "add" },
+        { EnumerationFunction::Sub, "sub" },
+        { EnumerationFunction::Mul, "mul" },
+        { EnumerationFunction::Div, "div" },
+        { EnumerationFunction::Pow, "pow" },
+        { EnumerationFunction::Inv, "inv" },
+        { EnumerationFunction::Square, "square" },
+        { EnumerationFunction::Cube, "cube" },
+        { EnumerationFunction::SqrtAbs, "sqrt_abs" },
+        { EnumerationFunction::LogAbs, "log_abs" },
+        { EnumerationFunction::Exp, "exp" },
+        { EnumerationFunction::Sin, "sin" },
+        { EnumerationFunction::Log10Abs, "log10_abs" },
+        { EnumerationFunction::TenExp, "tenexp" },
+        { EnumerationFunction::Log, "log" },
+        { EnumerationFunction::Sqrt, "sqrt" },
+        { EnumerationFunction::Cbrt, "cbrt" },
+        { EnumerationFunction::Aq, "aq" },
+    } };
 } // namespace
 
 auto EnumerationFunctionName(EnumerationFunction f) -> std::string_view
 {
-    for (auto const& [fn, name] : NameTable) { if (fn == f) { return name; } }
+    for (auto const& [fn, name] : NameTable) {
+        if (fn == f) {
+            return name;
+        }
+    }
     std::unreachable();
 }
 
 auto ParseEnumerationFunction(std::string_view name) -> std::optional<EnumerationFunction>
 {
-    for (auto const& [fn, candidate] : NameTable) { if (candidate == name) { return fn; } }
+    for (auto const& [fn, candidate] : NameTable) {
+        if (candidate == name) {
+            return fn;
+        }
+    }
     return std::nullopt;
 }
 
@@ -104,22 +127,52 @@ auto UnderlyingPrimitives(EnumerationFunctionSet functions) -> PrimitiveSetConfi
     PrimitiveSetConfig config = NodeType::Constant | NodeType::Variable;
     functions.ForEach([&](std::size_t bit) {
         switch (static_cast<EnumerationFunction>(bit)) {
-        case EnumerationFunction::Add:                                      config |= BuiltinOp::Add; break;
-        case EnumerationFunction::Sub:                                      config |= BuiltinOp::Sub; break;
-        case EnumerationFunction::Mul:                                      config |= BuiltinOp::Mul; break;
-        case EnumerationFunction::Div:      case EnumerationFunction::Inv:  config |= BuiltinOp::Div; break;
-        case EnumerationFunction::Pow:      case EnumerationFunction::Cube:
-        case EnumerationFunction::TenExp:                                   config |= BuiltinOp::Pow; break;
-        case EnumerationFunction::Square:                                   config |= BuiltinOp::Square; break;
-        case EnumerationFunction::SqrtAbs:                                  config |= BuiltinOp::Sqrtabs; break;
-        case EnumerationFunction::LogAbs:   case EnumerationFunction::Log10Abs:
-                                                                             config |= BuiltinOp::Logabs; break;
-        case EnumerationFunction::Exp:                                      config |= BuiltinOp::Exp; break;
-        case EnumerationFunction::Sin:                                      config |= BuiltinOp::Sin; break;
-        case EnumerationFunction::Log:                                      config |= BuiltinOp::Log; break;
-        case EnumerationFunction::Sqrt:                                     config |= BuiltinOp::Sqrt; break;
-        case EnumerationFunction::Cbrt:                                     config |= BuiltinOp::Cbrt; break;
-        case EnumerationFunction::Aq:                                       config |= BuiltinOp::Aq; break;
+        case EnumerationFunction::Add:
+            config |= BuiltinOp::Add;
+            break;
+        case EnumerationFunction::Sub:
+            config |= BuiltinOp::Sub;
+            break;
+        case EnumerationFunction::Mul:
+            config |= BuiltinOp::Mul;
+            break;
+        case EnumerationFunction::Div:
+        case EnumerationFunction::Inv:
+            config |= BuiltinOp::Div;
+            break;
+        case EnumerationFunction::Pow:
+        case EnumerationFunction::Cube:
+        case EnumerationFunction::TenExp:
+            config |= BuiltinOp::Pow;
+            break;
+        case EnumerationFunction::Square:
+            config |= BuiltinOp::Square;
+            break;
+        case EnumerationFunction::SqrtAbs:
+            config |= BuiltinOp::Sqrtabs;
+            break;
+        case EnumerationFunction::LogAbs:
+        case EnumerationFunction::Log10Abs:
+            config |= BuiltinOp::Logabs;
+            break;
+        case EnumerationFunction::Exp:
+            config |= BuiltinOp::Exp;
+            break;
+        case EnumerationFunction::Sin:
+            config |= BuiltinOp::Sin;
+            break;
+        case EnumerationFunction::Log:
+            config |= BuiltinOp::Log;
+            break;
+        case EnumerationFunction::Sqrt:
+            config |= BuiltinOp::Sqrt;
+            break;
+        case EnumerationFunction::Cbrt:
+            config |= BuiltinOp::Cbrt;
+            break;
+        case EnumerationFunction::Aq:
+            config |= BuiltinOp::Aq;
+            break;
         }
     });
     return config;
@@ -127,18 +180,30 @@ auto UnderlyingPrimitives(EnumerationFunctionSet functions) -> PrimitiveSetConfi
 
 auto ParseEnumerationPreset(std::string_view name) -> std::optional<EnumerationPreset>
 {
-    if (name == "keep_duplicates") { return EnumerationPreset::KeepDuplicates; }
-    if (name == "core_maths")      { return EnumerationPreset::CoreMaths; }
-    if (name == "ext_maths")       { return EnumerationPreset::ExtMaths; }
-    if (name == "osc_maths")       { return EnumerationPreset::OscMaths; }
-    if (name == "base10_maths")    { return EnumerationPreset::Base10Maths; }
-    if (name == "base_e_maths")    { return EnumerationPreset::BaseEMaths; }
+    if (name == "keep_duplicates") {
+        return EnumerationPreset::KeepDuplicates;
+    }
+    if (name == "core_maths") {
+        return EnumerationPreset::CoreMaths;
+    }
+    if (name == "ext_maths") {
+        return EnumerationPreset::ExtMaths;
+    }
+    if (name == "osc_maths") {
+        return EnumerationPreset::OscMaths;
+    }
+    if (name == "base10_maths") {
+        return EnumerationPreset::Base10Maths;
+    }
+    if (name == "base_e_maths") {
+        return EnumerationPreset::BaseEMaths;
+    }
     return std::nullopt;
 }
 
 auto PresetFunctions(EnumerationPreset preset) -> EnumerationFunctionSet
 {
-    EnumerationFunctionSet unary{};
+    EnumerationFunctionSet unary {};
     switch (preset) {
     case EnumerationPreset::KeepDuplicates:
         unary = EnumerationFunction::Square | EnumerationFunction::Exp | EnumerationFunction::Inv
@@ -148,7 +213,8 @@ auto PresetFunctions(EnumerationPreset preset) -> EnumerationFunctionSet
         unary = ToFunctionSet(EnumerationFunction::Inv);
         break;
     case EnumerationPreset::ExtMaths:
-        unary = EnumerationFunction::Inv | EnumerationFunction::SqrtAbs | EnumerationFunction::Square | EnumerationFunction::Exp;
+        unary = EnumerationFunction::Inv | EnumerationFunction::SqrtAbs | EnumerationFunction::Square
+            | EnumerationFunction::Exp;
         break;
     case EnumerationPreset::OscMaths:
         unary = EnumerationFunction::Inv | EnumerationFunction::Sin;
@@ -179,14 +245,26 @@ auto Grammar::Configure(PrimitiveSetConfig config) -> Grammar&
     // reproduces the pre-existing grammar exactly for Log/Exp/Sin/Sqrt/Cbrt;
     // Aq is a new production not present in the legacy grammar (see the
     // class comment's Aq note), nothing else from the new ESR vocabulary.
-    EnumerationFunctionSet functions{};
+    EnumerationFunctionSet functions {};
     auto test = [&](BuiltinOp op) { return config.Test(static_cast<std::size_t>(op)); };
-    if (test(BuiltinOp::Log))  { functions |= EnumerationFunction::Log; }
-    if (test(BuiltinOp::Exp))  { functions |= EnumerationFunction::Exp; }
-    if (test(BuiltinOp::Sin))  { functions |= EnumerationFunction::Sin; }
-    if (test(BuiltinOp::Sqrt)) { functions |= EnumerationFunction::Sqrt; }
-    if (test(BuiltinOp::Cbrt)) { functions |= EnumerationFunction::Cbrt; }
-    if (test(BuiltinOp::Aq))   { functions |= EnumerationFunction::Aq; }
+    if (test(BuiltinOp::Log)) {
+        functions |= EnumerationFunction::Log;
+    }
+    if (test(BuiltinOp::Exp)) {
+        functions |= EnumerationFunction::Exp;
+    }
+    if (test(BuiltinOp::Sin)) {
+        functions |= EnumerationFunction::Sin;
+    }
+    if (test(BuiltinOp::Sqrt)) {
+        functions |= EnumerationFunction::Sqrt;
+    }
+    if (test(BuiltinOp::Cbrt)) {
+        functions |= EnumerationFunction::Cbrt;
+    }
+    if (test(BuiltinOp::Aq)) {
+        functions |= EnumerationFunction::Aq;
+    }
     functions_ = functions;
     Rebuild();
     return *this;
@@ -195,7 +273,7 @@ auto Grammar::Configure(PrimitiveSetConfig config) -> Grammar&
 auto Grammar::Configure(EnumerationFunctionSet functions) -> Grammar&
 {
     functions_ = functions;
-    config_ = PrimitiveSetConfig{}; // stale/meaningless once configured this way - see Config()'s doc comment
+    config_ = PrimitiveSetConfig {}; // stale/meaningless once configured this way - see Config()'s doc comment
     Rebuild();
     return *this;
 }
@@ -209,30 +287,43 @@ auto Grammar::SetVariables(std::vector<Operon::Hash> variableHashes) -> Grammar&
 
 void Grammar::Rebuild()
 {
-    for (auto& r : rules_) { r.clear(); }
+    for (auto& r : rules_) {
+        r.clear();
+    }
 
     auto& recurringFactor = rules_[GrammarSymbols::GetIndex(GrammarSymbol::RecurringFactor)];
-    functions_.ForEach([&](std::size_t bit) {
-        recurringFactor.push_back(RecipeFor(static_cast<EnumerationFunction>(bit)));
-    });
+    functions_.ForEach(
+        [&](std::size_t bit) { recurringFactor.push_back(RecipeFor(static_cast<EnumerationFunction>(bit))); });
 
     rules_[GrammarSymbols::GetIndex(GrammarSymbol::Term)] = {
-        Production{ .Op = NoBuiltinOp, .Operands = { GrammarSymbol::RecurringFactor } }, // coercion
-        Production{ .Op = BuiltinOp::Mul, .Operands = { GrammarSymbol::Term, GrammarSymbol::Term } },
+        Production { .Op = NoBuiltinOp, .Operands = { GrammarSymbol::RecurringFactor } }, // coercion
+        Production { .Op = BuiltinOp::Mul, .Operands = { GrammarSymbol::Term, GrammarSymbol::Term } },
     };
 
     rules_[GrammarSymbols::GetIndex(GrammarSymbol::SimpleTerm)] = {
-        Production{ .Op = BuiltinOp::Mul, .Operands = { GrammarSymbol::SimpleTerm, GrammarSymbol::SimpleTerm } },
+        Production { .Op = BuiltinOp::Mul, .Operands = { GrammarSymbol::SimpleTerm, GrammarSymbol::SimpleTerm } },
     };
 
     rules_[GrammarSymbols::GetIndex(GrammarSymbol::Expression)] = {
-        Production{ .Op = BuiltinOp::Add, .Operands = { GrammarSymbol::Term }, .WeightFirstOperand = true, .TrailingConstant = true },
-        Production{ .Op = BuiltinOp::Add, .Operands = { GrammarSymbol::Term, GrammarSymbol::Expression }, .WeightFirstOperand = true, .TrailingConstant = false },
+        Production { .Op = BuiltinOp::Add,
+            .Operands = { GrammarSymbol::Term },
+            .WeightFirstOperand = true,
+            .TrailingConstant = true },
+        Production { .Op = BuiltinOp::Add,
+            .Operands = { GrammarSymbol::Term, GrammarSymbol::Expression },
+            .WeightFirstOperand = true,
+            .TrailingConstant = false },
     };
 
     rules_[GrammarSymbols::GetIndex(GrammarSymbol::SimpleExpr)] = {
-        Production{ .Op = BuiltinOp::Add, .Operands = { GrammarSymbol::SimpleTerm }, .WeightFirstOperand = true, .TrailingConstant = true },
-        Production{ .Op = BuiltinOp::Add, .Operands = { GrammarSymbol::SimpleTerm, GrammarSymbol::SimpleExpr }, .WeightFirstOperand = true, .TrailingConstant = false },
+        Production { .Op = BuiltinOp::Add,
+            .Operands = { GrammarSymbol::SimpleTerm },
+            .WeightFirstOperand = true,
+            .TrailingConstant = true },
+        Production { .Op = BuiltinOp::Add,
+            .Operands = { GrammarSymbol::SimpleTerm, GrammarSymbol::SimpleExpr },
+            .WeightFirstOperand = true,
+            .TrailingConstant = false },
     };
 
     // Recipe validation - defensive, not a live user-facing error path today
@@ -244,7 +335,11 @@ void Grammar::Rebuild()
     for (auto const& row : rules_) {
         for (auto const& p : row) {
             std::size_t nonterminalCount = 0;
-            for (auto const& operand : p.Operands) { if (!operand.IsFixed()) { ++nonterminalCount; } }
+            for (auto const& operand : p.Operands) {
+                if (!operand.IsFixed()) {
+                    ++nonterminalCount;
+                }
+            }
             EXPECT(nonterminalCount >= 1 && nonterminalCount <= 2);
             if (p.IsCoercion()) {
                 EXPECT(p.Operands.size() == 1);
@@ -288,13 +383,18 @@ void Grammar::Rebuild()
         for (std::size_t i = 0; i < GrammarSymbols::Count; ++i) {
             for (auto const& p : rules_[i]) {
                 bool reachable = true;
-                size_t total = p.IsCoercion() ? 0 : (1
-                    + (p.WeightFirstOperand ? 1 : 0)
-                    + (p.ResultScale != Operon::Scalar{1} ? 1 : 0));
+                size_t total = p.IsCoercion()
+                    ? 0
+                    : (1 + (p.WeightFirstOperand ? 1 : 0) + (p.ResultScale != Operon::Scalar { 1 } ? 1 : 0));
                 for (auto const& operand : p.Operands) {
-                    if (operand.IsFixed()) { continue; } // Constant leaf, contributes 0
+                    if (operand.IsFixed()) {
+                        continue;
+                    } // Constant leaf, contributes 0
                     auto c = minComplexity_[GrammarSymbols::GetIndex(*operand.Symbol)];
-                    if (c == Unreachable) { reachable = false; break; }
+                    if (c == Unreachable) {
+                        reachable = false;
+                        break;
+                    }
                     total += c;
                 }
                 if (reachable && total < minComplexity_[i]) {

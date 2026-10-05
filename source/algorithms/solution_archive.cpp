@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
-#include <cstdint>
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <vector>
 
@@ -17,14 +17,16 @@ namespace Operon {
 auto SolutionArchive::Insert(Operon::Individual const& individual) -> bool
 {
     auto const& y = individual;
-    Operon::ParetoDominance dom{};
+    Operon::ParetoDominance dom {};
 
     // check if the current individual is dominated by any solution in the archive_
     // or if it is equal to any solution in the archive_
     if (std::any_of(archive_.begin(), archive_.end(), [&](auto const& x) -> auto {
-        auto res = dom(x.Fitness, y.Fitness, eps_);
-        return res == Dominance::Left || res == Dominance::Equal;
-    })) { return false ; } // individual is dominated by or equal to an existing solution
+            auto res = dom(x.Fitness, y.Fitness, eps_);
+            return res == Dominance::Left || res == Dominance::Equal;
+        })) {
+        return false;
+    } // individual is dominated by or equal to an existing solution
 
     // remove solutions that are dominated by the current individual
     std::erase_if(archive_, [&](auto const& x) -> auto { return dom(x.Fitness, y.Fitness, eps_) == Dominance::Right; });
@@ -32,11 +34,14 @@ auto SolutionArchive::Insert(Operon::Individual const& individual) -> bool
     return true;
 }
 
-auto SolutionArchive::Insert(Operon::Span<Operon::Individual const> individuals) -> int64_t {
+auto SolutionArchive::Insert(Operon::Span<Operon::Individual const> individuals) -> int64_t
+{
     auto const s { std::ssize(archive_) };
-    for (auto const& x : individuals) { Insert(x); }
+    for (auto const& x : individuals) {
+        Insert(x);
+    }
     if (!archive_.empty()) {
-        auto const m{ archive_.front().Size() };
+        auto const m { archive_.front().Size() };
         for (auto k = 0UL; k < m; ++k) {
             auto cmp = [k](auto const& a, auto const& b) -> auto { return a[k] < b[k]; };
             std::stable_sort(archive_.begin(), archive_.end(), cmp);

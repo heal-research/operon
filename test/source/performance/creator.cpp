@@ -8,8 +8,8 @@
 #include "../operon_test.hpp"
 
 #include "operon/core/pset.hpp"
-#include "operon/operators/creator.hpp"
 #include "operon/core/tree.hpp"
+#include "operon/operators/creator.hpp"
 
 namespace nb = ankerl::nanobench;
 
@@ -17,28 +17,24 @@ namespace Operon::Test {
 
 TEST_CASE("BTC creation throughput", "[performance]")
 {
-    constexpr auto nrow{10};
-    constexpr auto ncol{10};
-    constexpr auto maxd{10};
-    constexpr auto maxl{100};
+    constexpr auto nrow { 10 };
+    constexpr auto ncol { 10 };
+    constexpr auto maxd { 10 };
+    constexpr auto maxl { 100 };
 
-    Operon::PrimitiveSet pset{Operon::PrimitiveSet::Arithmetic};
+    Operon::PrimitiveSet pset { Operon::PrimitiveSet::Arithmetic };
 
     Operon::RandomGenerator rd(1234UL);
     auto ds = Util::RandomDataset(rd, nrow, ncol);
     auto inputs = ds.VariableHashes();
 
-    BalancedTreeCreator creator{&pset, inputs, /* bias= */ 0.0, maxl};
-    ProbabilisticTreeCreator ptc2{&pset, inputs, /* bias= */ 0.0, maxl};
+    BalancedTreeCreator creator { &pset, inputs, /* bias= */ 0.0, maxl };
+    ProbabilisticTreeCreator ptc2 { &pset, inputs, /* bias= */ 0.0, maxl };
     std::uniform_int_distribution<size_t> dist(1, maxl);
 
     nb::Bench bench;
-    bench.run("btc", [&]() -> Tree {
-        return creator(rd, dist(rd), 0, maxd);
-    });
-    bench.run("ptc2", [&]() -> Tree {
-        return ptc2(rd, dist(rd), 0, maxd);
-    });
+    bench.run("btc", [&]() -> Tree { return creator(rd, dist(rd), 0, maxd); });
+    bench.run("ptc2", [&]() -> Tree { return ptc2(rd, dist(rd), 0, maxd); });
 
     // Just verify it produces valid trees
     auto tree = creator(rd, dist(rd), 0, maxd);

@@ -5,269 +5,282 @@
 #ifndef OPERON_EVAL_DETAIL
 #define OPERON_EVAL_DETAIL
 
-#include <fmt/format.h>
 #include <cstddef>
+#include <fmt/format.h>
 #include <tuple>
 
+#include "aligned_allocator.hpp"
 #include "concepts.hpp"
 #include "node.hpp"
 #include "range.hpp"
 #include "standard_library.hpp"
 #include "types.hpp"
-#include "aligned_allocator.hpp"
 
 namespace Operon {
 
 namespace Backend {
-template<typename T>
-static auto constexpr BatchSize = 512UL / sizeof(T);
-static auto constexpr DefaultAlignment = 32UL;
+    template <typename T> static auto constexpr BatchSize = 512UL / sizeof(T);
+    static auto constexpr DefaultAlignment = 32UL;
 
-template<typename T>
-using Accessor = aligned_accessor<T, DefaultAlignment>;
+    template <typename T> using Accessor = aligned_accessor<T, DefaultAlignment>;
 
-template<typename T>
-using Container = std::vector<T, AlignedAllocator<T, DefaultAlignment>>;
+    template <typename T> using Container = std::vector<T, AlignedAllocator<T, DefaultAlignment>>;
 
-template<typename T, std::size_t S = BatchSize<T>>
-using Buffer = Operon::MDArray<T, std::extents<int, S, std::dynamic_extent>, std::layout_left, Container<T>>;
+    template <typename T, std::size_t S = BatchSize<T>>
+    using Buffer = Operon::MDArray<T, std::extents<int, S, std::dynamic_extent>, std::layout_left, Container<T>>;
 
-template<typename T, std::size_t S = BatchSize<T>>
-using View = Operon::MDSpan<T, std::extents<int, S, std::dynamic_extent>, std::layout_left>;
+    template <typename T, std::size_t S = BatchSize<T>>
+    using View = Operon::MDSpan<T, std::extents<int, S, std::dynamic_extent>, std::layout_left>;
 
-template<typename T, std::size_t S = BatchSize<T>>
-using ColumnView = Operon::MDSpan<T, std::extents<int, S>, std::layout_left>;
+    template <typename T, std::size_t S = BatchSize<T>>
+    using ColumnView = Operon::MDSpan<T, std::extents<int, S>, std::layout_left>;
 
-template<typename T, std::size_t S>
-auto Ptr(View<T, S> view, std::integral auto col) -> Backend::View<T, S>::element_type* {
-    return view.data_handle() + (col * S);
-}
+    template <typename T, std::size_t S>
+    auto Ptr(View<T, S> view, std::integral auto col) -> Backend::View<T, S>::element_type*
+    {
+        return view.data_handle() + (col * S);
+    }
 
-// utility
-template<typename T, std::size_t S>
-auto Fill(Backend::View<T, S> view, int idx, T value) {
-    auto* p = view.data_handle() + (idx * S);
-    std::fill_n(p, S, value);
-};
+    // utility
+    template <typename T, std::size_t S> auto Fill(Backend::View<T, S> view, int idx, T value)
+    {
+        auto* p = view.data_handle() + (idx * S);
+        std::fill_n(p, S, value);
+    };
 } // namespace Backend
 
 // detect missing specializations for functions
-template<typename T, Operon::BuiltinOp N = Operon::NoBuiltinOp, bool C = false, std::size_t S = Backend::BatchSize<T>>
+template <typename T, Operon::BuiltinOp N = Operon::NoBuiltinOp, bool C = false, std::size_t S = Backend::BatchSize<T>>
 struct Func {
-    auto operator()(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T, S> /*primal*/, std::integral auto /*node index*/, std::integral auto... /*child indices*/) {
-        throw std::runtime_error(fmt::format("backend error: missing specialization for function with hash {}\n", static_cast<Operon::Hash>(N)));
+    auto operator()(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T, S> /*primal*/,
+        std::integral auto /*node index*/, std::integral auto... /*child indices*/)
+    {
+        throw std::runtime_error(fmt::format(
+            "backend error: missing specialization for function with hash {}\n", static_cast<Operon::Hash>(N)));
     }
 };
 
 // detect missing specializations for function derivatives
-template<typename T, Operon::BuiltinOp N = Operon::NoBuiltinOp, std::size_t S = Backend::BatchSize<T>>
-struct Diff {
-    auto operator()(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> /*primal*/, Backend::View<T> /*trace*/, std::integral auto /*node index*/, std::integral auto /*partial index*/) {
-        throw std::runtime_error(fmt::format("backend error: missing specialization for derivative with hash {}\n", static_cast<Operon::Hash>(N)));
+template <typename T, Operon::BuiltinOp N = Operon::NoBuiltinOp, std::size_t S = Backend::BatchSize<T>> struct Diff {
+    auto operator()(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> /*primal*/,
+        Backend::View<T> /*trace*/, std::integral auto /*node index*/, std::integral auto /*partial index*/)
+    {
+        throw std::runtime_error(fmt::format(
+            "backend error: missing specialization for derivative with hash {}\n", static_cast<Operon::Hash>(N)));
     }
 };
 
 // data types used by the dispatch table and the interpreter
 struct Dispatch {
 
-template<typename T>
-//requires std::is_arithmetic_v<T>
-static auto constexpr DefaultBatchSize{ 512UL / sizeof(T) };
+    template <typename T>
+    // requires std::is_arithmetic_v<T>
+    static auto constexpr DefaultBatchSize { 512UL / sizeof(T) };
 
-template<typename T, std::size_t S>
-using Callable = std::function<void(Operon::Vector<Node> const&, Backend::View<T, S>, size_t, Operon::Range)>;
+    template <typename T, std::size_t S>
+    using Callable = std::function<void(Operon::Vector<Node> const&, Backend::View<T, S>, size_t, Operon::Range)>;
 
-template<typename T, std::size_t S>
-using CallableDiff = std::function<void(Operon::Vector<Node> const&, Backend::View<T const, S>, Backend::View<T, S>, int, int)>;
+    template <typename T, std::size_t S>
+    using CallableDiff
+        = std::function<void(Operon::Vector<Node> const&, Backend::View<T const, S>, Backend::View<T, S>, int, int)>;
 
-// dispatching mechanism
-// compared to the simple/naive way of evaluating n-ary symbols, this method has the following advantages:
-// 1) improved performance: the naive method accumulates into the result for each argument, leading to unnecessary assignments
-// 2) minimizing the number of intermediate steps which might improve floating point accuracy of some operations
-//    if arity > 4, one accumulation is performed every 4 args
-template<BuiltinOp Op, typename T, std::size_t S>
-requires Node::IsNaryOp<Op>
-static void NaryOp(Operon::Vector<Node> const& nodes, Backend::View<T, S> data, size_t parentIndex, Operon::Range /*unused*/)
-{
-    const auto nextArg = [&](size_t i) { return i - (nodes[i].Length + 1); };
-    auto arg1 = parentIndex - 1;
-    bool continued = false;
+    // dispatching mechanism
+    // compared to the simple/naive way of evaluating n-ary symbols, this method has the following advantages:
+    // 1) improved performance: the naive method accumulates into the result for each argument, leading to unnecessary
+    // assignments 2) minimizing the number of intermediate steps which might improve floating point accuracy of some
+    // operations
+    //    if arity > 4, one accumulation is performed every 4 args
+    template <BuiltinOp Op, typename T, std::size_t S>
+        requires Node::IsNaryOp<Op>
+    static void NaryOp(
+        Operon::Vector<Node> const& nodes, Backend::View<T, S> data, size_t parentIndex, Operon::Range /*unused*/)
+    {
+        const auto nextArg = [&](size_t i) { return i - (nodes[i].Length + 1); };
+        auto arg1 = parentIndex - 1;
+        bool continued = false;
 
-    auto const call = [&](bool continued, int result, auto... args) {
-        if (continued) { Func<T, Op, true , S>{}(nodes, data, result, args...); }
-        else           { Func<T, Op, false, S>{}(nodes, data, result, args...); }
+        auto const call = [&](bool continued, int result, auto... args) {
+            if (continued) {
+                Func<T, Op, true, S> {}(nodes, data, result, args...);
+            } else {
+                Func<T, Op, false, S> {}(nodes, data, result, args...);
+            }
+        };
+
+        int arity = nodes[parentIndex].Arity;
+        while (arity > 0) {
+            switch (arity) {
+            case 1: {
+                call(continued, parentIndex, arg1);
+                arity = 0;
+                break;
+            }
+            case 2: {
+                auto arg2 = nextArg(arg1);
+                call(continued, parentIndex, arg1, arg2);
+                arity = 0;
+                break;
+            }
+            case 3: {
+                auto arg2 = nextArg(arg1);
+                auto arg3 = nextArg(arg2);
+                call(continued, parentIndex, arg1, arg2, arg3);
+                arity = 0;
+                break;
+            }
+            default: {
+                auto arg2 = nextArg(arg1);
+                auto arg3 = nextArg(arg2);
+                auto arg4 = nextArg(arg3);
+                call(continued, parentIndex, arg1, arg2, arg3, arg4);
+                arity -= 4;
+                arg1 = nextArg(arg4);
+                break;
+            }
+            }
+            continued = true;
+        }
+    }
+
+    template <BuiltinOp Op, typename T, std::size_t S>
+        requires Node::IsBinaryOp<Op>
+    static void BinaryOp(Operon::Vector<Node> const& nodes, Backend::View<T, S> m, size_t i, Operon::Range /*unused*/)
+    {
+        auto j = i - 1;
+        auto k = j - nodes[j].Length - 1;
+        Func<T, Op, false> {}(nodes, m, i, j, k);
+    }
+
+    template <BuiltinOp Op, typename T, std::size_t S>
+        requires Node::IsUnaryOp<Op>
+    static void UnaryOp(Operon::Vector<Node> const& nodes, Backend::View<T, S> m, size_t i, Operon::Range /*unused*/)
+    {
+        Func<T, Op, false> {}(nodes, m, i, i - 1);
+    }
+
+    struct Noop {
+        template <typename... Args> void operator()(Args&&... /*unused*/) {}
     };
 
-    int arity = nodes[parentIndex].Arity;
-    while (arity > 0) {
-        switch (arity) {
-        case 1: {
-            call(continued, parentIndex, arg1);
-            arity = 0;
-            break;
-        }
-        case 2: {
-            auto arg2 = nextArg(arg1);
-            call(continued, parentIndex, arg1, arg2);
-            arity = 0;
-            break;
-        }
-        case 3: {
-            auto arg2 = nextArg(arg1);
-            auto arg3 = nextArg(arg2);
-            call(continued, parentIndex, arg1, arg2, arg3);
-            arity = 0;
-            break;
-        }
-        default: {
-            auto arg2 = nextArg(arg1);
-            auto arg3 = nextArg(arg2);
-            auto arg4 = nextArg(arg3);
-            call(continued, parentIndex, arg1, arg2, arg3, arg4);
-            arity -= 4;
-            arg1 = nextArg(arg4);
-            break;
-        }
-        }
-        continued = true;
+    template <BuiltinOp Op, typename T, std::size_t S>
+    static void DiffOp(
+        Operon::Vector<Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T, S> trace, int i, int j)
+    {
+        Diff<T, Op, S> {}(nodes, primal, trace, i, j);
     }
-}
 
-template<BuiltinOp Op, typename T, std::size_t S>
-requires Node::IsBinaryOp<Op>
-static void BinaryOp(Operon::Vector<Node> const& nodes, Backend::View<T, S> m, size_t i, Operon::Range /*unused*/)
-{
-    auto j = i - 1;
-    auto k = j - nodes[j].Length - 1;
-    Func<T, Op, false>{}(nodes, m, i, j, k);
-}
-
-template<BuiltinOp Op, typename T, std::size_t S>
-requires Node::IsUnaryOp<Op>
-static void UnaryOp(Operon::Vector<Node> const& nodes, Backend::View<T, S> m, size_t i, Operon::Range /*unused*/)
-{
-    Func<T, Op, false>{}(nodes, m, i, i-1);
-}
-
-struct Noop {
-    template<typename... Args>
-    void operator()(Args&&... /*unused*/) {}
-};
-
-template<BuiltinOp Op, typename T, std::size_t S>
-static void DiffOp(Operon::Vector<Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T, S> trace, int i, int j) {
-    Diff<T, Op, S>{}(nodes, primal, trace, i, j);
-}
-
-template<BuiltinOp Op, typename T, std::size_t S>
-static constexpr auto MakeFunctionCall() -> Dispatch::Callable<T, S>
-{
-    if constexpr (Node::IsNaryOp<Op>) {
-        return Callable<T, S>{NaryOp<Op, T, S>};
-    } else if constexpr (Node::IsBinaryOp<Op>) {
-        return Callable<T, S>{BinaryOp<Op, T, S>};
-    } else if constexpr (Node::IsUnaryOp<Op>) {
-        return Callable<T, S>{UnaryOp<Op, T, S>};
+    template <BuiltinOp Op, typename T, std::size_t S>
+    static constexpr auto MakeFunctionCall() -> Dispatch::Callable<T, S>
+    {
+        if constexpr (Node::IsNaryOp<Op>) {
+            return Callable<T, S> { NaryOp<Op, T, S> };
+        } else if constexpr (Node::IsBinaryOp<Op>) {
+            return Callable<T, S> { BinaryOp<Op, T, S> };
+        } else if constexpr (Node::IsUnaryOp<Op>) {
+            return Callable<T, S> { UnaryOp<Op, T, S> };
+        }
     }
-}
 
-template<BuiltinOp Op, typename T, std::size_t S>
-static constexpr auto MakeDiffCall() -> Dispatch::CallableDiff<T, S>
-{
-    // this constexpr if here returns NOOP in case of non-arithmetic types (duals)
-    if constexpr (std::is_arithmetic_v<T>) {
-        return CallableDiff<T, S>{DiffOp<Op, T, S>};
-    } else {
-        return Dispatch::Noop{};
+    template <BuiltinOp Op, typename T, std::size_t S>
+    static constexpr auto MakeDiffCall() -> Dispatch::CallableDiff<T, S>
+    {
+        // this constexpr if here returns NOOP in case of non-arithmetic types (duals)
+        if constexpr (std::is_arithmetic_v<T>) {
+            return CallableDiff<T, S> { DiffOp<Op, T, S> };
+        } else {
+            return Dispatch::Noop {};
+        }
     }
-}
 }; // struct Dispatch
 
 namespace detail {
     // return the index of type T in Tuple
-    template<typename T, typename... Ts>
-    static auto constexpr TypeIndexImpl() {
-        std::size_t i{0};
+    template <typename T, typename... Ts> static auto constexpr TypeIndexImpl()
+    {
+        std::size_t i { 0 };
         for (bool x : { std::is_same_v<T, Ts>... }) {
-            if (x) { break; }
+            if (x) {
+                break;
+            }
             ++i;
         }
         return i;
     }
 
-    template<typename T>
-    concept ExtentsLike = requires {
-        T::size() and std::is_array_v<T>;
-    };
+    template <typename T>
+    concept ExtentsLike = requires { T::size() and std::is_array_v<T>; };
 
-    template<typename T>
-    struct DefaultIndex {
+    template <typename T> struct DefaultIndex {
         using Type = std::size_t;
     };
 
-    template<typename T>
-    struct IntegerIndex {
+    template <typename T> struct IntegerIndex {
         using Type = T::value_type;
     };
 } // namespace detail
 
-template<typename... Ts>
-struct DispatchTable {
+template <typename... Ts> struct DispatchTable {
 
 private:
     static constexpr auto S = sizeof...(Ts);
     using TypeHolder = std::tuple<Ts...>;
-    using LastType   = std::tuple_element_t<S-1, TypeHolder>;
-    using IndexType  = std::conditional_t<std::is_floating_point_v<LastType>, detail::DefaultIndex<LastType>, detail::IntegerIndex<LastType>>::Type;
-    static constexpr auto N = detail::ExtentsLike<LastType> ? S-1 : S;
+    using LastType = std::tuple_element_t<S - 1, TypeHolder>;
+    using IndexType = std::conditional_t<std::is_floating_point_v<LastType>, detail::DefaultIndex<LastType>,
+        detail::IntegerIndex<LastType>>::Type;
+    static constexpr auto N = detail::ExtentsLike<LastType> ? S - 1 : S;
 
-    static std::array constexpr Sizes = []<auto... Idx>(std::integer_sequence<IndexType, Idx...>){
+    static std::array constexpr Sizes = []<auto... Idx>(std::integer_sequence<IndexType, Idx...>) {
         constexpr auto f = [&]<std::size_t TypeIdx>() {
             if constexpr (detail::ExtentsLike<LastType>) {
-                constexpr auto t = []<auto... I>(std::integer_sequence<IndexType, I...>){ return std::tuple{I...}; }(LastType{});
-                if constexpr (TypeIdx < LastType::size()) { return std::get<TypeIdx>(t); }
-                else { return Dispatch::DefaultBatchSize<std::tuple_element_t<TypeIdx, TypeHolder>>; }
+                constexpr auto t = []<auto... I>(std::integer_sequence<IndexType, I...>) {
+                    return std::tuple { I... };
+                }(LastType {});
+                if constexpr (TypeIdx < LastType::size()) {
+                    return std::get<TypeIdx>(t);
+                } else {
+                    return Dispatch::DefaultBatchSize<std::tuple_element_t<TypeIdx, TypeHolder>>;
+                }
             } else {
                 return Dispatch::DefaultBatchSize<std::tuple_element_t<TypeIdx, TypeHolder>>;
             }
         };
-        return std::array{f.template operator()<Idx>()...};
-    }(std::make_integer_sequence<IndexType, N>{});
+        return std::array { f.template operator()<Idx>()... };
+    }(std::make_integer_sequence<IndexType, N> {});
 
-    template<typename T>
-    requires (detail::TypeIndexImpl<T, Ts...>() < N)
+    template <typename T>
+        requires(detail::TypeIndexImpl<T, Ts...>() < N)
     static auto constexpr TypeIndex = detail::TypeIndexImpl<T, Ts...>();
 
 public:
     using SupportedTypes = TypeHolder;
 
-    template<typename T>
-    requires Operon::Concepts::Arithmetic<T>
+    template <typename T>
+        requires Operon::Concepts::Arithmetic<T>
     static constexpr std::size_t BatchSize = Sizes[TypeIndex<T>];
 
-    template<typename T>
-    requires Operon::Concepts::Arithmetic<T>
+    template <typename T>
+        requires Operon::Concepts::Arithmetic<T>
     using Backend = Backend::View<T, BatchSize<T>>;
 
-    template<typename T>
-    requires Operon::Concepts::Arithmetic<T>
+    template <typename T>
+        requires Operon::Concepts::Arithmetic<T>
     using Callable = Dispatch::Callable<T, BatchSize<T>>;
 
-    template<typename T>
-    requires Operon::Concepts::Arithmetic<T>
+    template <typename T>
+        requires Operon::Concepts::Arithmetic<T>
     using CallableDiff = Dispatch::CallableDiff<T, BatchSize<T>>;
 
 private:
-    using TFun = decltype([]<auto... Idx>(std::index_sequence<Idx...>){
-                    return std::make_tuple(Callable<std::tuple_element_t<Idx, TypeHolder>>{}...);
-                 }(std::make_index_sequence<N>{}));
+    using TFun = decltype([]<auto... Idx>(std::index_sequence<Idx...>) {
+        return std::make_tuple(Callable<std::tuple_element_t<Idx, TypeHolder>> {}...);
+    }(std::make_index_sequence<N> {}));
 
-    using TDer = decltype([]<auto... Idx>(std::index_sequence<Idx...>){
-                    return std::make_tuple(CallableDiff<std::tuple_element_t<Idx, TypeHolder>>{}...);
-                 }(std::make_index_sequence<N>{}));
+    using TDer = decltype([]<auto... Idx>(std::index_sequence<Idx...>) {
+        return std::make_tuple(CallableDiff<std::tuple_element_t<Idx, TypeHolder>> {}...);
+    }(std::make_index_sequence<N> {}));
 
     using Tuple = std::tuple<TFun, TDer>;
-    using Map   = Operon::Map<Operon::Hash, Tuple>;
+    using Map = Operon::Map<Operon::Hash, Tuple>;
 
     Map map_;
 
@@ -276,34 +289,34 @@ public:
 
     ~DispatchTable() = default;
 
-    auto operator=(DispatchTable const& other) -> DispatchTable& {
+    auto operator=(DispatchTable const& other) -> DispatchTable&
+    {
         if (this != &other) {
             map_ = other.map_;
         }
         return *this;
     }
 
-    auto operator=(DispatchTable&& other) noexcept -> DispatchTable& {
+    auto operator=(DispatchTable&& other) noexcept -> DispatchTable&
+    {
         map_ = std::move(other.map_);
         return *this;
     }
 
-    template<typename U>
-    static constexpr auto SupportsType = TypeIndex<U> < N;
+    template <typename U> static constexpr auto SupportsType = TypeIndex<U> < N;
 
-    explicit DispatchTable(Map const& map) : map_(map) { }
-    explicit DispatchTable(Map&& map) : map_(std::move(map)) { }
-    explicit DispatchTable(std::unordered_map<Operon::Hash, Tuple> const& map) : map_(map.begin(), map.end()) { }
+    explicit DispatchTable(Map const& map) : map_(map) {}
+    explicit DispatchTable(Map&& map) : map_(std::move(map)) {}
+    explicit DispatchTable(std::unordered_map<Operon::Hash, Tuple> const& map) : map_(map.begin(), map.end()) {}
 
-    DispatchTable(DispatchTable const& other) : map_(other.map_) { }
-    DispatchTable(DispatchTable &&other) noexcept : map_(std::move(other.map_)) { }
+    DispatchTable(DispatchTable const& other) : map_(other.map_) {}
+    DispatchTable(DispatchTable&& other) noexcept : map_(std::move(other.map_)) {}
 
-    template<typename Self>
-    [[nodiscard]] auto GetMap(this Self& self) -> decltype(auto) { return (self.map_); }
+    template <typename Self> [[nodiscard]] auto GetMap(this Self& self) -> decltype(auto) { return (self.map_); }
 
     // Self&, not Self&&: rejects a mutable rvalue *this, which would
     // otherwise return a reference into an about-to-be-destroyed temporary.
-    template<typename T, typename Self>
+    template <typename T, typename Self>
     [[nodiscard]] auto GetFunction(this Self& self, Operon::Hash const h) -> decltype(auto)
     {
         if (auto it = self.map_.find(h); it != self.map_.end()) {
@@ -312,7 +325,7 @@ public:
         throw std::runtime_error(fmt::format("Hash value {} is not in the map\n", h));
     }
 
-    template<typename T, typename Self>
+    template <typename T, typename Self>
     [[nodiscard]] auto GetDerivative(this Self& self, Operon::Hash const h) -> decltype(auto)
     {
         if (auto it = self.map_.find(h); it != self.map_.end()) {
@@ -321,8 +334,7 @@ public:
         throw std::runtime_error(fmt::format("Hash value {} is not in the map\n", h));
     }
 
-    template<typename T>
-    [[nodiscard]] auto Get(Operon::Hash const h) const -> std::tuple<Callable<T>, CallableDiff<T>>
+    template <typename T> [[nodiscard]] auto Get(Operon::Hash const h) const -> std::tuple<Callable<T>, CallableDiff<T>>
     {
         if (auto it = map_.find(h); it != map_.end()) {
             return std::get<static_cast<size_t>(TypeIndex<T>)>(it->second);
@@ -333,28 +345,29 @@ public:
     // Insert (or overwrite) the callable and derivative for one scalar type T.
     // Creates a default-constructed map entry if the hash is absent, then sets
     // only the type-slot for T, leaving other types in the entry untouched.
-    template<typename T>
-    requires Operon::Concepts::Arithmetic<T>
-    void RegisterFunction(Operon::Hash hash, Callable<T> f, CallableDiff<T> df = {}) {
+    template <typename T>
+        requires Operon::Concepts::Arithmetic<T>
+    void RegisterFunction(Operon::Hash hash, Callable<T> f, CallableDiff<T> df = {})
+    {
         auto& entry = map_[hash];
         std::get<TypeIndex<T>>(std::get<0>(entry)) = std::move(f);
         std::get<TypeIndex<T>>(std::get<1>(entry)) = std::move(df);
     }
 
-    template<typename T>
+    template <typename T>
     [[nodiscard]] auto TryGetFunction(Operon::Hash const h) const noexcept -> std::optional<Callable<T>>
     {
         if (auto it = map_.find(h); it != map_.end()) {
-            return std::optional{ std::get<TypeIndex<T>>(std::get<0>(it->second)) };
+            return std::optional { std::get<TypeIndex<T>>(std::get<0>(it->second)) };
         }
         return {};
     }
 
-    template<typename T>
+    template <typename T>
     [[nodiscard]] auto TryGetDerivative(Operon::Hash const h) const noexcept -> std::optional<CallableDiff<T>>
     {
         if (auto it = map_.find(h); it != map_.end()) {
-            return std::optional{ std::get<TypeIndex<T>>(std::get<1>(it->second)) };
+            return std::optional { std::get<TypeIndex<T>>(std::get<1>(it->second)) };
         }
         return {};
     }
@@ -373,50 +386,42 @@ using ScalarDispatch = DispatchTable<Operon::Scalar>;
 // available here), so it - and its private helpers below - live in this
 // backend-facing header instead.
 namespace detail {
-    template<BuiltinOp Op, typename T, typename... Ts>
-    requires Operon::Concepts::Arithmetic<T>
+    template <BuiltinOp Op, typename T, typename... Ts>
+        requires Operon::Concepts::Arithmetic<T>
     void RegisterBuiltinForType(DispatchTable<Ts...>& dt, Operon::Hash hash)
     {
         constexpr auto S = DispatchTable<Ts...>::template BatchSize<T>;
         dt.template RegisterFunction<T>(
-            hash,
-            Dispatch::MakeFunctionCall<Op, T, S>(),
-            Dispatch::MakeDiffCall<Op, T, S>());
+            hash, Dispatch::MakeFunctionCall<Op, T, S>(), Dispatch::MakeDiffCall<Op, T, S>());
     }
 
-    template<BuiltinOp Op, typename T, typename... Ts>
-    requires (!Operon::Concepts::Arithmetic<T>)
+    template <BuiltinOp Op, typename T, typename... Ts>
+        requires(!Operon::Concepts::Arithmetic<T>)
     void RegisterBuiltinForType(DispatchTable<Ts...>& /*dt*/, Operon::Hash /*hash*/)
     {
     }
 
-    template<BuiltinOp Op, typename... Ts>
-    void RegisterBuiltinOp(DispatchTable<Ts...>& dt)
+    template <BuiltinOp Op, typename... Ts> void RegisterBuiltinOp(DispatchTable<Ts...>& dt)
     {
         auto const hash = static_cast<Operon::Hash>(Op);
         (RegisterBuiltinForType<Op, Ts>(dt, hash), ...);
     }
 
-    template<typename... Ts, std::size_t... I>
+    template <typename... Ts, std::size_t... I>
     void RegisterAllBuiltinOps(DispatchTable<Ts...>& dt, std::index_sequence<I...> /*unused*/)
     {
         (RegisterBuiltinOp<static_cast<BuiltinOp>(I)>(dt), ...);
     }
 } // namespace detail
 
-template<typename... Ts>
-void StandardLibrary::Register(DispatchTable<Ts...>& dt)
+template <typename... Ts> void StandardLibrary::Register(DispatchTable<Ts...>& dt)
 {
     RegisterNames();
-    detail::RegisterAllBuiltinOps(dt, std::make_index_sequence<Operon::BuiltinOpCount>{});
+    detail::RegisterAllBuiltinOps(dt, std::make_index_sequence<Operon::BuiltinOpCount> {});
 }
 
 } // namespace Operon
 
-template<typename... Ts>
-Operon::DispatchTable<Ts...>::DispatchTable()
-{
-    Operon::StandardLibrary::Register(*this);
-}
+template <typename... Ts> Operon::DispatchTable<Ts...>::DispatchTable() { Operon::StandardLibrary::Register(*this); }
 
 #endif

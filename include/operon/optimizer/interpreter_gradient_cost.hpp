@@ -37,7 +37,8 @@ namespace Operon::Concepts {
  */
 template <typename T>
 concept InterpreterGradientCost = GradientCost<T>
-    && std::constructible_from<T, InterpreterBase<Operon::Scalar> const*, ConstScalarSpan, Range, RandomGenerator*, std::size_t, ConstScalarSpan>
+    && std::constructible_from<T, InterpreterBase<Operon::Scalar> const*, ConstScalarSpan, Range, RandomGenerator*,
+        std::size_t, ConstScalarSpan>
     && requires(T const& cost) {
            { cost.FunctionEvaluations() } -> std::same_as<std::size_t>;
            { cost.JacobianEvaluations() } -> std::same_as<std::size_t>;

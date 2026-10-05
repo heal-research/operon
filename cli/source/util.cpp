@@ -19,48 +19,27 @@
 #include "operon/core/node.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/serialization.hpp"
-#include "operon/core/version.hpp"
 #include "operon/core/types.hpp"
+#include "operon/core/version.hpp"
 
 using Operon::BuiltinOp;
 using Operon::NodeType;
 
 namespace Operon {
 
-static const Operon::Map<std::string, PrimitiveSetConfig> Primitives {
-    { "add",      ToConfig(BuiltinOp::Add) },
-    { "mul",      ToConfig(BuiltinOp::Mul) },
-    { "sub",      ToConfig(BuiltinOp::Sub) },
-    { "div",      ToConfig(BuiltinOp::Div) },
-    { "fmin",     ToConfig(BuiltinOp::Fmin) },
-    { "fmax",     ToConfig(BuiltinOp::Fmax) },
-    { "aq",       ToConfig(BuiltinOp::Aq) },
-    { "pow",      ToConfig(BuiltinOp::Pow) },
-    { "powabs",   ToConfig(BuiltinOp::Powabs) },
-    { "abs",      ToConfig(BuiltinOp::Abs) },
-    { "acos",     ToConfig(BuiltinOp::Acos) },
-    { "asin",     ToConfig(BuiltinOp::Asin) },
-    { "atan",     ToConfig(BuiltinOp::Atan) },
-    { "cbrt",     ToConfig(BuiltinOp::Cbrt) },
-    { "ceil",     ToConfig(BuiltinOp::Ceil) },
-    { "cos",      ToConfig(BuiltinOp::Cos) },
-    { "cosh",     ToConfig(BuiltinOp::Cosh) },
-    { "exp",      ToConfig(BuiltinOp::Exp) },
-    { "floor",    ToConfig(BuiltinOp::Floor) },
-    { "log",      ToConfig(BuiltinOp::Log) },
-    { "logabs",   ToConfig(BuiltinOp::Logabs) },
-    { "log1p",    ToConfig(BuiltinOp::Log1p) },
-    { "sin",      ToConfig(BuiltinOp::Sin) },
-    { "sinh",     ToConfig(BuiltinOp::Sinh) },
-    { "sqrt",     ToConfig(BuiltinOp::Sqrt) },
-    { "sqrtabs",  ToConfig(BuiltinOp::Sqrtabs) },
-    { "tan",      ToConfig(BuiltinOp::Tan) },
-    { "tanh",     ToConfig(BuiltinOp::Tanh) },
-    { "square",   ToConfig(BuiltinOp::Square) },
-    { "dyn",      ToConfig(NodeType::Function) },
-    { "constant", ToConfig(NodeType::Constant) },
-    { "variable", ToConfig(NodeType::Variable) }
-};
+static const Operon::Map<std::string, PrimitiveSetConfig> Primitives { { "add", ToConfig(BuiltinOp::Add) },
+    { "mul", ToConfig(BuiltinOp::Mul) }, { "sub", ToConfig(BuiltinOp::Sub) }, { "div", ToConfig(BuiltinOp::Div) },
+    { "fmin", ToConfig(BuiltinOp::Fmin) }, { "fmax", ToConfig(BuiltinOp::Fmax) }, { "aq", ToConfig(BuiltinOp::Aq) },
+    { "pow", ToConfig(BuiltinOp::Pow) }, { "powabs", ToConfig(BuiltinOp::Powabs) }, { "abs", ToConfig(BuiltinOp::Abs) },
+    { "acos", ToConfig(BuiltinOp::Acos) }, { "asin", ToConfig(BuiltinOp::Asin) }, { "atan", ToConfig(BuiltinOp::Atan) },
+    { "cbrt", ToConfig(BuiltinOp::Cbrt) }, { "ceil", ToConfig(BuiltinOp::Ceil) }, { "cos", ToConfig(BuiltinOp::Cos) },
+    { "cosh", ToConfig(BuiltinOp::Cosh) }, { "exp", ToConfig(BuiltinOp::Exp) }, { "floor", ToConfig(BuiltinOp::Floor) },
+    { "log", ToConfig(BuiltinOp::Log) }, { "logabs", ToConfig(BuiltinOp::Logabs) },
+    { "log1p", ToConfig(BuiltinOp::Log1p) }, { "sin", ToConfig(BuiltinOp::Sin) }, { "sinh", ToConfig(BuiltinOp::Sinh) },
+    { "sqrt", ToConfig(BuiltinOp::Sqrt) }, { "sqrtabs", ToConfig(BuiltinOp::Sqrtabs) },
+    { "tan", ToConfig(BuiltinOp::Tan) }, { "tanh", ToConfig(BuiltinOp::Tanh) },
+    { "square", ToConfig(BuiltinOp::Square) }, { "dyn", ToConfig(NodeType::Function) },
+    { "constant", ToConfig(NodeType::Constant) }, { "variable", ToConfig(NodeType::Variable) } };
 
 auto Split(const std::string& s, char delimiter) -> std::vector<std::string>
 {
@@ -86,8 +65,8 @@ auto FormatDuration(std::chrono::duration<double> d) -> std::string
 
 auto FormatBytes(size_t bytes) -> std::string
 {
-    constexpr std::array<char, 6> sizes{" KMGT"};
-    constexpr size_t base{1024};
+    constexpr std::array<char, 6> sizes { " KMGT" };
+    constexpr size_t base { 1024 };
     auto p = static_cast<size_t>(std::floor(std::log2(bytes) / std::log2(base)));
     return fmt::format("{:.2f} {}b", static_cast<double>(bytes) / std::pow(base, p), sizes.at(p));
 }
@@ -104,7 +83,7 @@ auto ParseRange(std::string const& str) -> std::pair<size_t, size_t>
 
 auto ParsePrimitiveSetConfig(const std::string& options) -> PrimitiveSetConfig
 {
-    PrimitiveSetConfig config{};
+    PrimitiveSetConfig config {};
     for (auto& s : Split(options, ',')) {
         if (auto it = Primitives.find(s); it != Primitives.end()) {
             config |= it->second;
@@ -126,7 +105,8 @@ auto PrintPrimitives(PrimitiveSetConfig config) -> void
         auto hash = node.HashValue;
         auto enabled = tmpSet.Contains(hash) && tmpSet.IsEnabled(hash);
         auto freq = enabled ? tmpSet.Frequency(hash) : 0U;
-        fmt::print("{:<8}\t{:<50}\t{:>7}\t\t{:>9}\n", node.Name(), node.Desc(), enabled, freq != 0U ? std::to_string(freq) : "-");
+        fmt::print("{:<8}\t{:<50}\t{:>7}\t\t{:>9}\n", node.Name(), node.Desc(), enabled,
+            freq != 0U ? std::to_string(freq) : "-");
     };
 
     for (size_t i = 0; i < Operon::BuiltinOpCount; ++i) {
@@ -143,79 +123,129 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
     cxxopts::Options opts(name, desc);
     opts.set_width(width);
 
-    std::string const symbols = "add, sub, mul, div, exp, log, square, sqrt, cbrt, sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, abs, aq, ceil, floor, fmin, fmax, log1p, logabs, sqrtabs, pow, powabs";
+    std::string const symbols
+        = "add, sub, mul, div, exp, log, square, sqrt, cbrt, sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, abs, "
+          "aq, ceil, floor, fmin, fmax, log1p, logabs, sqrtabs, pow, powabs";
 
-    opts.add_options()
-        ("dataset", "Dataset file name (csv) (required)", cxxopts::value<std::string>())
-        ("shuffle", "Shuffle the input data", cxxopts::value<bool>()->default_value("false"))
-        ("standardize", "Standardize the training partition (zero mean, unit variance)", cxxopts::value<bool>()->default_value("false"))
-        ("train", "Training range specified as start:end (required)", cxxopts::value<std::string>())
-        ("test", "Test range specified as start:end", cxxopts::value<std::string>())
-        ("target", "Name of the target variable (required)", cxxopts::value<std::string>())
-        ("inputs", "Comma-separated list of input variables", cxxopts::value<std::string>())
-        ("epsilon", "Tolerance for fitness comparison (needed e.g. for eps-dominance)", cxxopts::value<Operon::Scalar>()->default_value("1e-6"))
-        ("objective", "The error metric used for calculating fitness", cxxopts::value<std::string>()->default_value("r2"))
-        ("linear-scaling", "Apply linear scaling on model predictions", cxxopts::value<bool>()->default_value("true"))
-        ("skip-nonfinite", "Skip non-finite rows instead of clamping fitness to ErrMax on any non-finite prediction (SSE/MSE/NMSE/RMSE/MAE objectives only)", cxxopts::value<bool>()->default_value("false"))
-        ("nonfinite-penalty-weight", "Penalty weight applied to the non-finite row fraction when --skip-nonfinite is set (scaled by target variance for non-normalized metrics)", cxxopts::value<double>()->default_value("1.0"))
-        ("jit", "JIT mode: 'all' = JIT evaluator + optimizer, 'jac' = interpreter evaluator + JIT Jacobian optimizer (requires HAVE_ASMJIT). Use --jit=jac for jac mode; bare --jit defaults to all.", cxxopts::value<std::string>()->default_value("")->implicit_value("all"))
-        ("jit-max-length", "Skip JIT compilation for trees longer than this (0 = disabled)", cxxopts::value<int>()->default_value("0"))
-        ("jit-min-visits", "Compile a tree only after it has been seen this many times (default 1 = always)", cxxopts::value<std::size_t>()->default_value("1"))
-        ("population-size", "Population size", cxxopts::value<size_t>()->default_value("1000"))
-        ("pool-size", "Recombination pool size (how many generated offspring per generation)", cxxopts::value<size_t>()->default_value("1000"))
-        ("seed", "Random number seed", cxxopts::value<Operon::RandomGenerator::result_type>()->default_value("0"))
-        ("generations", "Number of generations", cxxopts::value<size_t>()->default_value("1000"))
-        ("evaluations", "Evaluation budget", cxxopts::value<size_t>()->default_value("1000000"))
-        ("iterations", "Local optimization iterations", cxxopts::value<size_t>()->default_value("0"))
-        ("selection-pressure", "Selection pressure", cxxopts::value<size_t>()->default_value("100"))
-        ("maxlength", "Maximum length", cxxopts::value<size_t>()->default_value("50"))
-        ("maxdepth", "Maximum depth", cxxopts::value<size_t>()->default_value("10"))
-        ("crossover-probability", "The probability to apply crossover", cxxopts::value<Operon::Scalar>()->default_value("1.0"))
-        ("crossover-internal-probability", "Crossover bias towards swapping function nodes", cxxopts::value<Operon::Scalar>()->default_value("0.9"))
-        ("mutation-probability", "The probability to apply mutation", cxxopts::value<Operon::Scalar>()->default_value("0.25"))
-        ("creator", "Tree creator: name:bias:mindepth:maxdepth:maxlength (e.g. --creator ptc2:0.5::20:30). Omitted fields use --creator-mindepth/--creator-maxdepth/--maxlength. BTC ignores depths to preserve length; PTC2 enforces max depth but can return shorter trees.", cxxopts::value<std::string>()->default_value("btc"))
-        ("creator-mindepth", "Default minimum tree depth for --creator; honored by grow, ignored by BTC/PTC2", cxxopts::value<std::size_t>()->default_value("1"))
-        ("creator-maxdepth", "Default maximum tree depth for --creator; enforced by grow/PTC2, ignored by BTC", cxxopts::value<std::size_t>()->default_value("100"))
-        ("female-selector", "Female selection operator, with optional parameters separated by : (eg, --selector tournament:5)", cxxopts::value<std::string>()->default_value("tournament"))
-        ("male-selector", "Male selection operator, with optional parameters separated by : (eg, --selector tournament:5)", cxxopts::value<std::string>()->default_value("tournament"))
-        ("offspring-generator", "OffspringGenerator operator, with optional parameters separated by : (eg --offspring-generator brood:10:10)", cxxopts::value<std::string>()->default_value("basic"))
-        ("reinserter", "Reinsertion operator merging offspring in the recombination pool back into the population", cxxopts::value<std::string>()->default_value("keep-best"))
-        ("mutators", "Comma-separated mutation operators to use, with optional weight separated by : (default weight 1.0), e.g. --mutators onepoint:2,changefunc,replacesubtree. Available: onepoint, multipoint, changevar, changefunc, replacesubtree, insertsubtree, removechild, removesubtree, discretepoint, shuffle", cxxopts::value<std::string>()->default_value("onepoint:1,changevar:1,changefunc:1,replacesubtree:1,insertsubtree:1,removesubtree:1,discretepoint:1"))
-        ("elitism", "Number of best individuals guaranteed to carry over between generations, regardless of the reinserter's merge/replace strategy (default: 1 for GP, 0 for NSGA2)", cxxopts::value<size_t>())
-        ("enable-symbols", "Comma-separated list of enabled symbols ("+symbols+")", cxxopts::value<std::string>())
-        ("local-search-probability", "Probability for local search", cxxopts::value<Operon::Scalar>()->default_value("1.0"))
-        ("lamarckian-probability", "Probability that the local search improvements are saved back into the chromosome", cxxopts::value<Operon::Scalar>()->default_value("1.0"))
-        ("disable-symbols", "Comma-separated list of disabled symbols ("+symbols+")", cxxopts::value<std::string>())
-        ("symbolic", "Operate in symbolic mode - no coefficient tuning or coefficient mutation", cxxopts::value<bool>()->default_value("false"))
-        ("show-primitives", "Display the primitive set used by the algorithm")
-        ("threads", "Number of threads to use for parallelism", cxxopts::value<size_t>()->default_value("0"))
-        ("timelimit", "Time limit after which the algorithm will terminate", cxxopts::value<size_t>()->default_value(std::to_string(std::numeric_limits<size_t>::max())))
-        ("transposition-cache", "Cache fitness values keyed by Zobrist hash of tree structure; most effective with coefficient optimization enabled", cxxopts::value<bool>()->default_value("false"))
-        ("cache-max-age", "Expire transposition cache entries older than this many generations (0 = never expire); only effective with --transposition-cache", cxxopts::value<size_t>()->default_value("0"))
-        ("pareto-front", "Write rank-0 Pareto front to this JSON file after the run (only effective with Pareto-based algorithms, e.g. operon_nsgp)", cxxopts::value<std::string>())
-        ("model-selection", "Pareto front model selection: obj0 (lowest first objective), mdl, bic, aic", cxxopts::value<std::string>()->default_value("obj0"))
-        ("mdl-likelihood", "Likelihood for MDL/BIC/AIC model selection: gaussian or poisson", cxxopts::value<std::string>()->default_value("gaussian"))
-        ("checkpoint-interval", "Save a checkpoint every N generations (0 = disabled)", cxxopts::value<std::size_t>()->default_value("0"))
-        ("checkpoint-file", "Path for checkpoint output (BEVE binary format)", cxxopts::value<std::string>()->default_value("checkpoint.beve"))
-        ("resume", "Resume a previous run from this checkpoint file", cxxopts::value<std::string>())
-        ("probes-config", R"(Path to a JSON config file describing per-generation instrumentation probes to run, e.g. {"probes":[{"type":"cache_hit_rate","every":1}],"sink":{"type":"jsonl","path":"metrics.jsonl"}})", cxxopts::value<std::string>())
-        ("shape-constraints-config", R"(Path to a JSON config file describing shape constraints (function/derivative sign or value bounds over a domain box) to reject infeasible individuals during fitness evaluation, e.g. {"domains":{"x":[0.1,15]},"constraints":[{"op":"derivative","variable":"x","order":1,"sign":-1}]})", cxxopts::value<std::string>())
-        ("shape-enforcement", "Comma-separated shape-constraint enforcement modes: hard-reject, penalty, extra-objective, feasibility-first (default with constraints: GP hard-reject,feasibility-first; NSGA2 hard-reject)", cxxopts::value<std::string>())
-        ("shape-penalty-weight", "Penalty weight applied to summed shape-constraint violation in penalty mode (finite, non-negative)", cxxopts::value<double>()->default_value("1.0"))
-        ("shape-unknown-violation", "Violation magnitude assigned to each uncertified shape constraint in penalty/extra-objective modes (finite, non-negative)", cxxopts::value<double>()->default_value("1.0"))
-        ("shape-worst-value", "Fitness value assigned by hard-reject shape enforcement to infeasible individuals (finite)", cxxopts::value<double>()->default_value("1.0"))
-        ("shape-bisection-depth", "Maximum domain bisection depth for shape bounds (0-20)", cxxopts::value<int>()->default_value("3"))
-        ("shape-bound-mode", "Shape-constraint bound backend: interval (default), combined, affine, bisected or bisected:N (depth 0-20)", cxxopts::value<std::string>()->default_value("interval"))
-        ("debug", "Debug mode (more information displayed)")
-        ("help", "Print help")
-        ("version", "Print version and program information");
+    opts.add_options()("dataset", "Dataset file name (csv) (required)", cxxopts::value<std::string>())(
+        "shuffle", "Shuffle the input data", cxxopts::value<bool>()->default_value("false"))("standardize",
+        "Standardize the training partition (zero mean, unit variance)",
+        cxxopts::value<bool>()->default_value("false"))("train", "Training range specified as start:end (required)",
+        cxxopts::value<std::string>())("test", "Test range specified as start:end", cxxopts::value<std::string>())(
+        "target", "Name of the target variable (required)", cxxopts::value<std::string>())(
+        "inputs", "Comma-separated list of input variables", cxxopts::value<std::string>())("epsilon",
+        "Tolerance for fitness comparison (needed e.g. for eps-dominance)",
+        cxxopts::value<Operon::Scalar>()->default_value("1e-6"))("objective",
+        "The error metric used for calculating fitness",
+        cxxopts::value<std::string>()->default_value("r2"))("linear-scaling",
+        "Apply linear scaling on model predictions", cxxopts::value<bool>()->default_value("true"))("skip-nonfinite",
+        "Skip non-finite rows instead of clamping fitness to ErrMax on any non-finite prediction "
+        "(SSE/MSE/NMSE/RMSE/MAE objectives only)",
+        cxxopts::value<bool>()->default_value("false"))("nonfinite-penalty-weight",
+        "Penalty weight applied to the non-finite row fraction when --skip-nonfinite is set (scaled by target variance "
+        "for non-normalized metrics)",
+        cxxopts::value<double>()->default_value("1.0"))("jit",
+        "JIT mode: 'all' = JIT evaluator + optimizer, 'jac' = interpreter evaluator + JIT Jacobian optimizer (requires "
+        "HAVE_ASMJIT). Use --jit=jac for jac mode; bare --jit defaults to all.",
+        cxxopts::value<std::string>()->default_value("")->implicit_value("all"))("jit-max-length",
+        "Skip JIT compilation for trees longer than this (0 = disabled)", cxxopts::value<int>()->default_value("0"))(
+        "jit-min-visits", "Compile a tree only after it has been seen this many times (default 1 = always)",
+        cxxopts::value<std::size_t>()->default_value("1"))(
+        "population-size", "Population size", cxxopts::value<size_t>()->default_value("1000"))("pool-size",
+        "Recombination pool size (how many generated offspring per generation)",
+        cxxopts::value<size_t>()->default_value("1000"))(
+        "seed", "Random number seed", cxxopts::value<Operon::RandomGenerator::result_type>()->default_value("0"))(
+        "generations", "Number of generations", cxxopts::value<size_t>()->default_value("1000"))(
+        "evaluations", "Evaluation budget", cxxopts::value<size_t>()->default_value("1000000"))(
+        "iterations", "Local optimization iterations", cxxopts::value<size_t>()->default_value("0"))(
+        "selection-pressure", "Selection pressure", cxxopts::value<size_t>()->default_value("100"))(
+        "maxlength", "Maximum length", cxxopts::value<size_t>()->default_value("50"))("maxdepth", "Maximum depth",
+        cxxopts::value<size_t>()->default_value("10"))("crossover-probability", "The probability to apply crossover",
+        cxxopts::value<Operon::Scalar>()->default_value("1.0"))("crossover-internal-probability",
+        "Crossover bias towards swapping function nodes",
+        cxxopts::value<Operon::Scalar>()->default_value("0.9"))("mutation-probability",
+        "The probability to apply mutation", cxxopts::value<Operon::Scalar>()->default_value("0.25"))("creator",
+        "Tree creator: name:bias:mindepth:maxdepth:maxlength (e.g. --creator ptc2:0.5::20:30). Omitted fields use "
+        "--creator-mindepth/--creator-maxdepth/--maxlength. BTC ignores depths to preserve length; PTC2 enforces max "
+        "depth but can return shorter trees.",
+        cxxopts::value<std::string>()->default_value("btc"))("creator-mindepth",
+        "Default minimum tree depth for --creator; honored by grow, ignored by BTC/PTC2",
+        cxxopts::value<std::size_t>()->default_value("1"))("creator-maxdepth",
+        "Default maximum tree depth for --creator; enforced by grow/PTC2, ignored by BTC",
+        cxxopts::value<std::size_t>()->default_value("100"))("female-selector",
+        "Female selection operator, with optional parameters separated by : (eg, --selector tournament:5)",
+        cxxopts::value<std::string>()->default_value("tournament"))("male-selector",
+        "Male selection operator, with optional parameters separated by : (eg, --selector tournament:5)",
+        cxxopts::value<std::string>()->default_value("tournament"))("offspring-generator",
+        "OffspringGenerator operator, with optional parameters separated by : (eg --offspring-generator brood:10:10)",
+        cxxopts::value<std::string>()->default_value("basic"))("reinserter",
+        "Reinsertion operator merging offspring in the recombination pool back into the population",
+        cxxopts::value<std::string>()->default_value("keep-best"))("mutators",
+        "Comma-separated mutation operators to use, with optional weight separated by : (default weight 1.0), e.g. "
+        "--mutators onepoint:2,changefunc,replacesubtree. Available: onepoint, multipoint, changevar, changefunc, "
+        "replacesubtree, insertsubtree, removechild, removesubtree, discretepoint, shuffle",
+        cxxopts::value<std::string>()->default_value(
+            "onepoint:1,changevar:1,changefunc:1,replacesubtree:1,insertsubtree:1,removesubtree:1,discretepoint:1"))(
+        "elitism",
+        "Number of best individuals guaranteed to carry over between generations, regardless of the reinserter's "
+        "merge/replace strategy (default: 1 for GP, 0 for NSGA2)",
+        cxxopts::value<size_t>())("enable-symbols", "Comma-separated list of enabled symbols (" + symbols + ")",
+        cxxopts::value<std::string>())("local-search-probability", "Probability for local search",
+        cxxopts::value<Operon::Scalar>()->default_value("1.0"))("lamarckian-probability",
+        "Probability that the local search improvements are saved back into the chromosome",
+        cxxopts::value<Operon::Scalar>()->default_value("1.0"))("disable-symbols",
+        "Comma-separated list of disabled symbols (" + symbols + ")", cxxopts::value<std::string>())("symbolic",
+        "Operate in symbolic mode - no coefficient tuning or coefficient mutation",
+        cxxopts::value<bool>()->default_value("false"))(
+        "show-primitives", "Display the primitive set used by the algorithm")("threads",
+        "Number of threads to use for parallelism", cxxopts::value<size_t>()->default_value("0"))("timelimit",
+        "Time limit after which the algorithm will terminate",
+        cxxopts::value<size_t>()->default_value(std::to_string(std::numeric_limits<size_t>::max())))(
+        "transposition-cache",
+        "Cache fitness values keyed by Zobrist hash of tree structure; most effective with coefficient optimization "
+        "enabled",
+        cxxopts::value<bool>()->default_value("false"))("cache-max-age",
+        "Expire transposition cache entries older than this many generations (0 = never expire); only effective with "
+        "--transposition-cache",
+        cxxopts::value<size_t>()->default_value("0"))("pareto-front",
+        "Write rank-0 Pareto front to this JSON file after the run (only effective with Pareto-based algorithms, e.g. "
+        "operon_nsgp)",
+        cxxopts::value<std::string>())("model-selection",
+        "Pareto front model selection: obj0 (lowest first objective), mdl, bic, aic",
+        cxxopts::value<std::string>()->default_value("obj0"))("mdl-likelihood",
+        "Likelihood for MDL/BIC/AIC model selection: gaussian or poisson",
+        cxxopts::value<std::string>()->default_value("gaussian"))("checkpoint-interval",
+        "Save a checkpoint every N generations (0 = disabled)", cxxopts::value<std::size_t>()->default_value("0"))(
+        "checkpoint-file", "Path for checkpoint output (BEVE binary format)",
+        cxxopts::value<std::string>()->default_value("checkpoint.beve"))(
+        "resume", "Resume a previous run from this checkpoint file", cxxopts::value<std::string>())("probes-config",
+        R"(Path to a JSON config file describing per-generation instrumentation probes to run, e.g. {"probes":[{"type":"cache_hit_rate","every":1}],"sink":{"type":"jsonl","path":"metrics.jsonl"}})",
+        cxxopts::value<std::string>())("shape-constraints-config",
+        R"(Path to a JSON config file describing shape constraints (function/derivative sign or value bounds over a domain box) to reject infeasible individuals during fitness evaluation, e.g. {"domains":{"x":[0.1,15]},"constraints":[{"op":"derivative","variable":"x","order":1,"sign":-1}]})",
+        cxxopts::value<std::string>())("shape-enforcement",
+        "Comma-separated shape-constraint enforcement modes: hard-reject, penalty, extra-objective, feasibility-first "
+        "(default with constraints: GP hard-reject,feasibility-first; NSGA2 hard-reject)",
+        cxxopts::value<std::string>())("shape-penalty-weight",
+        "Penalty weight applied to summed shape-constraint violation in penalty mode (finite, non-negative)",
+        cxxopts::value<double>()->default_value("1.0"))("shape-unknown-violation",
+        "Violation magnitude assigned to each uncertified shape constraint in penalty/extra-objective modes (finite, "
+        "non-negative)",
+        cxxopts::value<double>()->default_value("1.0"))("shape-worst-value",
+        "Fitness value assigned by hard-reject shape enforcement to infeasible individuals (finite)",
+        cxxopts::value<double>()->default_value("1.0"))("shape-bisection-depth",
+        "Maximum domain bisection depth for shape bounds (0-20)",
+        cxxopts::value<int>()->default_value("3"))("shape-bound-mode",
+        "Shape-constraint bound backend: interval (default), combined, affine, bisected or bisected:N (depth 0-20)",
+        cxxopts::value<std::string>()->default_value("interval"))("debug", "Debug mode (more information displayed)")(
+        "help", "Print help")("version", "Print version and program information");
     return opts;
 }
 
-auto ResumeFromCheckpoint(GeneticAlgorithmBase& algo, RandomGenerator& rng,
-                          cxxopts::ParseResult const& result) -> bool
+auto ResumeFromCheckpoint(GeneticAlgorithmBase& algo, RandomGenerator& rng, cxxopts::ParseResult const& result) -> bool
 {
-    if (!result.contains("resume")) { return false; }
+    if (!result.contains("resume")) {
+        return false;
+    }
     auto const path = result["resume"].as<std::string>();
     auto cp = Serialization::LoadCheckpoint(path);
     if (!cp) {
@@ -226,8 +256,7 @@ auto ResumeFromCheckpoint(GeneticAlgorithmBase& algo, RandomGenerator& rng,
     auto const popSize = config.PopulationSize;
     if (cp->Population.size() != popSize) {
         throw std::runtime_error(fmt::format(
-            "checkpoint population size {} doesn't match --population-size {}",
-            cp->Population.size(), popSize));
+            "checkpoint population size {} doesn't match --population-size {}", cp->Population.size(), popSize));
     }
     rng.set_state(cp->RngState);
     algo.Generation() = cp->Generation;
@@ -238,14 +267,17 @@ auto ResumeFromCheckpoint(GeneticAlgorithmBase& algo, RandomGenerator& rng,
     // with the resumed generation instead of 0, which would otherwise make
     // every entry read as ancient (and get evicted) the moment the loop
     // advances the clock past the checkpoint's generation.
-    if (auto* cache = config.Cache) { cache->SetGeneration(cp->Generation); }
+    if (auto* cache = config.Cache) {
+        cache->SetGeneration(cp->Generation);
+    }
     auto parents = algo.Parents();
     for (std::size_t i = 0; i < cp->Population.size(); ++i) {
         parents[i] = std::move(cp->Population[i]);
     }
     auto const workerCount = std::max(config.PopulationSize, config.PoolSize);
     if (cp->WorkerRngStates.empty()) {
-        fmt::print(stderr, "warning: checkpoint has no worker RNG states — bit-exactness of resumed run is not guaranteed\n");
+        fmt::print(
+            stderr, "warning: checkpoint has no worker RNG states — bit-exactness of resumed run is not guaranteed\n");
     } else if (cp->WorkerRngStates.size() != workerCount) {
         throw std::runtime_error(fmt::format(
             "checkpoint worker RNG count {} doesn't match expected {} (max of --population-size and --pool-size)",
@@ -265,20 +297,26 @@ auto ResumeFromCheckpoint(GeneticAlgorithmBase& algo, RandomGenerator& rng,
 }
 
 auto MaybeSaveCheckpoint(GeneticAlgorithmBase const& algo, RandomGenerator const& rng,
-                         cxxopts::ParseResult const& result, bool force) -> void
+    cxxopts::ParseResult const& result, bool force) -> void
 {
     auto const interval = result["checkpoint-interval"].as<std::size_t>();
-    auto const gen      = algo.Generation();
-    if (interval == 0) { return; }
-    if (!force && (gen == 0 || gen % interval != 0)) { return; }
+    auto const gen = algo.Generation();
+    if (interval == 0) {
+        return;
+    }
+    if (!force && (gen == 0 || gen % interval != 0)) {
+        return;
+    }
 
     // Avoid writing the same generation twice when the run ends exactly on an interval boundary.
     static uint64_t lastSaved = std::numeric_limits<uint64_t>::max();
-    if (force && gen == lastSaved) { return; }
+    if (force && gen == lastSaved) {
+        return;
+    }
 
     auto const path = result["checkpoint-file"].as<std::string>();
     Serialization::Checkpoint cp;
-    cp.RngState   = rng.state();
+    cp.RngState = rng.state();
     cp.Generation = gen;
     cp.Population.assign(algo.Parents().begin(), algo.Parents().end());
     cp.WorkerRngStates.reserve(algo.WorkerRngs().size());
@@ -286,14 +324,15 @@ auto MaybeSaveCheckpoint(GeneticAlgorithmBase const& algo, RandomGenerator const
         cp.WorkerRngStates.push_back(worker.state());
     }
     if (!Serialization::SaveCheckpoint(cp, path)) {
-        fmt::print(stderr, "warning: checkpoint save failed at generation {} — run continues but resume may not be possible\n", gen);
+        fmt::print(stderr,
+            "warning: checkpoint save failed at generation {} — run continues but resume may not be possible\n", gen);
     } else {
         lastSaved = gen;
     }
 }
 
-auto SetupRanges(cxxopts::ParseResult const& result, Dataset const& dataset,
-                 Range& trainingRange, Range& testRange) -> void
+auto SetupRanges(cxxopts::ParseResult const& result, Dataset const& dataset, Range& trainingRange, Range& testRange)
+    -> void
 {
     auto const rows = dataset.Rows<std::size_t>();
     if (!result.contains("train")) {
@@ -311,16 +350,16 @@ auto SetupRanges(cxxopts::ParseResult const& result, Dataset const& dataset,
 }
 
 namespace {
-// Looks up a variable by name, throwing std::runtime_error with a message
-// prefixed by `label` (e.g. "target variable" or "variable") if not found.
-auto ResolveVariable(Dataset const& dataset, std::string const& name, std::string_view label) -> Variable
-{
-    auto res = dataset.GetVariable(name);
-    if (!res) {
-        throw std::runtime_error(fmt::format("{} {} does not exist in the dataset", label, name));
+    // Looks up a variable by name, throwing std::runtime_error with a message
+    // prefixed by `label` (e.g. "target variable" or "variable") if not found.
+    auto ResolveVariable(Dataset const& dataset, std::string const& name, std::string_view label) -> Variable
+    {
+        auto res = dataset.GetVariable(name);
+        if (!res) {
+            throw std::runtime_error(fmt::format("{} {} does not exist in the dataset", label, name));
+        }
+        return *res;
     }
-    return *res;
-}
 } // namespace
 
 auto ResolveTarget(Dataset const& dataset, std::string const& targetName) -> Variable
@@ -328,8 +367,7 @@ auto ResolveTarget(Dataset const& dataset, std::string const& targetName) -> Var
     return ResolveVariable(dataset, targetName, "target variable");
 }
 
-auto BuildInputs(cxxopts::ParseResult const& result, Dataset const& dataset,
-                 Hash targetHash) -> std::vector<Hash>
+auto BuildInputs(cxxopts::ParseResult const& result, Dataset const& dataset, Hash targetHash) -> std::vector<Hash>
 {
     if (!result.contains("inputs")) {
         auto inputs = dataset.VariableHashes();
@@ -343,7 +381,8 @@ auto BuildInputs(cxxopts::ParseResult const& result, Dataset const& dataset,
     return inputs;
 }
 
-auto ParseOptions(cxxopts::Options&& opts, int argc, char** argv) -> cxxopts::ParseResult {
+auto ParseOptions(cxxopts::Options&& opts, int argc, char** argv) -> cxxopts::ParseResult
+{
     auto const helpText = opts.help(); // capture before move
     cxxopts::ParseResult result;
     try {
@@ -364,7 +403,9 @@ auto ParseOptions(cxxopts::Options&& opts, int argc, char** argv) -> cxxopts::Pa
     // operon_enum's PrintEnumerationFunctions) - it never touches the dataset/target, so it's exempt
     // from the checks below the same way --help/--version are, rather than forcing every caller to
     // supply a dataset just to display what primitives are available.
-    if (result.contains("show-primitives")) { return result; }
+    if (result.contains("show-primitives")) {
+        return result;
+    }
     if (!result.contains("target")) {
         fmt::print(stderr, "error: no target variable was specified.\n");
         std::exit(EXIT_FAILURE);

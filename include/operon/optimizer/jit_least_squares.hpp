@@ -27,7 +27,8 @@ namespace Operon {
 
 // JIT kernels and their column/Jacobian buffers are float-typed
 // (jit_compiler.hpp); a double Operon::Scalar build cannot use them.
-static_assert(std::same_as<Scalar, float>, "JIT least-squares costs require Operon::Scalar == float (USE_SINGLE_PRECISION=ON)");
+static_assert(
+    std::same_as<Scalar, float>, "JIT least-squares costs require Operon::Scalar == float (USE_SINGLE_PRECISION=ON)");
 
 /**
  * Backend-neutral LeastSquaresCostFunction over compiled JIT kernels: raw
@@ -94,16 +95,9 @@ static_assert(std::same_as<Scalar, float>, "JIT least-squares costs require Oper
  */
 class JitLeastSquaresCostFunction final : public LeastSquaresCostFunction {
 public:
-    JitLeastSquaresCostFunction(
-        gsl::not_null<InterpreterBase<Scalar> const*> interpreter,
-        JIT::EvalFn fn,
-        std::vector<float const*> colPtrs,
-        ConstScalarSpan target,
-        Range range,
-        JIT::EvalJacFn jacFn = nullptr,
-        std::vector<float const*> jacColPtrs = {},
-        int nVars = -1,
-        int nConsts = -1)
+    JitLeastSquaresCostFunction(gsl::not_null<InterpreterBase<Scalar> const*> interpreter, JIT::EvalFn fn,
+        std::vector<float const*> colPtrs, ConstScalarSpan target, Range range, JIT::EvalJacFn jacFn = nullptr,
+        std::vector<float const*> jacColPtrs = {}, int nVars = -1, int nConsts = -1)
         : interpreter_(interpreter)
         , fn_(fn)
         , colPtrs_(std::move(colPtrs))
@@ -153,26 +147,32 @@ public:
     [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return range_.Size(); }
 
     /** The construction-time validation failure every Evaluate() returns, if any. */
-    [[nodiscard]] auto ConfigurationError() const noexcept -> std::optional<LeastSquaresError> const& { return configurationError_; }
+    [[nodiscard]] auto ConfigurationError() const noexcept -> std::optional<LeastSquaresError> const&
+    {
+        return configurationError_;
+    }
 
-    [[nodiscard]] auto Evaluate(
-        ConstScalarSpan parameters,
-        ScalarSpan residuals,
-        std::optional<ScalarMatrixView> jacobian) const
-        -> tl::expected<void, LeastSquaresError> override
+    [[nodiscard]] auto Evaluate(ConstScalarSpan parameters, ScalarSpan residuals,
+        std::optional<ScalarMatrixView> jacobian) const -> tl::expected<void, LeastSquaresError> override
     {
         if (configurationError_) {
             return tl::unexpected(*configurationError_);
         }
         auto const n = range_.Size();
         if (parameters.size() != numParameters_) {
-            return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape, .Expected = numParameters_, .Actual = parameters.size() });
+            return tl::unexpected(LeastSquaresError {
+                .Code = LeastSquaresErrorCode::InvalidShape, .Expected = numParameters_, .Actual = parameters.size() });
         }
         if (residuals.size() != n) {
-            return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape, .Expected = n, .Actual = residuals.size() });
+            return tl::unexpected(LeastSquaresError {
+                .Code = LeastSquaresErrorCode::InvalidShape, .Expected = n, .Actual = residuals.size() });
         }
         if (jacobian && (jacobian->extent(0) != n || jacobian->extent(1) != numParameters_)) {
-            return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape, .Expected = n, .Actual = jacobian->extent(0), .Row = n, .Column = numParameters_ });
+            return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape,
+                .Expected = n,
+                .Actual = jacobian->extent(0),
+                .Row = n,
+                .Column = numParameters_ });
         }
 
         auto const nRowsPad = static_cast<int32_t>(nRowsPad_);
@@ -183,7 +183,8 @@ public:
         } else {
             auto predicted = interpreter_->Evaluate(parameters, range_, residuals);
             if (!predicted) {
-                return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::EvaluationFailure, .Cause = predicted.error() });
+                return tl::unexpected(
+                    LeastSquaresError { .Code = LeastSquaresErrorCode::EvaluationFailure, .Cause = predicted.error() });
             }
         }
         for (std::size_t i = 0; i < n; ++i) {
@@ -202,7 +203,8 @@ public:
                 jacobianScratch_.resize(n * numParameters_);
                 auto jacResult = interpreter_->JacRev(parameters, range_, jacobianScratch_);
                 if (!jacResult) {
-                    return tl::unexpected(LeastSquaresError { .Code = LeastSquaresErrorCode::EvaluationFailure, .Cause = jacResult.error() });
+                    return tl::unexpected(LeastSquaresError {
+                        .Code = LeastSquaresErrorCode::EvaluationFailure, .Cause = jacResult.error() });
                 }
                 for (std::size_t j = 0; j < numParameters_; ++j) {
                     for (std::size_t i = 0; i < n; ++i) {
@@ -245,20 +247,25 @@ private:
         auto const rows = range_.Size();
         if (start > target.size() || rows > target.size() - start) {
             auto const required = rows > maxSize - start ? maxSize : start + rows;
-            return LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape, .Expected = required, .Actual = target.size() };
+            return LeastSquaresError {
+                .Code = LeastSquaresErrorCode::InvalidShape, .Expected = required, .Actual = target.size()
+            };
         }
         if (rows > maxRows) {
-            return LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape, .Expected = maxRows, .Actual = rows };
+            return LeastSquaresError {
+                .Code = LeastSquaresErrorCode::InvalidShape, .Expected = maxRows, .Actual = rows
+            };
         }
         if (fn_ == nullptr && jacFn_ == nullptr) {
             return std::nullopt;
         }
         if (nConsts_ >= 0 && static_cast<std::size_t>(nConsts_) != numParameters_) {
-            return LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape, .Expected = static_cast<std::size_t>(nConsts_), .Actual = numParameters_ };
+            return LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape,
+                .Expected = static_cast<std::size_t>(nConsts_),
+                .Actual = numParameters_ };
         }
-        auto const expectedVars = nVars_ >= 0
-            ? static_cast<std::size_t>(nVars_)
-            : JIT::VarOrder(*interpreter_->GetTree()).size();
+        auto const expectedVars
+            = nVars_ >= 0 ? static_cast<std::size_t>(nVars_) : JIT::VarOrder(*interpreter_->GetTree()).size();
         if (fn_ != nullptr) {
             if (auto error = ValidateColumns(colPtrs_, expectedVars, 0)) {
                 return error;
@@ -272,15 +279,22 @@ private:
         return std::nullopt;
     }
 
-    [[nodiscard]] static auto ValidateColumns(std::vector<float const*> const& columns, std::size_t expected, std::size_t kernel)
-        -> std::optional<LeastSquaresError>
+    [[nodiscard]] static auto ValidateColumns(std::vector<float const*> const& columns, std::size_t expected,
+        std::size_t kernel) -> std::optional<LeastSquaresError>
     {
         if (columns.size() != expected) {
-            return LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape, .Expected = expected, .Actual = columns.size(), .Row = kernel };
+            return LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidShape,
+                .Expected = expected,
+                .Actual = columns.size(),
+                .Row = kernel };
         }
         auto const nullIt = std::ranges::find(columns, static_cast<float const*>(nullptr));
         if (nullIt != columns.end()) {
-            return LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidView, .Expected = expected, .Actual = columns.size(), .Row = kernel, .Column = static_cast<std::size_t>(nullIt - columns.begin()) };
+            return LeastSquaresError { .Code = LeastSquaresErrorCode::InvalidView,
+                .Expected = expected,
+                .Actual = columns.size(),
+                .Row = kernel,
+                .Column = static_cast<std::size_t>(nullIt - columns.begin()) };
         }
         return std::nullopt;
     }

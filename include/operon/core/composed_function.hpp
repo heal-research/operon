@@ -20,16 +20,16 @@
 #include <vector>
 
 #include "dispatch.hpp"
-#include "postorder_evaluator.hpp"
 #include "node.hpp"
-#include "pset.hpp"
-#include "symbol_library.hpp"
-#include "tree.hpp"
-#include "tree_diff.hpp"
 #include "operon/hash/hash.hpp"
 #include "operon/interpreter/affine_evaluator.hpp"
 #include "operon/interpreter/interval_evaluator.hpp"
 #include "operon/parser/infix.hpp"
+#include "postorder_evaluator.hpp"
+#include "pset.hpp"
+#include "symbol_library.hpp"
+#include "tree.hpp"
+#include "tree_diff.hpp"
 
 // Derives DispatchTable Callable<T>/CallableDiff<T> entries for a composed
 // function (see operon-planning/designs/composed-functions.md) from its
@@ -50,7 +50,7 @@ namespace detail {
     // itself (which could dangle or go stale if the table is later copied),
     // same "don't bind to one specific object instance" principle as the
     // rejected dataset-variable-inside-a-body idea.
-    template<typename Fn, typename DTable, typename Getter>
+    template <typename Fn, typename DTable, typename Getter>
     auto ResolveOps(DTable const& dt, Tree const& body, Getter&& get) -> Operon::Map<Operon::Hash, Fn>
     {
         Operon::Map<Operon::Hash, Fn> ops;
@@ -72,14 +72,14 @@ namespace detail {
     // this file (ValidateUserHash, ValidateSymbolicDiffCoverage, the
     // preflight duplicate check, RegisterBinarySymbolicDeriv's hardcoded-hash
     // guard all throw std::invalid_argument with a descriptive message).
-    template<typename Fn>
-    auto GetOp(Operon::Map<Operon::Hash, Fn> const& ops, Operon::Hash hash) -> Fn const&
+    template <typename Fn> auto GetOp(Operon::Map<Operon::Hash, Fn> const& ops, Operon::Hash hash) -> Fn const&
     {
         auto it = ops.find(hash);
         if (it == ops.end()) {
-            throw std::invalid_argument(fmt::format(
-                "composed function body references built-in (hash {}) not resolved by ResolveOps — "
-                "should be unreachable (ResolveOps walks the same body)", hash));
+            throw std::invalid_argument(
+                fmt::format("composed function body references built-in (hash {}) not resolved by ResolveOps — "
+                            "should be unreachable (ResolveOps walks the same body)",
+                    hash));
         }
         return it->second;
     }
@@ -99,10 +99,12 @@ namespace detail {
     inline auto BindArgIndices(Operon::Vector<Node> const& outerNodes, std::size_t i, std::size_t arity)
         -> std::array<std::int64_t, kMaxComposedFunctionArity>
     {
-        std::array<std::int64_t, kMaxComposedFunctionArity> childIdx{};
+        std::array<std::int64_t, kMaxComposedFunctionArity> childIdx {};
         std::size_t k = 0;
         for (auto j : Tree::Indices(outerNodes, i)) {
-            if (k == arity) { break; }
+            if (k == arity) {
+                break;
+            }
             childIdx[k++] = static_cast<std::int64_t>(j);
         }
         std::reverse(childIdx.begin(), childIdx.begin() + static_cast<std::ptrdiff_t>(arity));
@@ -121,19 +123,33 @@ namespace detail {
 // everywhere else. Policy (design-doc decided): reject at registration.
 inline auto HasSymbolicDerivCoverage(Operon::Node const& n) -> bool
 {
-    if (n.IsLeaf()) { return true; } // param/constant leaves: trivial, always covered
+    if (n.IsLeaf()) {
+        return true;
+    } // param/constant leaves: trivial, always covered
     // Mirrors Deriv()'s own hash-based dispatch order exactly (tree_diff.cpp)
     // — arity must NOT be checked first: Sub/Div both have real arity==1
     // rules (unary minus, reciprocal) special-cased by hash before Deriv()
     // ever reaches its generic "arity==1, consult the unary registry"
     // fallback, so checking arity==1 up front would wrongly flag them as
     // uncovered.
-    if (n.IsAddition() || n.IsMultiplication()) { return true; } // n-ary, always covered
-    if (n.IsSubtraction()) { return true; } // arity 1 (unary minus), 2, and >2 all handled
-    if (n.IsDivision()) { return n.Arity <= 2; } // arity>2 not yet supported, per Deriv()'s own comment
-    if (n.IsPow()) { return true; } // binary-only from infix grammar
-    if (n.IsAq() || n.IsPowabs() || n.IsOp<Operon::BuiltinOp::Fmin, Operon::BuiltinOp::Fmax>()) { return false; }
-    if (n.Arity == 1) { return Operon::HasUnarySymbolicDeriv(n.HashValue); }
+    if (n.IsAddition() || n.IsMultiplication()) {
+        return true;
+    } // n-ary, always covered
+    if (n.IsSubtraction()) {
+        return true;
+    } // arity 1 (unary minus), 2, and >2 all handled
+    if (n.IsDivision()) {
+        return n.Arity <= 2;
+    } // arity>2 not yet supported, per Deriv()'s own comment
+    if (n.IsPow()) {
+        return true;
+    } // binary-only from infix grammar
+    if (n.IsAq() || n.IsPowabs() || n.IsOp<Operon::BuiltinOp::Fmin, Operon::BuiltinOp::Fmax>()) {
+        return false;
+    }
+    if (n.Arity == 1) {
+        return Operon::HasUnarySymbolicDeriv(n.HashValue);
+    }
     return false; // matches Deriv()'s final fallthrough `return Zero;`
 }
 
@@ -145,10 +161,10 @@ inline void ValidateSymbolicDiffCoverage(Tree const& body)
 {
     for (auto const& n : body.Nodes()) {
         if (!HasSymbolicDerivCoverage(n)) {
-            throw std::invalid_argument(fmt::format(
-                "composed function body references a built-in (hash {}) with no symbolic-diff rule — "
-                "its JIT-path gradient would silently be zero",
-                n.HashValue));
+            throw std::invalid_argument(
+                fmt::format("composed function body references a built-in (hash {}) with no symbolic-diff rule — "
+                            "its JIT-path gradient would silently be zero",
+                    n.HashValue));
         }
     }
 }
@@ -182,17 +198,17 @@ inline void ValidateBodyStructuralInvariants(Tree const& body, std::size_t arity
         }
         if (!n.IsLeaf() && n.Arity > kMaxComposedFunctionArity) {
             throw std::invalid_argument(fmt::format(
-                "composed function body contains a node of arity {} (hash {}) — only arity <= {} is supported",
-                n.Arity, n.HashValue, kMaxComposedFunctionArity));
+                "composed function body contains a node of arity {} (hash {}) — only arity <= {} is supported", n.Arity,
+                n.HashValue, kMaxComposedFunctionArity));
         }
         if (n.IsVariable()) {
-            bool const isValidParamHash = n.HashValue >= Operon::BuiltinOpCount
-                && (n.HashValue - Operon::BuiltinOpCount) < arity;
+            bool const isValidParamHash
+                = n.HashValue >= Operon::BuiltinOpCount && (n.HashValue - Operon::BuiltinOpCount) < arity;
             if (!isValidParamHash) {
-                throw std::invalid_argument(fmt::format(
-                    "composed function body contains a Variable leaf (hash {}) that isn't a valid "
-                    "parameter reference for an arity-{} function",
-                    n.HashValue, arity));
+                throw std::invalid_argument(
+                    fmt::format("composed function body contains a Variable leaf (hash {}) that isn't a valid "
+                                "parameter reference for an arity-{} function",
+                        n.HashValue, arity));
             }
         }
     }
@@ -209,9 +225,9 @@ namespace detail {
     // already established. Matching Mix/Push exactly, rather than inventing
     // a different scheme, keeps hash-consing behavior between
     // composed-function-injected nodes and the rest of the dag consistent.
-    using DiffNodes  = Operon::Vector<Node>;
+    using DiffNodes = Operon::Vector<Node>;
     using DiffHashes = Operon::Vector<Operon::Hash>;
-    using DiffMemo   = Operon::Map<Operon::Hash, std::size_t>;
+    using DiffMemo = Operon::Map<Operon::Hash, std::size_t>;
     inline constexpr std::size_t DiffZero = std::numeric_limits<std::size_t>::max();
 
     // Salted relative to tree_diff.cpp's own Mix(): that version is safe
@@ -255,17 +271,22 @@ namespace detail {
     {
         auto hash = DiffMix(static_cast<std::uint64_t>(Operon::NodeType::Constant),
             std::bit_cast<std::uint64_t>(static_cast<double>(val)));
-        if (auto it = memo.find(hash); it != memo.end()) { return it->second; }
+        if (auto it = memo.find(hash); it != memo.end()) {
+            return it->second;
+        }
         auto idx = dag.size();
         DiffPush(dag, h, Node::Constant(val), hash);
         memo.insert_or_assign(hash, idx);
         return idx;
     }
 
-    inline auto DiffMakeUnary(DiffNodes& dag, DiffMemo& memo, DiffHashes& h, Operon::BuiltinOp op, std::size_t a) -> std::size_t
+    inline auto DiffMakeUnary(DiffNodes& dag, DiffMemo& memo, DiffHashes& h, Operon::BuiltinOp op, std::size_t a)
+        -> std::size_t
     {
         auto opHash = DiffMix(static_cast<std::uint64_t>(op), h[a]);
-        if (auto it = memo.find(opHash); it != memo.end()) { return it->second; }
+        if (auto it = memo.find(opHash); it != memo.end()) {
+            return it->second;
+        }
         DiffAppendRef(dag, h, a);
         auto n = Node::Function(static_cast<Operon::Hash>(op), 1);
         auto idx = dag.size();
@@ -274,10 +295,13 @@ namespace detail {
         return idx;
     }
 
-    inline auto DiffMakeBinary(DiffNodes& dag, DiffMemo& memo, DiffHashes& h, Operon::BuiltinOp op, std::size_t a, std::size_t b) -> std::size_t
+    inline auto DiffMakeBinary(DiffNodes& dag, DiffMemo& memo, DiffHashes& h, Operon::BuiltinOp op, std::size_t a,
+        std::size_t b) -> std::size_t
     {
         auto opHash = DiffMix(DiffMix(static_cast<std::uint64_t>(op), h[a]), h[b]);
-        if (auto it = memo.find(opHash); it != memo.end()) { return it->second; }
+        if (auto it = memo.find(opHash); it != memo.end()) {
+            return it->second;
+        }
         DiffAppendRef(dag, h, b);
         DiffAppendRef(dag, h, a);
         auto n = Node::Function(static_cast<Operon::Hash>(op), 2);
@@ -294,10 +318,8 @@ namespace detail {
     // (that live subtree literally *is* the value of that parameter — no
     // new node needed, matching MakeComposedCallable's own "substitute, don't
     // recompute" approach).
-    inline void DiffCopyBody(DiffNodes& dag, DiffMemo& memo, DiffHashes& h,
-        Operon::Vector<Node> const& bodyNodes,
-        std::array<std::int64_t, kMaxComposedFunctionArity> const& liveChildIdx,
-        std::vector<std::size_t>& bodyToLive)
+    inline void DiffCopyBody(DiffNodes& dag, DiffMemo& memo, DiffHashes& h, Operon::Vector<Node> const& bodyNodes,
+        std::array<std::int64_t, kMaxComposedFunctionArity> const& liveChildIdx, std::vector<std::size_t>& bodyToLive)
     {
         for (std::size_t k = 0; k < bodyNodes.size(); ++k) {
             auto const& n = bodyNodes[k];
@@ -312,7 +334,9 @@ namespace detail {
                 // near/far convention — see BindArgIndices) and translate
                 // through bodyToLive.
                 Operon::Vector<std::size_t> children;
-                for (auto c : Tree::Indices(bodyNodes, k)) { children.push_back(bodyToLive[c]); }
+                for (auto c : Tree::Indices(bodyNodes, k)) {
+                    children.push_back(bodyToLive[c]);
+                }
                 if (n.Arity == 1) {
                     bodyToLive[k] = DiffMakeUnary(dag, memo, h, op, children[0]);
                 } else {
@@ -331,63 +355,88 @@ namespace detail {
     // "weight-of-a-variable" rule Deriv() uses for ordinary Optimize=true
     // Variable leaves — see the design doc's Fix-2 for why conflating these
     // two would compute the wrong derivative.
-    inline auto DiffParam(DiffNodes& dag, DiffMemo& memo, DiffHashes& h,
-        Operon::Vector<Node> const& bodyNodes, std::vector<std::size_t> const& bodyToLive,
-        std::size_t k, std::size_t targetParam) -> std::size_t
+    inline auto DiffParam(DiffNodes& dag, DiffMemo& memo, DiffHashes& h, Operon::Vector<Node> const& bodyNodes,
+        std::vector<std::size_t> const& bodyToLive, std::size_t k, std::size_t targetParam) -> std::size_t
     {
         auto const& n = bodyNodes[k];
 
         if (n.IsVariable()) {
             auto const pIdx = static_cast<std::size_t>(n.HashValue - Operon::BuiltinOpCount);
-            return pIdx == targetParam ? DiffGetConst(dag, memo, h, Operon::Scalar{1}) : DiffZero;
+            return pIdx == targetParam ? DiffGetConst(dag, memo, h, Operon::Scalar { 1 }) : DiffZero;
         }
-        if (n.Type == Operon::NodeType::Constant) { return DiffZero; }
+        if (n.Type == Operon::NodeType::Constant) {
+            return DiffZero;
+        }
 
         Operon::Vector<std::size_t> children;
-        for (auto c : Tree::Indices(bodyNodes, k)) { children.push_back(c); }
+        for (auto c : Tree::Indices(bodyNodes, k)) {
+            children.push_back(c);
+        }
         auto const arity = children.size();
 
         if (n.IsAddition()) {
             Operon::Vector<std::size_t> terms;
             for (auto c : children) {
                 auto dc = DiffParam(dag, memo, h, bodyNodes, bodyToLive, c, targetParam);
-                if (dc != DiffZero) { terms.push_back(dc); }
+                if (dc != DiffZero) {
+                    terms.push_back(dc);
+                }
             }
-            if (terms.empty()) { return DiffZero; }
+            if (terms.empty()) {
+                return DiffZero;
+            }
             auto result = terms[0];
-            for (std::size_t m = 1; m < terms.size(); ++m) { result = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Add, result, terms[m]); }
+            for (std::size_t m = 1; m < terms.size(); ++m) {
+                result = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Add, result, terms[m]);
+            }
             return result;
         }
         if (n.IsMultiplication()) {
             Operon::Vector<std::size_t> terms;
             for (std::size_t m = 0; m < arity; ++m) {
                 auto dm = DiffParam(dag, memo, h, bodyNodes, bodyToLive, children[m], targetParam);
-                if (dm == DiffZero) { continue; }
+                if (dm == DiffZero) {
+                    continue;
+                }
                 std::size_t prod = DiffZero;
                 for (std::size_t l = 0; l < arity; ++l) {
-                    if (l == m) { continue; }
-                    prod = (prod == DiffZero) ? bodyToLive[children[l]] : DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, prod, bodyToLive[children[l]]);
+                    if (l == m) {
+                        continue;
+                    }
+                    prod = (prod == DiffZero)
+                        ? bodyToLive[children[l]]
+                        : DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, prod, bodyToLive[children[l]]);
                 }
                 terms.push_back(prod == DiffZero ? dm : DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, dm, prod));
             }
-            if (terms.empty()) { return DiffZero; }
+            if (terms.empty()) {
+                return DiffZero;
+            }
             auto result = terms[0];
-            for (std::size_t m = 1; m < terms.size(); ++m) { result = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Add, result, terms[m]); }
+            for (std::size_t m = 1; m < terms.size(); ++m) {
+                result = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Add, result, terms[m]);
+            }
             return result;
         }
         if (n.IsSubtraction()) {
             auto dj = DiffParam(dag, memo, h, bodyNodes, bodyToLive, children[0], targetParam);
             if (arity == 1) {
-                if (dj == DiffZero) { return DiffZero; }
-                auto neg1 = DiffGetConst(dag, memo, h, Operon::Scalar{-1});
+                if (dj == DiffZero) {
+                    return DiffZero;
+                }
+                auto neg1 = DiffGetConst(dag, memo, h, Operon::Scalar { -1 });
                 return DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, neg1, dj);
             }
             // arity == 2 (v1 infix grammar never produces arity > 2 here)
             auto dk = DiffParam(dag, memo, h, bodyNodes, bodyToLive, children[1], targetParam);
-            if (dj == DiffZero && dk == DiffZero) { return DiffZero; }
-            if (dk == DiffZero) { return dj; }
+            if (dj == DiffZero && dk == DiffZero) {
+                return DiffZero;
+            }
+            if (dk == DiffZero) {
+                return dj;
+            }
             if (dj == DiffZero) {
-                auto neg1 = DiffGetConst(dag, memo, h, Operon::Scalar{-1});
+                auto neg1 = DiffGetConst(dag, memo, h, Operon::Scalar { -1 });
                 return DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, neg1, dk);
             }
             return DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Sub, dj, dk);
@@ -395,27 +444,35 @@ namespace detail {
         if (n.IsDivision()) {
             if (arity == 1) {
                 auto dj = DiffParam(dag, memo, h, bodyNodes, bodyToLive, children[0], targetParam);
-                if (dj == DiffZero) { return DiffZero; }
-                auto j    = bodyToLive[children[0]];
-                auto j2   = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, j, j);
-                auto neg1 = DiffGetConst(dag, memo, h, Operon::Scalar{-1});
+                if (dj == DiffZero) {
+                    return DiffZero;
+                }
+                auto j = bodyToLive[children[0]];
+                auto j2 = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, j, j);
+                auto neg1 = DiffGetConst(dag, memo, h, Operon::Scalar { -1 });
                 auto negDj = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, neg1, dj);
                 return DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Div, negDj, j2);
             }
             // a/b: d = (da*b - a*db) / b^2 — arity == 2 only (v1 grammar)
-            auto j  = bodyToLive[children[0]];
+            auto j = bodyToLive[children[0]];
             auto k2 = bodyToLive[children[1]];
             auto dj = DiffParam(dag, memo, h, bodyNodes, bodyToLive, children[0], targetParam);
             auto dk = DiffParam(dag, memo, h, bodyNodes, bodyToLive, children[1], targetParam);
-            if (dj == DiffZero && dk == DiffZero) { return DiffZero; }
-            if (dk == DiffZero) { return DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Div, dj, k2); }
+            if (dj == DiffZero && dk == DiffZero) {
+                return DiffZero;
+            }
+            if (dk == DiffZero) {
+                return DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Div, dj, k2);
+            }
             auto denom = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, k2, k2);
             std::size_t num = DiffZero;
-            if (dj != DiffZero) { num = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, dj, k2); }
+            if (dj != DiffZero) {
+                num = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, dj, k2);
+            }
             {
                 auto term = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, j, dk);
                 if (num == DiffZero) {
-                    auto neg1 = DiffGetConst(dag, memo, h, Operon::Scalar{-1});
+                    auto neg1 = DiffGetConst(dag, memo, h, Operon::Scalar { -1 });
                     num = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, neg1, term);
                 } else {
                     num = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Sub, num, term);
@@ -430,35 +487,45 @@ namespace detail {
             // equivalent to Deriv()'s own hardcoded Pow case in tree_diff.cpp,
             // which recomputes an unweighted Pow(j, k) fresh from children for
             // the same k*ln(j)/j and ln(j) terms.
-            auto j  = bodyToLive[children[0]];
+            auto j = bodyToLive[children[0]];
             auto k2 = bodyToLive[children[1]];
             auto dj = DiffParam(dag, memo, h, bodyNodes, bodyToLive, children[0], targetParam);
             auto dk = DiffParam(dag, memo, h, bodyNodes, bodyToLive, children[1], targetParam);
-            if (dj == DiffZero && dk == DiffZero) { return DiffZero; }
+            if (dj == DiffZero && dk == DiffZero) {
+                return DiffZero;
+            }
             Operon::Vector<std::size_t> terms;
             if (dj != DiffZero) {
-                auto ki   = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, k2, bodyToLive[k]);
+                auto ki = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, k2, bodyToLive[k]);
                 auto term = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Div, ki, j);
                 terms.push_back(DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, dj, term));
             }
             if (dk != DiffZero) {
                 auto logJ = DiffMakeUnary(dag, memo, h, Operon::BuiltinOp::Log, j);
-                auto t    = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, bodyToLive[k], logJ);
+                auto t = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, bodyToLive[k], logJ);
                 terms.push_back(DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, dk, t));
             }
-            if (terms.empty()) { return DiffZero; }
+            if (terms.empty()) {
+                return DiffZero;
+            }
             auto result = terms[0];
-            for (std::size_t m = 1; m < terms.size(); ++m) { result = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Add, result, terms[m]); }
+            for (std::size_t m = 1; m < terms.size(); ++m) {
+                result = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Add, result, terms[m]);
+            }
             return result;
         }
         // unary built-in with registered symbolic-diff coverage (guaranteed
         // by ValidateSymbolicDiffCoverage at registration time — Aq/Powabs/
         // Fmin/Fmax and unregistered unary ops never reach this point).
         auto dj = DiffParam(dag, memo, h, bodyNodes, bodyToLive, children[0], targetParam);
-        if (dj == DiffZero) { return DiffZero; }
+        if (dj == DiffZero) {
+            return DiffZero;
+        }
         auto const* rule = Operon::GetUnarySymbolicDeriv(n.HashValue);
         auto fp = (*rule)(dag, memo, h, bodyToLive[k], bodyToLive[children[0]]);
-        if (fp == DiffZero) { return DiffZero; }
+        if (fp == DiffZero) {
+            return DiffZero;
+        }
         return DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, fp, dj);
     }
 } // namespace detail
@@ -476,8 +543,9 @@ namespace detail {
 inline auto MakeComposedUnarySymbolicDerivRule(Tree const& body) -> UnarySymbolicDerivRule
 {
     auto const& bodyNodes = body.Nodes();
-    return [bodyNodes](detail::DiffNodes& dag, detail::DiffMemo& memo, detail::DiffHashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
-        std::array<std::int64_t, kMaxComposedFunctionArity> liveChildIdx{};
+    return [bodyNodes](detail::DiffNodes& dag, detail::DiffMemo& memo, detail::DiffHashes& h, std::size_t /*i*/,
+               std::size_t j) -> std::size_t {
+        std::array<std::int64_t, kMaxComposedFunctionArity> liveChildIdx {};
         liveChildIdx[0] = static_cast<std::int64_t>(j);
         std::vector<std::size_t> bodyToLive(bodyNodes.size());
         detail::DiffCopyBody(dag, memo, h, bodyNodes, liveChildIdx, bodyToLive);
@@ -501,9 +569,9 @@ inline auto MakeComposedUnarySymbolicDerivRule(Tree const& body) -> UnarySymboli
 inline auto MakeComposedBinarySymbolicDerivRule(Tree const& body) -> BinarySymbolicDerivRule
 {
     auto const& bodyNodes = body.Nodes();
-    return [bodyNodes](detail::DiffNodes& dag, detail::DiffMemo& memo, detail::DiffHashes& h,
-               std::size_t /*i*/, std::size_t j, std::size_t k) -> std::pair<std::size_t, std::size_t> {
-        std::array<std::int64_t, kMaxComposedFunctionArity> liveChildIdx{};
+    return [bodyNodes](detail::DiffNodes& dag, detail::DiffMemo& memo, detail::DiffHashes& h, std::size_t /*i*/,
+               std::size_t j, std::size_t k) -> std::pair<std::size_t, std::size_t> {
+        std::array<std::int64_t, kMaxComposedFunctionArity> liveChildIdx {};
         liveChildIdx[0] = static_cast<std::int64_t>(k); // param[0] = far child
         liveChildIdx[1] = static_cast<std::int64_t>(j); // param[1] = near child
         std::vector<std::size_t> bodyToLive(bodyNodes.size());
@@ -511,29 +579,28 @@ inline auto MakeComposedBinarySymbolicDerivRule(Tree const& body) -> BinarySymbo
         auto const root = bodyNodes.size() - 1;
         auto fpk = detail::DiffParam(dag, memo, h, bodyNodes, bodyToLive, root, 0); // ∂body/∂param[0] = ∂f/∂k
         auto fpj = detail::DiffParam(dag, memo, h, bodyNodes, bodyToLive, root, 1); // ∂body/∂param[1] = ∂f/∂j
-        return {fpj, fpk};
+        return { fpj, fpk };
     };
 }
 
-template<typename DTable, typename T>
-auto MakeComposedCallable(DTable const& dt, Tree const& body, std::size_t arity) -> typename DTable::template Callable<T>
+template <typename DTable, typename T>
+auto MakeComposedCallable(DTable const& dt, Tree const& body, std::size_t arity) ->
+    typename DTable::template Callable<T>
 {
     constexpr auto S = DTable::template BatchSize<T>;
     using Callable = typename DTable::template Callable<T>;
 
-    auto ops = detail::ResolveOps<Callable>(dt, body, [](DTable const& t, Operon::Hash h) { return t.template GetFunction<T>(h); });
+    auto ops = detail::ResolveOps<Callable>(
+        dt, body, [](DTable const& t, Operon::Hash h) { return t.template GetFunction<T>(h); });
     auto const& bodyNodes = body.Nodes();
 
     return [bodyNodes, ops = std::move(ops), arity](
-               Operon::Vector<Node> const& outerNodes,
-               Backend::View<T, S> outerData,
-               std::size_t i,
-               Operon::Range rg) {
+               Operon::Vector<Node> const& outerNodes, Backend::View<T, S> outerData, std::size_t i, Operon::Range rg) {
         auto const nNodes = static_cast<std::int64_t>(bodyNodes.size());
         auto const childIdx = detail::BindArgIndices(outerNodes, i, arity);
 
         Backend::Buffer<T, S> buf(S, nNodes);
-        Backend::View<T, S> view{buf};
+        Backend::View<T, S> view { buf };
 
         for (std::int64_t k = 0; k < nNodes; ++k) {
             auto const& n = bodyNodes[static_cast<std::size_t>(k)];
@@ -558,7 +625,9 @@ auto MakeComposedCallable(DTable const& dt, Tree const& body, std::size_t arity)
                 auto const paramIdx = static_cast<std::size_t>(n.HashValue - Operon::BuiltinOpCount);
                 auto const* src = Backend::Ptr<T, S>(outerData, childIdx[paramIdx]);
                 auto const w = static_cast<T>(n.Value);
-                for (std::size_t s = 0; s < S; ++s) { dst[s] = w * src[s]; }
+                for (std::size_t s = 0; s < S; ++s) {
+                    dst[s] = w * src[s];
+                }
                 continue;
             }
             // Function node: every name in a v1 body is a built-in, already
@@ -569,27 +638,28 @@ auto MakeComposedCallable(DTable const& dt, Tree const& body, std::size_t arity)
         auto* dst = Backend::Ptr<T, S>(outerData, static_cast<std::int64_t>(i));
         auto const* src = Backend::Ptr<T, S>(view, nNodes - 1);
         auto const w = static_cast<T>(outerNodes[i].Value);
-        for (std::size_t s = 0; s < S; ++s) { dst[s] = w * src[s]; }
+        for (std::size_t s = 0; s < S; ++s) {
+            dst[s] = w * src[s];
+        }
     };
 }
 
-template<typename DTable, typename T>
-auto MakeComposedCallableDiff(DTable const& dt, Tree const& body, std::size_t arity) -> typename DTable::template CallableDiff<T>
+template <typename DTable, typename T>
+auto MakeComposedCallableDiff(DTable const& dt, Tree const& body, std::size_t arity) ->
+    typename DTable::template CallableDiff<T>
 {
     constexpr auto S = DTable::template BatchSize<T>;
     using Callable = typename DTable::template Callable<T>;
     using CallableDiff = typename DTable::template CallableDiff<T>;
 
-    auto fns = detail::ResolveOps<Callable>(dt, body, [](DTable const& t, Operon::Hash h) { return t.template GetFunction<T>(h); });
-    auto dfs = detail::ResolveOps<CallableDiff>(dt, body, [](DTable const& t, Operon::Hash h) { return t.template GetDerivative<T>(h); });
+    auto fns = detail::ResolveOps<Callable>(
+        dt, body, [](DTable const& t, Operon::Hash h) { return t.template GetFunction<T>(h); });
+    auto dfs = detail::ResolveOps<CallableDiff>(
+        dt, body, [](DTable const& t, Operon::Hash h) { return t.template GetDerivative<T>(h); });
     auto const& bodyNodes = body.Nodes();
 
-    return [bodyNodes, fns = std::move(fns), dfs = std::move(dfs), arity](
-               Operon::Vector<Node> const& outerNodes,
-               Backend::View<T const, S> outerPrimal,
-               Backend::View<T, S> outerTrace,
-               int i,
-               int j) {
+    return [bodyNodes, fns = std::move(fns), dfs = std::move(dfs), arity](Operon::Vector<Node> const& outerNodes,
+               Backend::View<T const, S> outerPrimal, Backend::View<T, S> outerTrace, int i, int j) {
         // Redeclared rather than captured: DTable/T are the enclosing
         // function template's own type parameters, visible here with no
         // capture needed (only values need capturing, not types) — this
@@ -604,7 +674,10 @@ auto MakeComposedCallableDiff(DTable const& dt, Tree const& body, std::size_t ar
 
         std::size_t paramIdx = 0;
         for (std::size_t k = 0; k < arity; ++k) {
-            if (childIdx[k] == j) { paramIdx = k; break; }
+            if (childIdx[k] == j) {
+                paramIdx = k;
+                break;
+            }
         }
 
         // Forward pass: re-derive the body's own primal values, seeded from
@@ -615,7 +688,7 @@ auto MakeComposedCallableDiff(DTable const& dt, Tree const& body, std::size_t ar
         // self-contained rather than depending on the outer Callable's own
         // private buffer, which isn't visible here).
         Backend::Buffer<T, S> primalBuf(S, nNodes);
-        Backend::View<T, S> primalView{primalBuf};
+        Backend::View<T, S> primalView { primalBuf };
         for (std::int64_t k = 0; k < nNodes; ++k) {
             auto const& n = bodyNodes[static_cast<std::size_t>(k)];
             auto* dst = Backend::Ptr<T, S>(primalView, k);
@@ -628,9 +701,12 @@ auto MakeComposedCallableDiff(DTable const& dt, Tree const& body, std::size_t ar
                 auto const pIdx = static_cast<std::size_t>(n.HashValue - Operon::BuiltinOpCount);
                 auto const* src = Backend::Ptr<T const, S>(outerPrimal, childIdx[pIdx]);
                 auto const w = static_cast<T>(n.Value);
-                for (std::size_t s = 0; s < S; ++s) { dst[s] = w * src[s]; }
+                for (std::size_t s = 0; s < S; ++s) {
+                    dst[s] = w * src[s];
+                }
             } else {
-                std::invoke(detail::GetOp(fns, n.HashValue), bodyNodes, primalView, static_cast<std::size_t>(k), Operon::Range{0, S});
+                std::invoke(detail::GetOp(fns, n.HashValue), bodyNodes, primalView, static_cast<std::size_t>(k),
+                    Operon::Range { 0, S });
             }
         }
 
@@ -639,42 +715,55 @@ auto MakeComposedCallableDiff(DTable const& dt, Tree const& body, std::size_t ar
         // unweighted local derivative, then applying that node's own weight
         // once while propagating — mirroring Interpreter::ReverseTraceGeneric.
         Backend::Buffer<T, S> traceBuf(S, nNodes);
-        Backend::View<T, S> traceView{traceBuf};
-        std::fill_n(traceBuf.data(), static_cast<std::size_t>(S * nNodes), T{0});
-        std::fill_n(Backend::Ptr<T, S>(traceView, nNodes - 1), S, T{1});
+        Backend::View<T, S> traceView { traceBuf };
+        std::fill_n(traceBuf.data(), static_cast<std::size_t>(S * nNodes), T { 0 });
+        std::fill_n(Backend::Ptr<T, S>(traceView, nNodes - 1), S, T { 1 });
 
         for (std::int64_t k = nNodes - 1; k >= 0; --k) {
             auto const& n = bodyNodes[static_cast<std::size_t>(k)];
             if (n.IsRef()) {
                 auto* dst = Backend::Ptr<T, S>(traceView, static_cast<std::int64_t>(n.RefTo));
                 auto const* src = Backend::Ptr<T, S>(traceView, k);
-                for (std::size_t s = 0; s < S; ++s) { dst[s] += src[s]; }
+                for (std::size_t s = 0; s < S; ++s) {
+                    dst[s] += src[s];
+                }
                 continue;
             }
-            if (n.IsLeaf()) { continue; }
+            if (n.IsLeaf()) {
+                continue;
+            }
 
             auto const w = static_cast<T>(n.Value);
             for (auto c : Tree::Indices(bodyNodes, static_cast<std::size_t>(k))) {
-                std::invoke(detail::GetOp(dfs, n.HashValue), bodyNodes, primalView, traceView, static_cast<int>(k), static_cast<int>(c));
+                std::invoke(detail::GetOp(dfs, n.HashValue), bodyNodes, primalView, traceView, static_cast<int>(k),
+                    static_cast<int>(c));
             }
             for (auto c : Tree::Indices(bodyNodes, static_cast<std::size_t>(k))) {
                 auto* dst = Backend::Ptr<T, S>(traceView, static_cast<std::int64_t>(c));
                 auto const* upstream = Backend::Ptr<T, S>(traceView, k);
-                for (std::size_t s = 0; s < S; ++s) { dst[s] *= upstream[s] * w; }
+                for (std::size_t s = 0; s < S; ++s) {
+                    dst[s] *= upstream[s] * w;
+                }
             }
         }
 
         // Sum every occurrence of this param in the body (repeated textual
         // uses are separate leaf nodes, not deduplicated via Ref — see
         // ParseFunctionBody, reduce=false).
-        std::array<T, S> sum{};
-        std::fill(sum.begin(), sum.end(), T{0});
+        std::array<T, S> sum {};
+        std::fill(sum.begin(), sum.end(), T { 0 });
         for (std::int64_t k = 0; k < nNodes; ++k) {
             auto const& n = bodyNodes[static_cast<std::size_t>(k)];
-            if (!n.IsVariable()) { continue; }
-            if (static_cast<std::size_t>(n.HashValue - Operon::BuiltinOpCount) != paramIdx) { continue; }
+            if (!n.IsVariable()) {
+                continue;
+            }
+            if (static_cast<std::size_t>(n.HashValue - Operon::BuiltinOpCount) != paramIdx) {
+                continue;
+            }
             auto const* src = Backend::Ptr<T, S>(traceView, k);
-            for (std::size_t s = 0; s < S; ++s) { sum[s] += src[s]; }
+            for (std::size_t s = 0; s < S; ++s) {
+                sum[s] += src[s];
+            }
         }
 
         auto* dst = Backend::Ptr<T, S>(outerTrace, j);
@@ -699,48 +788,88 @@ namespace detail {
     // context, but a single shared EvaluateComposedBody needs one uniform
     // `Ctx const&` parameter across both kinds, so Interval's Ctx-taking
     // methods simply ignore it.
-    struct NoAffineContext { };
+    struct NoAffineContext {};
 
     struct IntervalPolicy {
-        using Scalar  = Operon::Scalar;
-        using Value   = pappus::interval<Scalar>;
+        using Scalar = Operon::Scalar;
+        using Value = pappus::interval<Scalar>;
         using Context = NoAffineContext;
         static constexpr std::string_view Kind = "interval";
 
         static void RegisterBuiltins() { Operon::RegisterIntervalBuiltins<Scalar>(); }
-        static auto UnaryRules() -> Operon::IntervalUnaryRegistry<Scalar> const& { return Operon::IntervalUnaryRules<Scalar>(); }
-        static auto BinaryRules() -> Operon::IntervalBinaryRegistry<Scalar> const& { return Operon::IntervalBinaryRules<Scalar>(); }
+        static auto UnaryRules() -> Operon::IntervalUnaryRegistry<Scalar> const&
+        {
+            return Operon::IntervalUnaryRules<Scalar>();
+        }
+        static auto BinaryRules() -> Operon::IntervalBinaryRegistry<Scalar> const&
+        {
+            return Operon::IntervalBinaryRules<Scalar>();
+        }
         static auto EmptyTree() -> std::string { return "composed-function interval evaluation: empty body"; }
-        static auto MissingNode(Node const& node) -> std::string {
+        static auto MissingNode(Node const& node) -> std::string
+        {
             return fmt::format("composed-function {} evaluation: node kind `{}` not yet mapped", Kind, node.Name());
         }
 
         static auto MakeConstant(Context const& /*ctx*/, Scalar v) -> Value { return pappus::ops::constant<Scalar>(v); }
-        static auto Add(Context const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::add<Scalar>(a, b); }
-        static auto Mul(Context const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::mul<Scalar>(a, b); }
-        static auto Sub(Context const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::sub<Scalar>(a, b); }
-        static auto Div(Context const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::div<Scalar>(a, b); }
-        static auto Min(Context const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::min<Scalar>(a, b); }
-        static auto Max(Context const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::max<Scalar>(a, b); }
+        static auto Add(Context const& /*ctx*/, Value const& a, Value const& b) -> Value
+        {
+            return pappus::ops::add<Scalar>(a, b);
+        }
+        static auto Mul(Context const& /*ctx*/, Value const& a, Value const& b) -> Value
+        {
+            return pappus::ops::mul<Scalar>(a, b);
+        }
+        static auto Sub(Context const& /*ctx*/, Value const& a, Value const& b) -> Value
+        {
+            return pappus::ops::sub<Scalar>(a, b);
+        }
+        static auto Div(Context const& /*ctx*/, Value const& a, Value const& b) -> Value
+        {
+            return pappus::ops::div<Scalar>(a, b);
+        }
+        static auto Min(Context const& /*ctx*/, Value const& a, Value const& b) -> Value
+        {
+            return pappus::ops::min<Scalar>(a, b);
+        }
+        static auto Max(Context const& /*ctx*/, Value const& a, Value const& b) -> Value
+        {
+            return pappus::ops::max<Scalar>(a, b);
+        }
         static auto Neg(Context const& /*ctx*/, Value const& a) -> Value { return pappus::ops::neg<Scalar>(a); }
         static auto Inv(Context const& /*ctx*/, Value const& a) -> Value { return pappus::ops::inv<Scalar>(a); }
-        static auto CallUnary(Context const& /*ctx*/, IntervalUnaryFn<Scalar> const& fn, Value const& a) -> tl::expected<Value, std::string> { return fn(a); }
-        static auto CallBinary(Context const& /*ctx*/, IntervalBinaryFn<Scalar> const& fn, Value const& a, Value const& b) -> tl::expected<Value, std::string> { return fn(a, b); }
+        static auto CallUnary(Context const& /*ctx*/, IntervalUnaryFn<Scalar> const& fn, Value const& a)
+            -> tl::expected<Value, std::string>
+        {
+            return fn(a);
+        }
+        static auto CallBinary(Context const& /*ctx*/, IntervalBinaryFn<Scalar> const& fn, Value const& a,
+            Value const& b) -> tl::expected<Value, std::string>
+        {
+            return fn(a, b);
+        }
         // Skip the scale entirely when v == 1 (exact in IEEE) -- matches AffineEvaluator::emit's identical fast path.
-        static auto Scale(Value value, Scalar s) -> Value { return s == Scalar{1} ? std::move(value) : value * s; }
+        static auto Scale(Value value, Scalar s) -> Value { return s == Scalar { 1 } ? std::move(value) : value * s; }
     };
 
     struct AffinePolicy {
-        using Scalar  = Operon::Scalar;
-        using Value   = pappus::affine_form<Scalar>;
+        using Scalar = Operon::Scalar;
+        using Value = pappus::affine_form<Scalar>;
         using Context = pappus::ops::affine_context<Scalar>;
         static constexpr std::string_view Kind = "affine";
 
         static void RegisterBuiltins() { Operon::RegisterAffineBuiltins<Scalar>(); }
-        static auto UnaryRules() -> Operon::AffineUnaryRegistry<Scalar> const& { return Operon::AffineUnaryRules<Scalar>(); }
-        static auto BinaryRules() -> Operon::AffineBinaryRegistry<Scalar> const& { return Operon::AffineBinaryRules<Scalar>(); }
+        static auto UnaryRules() -> Operon::AffineUnaryRegistry<Scalar> const&
+        {
+            return Operon::AffineUnaryRules<Scalar>();
+        }
+        static auto BinaryRules() -> Operon::AffineBinaryRegistry<Scalar> const&
+        {
+            return Operon::AffineBinaryRules<Scalar>();
+        }
         static auto EmptyTree() -> std::string { return "composed-function affine evaluation: empty body"; }
-        static auto MissingNode(Node const& node) -> std::string {
+        static auto MissingNode(Node const& node) -> std::string
+        {
             return fmt::format("composed-function {} evaluation: node kind `{}` not yet mapped", Kind, node.Name());
         }
 
@@ -751,21 +880,47 @@ namespace detail {
         // the *inner* pappus::affine_context (ctx.state) by const reference
         // is the equivalent leaf-construction path that actually accepts a
         // const context — used directly here instead.
-        static auto MakeConstant(Context const& ctx, Scalar v) -> Value { return Value{ctx.state, v}; }
-        static auto Add(Context const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::add<Scalar>(ctx, a, b); }
-        static auto Mul(Context const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::mul<Scalar>(ctx, a, b); }
-        static auto Sub(Context const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::sub<Scalar>(ctx, a, b); }
-        static auto Div(Context const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::div<Scalar>(ctx, a, b); }
-        static auto Min(Context const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::min<Scalar>(ctx, a, b); }
-        static auto Max(Context const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::max<Scalar>(ctx, a, b); }
+        static auto MakeConstant(Context const& ctx, Scalar v) -> Value { return Value { ctx.state, v }; }
+        static auto Add(Context const& ctx, Value const& a, Value const& b) -> Value
+        {
+            return pappus::ops::add<Scalar>(ctx, a, b);
+        }
+        static auto Mul(Context const& ctx, Value const& a, Value const& b) -> Value
+        {
+            return pappus::ops::mul<Scalar>(ctx, a, b);
+        }
+        static auto Sub(Context const& ctx, Value const& a, Value const& b) -> Value
+        {
+            return pappus::ops::sub<Scalar>(ctx, a, b);
+        }
+        static auto Div(Context const& ctx, Value const& a, Value const& b) -> Value
+        {
+            return pappus::ops::div<Scalar>(ctx, a, b);
+        }
+        static auto Min(Context const& ctx, Value const& a, Value const& b) -> Value
+        {
+            return pappus::ops::min<Scalar>(ctx, a, b);
+        }
+        static auto Max(Context const& ctx, Value const& a, Value const& b) -> Value
+        {
+            return pappus::ops::max<Scalar>(ctx, a, b);
+        }
         static auto Neg(Context const& /*ctx*/, Value const& a) -> Value { return pappus::ops::neg<Scalar>(a); }
         static auto Inv(Context const& ctx, Value const& a) -> Value { return pappus::ops::inv<Scalar>(ctx, a); }
-        static auto CallUnary(Context const& ctx, AffineUnaryFn<Scalar> const& fn, Value const& a) -> tl::expected<Value, std::string> { return fn(ctx, a); }
-        static auto CallBinary(Context const& ctx, AffineBinaryFn<Scalar> const& fn, Value const& a, Value const& b) -> tl::expected<Value, std::string> { return fn(ctx, a, b); }
+        static auto CallUnary(Context const& ctx, AffineUnaryFn<Scalar> const& fn, Value const& a)
+            -> tl::expected<Value, std::string>
+        {
+            return fn(ctx, a);
+        }
+        static auto CallBinary(Context const& ctx, AffineBinaryFn<Scalar> const& fn, Value const& a, Value const& b)
+            -> tl::expected<Value, std::string>
+        {
+            return fn(ctx, a, b);
+        }
         // Skip the scale entirely when v == 1 (exact in IEEE) -- matches AffineEvaluator::emit's identical fast path.
         // Not just a redundant-copy avoidance: Value::operator* copies then runs operator*=, which loops every term
         // (FMA-based exact error tracking) even though a v==1 scale changes nothing.
-        static auto Scale(Value value, Scalar s) -> Value { return s == Scalar{1} ? std::move(value) : value * s; }
+        static auto Scale(Value value, Scalar s) -> Value { return s == Scalar { 1 } ? std::move(value) : value * s; }
     };
 
     // Shared per-node dispatch core for the interval/affine mini-evaluators
@@ -775,15 +930,17 @@ namespace detail {
     // args[0]; the arity-1 body only ever contains ParamHash(0) leaves, so
     // args[1] is never dereferenced) via `bindLeaf`; internal nodes go
     // through the shared n-ary folds and registry dispatch.
-    template<typename Policy>
+    template <typename Policy>
     auto EvaluateComposedBody(Operon::Vector<Node> const& bodyNodes, typename Policy::Context const& ctx,
-        std::array<typename Policy::Value const*, kMaxComposedFunctionArity> const& args) -> tl::expected<typename Policy::Value, std::string>
+        std::array<typename Policy::Value const*, kMaxComposedFunctionArity> const& args)
+        -> tl::expected<typename Policy::Value, std::string>
     {
         using Value = typename Policy::Value;
         using Scalar = typename Policy::Scalar;
 
         auto const weight = [](Node const& node) { return static_cast<Scalar>(node.Value); };
-        auto const bindLeaf = [&](Node const& node, std::size_t /*index*/, Scalar v) -> tl::expected<Value, std::string> {
+        auto const bindLeaf
+            = [&](Node const& node, std::size_t /*index*/, Scalar v) -> tl::expected<Value, std::string> {
             if (node.Type == Operon::NodeType::Constant) {
                 return Policy::MakeConstant(ctx, v);
             }
@@ -804,10 +961,11 @@ namespace detail {
 inline auto MakeComposedIntervalUnaryFn(Tree const& body) -> IntervalUnaryFn<Operon::Scalar>
 {
     auto const& bodyNodes = body.Nodes();
-    return [bodyNodes](pappus::interval<Operon::Scalar> const& arg) -> tl::expected<pappus::interval<Operon::Scalar>, std::string> {
+    return [bodyNodes](pappus::interval<Operon::Scalar> const& arg)
+               -> tl::expected<pappus::interval<Operon::Scalar>, std::string> {
         using Value = pappus::interval<Operon::Scalar>;
-        std::array<Value const*, kMaxComposedFunctionArity> const args{&arg, nullptr};
-        return detail::EvaluateComposedBody<detail::IntervalPolicy>(bodyNodes, detail::NoAffineContext{}, args);
+        std::array<Value const*, kMaxComposedFunctionArity> const args { &arg, nullptr };
+        return detail::EvaluateComposedBody<detail::IntervalPolicy>(bodyNodes, detail::NoAffineContext {}, args);
     };
 }
 
@@ -822,8 +980,8 @@ inline auto MakeComposedIntervalBinaryFn(Tree const& body) -> IntervalBinaryFn<O
     return [bodyNodes](pappus::interval<Operon::Scalar> const& argJ, pappus::interval<Operon::Scalar> const& argK)
                -> tl::expected<pappus::interval<Operon::Scalar>, std::string> {
         using Value = pappus::interval<Operon::Scalar>;
-        std::array<Value const*, kMaxComposedFunctionArity> const args{&argK, &argJ}; // args[paramIdx]
-        return detail::EvaluateComposedBody<detail::IntervalPolicy>(bodyNodes, detail::NoAffineContext{}, args);
+        std::array<Value const*, kMaxComposedFunctionArity> const args { &argK, &argJ }; // args[paramIdx]
+        return detail::EvaluateComposedBody<detail::IntervalPolicy>(bodyNodes, detail::NoAffineContext {}, args);
     };
 }
 
@@ -839,10 +997,11 @@ inline auto MakeComposedIntervalBinaryFn(Tree const& body) -> IntervalBinaryFn<O
 inline auto MakeComposedAffineUnaryFn(Tree const& body) -> AffineUnaryFn<Operon::Scalar>
 {
     auto const& bodyNodes = body.Nodes();
-    return [bodyNodes](pappus::ops::affine_context<Operon::Scalar> const& ctx, pappus::affine_form<Operon::Scalar> const& arg)
+    return [bodyNodes](
+               pappus::ops::affine_context<Operon::Scalar> const& ctx, pappus::affine_form<Operon::Scalar> const& arg)
                -> tl::expected<pappus::affine_form<Operon::Scalar>, std::string> {
         using Value = pappus::affine_form<Operon::Scalar>;
-        std::array<Value const*, kMaxComposedFunctionArity> const args{&arg, nullptr};
+        std::array<Value const*, kMaxComposedFunctionArity> const args { &arg, nullptr };
         return detail::EvaluateComposedBody<detail::AffinePolicy>(bodyNodes, ctx, args);
     };
 }
@@ -854,10 +1013,10 @@ inline auto MakeComposedAffineBinaryFn(Tree const& body) -> AffineBinaryFn<Opero
 {
     auto const& bodyNodes = body.Nodes();
     return [bodyNodes](pappus::ops::affine_context<Operon::Scalar> const& ctx,
-               pappus::affine_form<Operon::Scalar> const& argJ,
-               pappus::affine_form<Operon::Scalar> const& argK) -> tl::expected<pappus::affine_form<Operon::Scalar>, std::string> {
+               pappus::affine_form<Operon::Scalar> const& argJ, pappus::affine_form<Operon::Scalar> const& argK)
+               -> tl::expected<pappus::affine_form<Operon::Scalar>, std::string> {
         using Value = pappus::affine_form<Operon::Scalar>;
-        std::array<Value const*, kMaxComposedFunctionArity> const args{&argK, &argJ}; // args[paramIdx]
+        std::array<Value const*, kMaxComposedFunctionArity> const args { &argK, &argJ }; // args[paramIdx]
         return detail::EvaluateComposedBody<detail::AffinePolicy>(bodyNodes, ctx, args);
     };
 }
@@ -890,25 +1049,21 @@ inline auto MakeComposedAffineBinaryFn(Tree const& body) -> AffineBinaryFn<Opero
 // pre-existing hand-written "recip" registration and had to be renamed).
 // Pick names accordingly when composing functions across independently
 // authored code that may end up linked together.
-template<typename DTable, typename T>
-void RegisterComposedFunction(
-    DTable& dt, PrimitiveSet& pset,
-    FunctionInfo const& info,
-    std::span<std::string const> params,
-    std::string_view bodyInfix)
+template <typename DTable, typename T>
+void RegisterComposedFunction(DTable& dt, PrimitiveSet& pset, FunctionInfo const& info,
+    std::span<std::string const> params, std::string_view bodyInfix)
 {
     if (params.size() > kMaxComposedFunctionArity) {
-        throw std::invalid_argument(fmt::format(
-            "RegisterComposedFunction: {} parameters exceeds the v1 cap of {}",
+        throw std::invalid_argument(fmt::format("RegisterComposedFunction: {} parameters exceeds the v1 cap of {}",
             params.size(), kMaxComposedFunctionArity));
     }
     if (info.Arity != params.size()) {
-        throw std::invalid_argument(fmt::format(
-            "RegisterComposedFunction: FunctionInfo::Arity ({}) does not match params.size() ({})",
-            info.Arity, params.size()));
+        throw std::invalid_argument(
+            fmt::format("RegisterComposedFunction: FunctionInfo::Arity ({}) does not match params.size() ({})",
+                info.Arity, params.size()));
     }
 
-    auto const hash = Operon::Hasher{}(info.Name);
+    auto const hash = Operon::Hasher {}(info.Name);
     detail::ValidateUserHash(hash, info.Name);
 
     // Preflight: reject a hash that's already registered *anywhere* before
@@ -923,24 +1078,23 @@ void RegisterComposedFunction(
     // for the same hash — a silent-wrong-answer state observable by any
     // later, unrelated evaluation. Found by review, not anticipated when
     // this function was first written.
-    if (dt.Contains(hash) || pset.Contains(hash)
-        || HasUnarySymbolicDeriv(hash) || HasBinarySymbolicDeriv(hash)
+    if (dt.Contains(hash) || pset.Contains(hash) || HasUnarySymbolicDeriv(hash) || HasBinarySymbolicDeriv(hash)
         || HasUnaryInterval<Operon::Scalar>(hash) || HasBinaryInterval<Operon::Scalar>(hash)
         || HasUnaryAffine<Operon::Scalar>(hash) || HasBinaryAffine<Operon::Scalar>(hash)) {
-        throw std::invalid_argument(fmt::format(
-            "RegisterComposedFunction: '{}' is already registered", info.Name));
+        throw std::invalid_argument(fmt::format("RegisterComposedFunction: '{}' is already registered", info.Name));
     }
 
     auto bodyResult = InfixParser::ParseFunctionBody(bodyInfix, params);
-    if (!bodyResult) { throw std::invalid_argument(bodyResult.error().Message); }
+    if (!bodyResult) {
+        throw std::invalid_argument(bodyResult.error().Message);
+    }
     auto body = std::move(*bodyResult);
     ValidateSymbolicDiffCoverage(body);
     ValidateBodyStructuralInvariants(body, params.size());
 
     auto const arity = params.size();
-    dt.template RegisterFunction<T>(hash,
-        MakeComposedCallable<DTable, T>(dt, body, arity),
-        MakeComposedCallableDiff<DTable, T>(dt, body, arity));
+    dt.template RegisterFunction<T>(
+        hash, MakeComposedCallable<DTable, T>(dt, body, arity), MakeComposedCallableDiff<DTable, T>(dt, body, arity));
 
     // arity == 0: no symbolic-diff registration needed (Deriv() already
     // treats any childless Function node as contributing Zero, no

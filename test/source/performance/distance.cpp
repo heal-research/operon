@@ -4,25 +4,21 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "operon/algorithms/probes/diversity.hpp"
 #include "operon/core/dataset.hpp"
 #include "operon/core/distance.hpp"
 #include "operon/core/pset.hpp"
-#include "operon/algorithms/probes/diversity.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/operators/initializer.hpp"
 
 #include "nanobench.h"
 
-
 namespace Operon::Test {
 
-template<typename Callable>
-struct ComputeDistanceMatrix {
-    explicit ComputeDistanceMatrix(Callable&& f)
-        : f_(std::move(f)) {}
+template <typename Callable> struct ComputeDistanceMatrix {
+    explicit ComputeDistanceMatrix(Callable&& f) : f_(std::move(f)) {}
 
-    template<typename T>
-    auto operator()(std::vector<Operon::Vector<T>> const& hashes) const noexcept -> double
+    template <typename T> auto operator()(std::vector<Operon::Vector<T>> const& hashes) const noexcept -> double
     {
         double d = 0;
         for (size_t i = 0; i < hashes.size() - 1; ++i) {
@@ -53,27 +49,37 @@ TEST_CASE("Intersection performance", "[performance]") // NOLINT(readability-fun
     std::vector<Tree> trees(n);
     BalancedTreeCreator btc(&grammar, ds.VariableHashes(), /* bias= */ 0.0, maxLength);
     UniformCoefficientInitializer coeffInit;
-    std::generate(trees.begin(), trees.end(), [&]() -> Tree { auto tree = btc(rd, sizeDistribution(rd), 0, maxDepth); coeffInit(rd, tree); return tree; });
+    std::generate(trees.begin(), trees.end(), [&]() -> Tree {
+        auto tree = btc(rd, sizeDistribution(rd), 0, maxDepth);
+        coeffInit(rd, tree);
+        return tree;
+    });
 
     std::vector<Operon::Vector<Operon::Hash>> hashesStrict(trees.size());
     std::vector<Operon::Vector<Operon::Hash>> hashesStruct(trees.size());
 
-    const auto hashFunc = [](auto& tree, Operon::HashMode mode) -> auto { return Operon::detail::SortedNodeHashes(tree, mode); };
-    std::transform(trees.begin(), trees.end(), hashesStrict.begin(), [&](Tree tree) -> Operon::Vector<Operon::Hash> { return hashFunc(tree, Operon::HashMode::Strict); });
-    std::transform(trees.begin(), trees.end(), hashesStruct.begin(), [&](Tree tree) -> Operon::Vector<Operon::Hash> { return hashFunc(tree, Operon::HashMode::Relaxed); });
+    const auto hashFunc
+        = [](auto& tree, Operon::HashMode mode) -> auto { return Operon::detail::SortedNodeHashes(tree, mode); };
+    std::transform(trees.begin(), trees.end(), hashesStrict.begin(),
+        [&](Tree tree) -> Operon::Vector<Operon::Hash> { return hashFunc(tree, Operon::HashMode::Strict); });
+    std::transform(trees.begin(), trees.end(), hashesStruct.begin(),
+        [&](Tree tree) -> Operon::Vector<Operon::Hash> { return hashFunc(tree, Operon::HashMode::Relaxed); });
 
     auto totalOps = trees.size() * (trees.size() - 1) / 2;
 
-    SECTION("Hashing performance") {
+    SECTION("Hashing performance")
+    {
         ankerl::nanobench::Bench b;
         b.performanceCounters(true).relative(true);
 
         b.batch(totalOps).run("xxhash", [&]() -> void {
-            std::transform(trees.begin(), trees.end(), hashesStrict.begin(), [&](Tree tree) -> Operon::Vector<Operon::Hash> { return hashFunc(tree, Operon::HashMode::Strict); });
+            std::transform(trees.begin(), trees.end(), hashesStrict.begin(),
+                [&](Tree tree) -> Operon::Vector<Operon::Hash> { return hashFunc(tree, Operon::HashMode::Strict); });
         });
     }
 
-    SECTION("Distance 64-bit") {
+    SECTION("Distance 64-bit")
+    {
         ankerl::nanobench::Bench b;
         b.performanceCounters(true).relative(true);
 
@@ -111,4 +117,3 @@ TEST_CASE("Intersection performance", "[performance]") // NOLINT(readability-fun
 }
 
 } // namespace Operon::Test
-

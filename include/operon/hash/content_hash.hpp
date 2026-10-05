@@ -45,16 +45,11 @@ struct ContentHashScratch {
 // Computes one content-hash per node into `scratch.Hashes`, bottom-up; returns the
 // root's (last node's) hash.
 [[nodiscard]] OPERON_EXPORT auto ComputeContentHash(
-    Operon::Tree const& tree,
-    Operon::Zobrist const& zobrist,
-    ContentHashScratch scratch
-) noexcept -> Operon::Hash;
+    Operon::Tree const& tree, Operon::Zobrist const& zobrist, ContentHashScratch scratch) noexcept -> Operon::Hash;
 
 // Convenience overload allocating its own scratch buffer.
-[[nodiscard]] OPERON_EXPORT auto ComputeContentHash(
-    Operon::Tree const& tree,
-    Operon::Zobrist const& zobrist
-) -> Operon::Hash;
+[[nodiscard]] OPERON_EXPORT auto ComputeContentHash(Operon::Tree const& tree, Operon::Zobrist const& zobrist)
+    -> Operon::Hash;
 
 } // namespace Operon
 

@@ -12,20 +12,22 @@
 #include "operon/core/contracts.hpp"
 
 namespace Operon::Random {
-template<typename R, typename T>
-auto Uniform(R& random, T a, T b) -> T
+template <typename R, typename T> auto Uniform(R& random, T a, T b) -> T
 {
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
-    using Dist = std::conditional_t<std::is_integral_v<T>, std::uniform_int_distribution<T>, std::uniform_real_distribution<T>>;
-    return Dist(a,b)(random);
+    using Dist = std::conditional_t<std::is_integral_v<T>, std::uniform_int_distribution<T>,
+        std::uniform_real_distribution<T>>;
+    return Dist(a, b)(random);
 }
 
 template <typename R, typename InputIterator>
 auto Sample(R& random, InputIterator start, InputIterator end) -> InputIterator
 {
     auto dist = std::distance(start, end);
-    if (dist <= 1) { return start; }
-    std::advance(start, Uniform(random, decltype(dist){0}, dist-1));
+    if (dist <= 1) {
+        return start;
+    }
+    std::advance(start, Uniform(random, decltype(dist) { 0 }, dist - 1));
     return start;
 }
 
@@ -39,7 +41,7 @@ auto Sample(R& random, InputIterator start, InputIterator end,
         return end; // no element satisfies the condition
     }
 
-    auto m = Uniform(random, decltype(n){0}, n-1);
+    auto m = Uniform(random, decltype(n) { 0 }, n - 1);
     InputIterator it;
     for (it = start; it < end; ++it) {
         if (condition(*it) && 0 == m--) {

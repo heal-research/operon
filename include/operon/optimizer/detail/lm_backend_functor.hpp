@@ -20,8 +20,7 @@ namespace Operon::detail {
 // through const Evaluate(). A functor instance (and therefore a Derived
 // adapter) must be used from one thread at a time; use distinct instances
 // for concurrent solves.
-template <typename Derived, int StorageOrder = Eigen::ColMajor>
-struct LMBackendFunctor {
+template <typename Derived, int StorageOrder = Eigen::ColMajor> struct LMBackendFunctor {
     static auto constexpr Storage { StorageOrder };
     using Scalar = Operon::Scalar;
 
@@ -53,7 +52,8 @@ struct LMBackendFunctor {
 
     auto df(Eigen::Matrix<Scalar, -1, 1> const& input, Eigen::Matrix<Scalar, -1, -1>& jacobian) const -> int // NOLINT
     {
-        static_assert(StorageOrder == Eigen::ColMajor, "Eigen::LevenbergMarquardt requires the Jacobian to be stored in column-major format.");
+        static_assert(StorageOrder == Eigen::ColMajor,
+            "Eigen::LevenbergMarquardt requires the Jacobian to be stored in column-major format.");
         return self().Evaluate(input.data(), nullptr, jacobian.data()) ? 0 : -1;
     }
 

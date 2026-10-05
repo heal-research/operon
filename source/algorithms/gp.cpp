@@ -25,11 +25,14 @@
 #include "operon/operators/reinserter.hpp"
 
 namespace Operon {
-auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon::ReportCallback report, bool warmStart) -> void
+auto GeneticProgrammingAlgorithm::Run(
+    tf::Executor& executor, Operon::RandomGenerator& random, Operon::ReportCallback report, bool warmStart) -> void
 {
     auto const savedGeneration = Generation();
     Reset();
-    if (warmStart) { Generation() = savedGeneration; }
+    if (warmStart) {
+        Generation() = savedGeneration;
+    }
 
     const auto config = GetConfig();
     const auto& treeInit = GetTreeInitializer();
@@ -51,7 +54,9 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
     if (rngs.size() != s) {
         rngs.clear();
         rngs.reserve(s);
-        for (size_t i = 0; i < s; ++i) { rngs.emplace_back(random()); }
+        for (size_t i = 0; i < s; ++i) {
+            rngs.emplace_back(random());
+        }
     }
 
     auto const& evaluator = generator->Evaluator();
@@ -68,7 +73,8 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
     // contexts (the loop condition and the report task), which the taskflow
     // graph orders against every reader.
     auto shouldStop = [&](double elapsed) -> bool {
-        return StopRequested() || generator->Terminate() || Generation() == config.Generations || elapsed > static_cast<double>(config.TimeLimit);
+        return StopRequested() || generator->Terminate() || Generation() == config.Generations
+            || elapsed > static_cast<double>(config.TimeLimit);
     };
     auto stop = [&]() -> bool { return shouldStop(computeElapsed()); };
     auto loopCondition = [&]() -> bool {
@@ -93,49 +99,70 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
     tf::Taskflow taskflow;
     auto [init, cond, body, back, done] = taskflow.emplace(
         [&, timer](tf::Subflow& subflow) -> void {
-            auto prepareEval = subflow.emplace([&]() -> void { evaluator->Prepare(parents); }).name("prepare evaluator");
-            auto reportProgress = subflow.emplace([&, timer]() -> void {
-                                             Timings() = timer->Timings();
-                                             if (report && std::invoke(report)) { RequestStop(); }
-                                         }).name("report progress");
+            auto prepareEval
+                = subflow.emplace([&]() -> void { evaluator->Prepare(parents); }).name("prepare evaluator");
+            auto reportProgress = subflow
+                                      .emplace([&, timer]() -> void {
+                                          Timings() = timer->Timings();
+                                          if (report && std::invoke(report)) {
+                                              RequestStop();
+                                          }
+                                      })
+                                      .name("report progress");
 
             // Local search (if any) always runs before prepareEval below, either
             // here (cold start) or not at all (warm resume, pLocal=0), so this
             // loop itself never applies local search - passing pLocal=0 makes it
             // a plain evaluate.
-            auto eval = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
-                                   auto id = executor.this_worker_id();
-                                   if (slots[id].size() < trainSize) { slots[id].resize(trainSize); }
-                                   ScoreIndividual(rngs[i], parents[i], *evaluator, generator->Optimizer(), /*pLocal=*/0.0, config.LamarckianProbability, Operon::Span<Operon::Scalar>(slots[id]));
-                               })
-                            .name("evaluate population");
+            auto eval
+                = subflow
+                      .for_each_index(size_t { 0 }, parents.size(), size_t { 1 },
+                          [&](size_t i) -> void {
+                              auto id = executor.this_worker_id();
+                              if (slots[id].size() < trainSize) {
+                                  slots[id].resize(trainSize);
+                              }
+                              ScoreIndividual(rngs[i], parents[i], *evaluator, generator->Optimizer(), /*pLocal=*/0.0,
+                                  config.LamarckianProbability, Operon::Span<Operon::Scalar>(slots[id]));
+                          })
+                      .name("evaluate population");
             if (warmResume) {
                 // Re-evaluate to catch evaluator/objective config mismatches, but snapshot and restore
                 // the worker RNG states so that subsequent generations remain deterministic.
-                auto saveRngs    = subflow.emplace([&]() { savedRngs = rngs; }).name("save rng states");
+                auto saveRngs = subflow.emplace([&]() { savedRngs = rngs; }).name("save rng states");
                 auto restoreRngs = subflow.emplace([&]() { rngs = std::move(savedRngs); }).name("restore rng states");
                 prepareEval.precede(saveRngs);
                 saveRngs.precede(eval);
                 eval.precede(restoreRngs);
                 restoreRngs.precede(reportProgress);
             } else {
-                auto init = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
-                                       parents[i].Genotype = (*treeInit)(rngs[i]);
-                                       (*coeffInit)(rngs[i], parents[i].Genotype);
-                                   })
+                auto init = subflow
+                                .for_each_index(size_t { 0 }, parents.size(), size_t { 1 },
+                                    [&](size_t i) -> void {
+                                        parents[i].Genotype = (*treeInit)(rngs[i]);
+                                        (*coeffInit)(rngs[i], parents[i].Genotype);
+                                    })
                                 .name("initialize population");
                 // Local search runs before prepareEval (not after, alongside
                 // eval) so that an evaluator snapshotting the population in
                 // Prepare() (e.g. DiversityEvaluator) sees post-optimization
                 // genotypes rather than the raw initial ones.
-                auto localSearch = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
-                                       originalCoeffs[i] = LocalSearch(rngs[i], parents[i], *evaluator, generator->Optimizer(), config.LocalSearchProbability, config.LamarckianProbability);
-                                    })
-                                .name("local search on initial population");
-                auto restoreCoeffs = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
-                                        if (originalCoeffs[i]) { parents[i].Genotype.SetCoefficients(*originalCoeffs[i]); }
-                                    })
-                                .name("restore non-lamarckian coefficients");
+                auto localSearch = subflow
+                                       .for_each_index(size_t { 0 }, parents.size(), size_t { 1 },
+                                           [&](size_t i) -> void {
+                                               originalCoeffs[i] = LocalSearch(rngs[i], parents[i], *evaluator,
+                                                   generator->Optimizer(), config.LocalSearchProbability,
+                                                   config.LamarckianProbability);
+                                           })
+                                       .name("local search on initial population");
+                auto restoreCoeffs = subflow
+                                         .for_each_index(size_t { 0 }, parents.size(), size_t { 1 },
+                                             [&](size_t i) -> void {
+                                                 if (originalCoeffs[i]) {
+                                                     parents[i].Genotype.SetCoefficients(*originalCoeffs[i]);
+                                                 }
+                                             })
+                                         .name("restore non-lamarckian coefficients");
                 init.precede(localSearch);
                 localSearch.precede(prepareEval);
                 prepareEval.precede(eval);
@@ -149,33 +176,48 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
             // (reinserter.hpp) - it protects the top EliteCount() parents
             // before reinsert() runs, so no offspring slot needs to be
             // reserved for a hand-picked elite here anymore.
-            auto prepareGenerator = subflow.emplace([&]() -> void {
-                                        generator->Prepare(parents);
-                                        // Stamp the cache clock with the generation offspring will
-                                        // belong to *before* they're evaluated - Generation() itself
-                                        // isn't incremented until after reinsert() below, so without
-                                        // this the cache would stamp entries with the prior
-                                        // generation's number (see incrementGeneration).
-                                        if (auto* cache = config.Cache) { cache->SetGeneration(Generation() + 1); }
-                                    }).name("prepare generator");
-            auto generateOffspring = subflow.for_each_index(size_t { 0 }, offspring.size(), size_t { 1 }, [&](size_t i) -> void {
-                                                slots[executor.this_worker_id()].resize(trainSize);
-                                                auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
-                                                while (!stop()) {
-                                                    if (auto result = (*generator)(rngs[i], config.CrossoverProbability, config.MutationProbability, config.LocalSearchProbability, config.LamarckianProbability, buf); result.has_value()) {
-                                                        offspring[i] = std::move(result.value());
-                                                        return;
-                                                    }
-                                                }
-                                            })
-                                         .name("generate offspring");
-            auto reinsert = subflow.emplace([&]() -> void { (*reinserter)(random, Parents(), offspring); }).name("reinsert");
+            auto prepareGenerator = subflow
+                                        .emplace([&]() -> void {
+                                            generator->Prepare(parents);
+                                            // Stamp the cache clock with the generation offspring will
+                                            // belong to *before* they're evaluated - Generation() itself
+                                            // isn't incremented until after reinsert() below, so without
+                                            // this the cache would stamp entries with the prior
+                                            // generation's number (see incrementGeneration).
+                                            if (auto* cache = config.Cache) {
+                                                cache->SetGeneration(Generation() + 1);
+                                            }
+                                        })
+                                        .name("prepare generator");
+            auto generateOffspring
+                = subflow
+                      .for_each_index(size_t { 0 }, offspring.size(), size_t { 1 },
+                          [&](size_t i) -> void {
+                              slots[executor.this_worker_id()].resize(trainSize);
+                              auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
+                              while (!stop()) {
+                                  if (auto result
+                                      = (*generator)(rngs[i], config.CrossoverProbability, config.MutationProbability,
+                                          config.LocalSearchProbability, config.LamarckianProbability, buf);
+                                      result.has_value()) {
+                                      offspring[i] = std::move(result.value());
+                                      return;
+                                  }
+                              }
+                          })
+                      .name("generate offspring");
+            auto reinsert
+                = subflow.emplace([&]() -> void { (*reinserter)(random, Parents(), offspring); }).name("reinsert");
             auto incrementGeneration = subflow.emplace([&]() -> void { ++Generation(); }).name("increment generation");
-            auto reportProgress = subflow.emplace([&, timer]() -> void {
-                                             Elapsed() = computeElapsed();
-                                             Timings() = timer->Timings();
-                                             if (report && std::invoke(report)) { RequestStop(); }
-                                         }).name("report progress");
+            auto reportProgress = subflow
+                                      .emplace([&, timer]() -> void {
+                                          Elapsed() = computeElapsed();
+                                          Timings() = timer->Timings();
+                                          if (report && std::invoke(report)) {
+                                              RequestStop();
+                                          }
+                                      })
+                                      .name("report progress");
 
             // set-up subflow graph
             prepareGenerator.precede(generateOffspring);
@@ -184,7 +226,9 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
             incrementGeneration.precede(reportProgress);
         }, // loop body (evolutionary main loop)
         [&]() -> int { return 0; }, // jump back to the next iteration
-        [&]() -> void { IsFitted() = true; /* all done */ } // work done, report last gen and stop
+        [&]() -> void {
+            IsFitted() = true; /* all done */
+        } // work done, report last gen and stop
     ); // evolutionary loop
 
     init.name("init");
@@ -213,7 +257,8 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
     cleanupTimer();
 }
 
-auto GeneticProgrammingAlgorithm::Run(Operon::RandomGenerator& random, Operon::ReportCallback report, size_t threads, bool warmStart) -> void
+auto GeneticProgrammingAlgorithm::Run(
+    Operon::RandomGenerator& random, Operon::ReportCallback report, size_t threads, bool warmStart) -> void
 {
     if (threads == 0) {
         threads = std::thread::hardware_concurrency();

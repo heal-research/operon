@@ -97,7 +97,8 @@ namespace detail {
     // with no separate numerical cost wrapping it.
     inline auto MakeFitEvaluationError(InterpreterError error, FitDiagnostics diag) -> FitOutcome
     {
-        return MakeFitEvaluationError(GradientError { .Code = GradientErrorCode::EvaluationFailure, .Cause = std::move(error) }, std::move(diag));
+        return MakeFitEvaluationError(
+            GradientError { .Code = GradientErrorCode::EvaluationFailure, .Cause = std::move(error) }, std::move(diag));
     }
 
     inline auto MakeFitConfigurationError(WeightError error, FitDiagnostics diag) -> FitOutcome
@@ -121,8 +122,7 @@ namespace detail {
 
     // Narrows a size_t iteration option to T, saturating at T's maximum instead
     // of wrapping (a wrapped budget could be negative or silently zero).
-    template <std::integral T>
-    [[nodiscard]] constexpr auto SaturatingCast(std::size_t value) -> T
+    template <std::integral T> [[nodiscard]] constexpr auto SaturatingCast(std::size_t value) -> T
     {
         constexpr auto limit = static_cast<std::size_t>(std::numeric_limits<T>::max());
         return static_cast<T>(std::min(value, limit));
@@ -143,7 +143,8 @@ namespace detail {
     // InitialCost == FinalCost, Iterations == 0, and the unchanged (empty)
     // parameter vector. The outcome is therefore a FitFailure (no improvement)
     // unless the single evaluation itself failed.
-    inline auto ZeroParameterDiagnostics(FitDiagnostics diag, Operon::Scalar cost, int functionEvaluations) -> FitDiagnostics
+    inline auto ZeroParameterDiagnostics(FitDiagnostics diag, Operon::Scalar cost, int functionEvaluations)
+        -> FitDiagnostics
     {
         diag.FinalParameters = diag.InitialParameters;
         diag.InitialCost = diag.FinalCost = cost;

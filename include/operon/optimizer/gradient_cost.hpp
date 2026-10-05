@@ -32,7 +32,7 @@ enum class GradientErrorCode : std::uint8_t {
 // index of the first invalid weight in the frame documented on WeightError
 // (absolute dataset-column row for a gradient cost's Evaluate).
 struct GradientError {
-    GradientErrorCode Code {GradientErrorCode::EvaluationFailure};
+    GradientErrorCode Code { GradientErrorCode::EvaluationFailure };
     std::size_t Expected {};
     std::size_t Actual {};
     std::size_t Row {};
@@ -59,10 +59,9 @@ public:
 
     [[nodiscard]] virtual auto NumParameters() const noexcept -> std::size_t = 0;
 
-    [[nodiscard]] virtual auto Evaluate(
-        ConstScalarSpan parameters,
-        ScalarSpan gradient)
-        const -> tl::expected<Scalar, GradientError> = 0;
+    [[nodiscard]] virtual auto Evaluate(ConstScalarSpan parameters, ScalarSpan gradient) const
+        -> tl::expected<Scalar, GradientError>
+        = 0;
 };
 
 namespace Concepts {

@@ -26,7 +26,8 @@ namespace Operon {
 // but stays meaningful on small datasets where a shuffle-based estimate is noisy, and
 // is local/exact rather than a finite-difference approximation (see
 // Interpreter::JacRevVariable).
-inline auto GradientImportance(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Range range) -> std::vector<std::pair<Operon::Hash, double>>
+inline auto GradientImportance(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Range range)
+    -> std::vector<std::pair<Operon::Hash, double>>
 {
     using Interp = Operon::Interpreter<>;
 
@@ -35,17 +36,19 @@ inline auto GradientImportance(Operon::Tree const& tree, Operon::Dataset const& 
     auto const vars = detail::VariablesUsedIn(tree);
 
     Operon::ScalarDispatch dtable;
-    Interp const interpreter{ &dtable, &dataset, &tree };
+    Interp const interpreter { &dtable, &dataset, &tree };
     auto const coeff = tree.GetCoefficients();
 
     std::vector<std::pair<Operon::Hash, double>> result;
     result.reserve(vars.size());
     for (auto const variable : vars) {
         auto derivativeResult = interpreter.JacRevVariable(coeff, range, variable);
-        if (!derivativeResult) { throw std::runtime_error(FormatInterpreterError(derivativeResult.error())); }
+        if (!derivativeResult) {
+            throw std::runtime_error(FormatInterpreterError(derivativeResult.error()));
+        }
         auto const& derivative = *derivativeResult;
-        auto const sum = std::transform_reduce(derivative.begin(), derivative.end(), Operon::Scalar{0}, std::plus<>{},
-            [](Operon::Scalar d) -> Operon::Scalar { return std::abs(d); });
+        auto const sum = std::transform_reduce(derivative.begin(), derivative.end(), Operon::Scalar { 0 },
+            std::plus<> {}, [](Operon::Scalar d) -> Operon::Scalar { return std::abs(d); });
         result.emplace_back(variable, static_cast<double>(sum) / static_cast<double>(derivative.size()));
     }
 
@@ -58,7 +61,8 @@ inline auto GradientImportance(Operon::Tree const& tree, Operon::Dataset const& 
 // than restricting to a training-only range. Pass an explicit range only if
 // there's a specific reason to isolate a subset (e.g. comparing train vs.
 // test importance).
-inline auto GradientImportance(Operon::Tree const& tree, Operon::Dataset const& dataset) -> std::vector<std::pair<Operon::Hash, double>>
+inline auto GradientImportance(Operon::Tree const& tree, Operon::Dataset const& dataset)
+    -> std::vector<std::pair<Operon::Hash, double>>
 {
     return GradientImportance(tree, dataset, Operon::Range(0, dataset.Rows<std::size_t>()));
 }

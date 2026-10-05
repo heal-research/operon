@@ -10,17 +10,17 @@
 #include <limits>
 #include <memory>
 #include <stdexcept>
-#include <unordered_map>
 #include <taskflow/algorithm/reduce.hpp>
 #include <taskflow/taskflow.hpp>
 #include <thread>
+#include <unordered_map>
 
 #include "operon/algorithms/nsga2.hpp"
-#include "operon/hash/zobrist.hpp"
 #include "operon/core/problem.hpp"
 #include "operon/core/version.hpp"
 #include "operon/formatter/formatter.hpp"
 #include "operon/hash/hash.hpp"
+#include "operon/hash/zobrist.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/operators/crossover.hpp"
@@ -47,19 +47,24 @@
 #include "util.hpp"
 
 namespace {
-template<typename EvaluatorType>
+template <typename EvaluatorType>
 auto FrontSelect(EvaluatorType const& eval, Operon::Span<Operon::Individual const> pop) -> Operon::Individual
 {
     Operon::RandomGenerator rng(0);
     std::vector<Operon::Scalar> buf(eval.GetProblem()->TrainingRange().Size());
-    auto span = Operon::Span<Operon::Scalar>{buf.data(), buf.size()};
+    auto span = Operon::Span<Operon::Scalar> { buf.data(), buf.size() };
 
-    Operon::Individual const* best{nullptr};
+    Operon::Individual const* best { nullptr };
     auto bestVal = std::numeric_limits<Operon::Scalar>::max();
     for (auto const& ind : pop) {
-        if (ind.Rank != 0) { continue; }
+        if (ind.Rank != 0) {
+            continue;
+        }
         auto r = eval(rng, ind, span);
-        if (!best || r[0] < bestVal) { bestVal = r[0]; best = &ind; }
+        if (!best || r[0] < bestVal) {
+            bestVal = r[0];
+            best = &ind;
+        }
     }
     return best ? *best : pop.front();
 }
@@ -68,7 +73,8 @@ auto FrontSelect(EvaluatorType const& eval, Operon::Span<Operon::Individual cons
 auto main(int argc, char** argv) -> int
 {
     auto opts = Operon::InitOptions("operon_gp", "Genetic programming symbolic regression");
-    opts.add_options()("sorter", "Non-dominated sorter: rs (RankIntersect) or ms (Merge)", cxxopts::value<std::string>()->default_value("rs"));
+    opts.add_options()("sorter", "Non-dominated sorter: rs (RankIntersect) or ms (Merge)",
+        cxxopts::value<std::string>()->default_value("rs"));
     auto result = Operon::ParseOptions(std::move(opts), argc, argv);
 
     // parse and set default values
@@ -98,13 +104,16 @@ auto main(int argc, char** argv) -> int
     auto maxLength = result["maxlength"].as<size_t>();
     auto maxDepth = result["maxdepth"].as<size_t>();
     auto crossoverInternalProbability = result["crossover-internal-probability"].as<Operon::Scalar>();
-    Operon::ShapeBoundOptions shapeBoundOptions{};
+    Operon::ShapeBoundOptions shapeBoundOptions {};
 
     auto symbolic = result["symbolic"].as<bool>();
     try {
-        auto const shapeBoundModeConfig = Operon::ParseShapeBoundModeConfig(result["shape-bound-mode"].as<std::string>());
+        auto const shapeBoundModeConfig
+            = Operon::ParseShapeBoundModeConfig(result["shape-bound-mode"].as<std::string>());
         shapeBoundOptions.BisectionDepth = result["shape-bisection-depth"].as<int>();
-        if (shapeBoundModeConfig.BisectionDepth) { shapeBoundOptions.BisectionDepth = *shapeBoundModeConfig.BisectionDepth; }
+        if (shapeBoundModeConfig.BisectionDepth) {
+            shapeBoundOptions.BisectionDepth = *shapeBoundModeConfig.BisectionDepth;
+        }
         Operon::ValidateShapeBoundOptions(shapeBoundOptions);
         for (const auto& kv : result.arguments()) {
             const auto& key = kv.key();
@@ -158,7 +167,8 @@ auto main(int argc, char** argv) -> int
         Operon::SetupRanges(result, *dataset, trainingRange, testRange);
         // validate training range
         if (trainingRange.Start() >= rows || trainingRange.End() > rows) {
-            fmt::print(stderr, "error: the training range {}:{} exceeds the available data range ({} rows)\n", trainingRange.Start(), trainingRange.End(), dataset->Rows());
+            fmt::print(stderr, "error: the training range {}:{} exceeds the available data range ({} rows)\n",
+                trainingRange.Start(), trainingRange.End(), dataset->Rows());
             return EXIT_FAILURE;
         }
 
@@ -177,9 +187,9 @@ auto main(int argc, char** argv) -> int
         problem.SetLinearScalingOmitsNonFinite(result["skip-nonfinite"].as<bool>());
         problem.ConfigurePrimitiveSet(primitiveSetConfig);
 
-        auto [creator, creatorMaxLength, creatorMinDepth, creatorMaxDepth] = ParseCreator(
-            result["creator"].as<std::string>(), problem.GetPrimitiveSet(), problem.GetInputs(),
-            maxLength, result["creator-mindepth"].as<std::size_t>(), result["creator-maxdepth"].as<std::size_t>());
+        auto [creator, creatorMaxLength, creatorMinDepth, creatorMaxDepth]
+            = ParseCreator(result["creator"].as<std::string>(), problem.GetPrimitiveSet(), problem.GetInputs(),
+                maxLength, result["creator-mindepth"].as<std::size_t>(), result["creator-maxdepth"].as<std::size_t>());
 
         auto [amin, amax] = problem.GetPrimitiveSet().FunctionArityLimits();
         Operon::UniformTreeInitializer treeInitializer(creator.get());
@@ -194,7 +204,8 @@ auto main(int argc, char** argv) -> int
             using Dist = std::uniform_int_distribution<int>;
             coeffInitializer = std::make_unique<Operon::CoefficientInitializer<Dist>>();
             int constexpr range { 5 };
-            dynamic_cast<Operon::CoefficientInitializer<Dist>*>(coeffInitializer.get())->ParameterizeDistribution(-range, +range);
+            dynamic_cast<Operon::CoefficientInitializer<Dist>*>(coeffInitializer.get())
+                ->ParameterizeDistribution(-range, +range);
             onePoint = std::make_unique<Operon::OnePointMutation<Dist>>();
             dynamic_cast<Operon::OnePointMutation<Dist>*>(onePoint.get())->ParameterizeDistribution(-range, +range);
             multiPoint = std::make_unique<Operon::MultiPointMutation<Dist>>();
@@ -202,11 +213,14 @@ auto main(int argc, char** argv) -> int
         } else {
             using Dist = std::normal_distribution<Operon::Scalar>;
             coeffInitializer = std::make_unique<Operon::CoefficientInitializer<Dist>>();
-            dynamic_cast<Operon::NormalCoefficientInitializer*>(coeffInitializer.get())->ParameterizeDistribution(Operon::Scalar { 0 }, Operon::Scalar { 1 });
+            dynamic_cast<Operon::NormalCoefficientInitializer*>(coeffInitializer.get())
+                ->ParameterizeDistribution(Operon::Scalar { 0 }, Operon::Scalar { 1 });
             onePoint = std::make_unique<Operon::OnePointMutation<Dist>>();
-            dynamic_cast<Operon::OnePointMutation<Dist>*>(onePoint.get())->ParameterizeDistribution(Operon::Scalar { 0 }, Operon::Scalar { 1 });
+            dynamic_cast<Operon::OnePointMutation<Dist>*>(onePoint.get())
+                ->ParameterizeDistribution(Operon::Scalar { 0 }, Operon::Scalar { 1 });
             multiPoint = std::make_unique<Operon::MultiPointMutation<Dist>>();
-            dynamic_cast<Operon::MultiPointMutation<Dist>*>(multiPoint.get())->ParameterizeDistribution(Operon::Scalar { 0 }, Operon::Scalar { 1 });
+            dynamic_cast<Operon::MultiPointMutation<Dist>*>(multiPoint.get())
+                ->ParameterizeDistribution(Operon::Scalar { 0 }, Operon::Scalar { 1 });
         }
 
         Operon::SubtreeCrossover crossover { crossoverInternalProbability, maxDepth, maxLength };
@@ -224,17 +238,17 @@ auto main(int argc, char** argv) -> int
             discretePoint.Add(static_cast<Operon::Scalar>(v), 1);
         }
 
-        std::unordered_map<std::string, Operon::MutatorBase*> const availableMutators{
-            {"onepoint", onePoint.get()},
-            {"multipoint", multiPoint.get()},
-            {"changevar", &changeVar},
-            {"changefunc", &changeFunc},
-            {"replacesubtree", &replaceSubtree},
-            {"insertsubtree", &insertSubtree},
-            {"removechild", &removeChild},
-            {"removesubtree", &removeSubtree},
-            {"discretepoint", &discretePoint},
-            {"shuffle", &shuffleSubtrees},
+        std::unordered_map<std::string, Operon::MutatorBase*> const availableMutators {
+            { "onepoint", onePoint.get() },
+            { "multipoint", multiPoint.get() },
+            { "changevar", &changeVar },
+            { "changefunc", &changeFunc },
+            { "replacesubtree", &replaceSubtree },
+            { "insertsubtree", &insertSubtree },
+            { "removechild", &removeChild },
+            { "removesubtree", &removeSubtree },
+            { "discretepoint", &discretePoint },
+            { "shuffle", &shuffleSubtrees },
         };
         Operon::ParseMutators(result["mutators"].as<std::string>(), availableMutators, mutator);
 
@@ -247,36 +261,39 @@ auto main(int argc, char** argv) -> int
             throw std::invalid_argument("--skip-nonfinite is not supported with --jit=all");
         }
 
-        std::unique_ptr<Operon::Zobrist>       zobrist;
+        std::unique_ptr<Operon::Zobrist> zobrist;
         std::unique_ptr<Operon::EvaluatorBase> errorEvaluator;
         std::unique_ptr<Operon::EvaluatorBase> jacEvalStorage;
         std::unique_ptr<Operon::OptimizerBase> optimizer;
-        std::function<void()>                  jitReport = [](){};
+        std::function<void()> jitReport = []() {};
 
         if (jitMode.empty()) {
             if (result["transposition-cache"].as<bool>()) {
                 Operon::RandomGenerator cacheRng(config.Seed);
-                zobrist = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength), problem.GetInputs(), result["cache-max-age"].as<size_t>());
+                zobrist = std::make_unique<Operon::Zobrist>(
+                    cacheRng, static_cast<int>(maxLength), problem.GetInputs(), result["cache-max-age"].as<size_t>());
                 config.Cache = zobrist.get();
             }
             errorEvaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable,
                 result["skip-nonfinite"].as<bool>(), result["nonfinite-penalty-weight"].as<double>());
-            optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
+            optimizer
+                = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(
+                    &dtable, &problem);
         } else {
-            auto jobj = Operon::CLI::MakeJitObjects(
-                jitMode, problem, dtable,
-                result["objective"].as<std::string>(),
-                result["jit-max-length"].as<int>(),
-                result["jit-min-visits"].as<std::size_t>(),
-                static_cast<int>(maxLength), config.Seed,
-                result["cache-max-age"].as<std::size_t>());
-            if (jobj.Error) { return EXIT_FAILURE; }
+            auto jobj = Operon::CLI::MakeJitObjects(jitMode, problem, dtable, result["objective"].as<std::string>(),
+                result["jit-max-length"].as<int>(), result["jit-min-visits"].as<std::size_t>(),
+                static_cast<int>(maxLength), config.Seed, result["cache-max-age"].as<std::size_t>());
+            if (jobj.Error) {
+                return EXIT_FAILURE;
+            }
             errorEvaluator = std::move(jobj.Evaluator);
             jacEvalStorage = std::move(jobj.OptimizerJacEval);
-            optimizer      = std::move(jobj.Optimizer);
-            zobrist        = std::move(jobj.Zobrist);
-            jitReport      = std::move(jobj.Report);
-            if (result["transposition-cache"].as<bool>()) { config.Cache = zobrist.get(); }
+            optimizer = std::move(jobj.Optimizer);
+            zobrist = std::move(jobj.Zobrist);
+            jitReport = std::move(jobj.Report);
+            if (result["transposition-cache"].as<bool>()) {
+                config.Cache = zobrist.get();
+            }
             // "jac" mode: factory leaves evaluator null; create interpreter evaluator here.
             if (!errorEvaluator) {
                 errorEvaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable,
@@ -284,20 +301,25 @@ auto main(int argc, char** argv) -> int
             }
             // unknown mode: factory returned null optimizer; fall back to defaults.
             if (!optimizer) {
-                optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
+                optimizer = std::make_unique<
+                    Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(
+                    &dtable, &problem);
             }
         }
         errorEvaluator->SetBudget(config.Evaluations);
         optimizer->SetIterations(config.Iterations);
 
-        Operon::TreePropertyEvaluator lengthEvaluator(&problem, [](Operon::Tree const& tree) {
-            return static_cast<Operon::Scalar>(tree.Length());
-        }, static_cast<Operon::Scalar>(maxLength));
+        Operon::TreePropertyEvaluator lengthEvaluator(
+            &problem, [](Operon::Tree const& tree) { return static_cast<Operon::Scalar>(tree.Length()); },
+            static_cast<Operon::Scalar>(maxLength));
         // Operon::EntropyEvaluator entropyEvaluator(&problem);
 
-        auto loadedShapeConstraints = Operon::LoadShapeConstraints(
-            result.contains("shape-constraints-config") ? result["shape-constraints-config"].as<std::string>() : std::string{});
-        if (!loadedShapeConstraints) { return Operon::Cli::Report(loadedShapeConstraints.error()); }
+        auto loadedShapeConstraints = Operon::LoadShapeConstraints(result.contains("shape-constraints-config")
+                ? result["shape-constraints-config"].as<std::string>()
+                : std::string {});
+        if (!loadedShapeConstraints) {
+            return Operon::Cli::Report(loadedShapeConstraints.error());
+        }
         auto shapeConstraints = std::move(*loadedShapeConstraints);
         if (!shapeConstraints && result.count("shape-enforcement") != 0) {
             throw std::invalid_argument("--shape-enforcement requires --shape-constraints-config");
@@ -307,10 +329,11 @@ auto main(int argc, char** argv) -> int
         // below). Combining the two would silently certify constraints against
         // the wrong coordinate system, so reject it rather than mis-certify.
         if (shapeConstraints && result["standardize"].as<bool>()) {
-            throw std::invalid_argument("--shape-constraints-config domains are raw feature-space bounds and are not currently transformed for --standardize; use one or the other");
+            throw std::invalid_argument("--shape-constraints-config domains are raw feature-space bounds and are not "
+                                        "currently transformed for --standardize; use one or the other");
         }
 
-        Operon::ShapeConstraintEnforcement shapeEnforcement{Operon::ShapeConstraintEnforcement::None};
+        Operon::ShapeConstraintEnforcement shapeEnforcement { Operon::ShapeConstraintEnforcement::None };
         std::unique_ptr<Operon::ShapeViolationEvaluator> shapePenaltyStorage;
         std::unique_ptr<Operon::ShapeViolationEvaluator> shapeExtraObjectiveStorage;
         std::unique_ptr<Operon::MultiEvaluator> penalizedErrorStorage;
@@ -323,26 +346,31 @@ auto main(int argc, char** argv) -> int
             auto const penaltyWeight = result["shape-penalty-weight"].as<double>();
             auto const worstValue = result["shape-worst-value"].as<double>();
             if (!(std::isfinite(unknownViolation) && unknownViolation >= 0.0)) {
-                throw std::invalid_argument(fmt::format("--shape-unknown-violation must be a finite, non-negative value (got {})", unknownViolation));
+                throw std::invalid_argument(fmt::format(
+                    "--shape-unknown-violation must be a finite, non-negative value (got {})", unknownViolation));
             }
             if (!(std::isfinite(penaltyWeight) && penaltyWeight >= 0.0)) {
-                throw std::invalid_argument(fmt::format("--shape-penalty-weight must be a finite, non-negative value (got {})", penaltyWeight));
+                throw std::invalid_argument(
+                    fmt::format("--shape-penalty-weight must be a finite, non-negative value (got {})", penaltyWeight));
             }
             if (!std::isfinite(worstValue)) {
                 throw std::invalid_argument(fmt::format("--shape-worst-value must be finite (got {})", worstValue));
             }
 
-            Operon::ShapeConstraintPolicy const policy{
+            Operon::ShapeConstraintPolicy const policy {
                 .Enforcement = shapeEnforcement,
                 .UnknownViolation = static_cast<Operon::Scalar>(unknownViolation),
                 .PenaltyWeight = static_cast<Operon::Scalar>(penaltyWeight),
             };
-            if (auto error = Operon::ValidatePolicy(policy, /*isNsga2=*/true)) { throw std::invalid_argument(*error); }
+            if (auto error = Operon::ValidatePolicy(policy, /*isNsga2=*/true)) {
+                throw std::invalid_argument(*error);
+            }
             auto const boundMode = shapeBoundModeConfig.Mode;
 
             if (Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::Penalty)) {
-                shapePenaltyStorage = std::make_unique<Operon::ShapeViolationEvaluator>(
-                    &problem, &dtable, *shapeConstraints, static_cast<Operon::Scalar>(penaltyWeight), static_cast<Operon::Scalar>(unknownViolation));
+                shapePenaltyStorage
+                    = std::make_unique<Operon::ShapeViolationEvaluator>(&problem, &dtable, *shapeConstraints,
+                        static_cast<Operon::Scalar>(penaltyWeight), static_cast<Operon::Scalar>(unknownViolation));
                 shapePenaltyStorage->SetBoundMode(boundMode);
                 shapePenaltyStorage->SetBoundOptions(shapeBoundOptions);
                 penalizedErrorStorage = std::make_unique<Operon::MultiEvaluator>(&problem);
@@ -352,8 +380,8 @@ auto main(int argc, char** argv) -> int
                 errorObjective = penalizedErrorStorage.get();
             }
             if (Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::ExtraObjective)) {
-                shapeExtraObjectiveStorage = std::make_unique<Operon::ShapeViolationEvaluator>(
-                    &problem, &dtable, *shapeConstraints, Operon::Scalar{1}, static_cast<Operon::Scalar>(unknownViolation));
+                shapeExtraObjectiveStorage = std::make_unique<Operon::ShapeViolationEvaluator>(&problem, &dtable,
+                    *shapeConstraints, Operon::Scalar { 1 }, static_cast<Operon::Scalar>(unknownViolation));
                 shapeExtraObjectiveStorage->SetBoundMode(boundMode);
                 shapeExtraObjectiveStorage->SetBoundOptions(shapeBoundOptions);
             }
@@ -363,18 +391,23 @@ auto main(int argc, char** argv) -> int
         evaluator.SetBudget(config.Evaluations);
         evaluator.Add(errorObjective);
         evaluator.Add(&lengthEvaluator);
-        if (shapeExtraObjectiveStorage) { evaluator.Add(shapeExtraObjectiveStorage.get()); }
+        if (shapeExtraObjectiveStorage) {
+            evaluator.Add(shapeExtraObjectiveStorage.get());
+        }
         // evaluator.Add(&entropyEvaluator);
 
         // Optional shape-constraint wrapper (see operon_gp.cpp for the same
         std::unique_ptr<Operon::ShapeConstrainedEvaluator> shapeConstrainedStorage;
         if (shapeConstraints && Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::HardReject)) {
-            shapeConstrainedStorage = std::make_unique<Operon::ShapeConstrainedEvaluator>(&evaluator, &dtable, *shapeConstraints);
+            shapeConstrainedStorage
+                = std::make_unique<Operon::ShapeConstrainedEvaluator>(&evaluator, &dtable, *shapeConstraints);
             shapeConstrainedStorage->SetWorstValue(result["shape-worst-value"].as<double>());
             shapeConstrainedStorage->SetBoundMode(shapeBoundModeConfig.Mode);
             shapeConstrainedStorage->SetBoundOptions(shapeBoundOptions);
         }
-        Operon::EvaluatorBase* activeEvaluator = shapeConstrainedStorage ? static_cast<Operon::EvaluatorBase*>(shapeConstrainedStorage.get()) : static_cast<Operon::EvaluatorBase*>(&evaluator);
+        Operon::EvaluatorBase* activeEvaluator = shapeConstrainedStorage
+            ? static_cast<Operon::EvaluatorBase*>(shapeConstrainedStorage.get())
+            : static_cast<Operon::EvaluatorBase*>(&evaluator);
 
         EXPECT(problem.TrainingRange().Size() > 0);
 
@@ -390,10 +423,11 @@ auto main(int argc, char** argv) -> int
         auto maleSelector = Operon::ParseSelector(result["male-selector"].as<std::string>(), comp);
         Operon::CoefficientOptimizer cOpt { optimizer.get() };
 
-        auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), *activeEvaluator, crossover, mutator, *femaleSelector, *maleSelector, &cOpt);
+        auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), *activeEvaluator,
+            crossover, mutator, *femaleSelector, *maleSelector, &cOpt);
         // Default 0: NSGA2 had no elitism before this option existed, so an
         // unspecified --elitism preserves that. Opt in explicitly to enable it.
-        auto const eliteCount = result.count("elitism") ? result["elitism"].as<size_t>() : size_t{0};
+        auto const eliteCount = result.count("elitism") ? result["elitism"].as<size_t>() : size_t { 0 };
         auto reinserter = Operon::ParseReinserter(result["reinserter"].as<std::string>(), comp, eliteCount);
 
         Operon::RandomGenerator random(config.Seed);
@@ -407,17 +441,28 @@ auto main(int argc, char** argv) -> int
         // Reuse the same executor for shape-constraint Prepare() rather than
         // each evaluator owning a private one -- see
         // ShapeConstrainedEvaluator::SetExecutor's doc comment.
-        if (shapeConstrainedStorage) { shapeConstrainedStorage->SetExecutor(executor); }
-        if (shapePenaltyStorage) { shapePenaltyStorage->SetExecutor(executor); }
-        if (shapeExtraObjectiveStorage) { shapeExtraObjectiveStorage->SetExecutor(executor); }
+        if (shapeConstrainedStorage) {
+            shapeConstrainedStorage->SetExecutor(executor);
+        }
+        if (shapePenaltyStorage) {
+            shapePenaltyStorage->SetExecutor(executor);
+        }
+        if (shapeExtraObjectiveStorage) {
+            shapeExtraObjectiveStorage->SetExecutor(executor);
+        }
         auto const sorterName = result["sorter"].as<std::string>();
         Operon::RankIntersectSorter rsSorter;
         Operon::MergeSorter msSorter;
         Operon::NondominatedSorterBase* sorterPtr = nullptr;
-        if (sorterName == "rs") { sorterPtr = &rsSorter; }
-        else if (sorterName == "ms") { sorterPtr = &msSorter; }
-        else { throw std::runtime_error(fmt::format("unknown sorter: {}", sorterName)); }
-        Operon::NSGA2 gp { config, &problem, &treeInitializer, coeffInitializer.get(), generator.get(), reinserter.get(), sorterPtr };
+        if (sorterName == "rs") {
+            sorterPtr = &rsSorter;
+        } else if (sorterName == "ms") {
+            sorterPtr = &msSorter;
+        } else {
+            throw std::runtime_error(fmt::format("unknown sorter: {}", sorterName));
+        }
+        Operon::NSGA2 gp { config, &problem, &treeInitializer, coeffInitializer.get(), generator.get(),
+            reinserter.get(), sorterPtr };
 
         Operon::ModelSelectorFn modelSelector;
         auto const modelSelection = result["model-selection"].as<std::string>();
@@ -426,10 +471,14 @@ auto main(int argc, char** argv) -> int
             if (modelSelection == "mdl") {
                 auto const& lik = result["mdl-likelihood"].as<std::string>();
                 if (lik == "gaussian") {
-                    auto eval = std::make_shared<Operon::MinimumDescriptionLengthEvaluator<DTable, Operon::GaussianLikelihood<Operon::Scalar>>>(&problem, &dtable);
+                    auto eval = std::make_shared<
+                        Operon::MinimumDescriptionLengthEvaluator<DTable, Operon::GaussianLikelihood<Operon::Scalar>>>(
+                        &problem, &dtable);
                     modelSelector = [eval](auto pop) { return FrontSelect(*eval, pop); };
                 } else if (lik == "poisson") {
-                    auto eval = std::make_shared<Operon::MinimumDescriptionLengthEvaluator<DTable, Operon::PoissonLikelihood<Operon::Scalar>>>(&problem, &dtable);
+                    auto eval = std::make_shared<
+                        Operon::MinimumDescriptionLengthEvaluator<DTable, Operon::PoissonLikelihood<Operon::Scalar>>>(
+                        &problem, &dtable);
                     modelSelector = [eval](auto pop) { return FrontSelect(*eval, pop); };
                 } else {
                     throw std::runtime_error(fmt::format("unknown mdl-likelihood: {}", lik));
@@ -448,7 +497,8 @@ auto main(int argc, char** argv) -> int
         std::unique_ptr<Operon::Evaluator<decltype(dtable)>> reporterEvalStorage;
         Operon::Evaluator<decltype(dtable)> const* ptr = nullptr;
         if (jitMode == "all") {
-            reporterEvalStorage = std::make_unique<Operon::Evaluator<decltype(dtable)>>(&problem, &dtable, Operon::MSE{});
+            reporterEvalStorage
+                = std::make_unique<Operon::Evaluator<decltype(dtable)>>(&problem, &dtable, Operon::MSE {});
             ptr = reporterEvalStorage.get();
         } else {
             ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(errorEvaluator.get());
@@ -456,19 +506,30 @@ auto main(int argc, char** argv) -> int
         Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr, std::move(modelSelector), activeEvaluator);
         auto const warmStart = Operon::ResumeFromCheckpoint(gp, random, result);
         if (warmStart && result.contains("probes-config")) {
-            fmt::print(stderr, "warning: --probes-config sinks/traces truncate on start; resuming via --resume discards prior instrumentation history at any reused output path\n");
+            fmt::print(stderr,
+                "warning: --probes-config sinks/traces truncate on start; resuming via --resume discards prior "
+                "instrumentation history at any reused output path\n");
         }
         auto loadedProbes = Operon::LoadProbeConfig(
-            result.contains("probes-config") ? result["probes-config"].as<std::string>() : std::string{});
-        if (!loadedProbes) { return Operon::Cli::Report(loadedProbes.error()); }
+            result.contains("probes-config") ? result["probes-config"].as<std::string>() : std::string {});
+        if (!loadedProbes) {
+            return Operon::Cli::Report(loadedProbes.error());
+        }
         auto probes = std::move(*loadedProbes);
-        gp.Run(executor, random, [&]() -> bool {
-            reporter(executor, gp);
-            if (probes) { (*probes)(gp); }
-            Operon::MaybeSaveCheckpoint(gp, random, result);
-            return false;
-        }, warmStart);
-        if (probes) { probes->Finish(); }
+        gp.Run(
+            executor, random,
+            [&]() -> bool {
+                reporter(executor, gp);
+                if (probes) {
+                    (*probes)(gp);
+                }
+                Operon::MaybeSaveCheckpoint(gp, random, result);
+                return false;
+            },
+            warmStart);
+        if (probes) {
+            probes->Finish();
+        }
         Operon::MaybeSaveCheckpoint(gp, random, result, /*force=*/true);
         jitReport();
         auto best = reporter.GetBest();
@@ -479,11 +540,12 @@ auto main(int argc, char** argv) -> int
             // over the domain box -- flag that explicitly rather than leaving a
             // caller to assume printed-successfully means feasible.
             bool const feasible = shapeConstrainedStorage ? shapeConstrainedStorage->Feasible(best.Genotype)
-                : shapeExtraObjectiveStorage    ? shapeExtraObjectiveStorage->Measure(best.Genotype).Feasible
-                                                 : shapePenaltyStorage->Measure(best.Genotype).Feasible;
-            fmt::print(stderr, "shape-constraints: final model is {}\n", feasible ? "feasible" : "INFEASIBLE (not certified over the domain box)");
+                : shapeExtraObjectiveStorage              ? shapeExtraObjectiveStorage->Measure(best.Genotype).Feasible
+                                                          : shapePenaltyStorage->Measure(best.Genotype).Feasible;
+            fmt::print(stderr, "shape-constraints: final model is {}\n",
+                feasible ? "feasible" : "INFEASIBLE (not certified over the domain box)");
         }
-        fmt::print("{:infix:roundtrip}\n", Operon::Fmt::TreeFormatArgs{best.Genotype, *problem.GetDataset()});
+        fmt::print("{:infix:roundtrip}\n", Operon::Fmt::TreeFormatArgs { best.Genotype, *problem.GetDataset() });
         if (result.contains("pareto-front")) {
             Operon::WriteParetoFront(result["pareto-front"].as<std::string>(), gp.Individuals(), dtable, problem);
         }

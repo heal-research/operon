@@ -20,7 +20,8 @@ namespace Operon {
 auto DiscretePointMutation::operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree
 {
     auto& nodes = tree.Nodes();
-    auto it = Operon::Random::Sample(random, nodes.begin(), nodes.end(), [](auto const& n) -> auto { return n.IsLeaf(); });
+    auto it
+        = Operon::Random::Sample(random, nodes.begin(), nodes.end(), [](auto const& n) -> auto { return n.IsLeaf(); });
     ENSURE(it < nodes.end());
 
     auto s = std::reduce(weights_.cbegin(), weights_.cend(), Operon::Scalar { 0 }, std::plus {});
@@ -57,7 +58,8 @@ auto MultiMutation::operator()(Operon::RandomGenerator& random, Tree tree) const
 auto ChangeVariableMutation::operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree
 {
     auto& nodes = tree.Nodes();
-    auto it = Operon::Random::Sample(random, nodes.begin(), nodes.end(), [](auto const& n) -> auto { return n.IsVariable(); });
+    auto it = Operon::Random::Sample(
+        random, nodes.begin(), nodes.end(), [](auto const& n) -> auto { return n.IsVariable(); });
     if (it == nodes.end()) {
         return tree; // no variables in the tree, nothing to do
     }
@@ -70,7 +72,8 @@ auto ChangeFunctionMutation::operator()(Operon::RandomGenerator& random, Tree tr
 {
     auto& nodes = tree.Nodes();
 
-    auto it = Operon::Random::Sample(random, nodes.begin(), nodes.end(), [](auto const& n) -> auto { return !n.IsLeaf(); });
+    auto it
+        = Operon::Random::Sample(random, nodes.begin(), nodes.end(), [](auto const& n) -> auto { return !n.IsLeaf(); });
     if (it == nodes.end()) {
         return tree; // no functions in the tree, nothing to do
     }
@@ -100,8 +103,8 @@ auto ReplaceSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tr
     auto const newLen = std::uniform_int_distribution<Signed>(Signed { 1 }, maxLength)(random);
     auto subtree = (*creator_)(random, static_cast<size_t>(newLen), 1, maxDepth);
     (*coefficientInitializer_)(random, subtree);
-    auto rewritten = detail::RewriteSubtree(Operon::Span<Node const> { nodes }, target,
-        Operon::Span<Node const> { subtree.Nodes() });
+    auto rewritten = detail::RewriteSubtree(
+        Operon::Span<Node const> { nodes }, target, Operon::Span<Node const> { subtree.Nodes() });
     return Tree(std::move(rewritten)).UpdateNodes();
 }
 
@@ -113,7 +116,8 @@ auto RemoveChildMutation::operator()(Operon::RandomGenerator& random, Tree tree)
         return tree; // nothing to remove
     }
 
-    auto it = Operon::Random::Sample(random, nodes.begin(), nodes.end() - 1); // -1 because we don't want to remove the tree root
+    auto it = Operon::Random::Sample(
+        random, nodes.begin(), nodes.end() - 1); // -1 because we don't want to remove the tree root
     auto const& p = nodes[it->Parent];
     if (p.Arity > pset_.MinimumArity(p.HashValue)) {
         nodes[it->Parent].Arity--;
@@ -134,7 +138,8 @@ auto InsertSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tre
     auto const* pset = creator_->GetPrimitiveSet();
 
     auto test = [&](auto const& node) -> auto {
-        return node.template IsOp<BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Sub, BuiltinOp::Div>() && (node.Arity < pset->MaximumArity(node.HashValue));
+        return node.template IsOp<BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Sub, BuiltinOp::Div>()
+            && (node.Arity < pset->MaximumArity(node.HashValue));
     };
 
     auto n = std::count_if(nodes.begin(), nodes.end(), test);
@@ -188,8 +193,8 @@ auto RemoveSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tre
     // Always replace with the smallest possible subtree, a single terminal.
     auto subtree = (*creator_)(random, size_t { 1 }, 1, maxDepth);
     (*coefficientInitializer_)(random, subtree);
-    auto rewritten = detail::RewriteSubtree(Operon::Span<Node const> { nodes }, target,
-        Operon::Span<Node const> { subtree.Nodes() });
+    auto rewritten = detail::RewriteSubtree(
+        Operon::Span<Node const> { nodes }, target, Operon::Span<Node const> { subtree.Nodes() });
     return Tree(std::move(rewritten)).UpdateNodes();
 }
 auto ShuffleSubtreesMutation::operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree
@@ -223,13 +228,15 @@ auto ShuffleSubtreesMutation::operator()(Operon::RandomGenerator& random, Tree t
     }
 
     auto original = tree.Indices(root).begin();
-    auto const unchanged = std::ranges::all_of(children, [&](detail::SubtreeSpan const& child) { return child.Root == *original++; });
+    auto const unchanged
+        = std::ranges::all_of(children, [&](detail::SubtreeSpan const& child) { return child.Root == *original++; });
     if (unchanged) {
         return tree;
     }
 
     if (!std::ranges::any_of(nodes, [](Node const& node) { return node.IsRef(); })) {
-        Operon::Vector<Node> buffer(nodes.begin() + static_cast<std::ptrdiff_t>(span.First), nodes.begin() + static_cast<std::ptrdiff_t>(root));
+        Operon::Vector<Node> buffer(
+            nodes.begin() + static_cast<std::ptrdiff_t>(span.First), nodes.begin() + static_cast<std::ptrdiff_t>(root));
         auto destination = nodes.begin() + static_cast<std::ptrdiff_t>(span.First);
         for (auto const child : children) {
             auto const first = child.First - span.First;

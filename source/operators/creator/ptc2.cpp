@@ -2,24 +2,25 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <vector>
 #include <deque>
-#include <algorithm>
 #include <random>
 #include <utility>
+#include <vector>
 
-#include "operon/operators/creator.hpp"
-#include "operon/core/pset.hpp"
-#include "operon/core/tree.hpp"
 #include "operon/core/contracts.hpp"
 #include "operon/core/node.hpp"
+#include "operon/core/pset.hpp"
+#include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
+#include "operon/operators/creator.hpp"
 #include "operon/random/random.hpp"
 
 namespace {
-auto InitNode(Operon::Node& node, Operon::Span<Operon::Hash const> variables, Operon::RandomGenerator& random) -> void {
+auto InitNode(Operon::Node& node, Operon::Span<Operon::Hash const> variables, Operon::RandomGenerator& random) -> void
+{
     if (node.IsLeaf()) {
         if (node.IsVariable()) {
             node.HashValue = *Operon::Random::Sample(random, variables.begin(), variables.end());
@@ -29,7 +30,8 @@ auto InitNode(Operon::Node& node, Operon::Span<Operon::Hash const> variables, Op
     }
 }
 
-auto RandomDequeue(Operon::RandomGenerator& random, std::deque<size_t>& q) -> size_t {
+auto RandomDequeue(Operon::RandomGenerator& random, std::deque<size_t>& q) -> size_t
+{
     EXPECT(!q.empty());
     auto j = std::uniform_int_distribution<size_t>(0, q.size() - 1)(random);
     std::swap(q[j], q.front());
@@ -38,22 +40,21 @@ auto RandomDequeue(Operon::RandomGenerator& random, std::deque<size_t>& q) -> si
     return t;
 }
 
-auto BuildPostfix(
-    Operon::Vector<Operon::Node> const& nodes,
-    std::vector<size_t> const& childIndices,
-    Operon::Vector<Operon::Node>& postfix,
-    size_t& idx,
-    size_t i
-) -> void {
+auto BuildPostfix(Operon::Vector<Operon::Node> const& nodes, std::vector<size_t> const& childIndices,
+    Operon::Vector<Operon::Node>& postfix, size_t& idx, size_t i) -> void
+{
     auto const& node = nodes[i];
     postfix[--idx] = node;
-    if (node.IsLeaf()) { return; }
+    if (node.IsLeaf()) {
+        return;
+    }
     for (size_t j = 0; j < node.Arity; ++j) {
         BuildPostfix(nodes, childIndices, postfix, idx, childIndices[i] + j);
     }
 }
 
-auto ComputeChildIndices(Operon::Vector<Operon::Node> const& nodes) -> std::vector<size_t> {
+auto ComputeChildIndices(Operon::Vector<Operon::Node> const& nodes) -> std::vector<size_t>
+{
     std::vector<size_t> childIndices(nodes.size());
     size_t c = 1;
     for (size_t i = 0; i < nodes.size(); ++i) {
@@ -65,18 +66,10 @@ auto ComputeChildIndices(Operon::Vector<Operon::Node> const& nodes) -> std::vect
     return childIndices;
 }
 
-auto ProcessNextNode(
-    Operon::RandomGenerator& random,
-    std::deque<size_t>& q,
-    Operon::Vector<Operon::Node>& nodes,
-    size_t& targetLen,
-    size_t minFunctionArity,
-    size_t maxFunctionArity,
-    Operon::PrimitiveSet const* pset,
-    Operon::Span<Operon::Hash const> variables,
-    std::bernoulli_distribution& sampleIrregular,
-    size_t maxDepth
-) -> void {
+auto ProcessNextNode(Operon::RandomGenerator& random, std::deque<size_t>& q, Operon::Vector<Operon::Node>& nodes,
+    size_t& targetLen, size_t minFunctionArity, size_t maxFunctionArity, Operon::PrimitiveSet const* pset,
+    Operon::Span<Operon::Hash const> variables, std::bernoulli_distribution& sampleIrregular, size_t maxDepth) -> void
+{
     auto childDepth = RandomDequeue(random, q);
 
     // A node at childDepth == maxDepth is the deepest one this budget allows
@@ -84,7 +77,7 @@ auto ProcessNextNode(
     bool const depthExhausted = childDepth >= maxDepth;
 
     auto maxArity = (q.size() > 1 && sampleIrregular(random)) || depthExhausted
-        ? size_t{0}
+        ? size_t { 0 }
         : std::min(maxFunctionArity, targetLen - q.size() - nodes.size() - 1);
 
     if (maxArity > 0 && maxArity < minFunctionArity) {
@@ -107,7 +100,8 @@ auto ProcessNextNode(
 } // anonymous namespace
 
 namespace Operon {
-auto ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_t targetLen, size_t /*minDepth*/, size_t maxDepth) const -> Tree
+auto ProbabilisticTreeCreator::operator()(
+    Operon::RandomGenerator& random, size_t targetLen, size_t /*minDepth*/, size_t maxDepth) const -> Tree
 {
     EXPECT(targetLen > 0);
     EXPECT(maxDepth > 0);
@@ -123,7 +117,7 @@ auto ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
 
     // the root lives at depth 1; if maxDepth can't fit even one level of
     // children, force a terminal (same check ProcessNextNode applies).
-    auto maxArity = maxDepth <= 1 ? size_t{0} : std::min(maxFunctionArity, targetLen - 1);
+    auto maxArity = maxDepth <= 1 ? size_t { 0 } : std::min(maxFunctionArity, targetLen - 1);
     auto minArity = std::min(minFunctionArity, maxArity);
 
     auto root = pset->SampleRandomSymbol(random, minArity, maxArity);
@@ -146,10 +140,12 @@ auto ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
     std::bernoulli_distribution sampleIrregular(irregularityBias_);
 
     while (!q.empty()) {
-        ProcessNextNode(random, q, nodes, targetLen, minFunctionArity, maxFunctionArity, pset, variables, sampleIrregular, maxDepth);
+        ProcessNextNode(random, q, nodes, targetLen, minFunctionArity, maxFunctionArity, pset, variables,
+            sampleIrregular, maxDepth);
     }
 
-    std::sort(nodes.begin(), nodes.end(), [](const auto& lhs, const auto& rhs) -> auto { return lhs.Depth < rhs.Depth; });
+    std::sort(
+        nodes.begin(), nodes.end(), [](const auto& lhs, const auto& rhs) -> auto { return lhs.Depth < rhs.Depth; });
     auto const childIndices = ComputeChildIndices(nodes);
 
     Operon::Vector<Node> postfix(nodes.size());

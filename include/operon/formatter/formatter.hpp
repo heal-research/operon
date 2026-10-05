@@ -50,10 +50,8 @@ concept NameSource = std::same_as<T, Operon::Dataset> || std::same_as<T, Variabl
 class OPERON_EXPORT NameView {
 public:
     NameView() noexcept = default;
-    explicit NameView(Operon::Dataset const& dataset) noexcept
-        : kind_(Kind::Dataset), source_(&dataset) {}
-    explicit NameView(VariableNameMap const& names) noexcept
-        : kind_(Kind::Map), source_(&names) {}
+    explicit NameView(Operon::Dataset const& dataset) noexcept : kind_(Kind::Dataset), source_(&dataset) {}
+    explicit NameView(VariableNameMap const& names) noexcept : kind_(Kind::Map), source_(&names) {}
 
     // Resolve() returning nullopt is ambiguous on its own (missing hash vs.
     // no source supplied at all) -- callers needing to throw on a genuinely
@@ -67,8 +65,8 @@ public:
 
 private:
     enum class Kind : std::uint8_t { None, Dataset, Map };
-    Kind kind_{Kind::None};
-    void const* source_{nullptr};
+    Kind kind_ { Kind::None };
+    void const* source_ { nullptr };
 };
 
 // Resolved, per-call (not per-node) value-formatting policy. Infix
@@ -79,27 +77,23 @@ private:
 // Fixed=true (fixed decimal places), matching their long-standing visual
 // convention -- see TreeFormatSpec::Resolve.
 struct ValueSpec {
-    int Precision{2};
-    bool Fixed{false};
+    int Precision { 2 };
+    bool Fixed { false };
 };
 
 // Carries a Tree and the runtime name source used to resolve variable hashes.
 // Both references are non-owning and must outlive the synchronous formatting call.
-template <NameSource Source>
-struct TreeFormatArgs {
+template <NameSource Source> struct TreeFormatArgs {
     Operon::Tree const& Subject; // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members)
     Source const& Variables; // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members)
-    int Precision{2};
+    int Precision { 2 };
 };
 
-template <NameSource Source>
-TreeFormatArgs(Operon::Tree const&, Source const&) -> TreeFormatArgs<Source>;
-template <NameSource Source>
-TreeFormatArgs(Operon::Tree const&, Source const&, int) -> TreeFormatArgs<Source>;
+template <NameSource Source> TreeFormatArgs(Operon::Tree const&, Source const&) -> TreeFormatArgs<Source>;
+template <NameSource Source> TreeFormatArgs(Operon::Tree const&, Source const&, int) -> TreeFormatArgs<Source>;
 
 // Source-compatibility alias for the former public name; new code should use TreeFormatArgs.
-template <NameSource Source>
-using WithNames [[deprecated("use Operon::Fmt::TreeFormatArgs")]] = TreeFormatArgs<Source>;
+template <NameSource Source> using WithNames [[deprecated("use Operon::Fmt::TreeFormatArgs")]] = TreeFormatArgs<Source>;
 
 // Shared `fmt` format-spec grammar for both fmt::formatter<Operon::Tree>
 // and fmt::formatter<Operon::Fmt::TreeFormatArgs<Source>> (inherited by both,
@@ -117,15 +111,16 @@ using WithNames [[deprecated("use Operon::Fmt::TreeFormatArgs")]] = TreeFormatAr
 // consteval parse check) or an fmt::format_error at runtime for
 // fmt::runtime(...).
 struct TreeFormatSpec {
-    Mode RenderMode{Mode::Infix};
+    Mode RenderMode { Mode::Infix };
     std::optional<int> PrecisionOverride;
     std::optional<bool> FixedOverride;
 
-    constexpr auto parse(fmt::format_parse_context& ctx) -> fmt::format_parse_context::iterator; // NOLINT(readability-identifier-naming)
+    constexpr auto parse(fmt::format_parse_context& ctx)
+        -> fmt::format_parse_context::iterator; // NOLINT(readability-identifier-naming)
 
     [[nodiscard]] auto Resolve(int basePrecision) const noexcept -> ValueSpec
     {
-        return ValueSpec{
+        return ValueSpec {
             .Precision = PrecisionOverride.value_or(basePrecision),
             .Fixed = FixedOverride.value_or(RenderMode != Mode::Infix),
         };
@@ -157,16 +152,23 @@ constexpr auto TreeFormatSpec::parse(fmt::format_parse_context& ctx) -> fmt::for
         // accepting "tree" out of it.
         if (it + static_cast<std::ptrdiff_t>(n) != end) {
             auto next = *(it + static_cast<std::ptrdiff_t>(n));
-            if (next != ':' && next != '}') { return false; }
+            if (next != ':' && next != '}') {
+                return false;
+            }
         }
         it += static_cast<std::ptrdiff_t>(n);
         return true;
     };
 
-    if (consumeWord("infix")) { RenderMode = Mode::Infix; }
-    else if (consumeWord("postfix")) { RenderMode = Mode::Postfix; }
-    else if (consumeWord("tree")) { RenderMode = Mode::Tree; }
-    else if (consumeWord("dot")) { RenderMode = Mode::Dot; }
+    if (consumeWord("infix")) {
+        RenderMode = Mode::Infix;
+    } else if (consumeWord("postfix")) {
+        RenderMode = Mode::Postfix;
+    } else if (consumeWord("tree")) {
+        RenderMode = Mode::Tree;
+    } else if (consumeWord("dot")) {
+        RenderMode = Mode::Dot;
+    }
 
     if (it != end && *it == ':') {
         ++it;
@@ -197,7 +199,8 @@ constexpr auto TreeFormatSpec::parse(fmt::format_parse_context& ctx) -> fmt::for
     }
 
     if (it != end && *it != '}') {
-        fmt::report_error("Operon tree format spec: expected 'infix'/'postfix'/'tree'/'dot', an optional ':' precision, then '}'");
+        fmt::report_error(
+            "Operon tree format spec: expected 'infix'/'postfix'/'tree'/'dot', an optional ':' precision, then '}'");
     }
 
     return it;
@@ -205,12 +208,12 @@ constexpr auto TreeFormatSpec::parse(fmt::format_parse_context& ctx) -> fmt::for
 
 } // namespace Operon::Fmt
 
-template <>
-struct fmt::formatter<Operon::Tree> : Operon::Fmt::TreeFormatSpec {
+template <> struct fmt::formatter<Operon::Tree> : Operon::Fmt::TreeFormatSpec {
     template <typename FormatContext>
-    auto format(Operon::Tree const& tree, FormatContext& ctx) const -> decltype(ctx.out()) // NOLINT(readability-identifier-naming)
+    auto format(Operon::Tree const& tree, FormatContext& ctx) const
+        -> decltype(ctx.out()) // NOLINT(readability-identifier-naming)
     {
-        auto text = Operon::Fmt::Detail::Render(tree, RenderMode, Operon::Fmt::NameView{}, Resolve(2));
+        auto text = Operon::Fmt::Detail::Render(tree, RenderMode, Operon::Fmt::NameView {}, Resolve(2));
         return fmt::format_to(ctx.out(), "{}", text);
     }
 };
@@ -218,9 +221,11 @@ struct fmt::formatter<Operon::Tree> : Operon::Fmt::TreeFormatSpec {
 template <Operon::Fmt::NameSource Source>
 struct fmt::formatter<Operon::Fmt::TreeFormatArgs<Source>> : Operon::Fmt::TreeFormatSpec {
     template <typename FormatContext>
-    auto format(Operon::Fmt::TreeFormatArgs<Source> const& w, FormatContext& ctx) const -> decltype(ctx.out()) // NOLINT(readability-identifier-naming)
+    auto format(Operon::Fmt::TreeFormatArgs<Source> const& w, FormatContext& ctx) const
+        -> decltype(ctx.out()) // NOLINT(readability-identifier-naming)
     {
-        auto text = Operon::Fmt::Detail::Render(w.Subject, RenderMode, Operon::Fmt::NameView{w.Variables}, Resolve(w.Precision));
+        auto text = Operon::Fmt::Detail::Render(
+            w.Subject, RenderMode, Operon::Fmt::NameView { w.Variables }, Resolve(w.Precision));
         return fmt::format_to(ctx.out(), "{}", text);
     }
 };

@@ -83,7 +83,8 @@ static_assert(!Operon::PoissonGradientCostFunction<false>::UsesDatasetWeights);
 
 } // namespace
 
-TEST_CASE("PoissonGradientCostFunction LogInput=true: NLL matches the closed-form log-rate formula", "[poisson-gradient-cost]")
+TEST_CASE("PoissonGradientCostFunction LogInput=true: NLL matches the closed-form log-rate formula",
+    "[poisson-gradient-cost]")
 {
     Fixture fix;
     Operon::Interpreter<Operon::Scalar, DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
@@ -99,7 +100,8 @@ TEST_CASE("PoissonGradientCostFunction LogInput=true: NLL matches the closed-for
     CHECK_THAT(static_cast<double>(*result), Catch::Matchers::WithinRel(expected, 1e-4));
 }
 
-TEST_CASE("PoissonGradientCostFunction LogInput=false: NLL matches the closed-form positive-mean formula", "[poisson-gradient-cost]")
+TEST_CASE("PoissonGradientCostFunction LogInput=false: NLL matches the closed-form positive-mean formula",
+    "[poisson-gradient-cost]")
 {
     Fixture fix;
     Operon::Interpreter<Operon::Scalar, DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
@@ -116,7 +118,9 @@ TEST_CASE("PoissonGradientCostFunction LogInput=false: NLL matches the closed-fo
     CHECK_THAT(static_cast<double>(*result), Catch::Matchers::WithinRel(expected, 1e-4));
 }
 
-TEST_CASE("PoissonGradientCostFunction LogInput=true: exposure broadcast and per-row scaling match the closed-form formula", "[poisson-gradient-cost]")
+TEST_CASE(
+    "PoissonGradientCostFunction LogInput=true: exposure broadcast and per-row scaling match the closed-form formula",
+    "[poisson-gradient-cost]")
 {
     Fixture fix;
     Operon::Interpreter<Operon::Scalar, DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
@@ -124,9 +128,11 @@ TEST_CASE("PoissonGradientCostFunction LogInput=true: exposure broadcast and per
     auto z = interpreter.Evaluate(params, fix.TrainingRange()).value();
     Operon::ConstScalarSpan zSpan { z.data(), z.size() };
 
-    SECTION("scalar exposure broadcasts") {
+    SECTION("scalar exposure broadcasts")
+    {
         std::array<Operon::Scalar, 1> const exposure { Operon::Scalar { 2 } };
-        Operon::PoissonGradientCostFunction<true> cost { &interpreter, fix.Target(), fix.TrainingRange(), nullptr, 0, exposure };
+        Operon::PoissonGradientCostFunction<true> cost { &interpreter, fix.Target(), fix.TrainingRange(), nullptr, 0,
+            exposure };
         std::vector<Operon::Scalar> gradient(params.size());
         auto result = cost.Evaluate(params, gradient);
         REQUIRE(result.has_value());
@@ -134,9 +140,11 @@ TEST_CASE("PoissonGradientCostFunction LogInput=true: exposure broadcast and per
         CHECK_THAT(static_cast<double>(*result), Catch::Matchers::WithinRel(expected, 1e-4));
     }
 
-    SECTION("per-row exposure") {
+    SECTION("per-row exposure")
+    {
         std::vector<Operon::Scalar> exposure { 1.0F, 1.5F, 0.5F, 2.0F, 1.2F };
-        Operon::PoissonGradientCostFunction<true> cost { &interpreter, fix.Target(), fix.TrainingRange(), nullptr, 0, exposure };
+        Operon::PoissonGradientCostFunction<true> cost { &interpreter, fix.Target(), fix.TrainingRange(), nullptr, 0,
+            exposure };
         std::vector<Operon::Scalar> gradient(params.size());
         auto result = cost.Evaluate(params, gradient);
         REQUIRE(result.has_value());
@@ -171,18 +179,22 @@ TEST_CASE("PoissonGradientCostFunction: gradient matches central finite differen
         }
     };
 
-    SECTION("LogInput=true") {
+    SECTION("LogInput=true")
+    {
         Operon::PoissonGradientCostFunction<true> cost { &interpreter, fix.Target(), fix.TrainingRange() };
         checkFiniteDifference(cost, { 0.5F, -0.2F });
     }
 
-    SECTION("LogInput=false") {
+    SECTION("LogInput=false")
+    {
         Operon::PoissonGradientCostFunction<false> cost { &interpreter, fix.Target(), fix.TrainingRange() };
         checkFiniteDifference(cost, { 1.5F, 2.0F });
     }
 }
 
-TEST_CASE("PoissonGradientCostFunction LogInput=false: a nonpositive mean is a typed evaluation error, not a silent NaN", "[poisson-gradient-cost]")
+TEST_CASE(
+    "PoissonGradientCostFunction LogInput=false: a nonpositive mean is a typed evaluation error, not a silent NaN",
+    "[poisson-gradient-cost]")
 {
     Fixture fix;
     Operon::Interpreter<Operon::Scalar, DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
@@ -198,10 +210,13 @@ TEST_CASE("PoissonGradientCostFunction LogInput=false: a nonpositive mean is a t
     REQUIRE_FALSE(result.has_value());
     CHECK(result.error().Code == Operon::GradientErrorCode::NonFiniteEvaluation);
     CHECK_FALSE(result.error().Cause.has_value());
-    for (auto g : gradient) { CHECK(std::isnan(static_cast<double>(g))); }
+    for (auto g : gradient) {
+        CHECK(std::isnan(static_cast<double>(g)));
+    }
 }
 
-TEST_CASE("PoissonGradientCostFunction: interpreter failures are typed with the original cause", "[poisson-gradient-cost]")
+TEST_CASE(
+    "PoissonGradientCostFunction: interpreter failures are typed with the original cause", "[poisson-gradient-cost]")
 {
     Fixture fix;
     constexpr auto missingVariable = Operon::Hash { 0xBADF00D };
@@ -218,37 +233,47 @@ TEST_CASE("PoissonGradientCostFunction: interpreter failures are typed with the 
     REQUIRE(result.error().Cause.has_value());
     CHECK(result.error().Cause->Kind == Operon::InterpreterError::Code::MissingVariable);
     CHECK(result.error().Cause->Hash == missingVariable);
-    for (auto g : gradient) { CHECK(std::isnan(static_cast<double>(g))); }
+    for (auto g : gradient) {
+        CHECK(std::isnan(static_cast<double>(g)));
+    }
 }
 
-TEST_CASE("PoissonGradientCostFunction: invalid exposure is a typed InvalidWeights error, not an assertion", "[poisson-gradient-cost]")
+TEST_CASE("PoissonGradientCostFunction: invalid exposure is a typed InvalidWeights error, not an assertion",
+    "[poisson-gradient-cost]")
 {
     Fixture fix;
     Operon::Interpreter<Operon::Scalar, DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
     std::vector<Operon::Scalar> params { 0.5F, -0.2F };
     std::vector<Operon::Scalar> gradient(params.size());
 
-    SECTION("wrong per-row size") {
+    SECTION("wrong per-row size")
+    {
         std::vector<Operon::Scalar> exposure { 1.0F, 1.0F };
-        Operon::PoissonGradientCostFunction<true> cost { &interpreter, fix.Target(), fix.TrainingRange(), nullptr, 0, exposure };
+        Operon::PoissonGradientCostFunction<true> cost { &interpreter, fix.Target(), fix.TrainingRange(), nullptr, 0,
+            exposure };
         auto result = cost.Evaluate(params, gradient);
         REQUIRE_FALSE(result.has_value());
         CHECK(result.error().Code == Operon::GradientErrorCode::InvalidWeights);
         CHECK(result.error().Expected == fix.TrainingRange().Size());
         CHECK(result.error().Actual == exposure.size());
-        for (auto g : gradient) { CHECK(std::isnan(static_cast<double>(g))); }
+        for (auto g : gradient) {
+            CHECK(std::isnan(static_cast<double>(g)));
+        }
     }
 
-    SECTION("negative or non-finite entry reports its row") {
+    SECTION("negative or non-finite entry reports its row")
+    {
         std::vector<Operon::Scalar> exposure { 1.0F, 1.0F, 1.0F, -0.5F, 1.0F };
-        Operon::PoissonGradientCostFunction<true> negative { &interpreter, fix.Target(), fix.TrainingRange(), nullptr, 0, exposure };
+        Operon::PoissonGradientCostFunction<true> negative { &interpreter, fix.Target(), fix.TrainingRange(), nullptr,
+            0, exposure };
         auto negativeResult = negative.Evaluate(params, gradient);
         REQUIRE_FALSE(negativeResult.has_value());
         CHECK(negativeResult.error().Code == Operon::GradientErrorCode::InvalidWeights);
         CHECK(negativeResult.error().Row == 3);
 
         exposure[3] = std::numeric_limits<Operon::Scalar>::infinity();
-        Operon::PoissonGradientCostFunction<true> infinite { &interpreter, fix.Target(), fix.TrainingRange(), nullptr, 0, exposure };
+        Operon::PoissonGradientCostFunction<true> infinite { &interpreter, fix.Target(), fix.TrainingRange(), nullptr,
+            0, exposure };
         auto infiniteResult = infinite.Evaluate(params, gradient);
         REQUIRE_FALSE(infiniteResult.has_value());
         CHECK(infiniteResult.error().Code == Operon::GradientErrorCode::InvalidWeights);

@@ -24,46 +24,50 @@ namespace Operon {
 // Variadic mixin: assembles a cache entry from multiple data components.
 // Example:  using FitnessEntry = CacheEntry<FitnessData>;
 //           using JitEntry     = CacheEntry<VisitData, MetaData>;
-template<typename... Data>
-struct CacheEntry : Data... {};
+template <typename... Data> struct CacheEntry : Data... {};
 
 // Fitness value produced by the evaluator after local search.
 struct FitnessData {
-    Vector<Scalar>  Value;
-    std::uint32_t   InsertGeneration{0};
+    Vector<Scalar> Value;
+    std::uint32_t InsertGeneration { 0 };
 };
 
 using FitnessEntry = CacheEntry<FitnessData>;
 
 // Thread-safe cache keyed by Operon::Hash, backed by gtl::parallel_flat_hash_map_m.
-template<typename Entry>
-class ZobristCache {
+template <typename Entry> class ZobristCache {
     gtl::parallel_flat_hash_map_m<Hash, Entry> map_;
 
 public:
-    template<typename Fn>
-    auto IfContains(Hash h, Fn&& fn) const -> bool {
+    template <typename Fn> auto IfContains(Hash h, Fn&& fn) const -> bool
+    {
         bool found = false;
-        map_.if_contains(h, [&](auto const& kv) { std::forward<Fn>(fn)(kv.second); found = true; });
+        map_.if_contains(h, [&](auto const& kv) {
+            std::forward<Fn>(fn)(kv.second);
+            found = true;
+        });
         return found;
     }
 
-    template<typename Fn>
-    auto ModifyIf(Hash h, Fn&& fn) -> bool {
+    template <typename Fn> auto ModifyIf(Hash h, Fn&& fn) -> bool
+    {
         return map_.modify_if(h, [&](auto& kv) { std::forward<Fn>(fn)(kv.second); });
     }
 
-    template<typename OnExisting, typename OnNew>
-    auto LazyEmplace(Hash h, OnExisting&& onExisting, OnNew&& onNew) -> void {
+    template <typename OnExisting, typename OnNew>
+    auto LazyEmplace(Hash h, OnExisting&& onExisting, OnNew&& onNew) -> void
+    {
         map_.lazy_emplace_l(
-            h,
-            [&](auto& kv)         { std::forward<OnExisting>(onExisting)(kv.second); },
-            [&](auto const& ctor) { Entry e{}; std::forward<OnNew>(onNew)(e); ctor(h, std::move(e)); }
-        );
+            h, [&](auto& kv) { std::forward<OnExisting>(onExisting)(kv.second); },
+            [&](auto const& ctor) {
+                Entry e {};
+                std::forward<OnNew>(onNew)(e);
+                ctor(h, std::move(e));
+            });
     }
 
-    template<typename Pred>
-    auto EraseIf(Hash h, Pred&& pred) -> std::size_t {
+    template <typename Pred> auto EraseIf(Hash h, Pred&& pred) -> std::size_t
+    {
         return map_.erase_if(h, [&](auto const& kv) { return pred(kv.second); });
     }
 
@@ -93,9 +97,9 @@ public:
 // Subclassing: JitZobrist (in jit_evaluator.hpp) is the only intended subclass.
 // The virtual destructor exists to support nanobind exposure of both types.
 class OPERON_EXPORT Zobrist {
-    using Value   = Vector<Scalar>;
+    using Value = Vector<Scalar>;
     using Extents = std::extents<int, std::dynamic_extent, std::dynamic_extent>;
-    using Table   = MDArray<Hash, Extents>;
+    using Table = MDArray<Hash, Extents>;
 
     // table_ holds one precomputed random row per variable (known and finite
     // upfront, from variableHashes) plus one row for the Optimize marker.
@@ -111,19 +115,19 @@ class OPERON_EXPORT Zobrist {
     struct TranspositionTable;
     std::unique_ptr<TranspositionTable> tt_;
 
-    mutable std::atomic<std::size_t> hits_{0};
-    mutable std::atomic<std::size_t> lookups_{0};
+    mutable std::atomic<std::size_t> hits_ { 0 };
+    mutable std::atomic<std::size_t> lookups_ { 0 };
 
     // Generation clock ticked by the GA loop (see gp.cpp/nsga2.cpp) once per
     // generation. Used only to lazily expire stale entries in TryGet - see
     // maxAge_ below. Not related to hits_/lookups_.
-    mutable std::atomic<std::uint32_t> clock_{0};
+    mutable std::atomic<std::uint32_t> clock_ { 0 };
 
     // 0 disables age-based expiry (default, today's unbounded behavior).
     // Otherwise, an entry older than maxAge_ generations is treated as a
     // miss by TryGet and removed - see TryGet's implementation for why this
     // is a pragmatic freshness/evolvability mitigation, not a memory bound.
-    std::size_t maxAge_{0};
+    std::size_t maxAge_ { 0 };
 
 public:
     // variableHashes must include every variable hash that can appear in a tree.
@@ -131,10 +135,10 @@ public:
     // permuting variables at different positions always yields a different hash.
     Zobrist(RandomGenerator& rng, int maxLength, Span<Hash const> variableHashes, std::size_t maxAge = 0);
     virtual ~Zobrist();
-    Zobrist(Zobrist const&)            = delete;
-    Zobrist(Zobrist&&)                 = delete;
-    auto operator=(Zobrist const&)     -> Zobrist& = delete;
-    auto operator=(Zobrist&&)          -> Zobrist& = delete;
+    Zobrist(Zobrist const&) = delete;
+    Zobrist(Zobrist&&) = delete;
+    auto operator=(Zobrist const&) -> Zobrist& = delete;
+    auto operator=(Zobrist&&) -> Zobrist& = delete;
 
     [[nodiscard]] auto Rows() const { return table_.extent(0); }
     [[nodiscard]] auto Cols() const { return table_.extent(1); }
@@ -142,7 +146,7 @@ public:
 
     [[nodiscard]] auto ComputeHash(Node const& n, int pos) const -> Hash
     {
-        Hash h{};
+        Hash h {};
         if (n.IsVariable()) {
             auto const it = varIndex_.find(n.HashValue);
             ENSURE(it != varIndex_.end());
@@ -153,8 +157,9 @@ public:
             // for why. Ref nodes additionally encode their target: two DAGs
             // with the same node sequence but different RefTo values compute
             // different functions and must never share a cache entry.
-            std::array<Hash, 2> const buf{ n.HashValue, static_cast<Hash>(pos) };
-            h = Operon::Hasher{}(reinterpret_cast<uint8_t const*>(buf.data()), sizeof(buf)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+            std::array<Hash, 2> const buf { n.HashValue, static_cast<Hash>(pos) };
+            h = Operon::Hasher {}(reinterpret_cast<uint8_t const*>(buf.data()),
+                sizeof(buf)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
             if (n.IsRef()) {
                 auto const target = static_cast<Hash>(n.RefTo);
                 h ^= target + 0x9e3779b97f4a7c15ULL + (h << 6U) + (h >> 2U);
@@ -169,7 +174,7 @@ public:
     [[nodiscard]] auto ComputeHash(Tree const& tree) const -> Hash
     {
         EXPECT(std::ssize(tree.Nodes()) <= Cols());
-        Hash h{};
+        Hash h {};
         auto const& nodes = tree.Nodes();
         for (auto i = 0; i < std::ssize(nodes); ++i) {
             h ^= ComputeHash(nodes[i], i);

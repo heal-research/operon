@@ -16,8 +16,9 @@ public:
 
     [[nodiscard]] auto Solutions() const { return Operon::Span<Operon::Individual const> { archive_ }; }
     auto Clear() { archive_.clear(); }
+
 private:
-    Operon::Scalar eps_{};
+    Operon::Scalar eps_ {};
     std::vector<Operon::Individual> archive_;
 };
 } // namespace Operon

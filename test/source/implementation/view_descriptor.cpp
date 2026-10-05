@@ -2,9 +2,9 @@
 // SPDX-FileCopyrightText: Copyright 2026-present Bogdan Burlacu and contributors
 
 #include <array>
+#include <catch2/catch_test_macros.hpp>
 #include <cstddef>
 #include <cstdint>
-#include <catch2/catch_test_macros.hpp>
 
 #include "operon/core/view_descriptor.hpp"
 
@@ -35,7 +35,7 @@ auto MakeValidDescriptor(std::array<Operon::Scalar, 6>& storage) -> OperonViewDe
 
 TEST_CASE("view_descriptor: valid row-major descriptor yields a matching mdspan", "[view-descriptor]")
 {
-    std::array<Operon::Scalar, 6> storage {1, 2, 3, 4, 5, 6};
+    std::array<Operon::Scalar, 6> storage { 1, 2, 3, 4, 5, 6 };
     auto desc = MakeValidDescriptor(storage);
 
     auto view = Operon::MakeConstMatrixView(desc);
@@ -45,13 +45,13 @@ TEST_CASE("view_descriptor: valid row-major descriptor yields a matching mdspan"
     auto const at = [&](std::size_t r, std::size_t c) {
         return view->accessor().access(view->data_handle(), view->mapping()(r, c));
     };
-    CHECK(at(0, 0) == Operon::Scalar {1});
-    CHECK(at(1, 2) == Operon::Scalar {6});
+    CHECK(at(0, 0) == Operon::Scalar { 1 });
+    CHECK(at(1, 2) == Operon::Scalar { 6 });
 }
 
 TEST_CASE("view_descriptor: column-major strides describe the same logical values", "[view-descriptor]")
 {
-    std::array<Operon::Scalar, 6> storage {1, 4, 2, 5, 3, 6}; // column-major for the 2x3 [1..6] matrix
+    std::array<Operon::Scalar, 6> storage { 1, 4, 2, 5, 3, 6 }; // column-major for the 2x3 [1..6] matrix
     OperonViewDescriptor desc {};
     desc.version = OPERON_VIEW_DESCRIPTOR_VERSION;
     desc.struct_size = sizeof(desc);
@@ -69,13 +69,14 @@ TEST_CASE("view_descriptor: column-major strides describe the same logical value
     auto const at = [&](std::size_t r, std::size_t c) {
         return view->accessor().access(view->data_handle(), view->mapping()(r, c));
     };
-    CHECK(at(0, 0) == Operon::Scalar {1});
-    CHECK(at(1, 2) == Operon::Scalar {6});
+    CHECK(at(0, 0) == Operon::Scalar { 1 });
+    CHECK(at(1, 2) == Operon::Scalar { 6 });
 }
 
-TEST_CASE("view_descriptor: MakeMatrixView writes back through the caller-supplied mutable pointer", "[view-descriptor]")
+TEST_CASE(
+    "view_descriptor: MakeMatrixView writes back through the caller-supplied mutable pointer", "[view-descriptor]")
 {
-    std::array<Operon::Scalar, 4> storage {0, 0, 0, 0};
+    std::array<Operon::Scalar, 4> storage { 0, 0, 0, 0 };
     OperonViewDescriptor desc {};
     desc.version = OPERON_VIEW_DESCRIPTOR_VERSION;
     desc.struct_size = sizeof(desc);
@@ -90,13 +91,13 @@ TEST_CASE("view_descriptor: MakeMatrixView writes back through the caller-suppli
 
     auto view = Operon::MakeMatrixView(desc, storage.data());
     REQUIRE(view.has_value());
-    view->accessor().access(view->data_handle(), view->mapping()(1, 1)) = Operon::Scalar {42};
-    CHECK(storage[3] == Operon::Scalar {42});
+    view->accessor().access(view->data_handle(), view->mapping()(1, 1)) = Operon::Scalar { 42 };
+    CHECK(storage[3] == Operon::Scalar { 42 });
 }
 
 TEST_CASE("view_descriptor: MakeMatrixView rejects a read-only descriptor", "[view-descriptor]")
 {
-    std::array<Operon::Scalar, 6> storage {1, 2, 3, 4, 5, 6};
+    std::array<Operon::Scalar, 6> storage { 1, 2, 3, 4, 5, 6 };
     auto desc = MakeValidDescriptor(storage);
     desc.flags = OPERON_VIEW_READONLY;
 
@@ -110,7 +111,7 @@ TEST_CASE("view_descriptor: MakeMatrixView rejects a read-only descriptor", "[vi
 
 TEST_CASE("view_descriptor: rejects the wrong scalar precision", "[view-descriptor]")
 {
-    std::array<Operon::Scalar, 6> storage {1, 2, 3, 4, 5, 6};
+    std::array<Operon::Scalar, 6> storage { 1, 2, 3, 4, 5, 6 };
     auto desc = MakeValidDescriptor(storage);
     desc.scalar_code = ScalarCodeForBuild() == OPERON_SCALAR_F32 ? OPERON_SCALAR_F64 : OPERON_SCALAR_F32;
 
@@ -125,7 +126,7 @@ TEST_CASE("view_descriptor: MakeConstMatrixView/MakeMatrixView reject a rank-1 d
     // this API is specifically the rank-2 matrix constructor and must not
     // read extents[1]/byte_strides[1], which sit outside a rank-1
     // descriptor's own validated range.
-    std::array<Operon::Scalar, 4> storage {1, 2, 3, 4};
+    std::array<Operon::Scalar, 4> storage { 1, 2, 3, 4 };
     OperonViewDescriptor desc {};
     desc.version = OPERON_VIEW_DESCRIPTOR_VERSION;
     desc.struct_size = sizeof(desc);
@@ -151,9 +152,10 @@ TEST_CASE("view_descriptor: MakeConstMatrixView/MakeMatrixView reject a rank-1 d
     CHECK(mutableView.error() == OPERON_VIEW_ERR_RANK);
 }
 
-TEST_CASE("view_descriptor: negative byte strides are structurally valid but rejected by the matrix constructors", "[view-descriptor]")
+TEST_CASE("view_descriptor: negative byte strides are structurally valid but rejected by the matrix constructors",
+    "[view-descriptor]")
 {
-    std::array<Operon::Scalar, 6> storage {1, 2, 3, 4, 5, 6};
+    std::array<Operon::Scalar, 6> storage { 1, 2, 3, 4, 5, 6 };
     auto desc = MakeValidDescriptor(storage);
     desc.byte_strides[0] = -static_cast<std::ptrdiff_t>(3 * sizeof(Operon::Scalar));
 
@@ -176,7 +178,7 @@ TEST_CASE("view_descriptor: negative byte strides are structurally valid but rej
 
 TEST_CASE("view_descriptor: operon_view_validate rejects malformed descriptors", "[view-descriptor]")
 {
-    std::array<Operon::Scalar, 6> storage {1, 2, 3, 4, 5, 6};
+    std::array<Operon::Scalar, 6> storage { 1, 2, 3, 4, 5, 6 };
 
     SECTION("wrong version")
     {
@@ -248,7 +250,7 @@ TEST_CASE("view_descriptor: operon_view_validate rejects malformed descriptors",
 
 TEST_CASE("view_descriptor: a zero extent describes a valid, empty view", "[view-descriptor]")
 {
-    std::array<Operon::Scalar, 6> storage {1, 2, 3, 4, 5, 6};
+    std::array<Operon::Scalar, 6> storage { 1, 2, 3, 4, 5, 6 };
 
     SECTION("zero extent with real backing storage")
     {

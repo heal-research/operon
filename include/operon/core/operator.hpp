@@ -8,8 +8,7 @@
 #include "types.hpp"
 
 namespace Operon {
-template <typename Ret, typename... Args>
-struct OperatorBase {
+template <typename Ret, typename... Args> struct OperatorBase {
     using ReturnType = Ret;
     using ArgumentType = std::tuple<Args...>;
     // all operators take a random device (source of randomness) as the first parameter

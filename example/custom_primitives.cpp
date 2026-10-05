@@ -36,8 +36,8 @@
 #include "operon/operators/evaluator.hpp"
 #include "operon/operators/generator.hpp"
 #include "operon/operators/initializer.hpp"
-#include "operon/operators/mutation.hpp"
 #include "operon/operators/local_search.hpp"
+#include "operon/operators/mutation.hpp"
 #include "operon/operators/reinserter.hpp"
 #include "operon/operators/selector.hpp"
 #include "operon/optimizer/optimizer.hpp"
@@ -64,10 +64,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     // Arithmetic built-ins form the structural backbone of expressions.
     // No transcendental functions enabled here — those come from our
     // runtime-registered callables below.
-    problem.ConfigurePrimitiveSet(
-        Operon::NodeType::Constant | Operon::NodeType::Variable |
-        Operon::BuiltinOp::Add | Operon::BuiltinOp::Sub |
-        Operon::BuiltinOp::Mul | Operon::BuiltinOp::Div);
+    problem.ConfigurePrimitiveSet(Operon::NodeType::Constant | Operon::NodeType::Variable | Operon::BuiltinOp::Add
+        | Operon::BuiltinOp::Sub | Operon::BuiltinOp::Mul | Operon::BuiltinOp::Div);
 
     // register custom primitives
     using DT = Operon::ScalarDispatch;
@@ -75,23 +73,31 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     auto& pset = problem.GetPrimitiveSet();
 
     // sincos(x) = sin(x) + cos(x) — explicit derivative provided
-    Operon::RegisterUnaryFunction<DT, Operon::Scalar>(dtable, pset,
-        { .Name = "sincos", .Desc = "sin(x) + cos(x)",
-          .Arity = 1, .Frequency = 2 },
-        [](auto v) -> auto { using std::sin, std::cos; return sin(v) + cos(v); },
-        [](auto v) -> auto { using std::sin, std::cos; return cos(v) - sin(v); });
+    Operon::RegisterUnaryFunction<DT, Operon::Scalar>(
+        dtable, pset, { .Name = "sincos", .Desc = "sin(x) + cos(x)", .Arity = 1, .Frequency = 2 },
+        [](auto v) -> auto {
+            using std::sin, std::cos;
+            return sin(v) + cos(v);
+        },
+        [](auto v) -> auto {
+            using std::sin, std::cos;
+            return cos(v) - sin(v);
+        });
 
     // gaussian(x) = exp(-x²) — derivative via Jet<T,1> auto-diff
     Operon::RegisterUnaryFunction<DT, Operon::Scalar>(dtable, pset,
-        { .Name = "gaussian", .Desc = "exp(-x * x)",
-          .Arity = 1, .Frequency = 2 },
-        [](auto const& v) -> auto { using std::exp; return exp(-v * v); });
+        { .Name = "gaussian", .Desc = "exp(-x * x)", .Arity = 1, .Frequency = 2 }, [](auto const& v) -> auto {
+            using std::exp;
+            return exp(-v * v);
+        });
 
     // hypot(a, b) = sqrt(a² + b²) — derivative via Jet<T,1> auto-diff
     Operon::RegisterBinaryFunction<DT, Operon::Scalar>(dtable, pset,
-        { .Name = "hypot", .Desc = "sqrt(a^2 + b^2)",
-          .Arity = 2, .Frequency = 1 },
-        [](auto const& a, auto const& b) -> auto { using std::sqrt; return sqrt((a * a) + (b * b)); });
+        { .Name = "hypot", .Desc = "sqrt(a^2 + b^2)", .Arity = 2, .Frequency = 1 },
+        [](auto const& a, auto const& b) -> auto {
+            using std::sqrt;
+            return sqrt((a * a) + (b * b));
+        });
 
     fmt::print("Primitives in use:\n");
     for (auto const& node : pset.EnabledPrimitives()) {
@@ -101,14 +107,14 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 
     // set up GP operators
     constexpr size_t MaxLength = 50;
-    constexpr size_t MaxDepth  = 10;
+    constexpr size_t MaxDepth = 10;
 
     auto [arityMin, arityMax] = pset.FunctionArityLimits();
 
     Operon::BalancedTreeCreator creator { &pset, problem.GetInputs(), /* bias= */ 0.0, MaxLength };
 
     Operon::NormalCoefficientInitializer coeffInit;
-    coeffInit.ParameterizeDistribution(Operon::Scalar{0}, Operon::Scalar{1});
+    coeffInit.ParameterizeDistribution(Operon::Scalar { 0 }, Operon::Scalar { 1 });
 
     Operon::UniformTreeInitializer treeInit { &creator };
     treeInit.ParameterizeDistribution(arityMin + 1, MaxLength);
@@ -119,78 +125,70 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 
     Operon::OnePointMutation<std::normal_distribution<Operon::Scalar>> onePoint;
     Operon::ChangeFunctionMutation changeFunc { pset };
-    Operon::ChangeVariableMutation changeVar  { problem.GetInputs() };
-    Operon::RemoveChildMutation    removeSub  { pset };
-    Operon::InsertSubtreeMutation  insertSub  { &creator, &coeffInit, MaxDepth, MaxLength };
+    Operon::ChangeVariableMutation changeVar { problem.GetInputs() };
+    Operon::RemoveChildMutation removeSub { pset };
+    Operon::InsertSubtreeMutation insertSub { &creator, &coeffInit, MaxDepth, MaxLength };
 
     Operon::MultiMutation mutator;
-    mutator.Add(&onePoint,   1.0);
+    mutator.Add(&onePoint, 1.0);
     mutator.Add(&changeFunc, 1.0);
-    mutator.Add(&changeVar,  1.0);
-    mutator.Add(&removeSub,  1.0);
-    mutator.Add(&insertSub,  1.0);
+    mutator.Add(&changeVar, 1.0);
+    mutator.Add(&removeSub, 1.0);
+    mutator.Add(&insertSub, 1.0);
 
     // evaluator, coefficient optimizer, selectors, offspring generator
-    Operon::Evaluator<DT> evaluator { &problem, &dtable, Operon::MSE{} };
+    Operon::Evaluator<DT> evaluator { &problem, &dtable, Operon::MSE {} };
     evaluator.SetBudget(std::numeric_limits<size_t>::max()); // generations is the only stop criterion
 
-    Operon::LevenbergMarquardtOptimizer<DT, Operon::OptimizerType::Eigen> lmOptimizer {
-        &dtable, &problem
-    };
+    Operon::LevenbergMarquardtOptimizer<DT, Operon::OptimizerType::Eigen> lmOptimizer { &dtable, &problem };
     Operon::CoefficientOptimizer const coeffOpt { &lmOptimizer };
 
     auto comp = [](auto const& a, auto const& b) -> auto { return a[0] < b[0]; };
     Operon::TournamentSelector femaleSelector { comp };
-    Operon::TournamentSelector   maleSelector { comp };
+    Operon::TournamentSelector maleSelector { comp };
 
-    Operon::BasicOffspringGenerator generator {
-        &evaluator, &crossover, &mutator, &femaleSelector, &maleSelector, &coeffOpt
-    };
+    Operon::BasicOffspringGenerator generator { &evaluator, &crossover, &mutator, &femaleSelector, &maleSelector,
+        &coeffOpt };
     Operon::ReplaceWorstReinserter reinserter { comp };
 
     Operon::GeneticAlgorithmConfig config {
-        .Generations    = 100,
-        .Evaluations    = std::numeric_limits<size_t>::max(),
-        .Iterations     = 2,
+        .Generations = 100,
+        .Evaluations = std::numeric_limits<size_t>::max(),
+        .Iterations = 2,
         .PopulationSize = 200,
-        .PoolSize       = 200,
-        .Seed           = 42,
+        .PoolSize = 200,
+        .Seed = 42,
     };
 
     Operon::RandomGenerator rng { config.Seed };
-    Operon::GeneticProgrammingAlgorithm gp {
-        config, &problem, &treeInit, &coeffInit, &generator, &reinserter
-    };
+    Operon::GeneticProgrammingAlgorithm gp { config, &problem, &treeInit, &coeffInit, &generator, &reinserter };
 
     tf::Executor executor(std::thread::hardware_concurrency());
 
     size_t gen = 0;
     auto report = [&]() -> bool {
         ++gen;
-        if (gen % 10 != 0) { return false; }
+        if (gen % 10 != 0) {
+            return false;
+        }
         auto const* first = gp.Individuals().data();
-        auto const* last  = first + config.PopulationSize;
-        auto const* best  = std::min_element(first, last,
-            [](auto const& a, auto const& b) -> auto { return a[0] < b[0]; });
-        fmt::print("  gen {:4d}  MSE(train)={:.6f}  len={}\n",
-            gen, best->Fitness[0], best->Genotype.Length());
+        auto const* last = first + config.PopulationSize;
+        auto const* best
+            = std::min_element(first, last, [](auto const& a, auto const& b) -> auto { return a[0] < b[0]; });
+        fmt::print("  gen {:4d}  MSE(train)={:.6f}  len={}\n", gen, best->Fitness[0], best->Genotype.Length());
         return false;
     };
 
-    fmt::print("Running GP ({} generations, population {})...\n\n",
-        config.Generations, config.PopulationSize);
+    fmt::print("Running GP ({} generations, population {})...\n\n", config.Generations, config.PopulationSize);
 
     gp.Run(executor, rng, report);
 
     auto const* first = gp.Individuals().data();
-    auto const* last  = first + config.PopulationSize;
-    auto const* best  = std::min_element(first, last,
-        [](auto const& a, auto const& b) -> auto { return a[0] < b[0]; });
+    auto const* last = first + config.PopulationSize;
+    auto const* best = std::min_element(first, last, [](auto const& a, auto const& b) -> auto { return a[0] < b[0]; });
 
-    fmt::print("\nBest model (MSE={:.6f}, length={}):\n  {:infix:roundtrip}\n",
-        best->Fitness[0],
-        best->Genotype.Length(),
-        Operon::Fmt::TreeFormatArgs{best->Genotype, dataset});
+    fmt::print("\nBest model (MSE={:.6f}, length={}):\n  {:infix:roundtrip}\n", best->Fitness[0],
+        best->Genotype.Length(), Operon::Fmt::TreeFormatArgs { best->Genotype, dataset });
 
     return 0;
 }

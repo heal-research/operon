@@ -29,12 +29,13 @@ namespace Operon::detail {
 // more than a 32-bit input anyway).
 inline auto HashTreeForMemo(Tree const& tree, Operon::Hash variant = 0) -> Operon::Hash
 {
-    Operon::Hash h{};
+    Operon::Hash h {};
     for (auto const& n : tree.Nodes()) {
-        Operon::Hash valueHash{}; // zero-init so the high bytes are stable when sizeof(Scalar) < sizeof(Hash)
+        Operon::Hash valueHash {}; // zero-init so the high bytes are stable when sizeof(Scalar) < sizeof(Hash)
         std::memcpy(&valueHash, &n.Value, sizeof(n.Value)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
         valueHash *= 0x9e3779b97f4a7c15ULL;
-        auto const nodeHash = n.HashValue ^ (valueHash + 0x9e3779b97f4a7c15ULL + (n.HashValue << 6U) + (n.HashValue >> 2U));
+        auto const nodeHash
+            = n.HashValue ^ (valueHash + 0x9e3779b97f4a7c15ULL + (n.HashValue << 6U) + (n.HashValue >> 2U));
         h ^= nodeHash + 0x9e3779b97f4a7c15ULL + (h << 6U) + (h >> 2U);
         if (n.IsRef()) {
             auto const target = static_cast<Operon::Hash>(n.RefTo);

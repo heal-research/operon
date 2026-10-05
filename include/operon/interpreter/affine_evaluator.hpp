@@ -4,15 +4,15 @@
 #ifndef OPERON_AFFINE_EVALUATOR_HPP
 #define OPERON_AFFINE_EVALUATOR_HPP
 
-#include <fmt/format.h>
 #include <cmath>
+#include <fmt/format.h>
 #include <functional>
 #include <gsl/pointers>
 #include <optional>
 #include <stdexcept>
+#include <tl/expected.hpp>
 #include <utility>
 #include <vector>
-#include <tl/expected.hpp>
 
 #include "operon/core/contracts.hpp"
 #include "operon/core/hash_registry.hpp"
@@ -23,19 +23,19 @@
 
 // See interval_evaluator.hpp for the rationale behind these pragmas.
 #if defined(__clang__)
-#  pragma clang diagnostic push
-#  pragma clang diagnostic ignored "-Wmacro-redefined"
-#  pragma clang diagnostic ignored "-Wdeprecated-copy-with-user-provided-copy"
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmacro-redefined"
+#pragma clang diagnostic ignored "-Wdeprecated-copy-with-user-provided-copy"
 #elif defined(__GNUC__)
-#  pragma GCC diagnostic push
-#  pragma GCC diagnostic ignored "-Wmacro-redefined"
-#  pragma GCC diagnostic ignored "-Wdeprecated-copy-with-user-provided-copy"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmacro-redefined"
+#pragma GCC diagnostic ignored "-Wdeprecated-copy-with-user-provided-copy"
 #endif
 #include <pappus/pappus.hpp>
 #if defined(__clang__)
-#  pragma clang diagnostic pop
+#pragma clang diagnostic pop
 #elif defined(__GNUC__)
-#  pragma GCC diagnostic pop
+#pragma GCC diagnostic pop
 #endif
 
 namespace Operon {
@@ -54,14 +54,15 @@ namespace Operon {
 // PAPPUS_DEFINE_UNARY_OP is the only one either evaluator ever calls (the
 // bare affine_form<T>-only overload, without a context, is never used
 // here).
-template<typename T> using AffineUnaryFn  = std::function<tl::expected<pappus::affine_form<T>, std::string>(
+template <typename T>
+using AffineUnaryFn = std::function<tl::expected<pappus::affine_form<T>, std::string>(
     pappus::ops::affine_context<T> const&, pappus::affine_form<T> const&)>;
-template<typename T> using AffineBinaryFn = std::function<tl::expected<pappus::affine_form<T>, std::string>(
-    pappus::ops::affine_context<T> const&,
-    pappus::affine_form<T> const&, pappus::affine_form<T> const&)>;
+template <typename T>
+using AffineBinaryFn = std::function<tl::expected<pappus::affine_form<T>, std::string>(
+    pappus::ops::affine_context<T> const&, pappus::affine_form<T> const&, pappus::affine_form<T> const&)>;
 
-template<typename T> using AffineUnaryRegistry  = HashRegistry<AffineUnaryFn<T>>;
-template<typename T> using AffineBinaryRegistry = HashRegistry<AffineBinaryFn<T>>;
+template <typename T> using AffineUnaryRegistry = HashRegistry<AffineUnaryFn<T>>;
+template <typename T> using AffineBinaryRegistry = HashRegistry<AffineBinaryFn<T>>;
 
 // Direct registry access — see interval_evaluator.hpp's matching comment.
 // Prefer RegisterUnaryAffine/RegisterBinaryAffine over calling .Register()
@@ -72,8 +73,8 @@ template<typename T> using AffineBinaryRegistry = HashRegistry<AffineBinaryFn<T>
 // interval_evaluator.hpp's matching comment for why (header-only
 // definitions would give each shared library its own separate singleton
 // per T). Add a new explicit instantiation there before using a new T.
-template<typename T> auto AffineUnaryRules() -> AffineUnaryRegistry<T>&;
-template<typename T> auto AffineBinaryRules() -> AffineBinaryRegistry<T>&;
+template <typename T> auto AffineUnaryRules() -> AffineUnaryRegistry<T>&;
+template <typename T> auto AffineBinaryRules() -> AffineBinaryRegistry<T>&;
 
 // Registers the built-in unary/binary affine rules exactly once, mirroring
 // interval_evaluator.hpp's RegisterIntervalBuiltins(). A free function (not
@@ -83,7 +84,7 @@ template<typename T> auto AffineBinaryRules() -> AffineBinaryRegistry<T>&;
 // RegisterIntervalBuiltins() does: a user hash colliding with a built-in
 // should throw immediately at the user's own call site, not later inside
 // Evaluate().
-template<typename T> void RegisterAffineBuiltins();
+template <typename T> void RegisterAffineBuiltins();
 
 // Register an affine callback for a unary function (built-in or
 // user-defined), keyed by the same hash the function's Node::HashValue
@@ -92,17 +93,17 @@ template<typename T> void RegisterAffineBuiltins();
 // today. Throws if `hash` is already registered (write-once) — including
 // when `hash` collides with a built-in, since RegisterAffineBuiltins() above
 // always runs first.
-template<typename T> void RegisterUnaryAffine(Operon::Hash hash, AffineUnaryFn<T> fn);
+template <typename T> void RegisterUnaryAffine(Operon::Hash hash, AffineUnaryFn<T> fn);
 
 // Register an affine callback for a binary function. See
 // RegisterUnaryAffine for the miss-behavior and built-in-collision notes.
-template<typename T> void RegisterBinaryAffine(Operon::Hash hash, AffineBinaryFn<T> fn);
+template <typename T> void RegisterBinaryAffine(Operon::Hash hash, AffineBinaryFn<T> fn);
 
 // Query whether an affine callback is registered for `hash` (built-in or
 // user-defined), forcing built-in registration first. See
 // HasUnaryInterval/HasBinaryInterval for the coverage-check use case.
-template<typename T> auto HasUnaryAffine(Operon::Hash hash) -> bool;
-template<typename T> auto HasBinaryAffine(Operon::Hash hash) -> bool;
+template <typename T> auto HasUnaryAffine(Operon::Hash hash) -> bool;
+template <typename T> auto HasBinaryAffine(Operon::Hash hash) -> bool;
 
 extern template auto AffineUnaryRules<Operon::Scalar>() -> AffineUnaryRegistry<Operon::Scalar>&;
 extern template auto AffineBinaryRules<Operon::Scalar>() -> AffineBinaryRegistry<Operon::Scalar>&;
@@ -145,8 +146,7 @@ extern template auto HasBinaryAffine<Operon::Scalar>(Operon::Hash) -> bool;
 // Evaluate() calls are composed, which varies per GP individual. Expose it only
 // as a per-instance constructor argument. Set a finite budget only after
 // profiling confirms term growth is a bottleneck (TermCount() helps measure).
-template<typename T = Operon::Scalar>
-class AffineEvaluator {
+template <typename T = Operon::Scalar> class AffineEvaluator {
 public:
     using Scalar = T;
     using Affine = pappus::affine_form<Scalar>;
@@ -155,9 +155,9 @@ public:
     using DomainMap = Operon::Map<Operon::Hash, Domain>;
     using Context = pappus::ops::affine_context<Scalar>;
 
-    AffineEvaluator(gsl::not_null<Operon::Tree const*> tree, DomainMap domains,
-                    std::size_t maxTerms = 0)
-        : tree_(tree), domains_(std::move(domains))
+    AffineEvaluator(gsl::not_null<Operon::Tree const*> tree, DomainMap domains, std::size_t maxTerms = 0)
+        : tree_(tree)
+        , domains_(std::move(domains))
     {
         ctx_.max_terms = maxTerms;
     }
@@ -175,9 +175,7 @@ public:
     [[nodiscard]] auto GetContext() const noexcept -> Context const& { return ctx_; }
     // Number of noise terms in the last root result (0 if Evaluate has not been called).
     // Useful for profiling affine term growth under different max_terms settings.
-    [[nodiscard]] auto TermCount() const noexcept -> std::size_t {
-        return primal_.empty() ? 0 : primal_.back().size();
-    }
+    [[nodiscard]] auto TermCount() const noexcept -> std::size_t { return primal_.empty() ? 0 : primal_.back().size(); }
 
     // Largest |center()| over every intermediate form pushed during the last
     // Evaluate() call. Used by callers to gauge float32 cancellation risk: an
@@ -200,13 +198,15 @@ public:
 
         auto const& nodes = tree_->Nodes();
         auto const n = nodes.size();
-        if (n == 0) { return tl::unexpected("AffineEvaluator: empty tree"); }
+        if (n == 0) {
+            return tl::unexpected("AffineEvaluator: empty tree");
+        }
 
         // affine_form is non-default-constructible (it binds to a context), so
         // we can't resize — clear() preserves capacity and push_back reuses it.
         primal_.clear();
         primal_.reserve(n);
-        maxAbsCenter_ = Scalar{0};
+        maxAbsCenter_ = Scalar { 0 };
         std::size_t ci = 0;
 
         // Repeated occurrences of the same Variable node hash (a plain leaf,
@@ -237,7 +237,7 @@ public:
         // MaxAbsCenter() having seen the true worst intermediate, not just
         // each node's own settled value.
         auto const addFold = [&](std::size_t i) {
-            auto acc = pappus::ops::constant<Scalar>(ctx_, Scalar{0});
+            auto acc = pappus::ops::constant<Scalar>(ctx_, Scalar { 0 });
             for (auto j : Tree::Indices(nodes, i)) {
                 acc = pappus::ops::add<Scalar>(ctx_, acc, primal_[j]);
                 maxAbsCenter_ = std::max(maxAbsCenter_, std::fabs(acc.center()));
@@ -246,7 +246,7 @@ public:
             return acc;
         };
         auto const mulFold = [&](std::size_t i) {
-            auto acc = pappus::ops::constant<Scalar>(ctx_, Scalar{1});
+            auto acc = pappus::ops::constant<Scalar>(ctx_, Scalar { 1 });
             for (auto j : Tree::Indices(nodes, i)) {
                 acc = pappus::ops::mul<Scalar>(ctx_, acc, primal_[j]);
                 maxAbsCenter_ = std::max(maxAbsCenter_, std::fabs(acc.center()));
@@ -258,8 +258,11 @@ public:
         auto const subFold = [&](std::size_t i) {
             std::optional<Affine> acc;
             for (auto j : Tree::Indices(nodes, i)) {
-                if (!acc) { acc = primal_[j]; }
-                else      { acc = pappus::ops::sub<Scalar>(ctx_, *acc, primal_[j]); }
+                if (!acc) {
+                    acc = primal_[j];
+                } else {
+                    acc = pappus::ops::sub<Scalar>(ctx_, *acc, primal_[j]);
+                }
                 maxAbsCenter_ = std::max(maxAbsCenter_, std::fabs(acc->center()));
             }
             EXPECT(acc.has_value()); // arity > 0 — malformed tree otherwise
@@ -268,8 +271,11 @@ public:
         auto const divFold = [&](std::size_t i) {
             std::optional<Affine> acc;
             for (auto j : Tree::Indices(nodes, i)) {
-                if (!acc) { acc = primal_[j]; }
-                else      { acc = pappus::ops::div<Scalar>(ctx_, *acc, primal_[j]); }
+                if (!acc) {
+                    acc = primal_[j];
+                } else {
+                    acc = pappus::ops::div<Scalar>(ctx_, *acc, primal_[j]);
+                }
                 maxAbsCenter_ = std::max(maxAbsCenter_, std::fabs(acc->center()));
             }
             EXPECT(acc.has_value()); // arity > 0 — malformed tree otherwise
@@ -280,8 +286,11 @@ public:
         auto const minFold = [&](std::size_t i) {
             std::optional<Affine> acc;
             for (auto j : Tree::Indices(nodes, i)) {
-                if (!acc) { acc = primal_[j]; }
-                else      { acc = pappus::ops::min<Scalar>(ctx_, *acc, primal_[j]); }
+                if (!acc) {
+                    acc = primal_[j];
+                } else {
+                    acc = pappus::ops::min<Scalar>(ctx_, *acc, primal_[j]);
+                }
                 maxAbsCenter_ = std::max(maxAbsCenter_, std::fabs(acc->center()));
             }
             EXPECT(acc.has_value());
@@ -290,8 +299,11 @@ public:
         auto const maxFold = [&](std::size_t i) {
             std::optional<Affine> acc;
             for (auto j : Tree::Indices(nodes, i)) {
-                if (!acc) { acc = primal_[j]; }
-                else      { acc = pappus::ops::max<Scalar>(ctx_, *acc, primal_[j]); }
+                if (!acc) {
+                    acc = primal_[j];
+                } else {
+                    acc = pappus::ops::max<Scalar>(ctx_, *acc, primal_[j]);
+                }
                 maxAbsCenter_ = std::max(maxAbsCenter_, std::fabs(acc->center()));
             }
             EXPECT(acc.has_value());
@@ -309,7 +321,9 @@ public:
         // to its `* 1` result. maxAbsCenter_ is read after the scale,
         // matching the old post-push primal_.back().center() value.
         auto const emit = [&](Affine f, Scalar s) {
-            if (s != Scalar{1}) { f *= s; }
+            if (s != Scalar { 1 }) {
+                f *= s;
+            }
             maxAbsCenter_ = std::max(maxAbsCenter_, std::fabs(f.center()));
             primal_.push_back(std::move(f));
         };
@@ -326,19 +340,17 @@ public:
 
             if (node.Type == NodeType::Constant) {
                 // Constant bakes `v` into the form directly — no `* v` scale.
-                emit(pappus::ops::constant<Scalar>(ctx_, v), Scalar{1});
+                emit(pappus::ops::constant<Scalar>(ctx_, v), Scalar { 1 });
             } else if (node.Type == NodeType::Variable) {
                 auto cacheIt = variableCache_.find(node.HashValue);
                 if (cacheIt == variableCache_.end()) {
                     auto it = domains_.find(node.HashValue);
                     if (it == domains_.end()) {
-                        return tl::unexpected(fmt::format(
-                            "AffineEvaluator: no domain bound for variable hash {}",
-                            node.HashValue));
+                        return tl::unexpected(
+                            fmt::format("AffineEvaluator: no domain bound for variable hash {}", node.HashValue));
                     }
                     auto const& [lo, hi] = it->second;
-                    cacheIt = variableCache_.emplace(node.HashValue,
-                        pappus::ops::variable<Scalar>(ctx_, lo, hi)).first;
+                    cacheIt = variableCache_.emplace(node.HashValue, pappus::ops::variable<Scalar>(ctx_, lo, hi)).first;
                 }
                 // emit() copies this into its staging slot before scaling by
                 // `v`, so distinct per-occurrence coefficients never mutate
@@ -350,7 +362,7 @@ public:
                 // Ref ignores `v` by design (its coefficient is baked in);
                 // emit's copy is unavoidable — the referenced form stays
                 // live in primal_ for later nodes.
-                emit(primal_[node.RefTo], Scalar{1});
+                emit(primal_[node.RefTo], Scalar { 1 });
             } else {
                 // Add/Mul/Sub/Div/Fmin/Fmax stay hardcoded: verified n-ary
                 // folds, same scope boundary as IntervalEvaluator. Every
@@ -363,15 +375,13 @@ public:
                     emit(mulFold(i), v);
                     break;
                 case Operon::Hash(BuiltinOp::Sub):
-                    emit(node.Arity == 1 ? pappus::ops::neg<Scalar>(primal_[i - 1])
-                                         : subFold(i), v);
+                    emit(node.Arity == 1 ? pappus::ops::neg<Scalar>(primal_[i - 1]) : subFold(i), v);
                     break;
                 case Operon::Hash(BuiltinOp::Div):
                     // Returns invalid() (NaN-poisoned), not a throw, if the
                     // denominator form contains zero (affine inv is stricter
                     // than interval inv).
-                    emit(node.Arity == 1 ? pappus::ops::inv<Scalar>(ctx_, primal_[i - 1])
-                                         : divFold(i), v);
+                    emit(node.Arity == 1 ? pappus::ops::inv<Scalar>(ctx_, primal_[i - 1]) : divFold(i), v);
                     break;
                 case Operon::Hash(BuiltinOp::Fmin):
                     emit(minFold(i), v);
@@ -388,7 +398,9 @@ public:
                     if (node.Arity == 1) {
                         if (auto const* unary = AffineUnaryRules<Scalar>().TryGet(node.HashValue)) {
                             auto result = (*unary)(ctx_, primal_[i - 1]);
-                            if (!result) { return tl::unexpected(std::move(result.error())); }
+                            if (!result) {
+                                return tl::unexpected(std::move(result.error()));
+                            }
                             emit(std::move(*result), v);
                             break;
                         }
@@ -397,14 +409,14 @@ public:
                             auto const j = static_cast<std::size_t>(i - 1);
                             auto const k = j - (nodes[j].Length + 1);
                             auto result = (*binary)(ctx_, primal_[j], primal_[k]);
-                            if (!result) { return tl::unexpected(std::move(result.error())); }
+                            if (!result) {
+                                return tl::unexpected(std::move(result.error()));
+                            }
                             emit(std::move(*result), v);
                             break;
                         }
                     }
-                    return tl::unexpected(fmt::format(
-                        "AffineEvaluator: node kind `{}` not yet mapped",
-                        node.Name()));
+                    return tl::unexpected(fmt::format("AffineEvaluator: node kind `{}` not yet mapped", node.Name()));
                 }
             }
         }
@@ -414,7 +426,9 @@ public:
     [[nodiscard]] auto Evaluate(Operon::Span<Scalar const> coeff) const -> Affine
     {
         auto result = TryEvaluate(coeff);
-        if (!result) { throw std::runtime_error(result.error()); }
+        if (!result) {
+            throw std::runtime_error(result.error());
+        }
         return std::move(*result);
     }
 
@@ -429,7 +443,7 @@ private:
     // of every Evaluate() call, so it does not affect the cross-call
     // independence the noise-symbol counter's monotonic growth relies on.
     mutable Operon::Map<Operon::Hash, Affine> variableCache_;
-    mutable Scalar maxAbsCenter_{0}; // largest |center()| over the last Evaluate()
+    mutable Scalar maxAbsCenter_ { 0 }; // largest |center()| over the last Evaluate()
 };
 
 } // namespace Operon

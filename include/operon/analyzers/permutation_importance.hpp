@@ -4,12 +4,6 @@
 #ifndef OPERON_ANALYZERS_PERMUTATION_IMPORTANCE_HPP
 #define OPERON_ANALYZERS_PERMUTATION_IMPORTANCE_HPP
 
-#include <algorithm>
-#include <cmath>
-#include <functional>
-#include <numeric>
-#include <stdexcept>
-#include <vector>
 #include "operon/analyzers/detail/variables_used_in.hpp"
 #include "operon/core/contracts.hpp"
 #include "operon/core/dataset.hpp"
@@ -17,13 +11,19 @@
 #include "operon/core/types.hpp"
 #include "operon/error_metrics/r2_score.hpp"
 #include "operon/interpreter/interpreter.hpp"
+#include <algorithm>
+#include <cmath>
+#include <functional>
+#include <numeric>
+#include <stdexcept>
+#include <vector>
 
 namespace Operon {
 
 struct VariableImportance {
     Operon::Hash Variable;
     double Mean; // average, over repeated shuffles, of R2(tree) - R2(tree with this variable's column shuffled)
-    double Std;  // population std of the same per-repeat differences
+    double Std; // population std of the same per-repeat differences
 };
 
 // Permutation importance (cf. HeuristicLab's RegressionSolutionVariableImpactsCalculator
@@ -45,7 +45,8 @@ struct VariableImportance {
 // Dataset::SetValues (restoring the original values before moving to the next variable),
 // rather than cloning the whole dataset on every repeat - the clone happens once, not
 // nVariables * nRepeats times.
-inline auto PermutationImportance(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Hash target, Operon::Range range, Operon::RandomGenerator& rng, size_t nRepeats = 5) -> std::vector<VariableImportance>
+inline auto PermutationImportance(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Hash target,
+    Operon::Range range, Operon::RandomGenerator& rng, size_t nRepeats = 5) -> std::vector<VariableImportance>
 {
     using Interp = Operon::Interpreter<>;
 
@@ -58,9 +59,11 @@ inline auto PermutationImportance(Operon::Tree const& tree, Operon::Dataset cons
     // whenever range.Start() != 0.
     auto const actual = dataset.GetValues(target).subspan(range.Start(), range.Size());
     auto predictedResult = Interp::Evaluate(tree, dataset, range);
-    if (!predictedResult) { throw std::runtime_error(Operon::FormatInterpreterError(predictedResult.error())); }
+    if (!predictedResult) {
+        throw std::runtime_error(Operon::FormatInterpreterError(predictedResult.error()));
+    }
     auto predicted = std::move(*predictedResult);
-    Operon::Span<Operon::Scalar const> const predictedSpan{ predicted.data(), predicted.size() };
+    Operon::Span<Operon::Scalar const> const predictedSpan { predicted.data(), predicted.size() };
     auto const baseline = Operon::R2Score(predictedSpan, actual);
 
     Operon::Dataset workingCopy(dataset);
@@ -85,9 +88,12 @@ inline auto PermutationImportance(Operon::Tree const& tree, Operon::Dataset cons
             workingCopy.SetValues(variable, range, { shuffled.data(), shuffled.size() });
 
             auto perturbedResult = Interp::Evaluate(tree, workingCopy, range);
-            if (!perturbedResult) { throw std::runtime_error(Operon::FormatInterpreterError(perturbedResult.error())); }
+            if (!perturbedResult) {
+                throw std::runtime_error(Operon::FormatInterpreterError(perturbedResult.error()));
+            }
             auto perturbedPredicted = std::move(*perturbedResult);
-            Operon::Span<Operon::Scalar const> const perturbedSpan{ perturbedPredicted.data(), perturbedPredicted.size() };
+            Operon::Span<Operon::Scalar const> const perturbedSpan { perturbedPredicted.data(),
+                perturbedPredicted.size() };
             auto const perturbedR2 = Operon::R2Score(perturbedSpan, actual);
 
             diffs.push_back(baseline - perturbedR2);
@@ -96,8 +102,9 @@ inline auto PermutationImportance(Operon::Tree const& tree, Operon::Dataset cons
         workingCopy.SetValues(variable, range, { original.data(), original.size() });
 
         auto const mean = std::reduce(diffs.begin(), diffs.end(), 0.0) / static_cast<double>(diffs.size());
-        auto const variance = std::transform_reduce(diffs.begin(), diffs.end(), 0.0, std::plus<>{},
-            [mean](double d) -> double { return (d - mean) * (d - mean); }) / static_cast<double>(diffs.size());
+        auto const variance = std::transform_reduce(diffs.begin(), diffs.end(), 0.0, std::plus<> {},
+                                  [mean](double d) -> double { return (d - mean) * (d - mean); })
+            / static_cast<double>(diffs.size());
 
         result.push_back({ variable, mean, std::sqrt(variance) });
     }
@@ -111,7 +118,8 @@ inline auto PermutationImportance(Operon::Tree const& tree, Operon::Dataset cons
 // estimates than restricting to a training-only range. Pass an explicit
 // range only if there's a specific reason to isolate a subset (e.g.
 // comparing train vs. test importance).
-inline auto PermutationImportance(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Hash target, Operon::RandomGenerator& rng, size_t nRepeats = 5) -> std::vector<VariableImportance>
+inline auto PermutationImportance(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Hash target,
+    Operon::RandomGenerator& rng, size_t nRepeats = 5) -> std::vector<VariableImportance>
 {
     return PermutationImportance(tree, dataset, target, Operon::Range(0, dataset.Rows<std::size_t>()), rng, nRepeats);
 }

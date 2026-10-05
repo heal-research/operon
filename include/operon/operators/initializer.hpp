@@ -5,8 +5,8 @@
 #ifndef OPERON_INITIALIZER_HPP
 #define OPERON_INITIALIZER_HPP
 
-#include <random>
 #include <gsl/pointers>
+#include <random>
 
 #include "operon/core/tree.hpp"
 #include "operon/operators/creator.hpp"
@@ -14,25 +14,16 @@
 
 namespace Operon {
 
-struct CoefficientInitializerBase : public OperatorBase<void, Tree&> {
-};
+struct CoefficientInitializerBase : public OperatorBase<void, Tree&> {};
 
-struct TreeInitializerBase : public OperatorBase<Tree> {
-};
+struct TreeInitializerBase : public OperatorBase<Tree> {};
 
-template <typename Dist>
-struct OPERON_EXPORT CoefficientInitializer : public CoefficientInitializerBase {
+template <typename Dist> struct OPERON_EXPORT CoefficientInitializer : public CoefficientInitializerBase {
     using NodeCheckCallback = std::function<bool(Operon::Node)>;
 
-    explicit CoefficientInitializer(NodeCheckCallback callback)
-        : callback_(std::move(callback))
-    {
-    }
+    explicit CoefficientInitializer(NodeCheckCallback callback) : callback_(std::move(callback)) {}
 
-    CoefficientInitializer()
-        : CoefficientInitializer([](auto const& node) { return node.IsLeaf(); })
-    {
-    }
+    CoefficientInitializer() : CoefficientInitializer([](auto const& node) { return node.IsLeaf(); }) {}
 
     auto operator()(Operon::RandomGenerator& random, Operon::Tree& tree) const -> void override
     {
@@ -43,8 +34,7 @@ struct OPERON_EXPORT CoefficientInitializer : public CoefficientInitializerBase 
         }
     }
 
-    template <typename... Args>
-    auto ParameterizeDistribution(Args... args) const -> void
+    template <typename... Args> auto ParameterizeDistribution(Args... args) const -> void
     {
         params_ = typename Dist::param_type { std::forward<Args&&>(args)... };
     }
@@ -54,12 +44,8 @@ private:
     NodeCheckCallback callback_;
 };
 
-template <typename Dist>
-struct OPERON_EXPORT TreeInitializer : public TreeInitializerBase {
-    explicit TreeInitializer(Operon::CreatorBase const* creator)
-        : creator_(creator)
-    {
-    }
+template <typename Dist> struct OPERON_EXPORT TreeInitializer : public TreeInitializerBase {
+    explicit TreeInitializer(Operon::CreatorBase const* creator) : creator_(creator) {}
 
     auto operator()(Operon::RandomGenerator& random) const -> Operon::Tree override
     {
@@ -67,8 +53,7 @@ struct OPERON_EXPORT TreeInitializer : public TreeInitializerBase {
         return creator_->operator()(random, targetLen, minDepth_, maxDepth_); // initialize tree
     }
 
-    template <typename... Args>
-    auto ParameterizeDistribution(Args... args) const -> void
+    template <typename... Args> auto ParameterizeDistribution(Args... args) const -> void
     {
         params_ = typename Dist::param_type { std::forward<Args&&>(args)... };
     }
@@ -82,7 +67,9 @@ struct OPERON_EXPORT TreeInitializer : public TreeInitializerBase {
     void SetCreator(gsl::not_null<CreatorBase const*> creator) { creator_ = creator; }
     [[nodiscard]] auto Creator() const -> CreatorBase const* { return creator_.get(); }
 
-    static constexpr size_t DefaultMaxDepth { 1000 }; // we don't want a depth restriction to limit the achievable shapes/lengths
+    static constexpr size_t DefaultMaxDepth {
+        1000
+    }; // we don't want a depth restriction to limit the achievable shapes/lengths
 
 private:
     mutable typename Dist::param_type params_;

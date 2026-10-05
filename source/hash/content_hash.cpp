@@ -29,7 +29,9 @@ auto ComputeContentHash(Tree const& tree, Zobrist const& zobrist, ContentHashScr
     auto& hashes = scratch.Hashes;
     auto& indices = scratch.Indices;
 
-    if (nodes.empty()) { return 0; } // matches Tree::HashValue()'s empty-tree convention
+    if (nodes.empty()) {
+        return 0;
+    } // matches Tree::HashValue()'s empty-tree convention
 
     EXPECT(hashes.size() >= nodes.size());
     EXPECT(indices.size() >= nodes.size());
@@ -61,7 +63,9 @@ auto ComputeContentHash(Tree const& tree, Zobrist const& zobrist, ContentHashScr
             if (n.IsCommutative()) {
                 std::sort(begin, end, [&](auto a_, auto b_) { return hashes[a_] < hashes[b_]; });
             }
-            for (auto it = begin; it != end; ++it) { h = MixHash(h, hashes[*it]); }
+            for (auto it = begin; it != end; ++it) {
+                h = MixHash(h, hashes[*it]);
+            }
         }
 
         hashes[i] = h;
@@ -74,7 +78,7 @@ auto ComputeContentHash(Tree const& tree, Zobrist const& zobrist) -> Operon::Has
 {
     std::vector<Operon::Hash> hashes(tree.Nodes().size());
     std::vector<std::size_t> indices(tree.Nodes().size());
-    return ComputeContentHash(tree, zobrist, ContentHashScratch{ .Hashes = hashes, .Indices = indices });
+    return ComputeContentHash(tree, zobrist, ContentHashScratch { .Hashes = hashes, .Indices = indices });
 }
 
 } // namespace Operon

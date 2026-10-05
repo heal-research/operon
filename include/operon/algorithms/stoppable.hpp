@@ -17,11 +17,9 @@ namespace Operon {
 // there - losing move-only-capture support, but keeping the build green.
 // Prefer MoveOnlyFunction<Sig> over referencing either type directly.
 #if defined(__cpp_lib_move_only_function)
-template<typename Sig>
-using MoveOnlyFunction = std::move_only_function<Sig>;
+template <typename Sig> using MoveOnlyFunction = std::move_only_function<Sig>;
 #else
-template<typename Sig>
-using MoveOnlyFunction = std::function<Sig>;
+template <typename Sig> using MoveOnlyFunction = std::function<Sig>;
 #endif
 
 // Invoked once per generation (GeneticAlgorithmBase-derived algorithms) or
@@ -62,7 +60,9 @@ public:
 
     auto operator=(StoppableAlgorithm const& other) -> StoppableAlgorithm&
     {
-        if (this == &other) { return *this; }
+        if (this == &other) {
+            return *this;
+        }
         stopRequested_.store(other.stopRequested_.load(std::memory_order_acquire), std::memory_order_release);
         return *this;
     }
@@ -82,7 +82,7 @@ protected:
     auto ClearStopRequested() -> void { stopRequested_.store(false, std::memory_order_release); }
 
 private:
-    std::atomic<bool> stopRequested_{false};
+    std::atomic<bool> stopRequested_ { false };
 };
 
 } // namespace Operon

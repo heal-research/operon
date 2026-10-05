@@ -32,19 +32,21 @@ struct SubtreeSpan {
 
 [[nodiscard]] inline auto IsSelfContainedSubtree(Operon::Span<Node const> nodes, SubtreeSpan span) -> bool
 {
-    return std::ranges::all_of(nodes.subspan(span.First, span.Size), [first = span.First, root = span.Root](Node const& node) {
-        return !node.IsRef() || (node.RefTo >= first && node.RefTo <= root);
-    });
+    return std::ranges::all_of(
+        nodes.subspan(span.First, span.Size), [first = span.First, root = span.Root](Node const& node) {
+            return !node.IsRef() || (node.RefTo >= first && node.RefTo <= root);
+        });
 }
 
 // Replacement and copied subtrees must not reference nodes outside their span.
 [[nodiscard]] inline auto CanRewriteSubtree(Operon::Span<Node const> replacement) -> bool
 {
-    return !replacement.empty() && IsSelfContainedSubtree(replacement, { 0U, replacement.size() - 1U, replacement.size() });
+    return !replacement.empty()
+        && IsSelfContainedSubtree(replacement, { 0U, replacement.size() - 1U, replacement.size() });
 }
 
-[[nodiscard]] inline auto RewriteSubtree(Operon::Span<Node const> source, SubtreeSpan target,
-    Operon::Span<Node const> replacement) -> Operon::Vector<Node>
+[[nodiscard]] inline auto RewriteSubtree(
+    Operon::Span<Node const> source, SubtreeSpan target, Operon::Span<Node const> replacement) -> Operon::Vector<Node>
 {
     if (!CanRewriteSubtree(replacement)) {
         throw std::invalid_argument("replacement subtree has external Ref targets");
@@ -112,7 +114,8 @@ struct PermutationSegment {
     return completed == 1;
 }
 
-[[nodiscard]] inline auto PermuteSegments(Operon::Span<Node const> source, Operon::Span<PermutationSegment const> segments) -> std::optional<Operon::Vector<Node>>
+[[nodiscard]] inline auto PermuteSegments(Operon::Span<Node const> source,
+    Operon::Span<PermutationSegment const> segments) -> std::optional<Operon::Vector<Node>>
 {
     Operon::Vector<std::size_t> destinations(source.size(), source.size());
     std::size_t size {};

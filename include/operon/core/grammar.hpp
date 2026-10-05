@@ -38,10 +38,7 @@ struct ProductionOperand {
     std::optional<GrammarSymbol> Symbol; // nullopt <=> this is a fixed operand
     Operon::Scalar FixedValue {};
 
-    ProductionOperand(GrammarSymbol s)
-        : Symbol(s)
-    {
-    } // NOLINT(*explicit*) - see class comment
+    ProductionOperand(GrammarSymbol s) : Symbol(s) {} // NOLINT(*explicit*) - see class comment
 
     static auto Fixed(Operon::Scalar value) -> ProductionOperand
     {
@@ -144,7 +141,8 @@ constexpr auto operator|=(EnumerationFunctionSet& lhs, EnumerationFunction rhs) 
 [[nodiscard]] OPERON_CORE_EXPORT auto EnumerationFunctionName(EnumerationFunction f) -> std::string_view;
 
 // Parses an exact function name.
-[[nodiscard]] OPERON_CORE_EXPORT auto ParseEnumerationFunction(std::string_view name) -> std::optional<EnumerationFunction>;
+[[nodiscard]] OPERON_CORE_EXPORT auto ParseEnumerationFunction(std::string_view name)
+    -> std::optional<EnumerationFunction>;
 
 // Built-ins required to evaluate an enumeration function set.
 [[nodiscard]] OPERON_CORE_EXPORT auto UnderlyingPrimitives(EnumerationFunctionSet functions) -> PrimitiveSetConfig;
@@ -168,10 +166,7 @@ enum class EnumerationPreset : uint8_t {
 // Configurable grammar for exhaustive enumeration.
 class OPERON_CORE_EXPORT Grammar {
 public:
-    Grammar()
-        : Grammar(PrimitiveSetConfig {}, {})
-    {
-    }
+    Grammar() : Grammar(PrimitiveSetConfig {}, {}) {}
     Grammar(PrimitiveSetConfig enabledFunctions, std::vector<Operon::Hash> variableHashes);
 
     // Rebuilds from legacy primitive-set configuration.

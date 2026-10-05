@@ -26,7 +26,7 @@ struct RecordSink {
     auto operator=(RecordSink&&) noexcept -> RecordSink& = default;
 
     virtual auto Write(ResultRecord const& record) -> void = 0;
-    virtual auto Flush() -> void { }
+    virtual auto Flush() -> void {}
 };
 
 // Writes one JSON object per line (NDJSON) - chosen over a fixed-column
@@ -93,17 +93,17 @@ public:
 private:
     struct Entry {
         std::unique_ptr<GenerationProbe> Probe;
-        std::size_t Every{1};
-        std::size_t Offset{0};
+        std::size_t Every { 1 };
+        std::size_t Offset { 0 };
     };
 
     std::vector<Entry> entries_;
     std::unique_ptr<RecordSink> sink_;
-    bool finished_{false};
+    bool finished_ { false };
 };
 
 static_assert(std::is_move_constructible_v<ProbeChain> && !std::is_move_assignable_v<ProbeChain>,
-              "ProbeChain must stay move-constructible but not move-assignable - see the class comment");
+    "ProbeChain must stay move-constructible but not move-assignable - see the class comment");
 
 } // namespace Operon
 

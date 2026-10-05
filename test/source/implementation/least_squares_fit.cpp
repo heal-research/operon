@@ -8,8 +8,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <optional>
 #include <span>
@@ -30,18 +30,12 @@ constexpr std::array<Operon::OptimizerType, 2> BACKENDS { Operon::OptimizerType:
 // can be told to fail from a given call onward or to emit a NaN residual.
 class AffineCost final : public Operon::LeastSquaresCostFunction {
 public:
-    AffineCost(std::vector<Scalar> x, std::vector<Scalar> y)
-        : x_(std::move(x))
-        , y_(std::move(y))
-    {
-    }
+    AffineCost(std::vector<Scalar> x, std::vector<Scalar> y) : x_(std::move(x)), y_(std::move(y)) {}
 
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return 2; }
     [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return x_.size(); }
 
-    [[nodiscard]] auto Evaluate(
-        std::span<Scalar const> parameters,
-        std::span<Scalar> residuals,
+    [[nodiscard]] auto Evaluate(std::span<Scalar const> parameters, std::span<Scalar> residuals,
         std::optional<Operon::ScalarMatrixView> jacobian) const
         -> tl::expected<void, Operon::LeastSquaresError> override
     {
@@ -50,7 +44,8 @@ public:
             ++jacobianCalls;
         }
         if (failFromCall != 0 && calls >= failFromCall) {
-            return tl::unexpected(Operon::LeastSquaresError { .Code = Operon::LeastSquaresErrorCode::NumericalFailure, .Row = 7, .Column = 1 });
+            return tl::unexpected(Operon::LeastSquaresError {
+                .Code = Operon::LeastSquaresErrorCode::NumericalFailure, .Row = 7, .Column = 1 });
         }
         for (std::size_t i = 0; i < x_.size(); ++i) {
             residuals[i] = static_cast<Scalar>(parameters[0] + (parameters[1] * x_[i]) - y_[i]);
@@ -101,9 +96,7 @@ public:
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return 0; }
     [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return values_.size(); }
 
-    [[nodiscard]] auto Evaluate(
-        std::span<Scalar const> /*parameters*/,
-        std::span<Scalar> residuals,
+    [[nodiscard]] auto Evaluate(std::span<Scalar const> /*parameters*/, std::span<Scalar> residuals,
         std::optional<Operon::ScalarMatrixView> jacobian) const
         -> tl::expected<void, Operon::LeastSquaresError> override
     {
@@ -112,7 +105,8 @@ public:
             ++jacobianCalls;
         }
         if (fail_) {
-            return tl::unexpected(Operon::LeastSquaresError { .Code = Operon::LeastSquaresErrorCode::EvaluationFailure, .Row = 2 });
+            return tl::unexpected(
+                Operon::LeastSquaresError { .Code = Operon::LeastSquaresErrorCode::EvaluationFailure, .Row = 2 });
         }
         std::ranges::copy(values_, residuals.begin());
         return {};
@@ -129,9 +123,7 @@ private:
 // r_i = a * exp(b * x_i) - y_i on x in [0, 2], with y generated from (aTrue, bTrue).
 class ExponentialCost final : public Operon::LeastSquaresCostFunction {
 public:
-    ExponentialCost(std::size_t n, Scalar aTrue, Scalar bTrue)
-        : x_(n)
-        , y_(n)
+    ExponentialCost(std::size_t n, Scalar aTrue, Scalar bTrue) : x_(n), y_(n)
     {
         for (std::size_t i = 0; i < n; ++i) {
             x_[i] = Scalar { 2 } * static_cast<Scalar>(i) / static_cast<Scalar>(n - 1);
@@ -142,9 +134,7 @@ public:
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return 2; }
     [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return x_.size(); }
 
-    [[nodiscard]] auto Evaluate(
-        std::span<Scalar const> parameters,
-        std::span<Scalar> residuals,
+    [[nodiscard]] auto Evaluate(std::span<Scalar const> parameters, std::span<Scalar> residuals,
         std::optional<Operon::ScalarMatrixView> jacobian) const
         -> tl::expected<void, Operon::LeastSquaresError> override
     {
@@ -172,8 +162,8 @@ auto Near(Scalar actual, Scalar expected, double tol) -> void
 } // namespace
 
 // The public surface is expressible with public types alone.
-static_assert(std::is_same_v<
-    decltype(Operon::FitLeastSquares(std::declval<Operon::LeastSquaresCostFunction const&>(), std::declval<Operon::ConstScalarSpan>(), Operon::LeastSquaresFitOptions {})),
+static_assert(std::is_same_v<decltype(Operon::FitLeastSquares(std::declval<Operon::LeastSquaresCostFunction const&>(),
+                                 std::declval<Operon::ConstScalarSpan>(), Operon::LeastSquaresFitOptions {})),
     Operon::FitOutcome>);
 static_assert(std::is_aggregate_v<Operon::LeastSquaresFitOptions>);
 static_assert(Operon::LeastSquaresFitOptions {}.Backend == Operon::OptimizerType::Tiny);
@@ -263,19 +253,22 @@ TEST_CASE("FitLeastSquares applies per-row weights and a uniform weight scales t
         auto uniformCost = makeContaminated();
         auto scaled = Operon::FitLeastSquares(uniformCost, start, { .Backend = backend, .Weights = uniform });
         REQUIRE(scaled.has_value());
-        CHECK_THAT(static_cast<double>(scaled->InitialCost), Catch::Matchers::WithinRel(4.0 * static_cast<double>(unweighted->InitialCost), 1e-3));
+        CHECK_THAT(static_cast<double>(scaled->InitialCost),
+            Catch::Matchers::WithinRel(4.0 * static_cast<double>(unweighted->InitialCost), 1e-3));
         Near(scaled->FinalParameters[0], unweighted->FinalParameters[0], 5e-3);
         Near(scaled->FinalParameters[1], unweighted->FinalParameters[1], 5e-3);
     }
 }
 
-TEST_CASE("FitLeastSquares reports invalid weights as a typed configuration error without evaluating", "[least-squares][fit]")
+TEST_CASE(
+    "FitLeastSquares reports invalid weights as a typed configuration error without evaluating", "[least-squares][fit]")
 {
     std::array<Scalar, 2> const start { 0.25, -0.5 };
     for (auto backend : BACKENDS) {
         CAPTURE(static_cast<int>(backend));
 
-        auto const check = [&](std::vector<Scalar> const& weights, Operon::WeightErrorCode code, std::size_t row) -> void {
+        auto const check
+            = [&](std::vector<Scalar> const& weights, Operon::WeightErrorCode code, std::size_t row) -> void {
             auto cost = MakeAffine(6, Scalar { 1 }, Scalar { 1 });
             auto outcome = Operon::FitLeastSquares(cost, start, { .Backend = backend, .Weights = weights });
 
@@ -379,24 +372,20 @@ namespace {
 // reject this before evaluating the cost or allocating a residual buffer.
 class OversizedCost final : public Operon::LeastSquaresCostFunction {
 public:
-    OversizedCost(std::size_t residuals, std::size_t parameters)
-        : residuals_(residuals)
-        , parameters_(parameters)
-    {
-    }
+    OversizedCost(std::size_t residuals, std::size_t parameters) : residuals_(residuals), parameters_(parameters) {}
 
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return parameters_; }
     [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return residuals_; }
 
-    [[nodiscard]] auto Evaluate(
-        std::span<Scalar const> /*parameters*/,
-        std::span<Scalar> residuals,
+    [[nodiscard]] auto Evaluate(std::span<Scalar const> /*parameters*/, std::span<Scalar> residuals,
         std::optional<Operon::ScalarMatrixView> /*jacobian*/) const
         -> tl::expected<void, Operon::LeastSquaresError> override
     {
         ++calls;
         if (residuals.size() != residuals_) {
-            return tl::unexpected(Operon::LeastSquaresError { .Code = Operon::LeastSquaresErrorCode::InvalidShape, .Expected = residuals_, .Actual = residuals.size() });
+            return tl::unexpected(Operon::LeastSquaresError { .Code = Operon::LeastSquaresErrorCode::InvalidShape,
+                .Expected = residuals_,
+                .Actual = residuals.size() });
         }
         return {};
     }
@@ -412,7 +401,8 @@ private:
 TEST_CASE("FitLeastSquares rejects an oversized residual count before allocating or narrowing", "[least-squares][fit]")
 {
     constexpr auto limit = static_cast<std::size_t>(std::numeric_limits<int>::max());
-    constexpr std::array<std::size_t, 3> sizes { limit + 1, std::size_t { 1 } << 40, std::numeric_limits<std::size_t>::max() };
+    constexpr std::array<std::size_t, 3> sizes { limit + 1, std::size_t { 1 } << 40,
+        std::numeric_limits<std::size_t>::max() };
 
     for (auto backend : BACKENDS) {
         CAPTURE(static_cast<int>(backend));
@@ -542,7 +532,8 @@ TEST_CASE("FitLeastSquares treats the iteration budget as accepted steps", "[lea
     for (std::size_t budget : { std::size_t { 2 }, std::size_t { 3 } }) {
         CAPTURE(budget);
         ExponentialCost cost { 20, Scalar { 2 }, Scalar { 1 } };
-        auto outcome = Operon::FitLeastSquares(cost, expStart, { .Backend = Operon::OptimizerType::Eigen, .Iterations = budget });
+        auto outcome = Operon::FitLeastSquares(
+            cost, expStart, { .Backend = Operon::OptimizerType::Eigen, .Iterations = budget });
         auto const& diag = Operon::Diagnostics(outcome);
         CHECK(static_cast<std::size_t>(diag.Iterations) == budget);
         CHECK(static_cast<std::size_t>(diag.JacobianEvaluations) >= budget);

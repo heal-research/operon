@@ -29,17 +29,16 @@ namespace Operon {
 // std::string values explicitly (`ProbeParamValue{std::string{...}}`).
 class ProbeParamValue {
 public:
-    ProbeParamValue(std::int64_t v) : value_(v) { } // NOLINT(google-explicit-constructor,hicpp-explicit-conversions)
-    ProbeParamValue(double v) : value_(v) { } // NOLINT(google-explicit-constructor,hicpp-explicit-conversions)
-    ProbeParamValue(bool v) : value_(v) { } // NOLINT(google-explicit-constructor,hicpp-explicit-conversions)
-    ProbeParamValue(std::string v) : value_(std::move(v)) { } // NOLINT(google-explicit-constructor,hicpp-explicit-conversions)
+    ProbeParamValue(std::int64_t v) : value_(v) {} // NOLINT(google-explicit-constructor,hicpp-explicit-conversions)
+    ProbeParamValue(double v) : value_(v) {} // NOLINT(google-explicit-constructor,hicpp-explicit-conversions)
+    ProbeParamValue(bool v) : value_(v) {} // NOLINT(google-explicit-constructor,hicpp-explicit-conversions)
+    ProbeParamValue(std::string v)
+        : value_(std::move(v)) {} // NOLINT(google-explicit-constructor,hicpp-explicit-conversions)
     ProbeParamValue(char const*) = delete; // use std::string(...) explicitly - see class comment
 
-    template <typename T>
-    [[nodiscard]] auto Holds() const -> bool { return std::holds_alternative<T>(value_); }
+    template <typename T> [[nodiscard]] auto Holds() const -> bool { return std::holds_alternative<T>(value_); }
 
-    template <typename T>
-    [[nodiscard]] auto Get() const -> T const& { return std::get<T>(value_); }
+    template <typename T> [[nodiscard]] auto Get() const -> T const& { return std::get<T>(value_); }
 
 private:
     std::variant<std::int64_t, double, bool, std::string> value_;
@@ -47,7 +46,7 @@ private:
 
 // Keeps the trap closed even if this class changes later.
 static_assert(!std::is_constructible_v<ProbeParamValue, char const*>,
-              "ProbeParamValue must reject char const* to avoid silently binding to bool - construct std::string explicitly");
+    "ProbeParamValue must reject char const* to avoid silently binding to bool - construct std::string explicitly");
 
 using ProbeParams = Operon::Map<std::string, ProbeParamValue>;
 
@@ -65,7 +64,8 @@ public:
 
     // Returns nullptr if `type` was never registered - the caller reports
     // the unknown type itself (it has the config-file context to do so).
-    [[nodiscard]] auto Create(std::string const& type, ProbeParams const& params) const -> std::unique_ptr<GenerationProbe>;
+    [[nodiscard]] auto Create(std::string const& type, ProbeParams const& params) const
+        -> std::unique_ptr<GenerationProbe>;
 
 private:
     Operon::Map<std::string, ProbeFactory> factories_;
