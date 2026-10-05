@@ -30,8 +30,8 @@ auto InitOptions(std::string const& name, std::string const& desc, int width = o
 auto ParseOptions(cxxopts::Options&& opts, int argc, char** argv) -> cxxopts::ParseResult;
 
 // Set trainingRange and testRange from CLI options, inferring defaults from dataset if not provided.
-auto SetupRanges(cxxopts::ParseResult const& result, Dataset const& dataset,
-                 Range& trainingRange, Range& testRange) -> void;
+auto SetupRanges(cxxopts::ParseResult const& result, Dataset const& dataset, Range& trainingRange, Range& testRange)
+    -> void;
 
 // Look up the target variable by name.
 // Throws std::runtime_error if the named variable does not exist in the dataset.
@@ -39,19 +39,17 @@ auto ResolveTarget(Dataset const& dataset, std::string const& targetName) -> Var
 
 // Return input variable hashes from CLI options, excluding targetHash.
 // Throws std::runtime_error if a named variable does not exist in the dataset.
-auto BuildInputs(cxxopts::ParseResult const& result, Dataset const& dataset,
-                 Hash targetHash) -> std::vector<Hash>;
+auto BuildInputs(cxxopts::ParseResult const& result, Dataset const& dataset, Hash targetHash) -> std::vector<Hash>;
 
 // Restore algorithm state from a checkpoint file specified via --resume.
 // Returns true if a checkpoint was applied (caller should pass warmStart=true to Run()).
 // Throws std::runtime_error if the checkpoint population size mismatches --population-size.
-auto ResumeFromCheckpoint(GeneticAlgorithmBase& algo, RandomGenerator& rng,
-                          cxxopts::ParseResult const& result) -> bool;
+auto ResumeFromCheckpoint(GeneticAlgorithmBase& algo, RandomGenerator& rng, cxxopts::ParseResult const& result) -> bool;
 
 // Save a checkpoint if --checkpoint-interval is set and the current generation is due.
 // Pass force=true to save unconditionally (e.g. at end of run).
 // No-op when interval == 0 or when Generation() == 0 (initial evaluation).
 auto MaybeSaveCheckpoint(GeneticAlgorithmBase const& algo, RandomGenerator const& rng,
-                         cxxopts::ParseResult const& result, bool force = false) -> void;
+    cxxopts::ParseResult const& result, bool force = false) -> void;
 } // namespace Operon
 #endif

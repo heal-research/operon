@@ -30,6 +30,17 @@ cmake -S . -B build
 cmake --build build --config Release
 ```
 
+### Formatting
+
+Use the Nix development shell for formatting. It pins clang-format 21, the
+version enforced by CI; a system formatter can produce a different result.
+After configuring a build directory, run:
+
+```sh
+nix develop -c cmake --build build --target format-check
+nix develop -c cmake --build build --target format-fix
+```
+
 ### Using vcpkg
 Alternatively you can use vcpkg.
 You require cmake version >= 3.20 because we are using vcpkg ports.

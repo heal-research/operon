@@ -36,31 +36,26 @@ extern "C" {
 #define OPERON_VIEW_DESCRIPTOR_VERSION 1U
 #define OPERON_VIEW_MAX_RANK 2U
 
-enum OperonScalarCode {
-    OPERON_SCALAR_F32 = 1,
-    OPERON_SCALAR_F64 = 2
-};
+enum OperonScalarCode { OPERON_SCALAR_F32 = 1, OPERON_SCALAR_F64 = 2 };
 
-enum OperonViewFlags {
-    OPERON_VIEW_READONLY = 1U << 0
-};
+enum OperonViewFlags { OPERON_VIEW_READONLY = 1U << 0 };
 
 enum OperonViewStatus {
     OPERON_VIEW_OK = 0,
-    OPERON_VIEW_ERR_VERSION = 1,     /* unrecognized descriptor version */
+    OPERON_VIEW_ERR_VERSION = 1, /* unrecognized descriptor version */
     OPERON_VIEW_ERR_STRUCT_SIZE = 2, /* struct_size does not match sizeof at this version */
-    OPERON_VIEW_ERR_RANK = 3,        /* rank is zero or exceeds OPERON_VIEW_MAX_RANK */
-    OPERON_VIEW_ERR_SCALAR = 4,      /* scalar_code/element_size mismatch or unknown */
-    OPERON_VIEW_ERR_NULL_DATA = 5,   /* data is null with a nonzero logical extent */
-    OPERON_VIEW_ERR_EXTENT = 6,      /* reserved: extent == 0 describes a valid empty view (any rank slot),
-                                         so this is never returned by operon_view_validate; kept for wire
-                                         numbering stability across future descriptor versions */
-    OPERON_VIEW_ERR_STRIDE = 7,      /* a byte stride is not a multiple of element_size */
-    OPERON_VIEW_ERR_ALIGNMENT = 8,   /* data pointer is not aligned to element_size */
-    OPERON_VIEW_ERR_OVERFLOW = 9,    /* extents/strides overflow size_t/ptrdiff_t bounds, including a stride
-                                         of PTRDIFF_MIN (unrepresentable as a positive magnitude) or a
-                                         per-axis or total reachable byte span that would overflow */
-    OPERON_VIEW_ERR_WRITABLE = 10    /* a writable view was requested against a read-only descriptor */
+    OPERON_VIEW_ERR_RANK = 3, /* rank is zero or exceeds OPERON_VIEW_MAX_RANK */
+    OPERON_VIEW_ERR_SCALAR = 4, /* scalar_code/element_size mismatch or unknown */
+    OPERON_VIEW_ERR_NULL_DATA = 5, /* data is null with a nonzero logical extent */
+    OPERON_VIEW_ERR_EXTENT = 6, /* reserved: extent == 0 describes a valid empty view (any rank slot),
+                                    so this is never returned by operon_view_validate; kept for wire
+                                    numbering stability across future descriptor versions */
+    OPERON_VIEW_ERR_STRIDE = 7, /* a byte stride is not a multiple of element_size */
+    OPERON_VIEW_ERR_ALIGNMENT = 8, /* data pointer is not aligned to element_size */
+    OPERON_VIEW_ERR_OVERFLOW = 9, /* extents/strides overflow size_t/ptrdiff_t bounds, including a stride
+                                      of PTRDIFF_MIN (unrepresentable as a positive magnitude) or a
+                                      per-axis or total reachable byte span that would overflow */
+    OPERON_VIEW_ERR_WRITABLE = 10 /* a writable view was requested against a read-only descriptor */
 };
 
 /*
@@ -82,7 +77,7 @@ struct OperonViewDescriptor {
     uint32_t element_size;
     uint32_t flags;
     uint32_t reserved; /* zero; reserved for future flag bits */
-    void const* data;  /* borrowed; never owned or freed by the consumer */
+    void const* data; /* borrowed; never owned or freed by the consumer */
     size_t extents[OPERON_VIEW_MAX_RANK];
     ptrdiff_t byte_strides[OPERON_VIEW_MAX_RANK];
 };
@@ -97,18 +92,26 @@ struct OperonViewDescriptor {
 _Static_assert(sizeof(void*) == 8, "OperonViewDescriptor layout is frozen for 64-bit targets only");
 _Static_assert(sizeof(size_t) == 8, "OperonViewDescriptor layout is frozen for 64-bit targets only");
 _Static_assert(sizeof(ptrdiff_t) == 8, "OperonViewDescriptor layout is frozen for 64-bit targets only");
-_Static_assert(sizeof(struct OperonViewDescriptor) == 72, "OperonViewDescriptor layout changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
-_Static_assert(offsetof(struct OperonViewDescriptor, data) == 32, "OperonViewDescriptor field offsets changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
-_Static_assert(offsetof(struct OperonViewDescriptor, extents) == 40, "OperonViewDescriptor field offsets changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
-_Static_assert(offsetof(struct OperonViewDescriptor, byte_strides) == 56, "OperonViewDescriptor field offsets changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
+_Static_assert(sizeof(struct OperonViewDescriptor) == 72,
+    "OperonViewDescriptor layout changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
+_Static_assert(offsetof(struct OperonViewDescriptor, data) == 32,
+    "OperonViewDescriptor field offsets changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
+_Static_assert(offsetof(struct OperonViewDescriptor, extents) == 40,
+    "OperonViewDescriptor field offsets changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
+_Static_assert(offsetof(struct OperonViewDescriptor, byte_strides) == 56,
+    "OperonViewDescriptor field offsets changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
 #elif defined(__cplusplus)
 static_assert(sizeof(void*) == 8, "OperonViewDescriptor layout is frozen for 64-bit targets only");
 static_assert(sizeof(size_t) == 8, "OperonViewDescriptor layout is frozen for 64-bit targets only");
 static_assert(sizeof(ptrdiff_t) == 8, "OperonViewDescriptor layout is frozen for 64-bit targets only");
-static_assert(sizeof(struct OperonViewDescriptor) == 72, "OperonViewDescriptor layout changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
-static_assert(offsetof(struct OperonViewDescriptor, data) == 32, "OperonViewDescriptor field offsets changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
-static_assert(offsetof(struct OperonViewDescriptor, extents) == 40, "OperonViewDescriptor field offsets changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
-static_assert(offsetof(struct OperonViewDescriptor, byte_strides) == 56, "OperonViewDescriptor field offsets changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
+static_assert(sizeof(struct OperonViewDescriptor) == 72,
+    "OperonViewDescriptor layout changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
+static_assert(offsetof(struct OperonViewDescriptor, data) == 32,
+    "OperonViewDescriptor field offsets changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
+static_assert(offsetof(struct OperonViewDescriptor, extents) == 40,
+    "OperonViewDescriptor field offsets changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
+static_assert(offsetof(struct OperonViewDescriptor, byte_strides) == 56,
+    "OperonViewDescriptor field offsets changed; bump OPERON_VIEW_DESCRIPTOR_VERSION");
 #endif
 
 /*

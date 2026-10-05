@@ -10,7 +10,8 @@ default(FORMAT_COMMAND clang-format)
 default(
     PATTERNS
     source/*.cpp source/*.hpp
-    include/*.hpp
+    cli/*.cpp cli/*.hpp
+    include/operon/core/*.h include/*.hpp
     test/*.cpp test/*.hpp
     example/*.cpp example/*.hpp
 )
