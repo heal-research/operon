@@ -38,10 +38,7 @@ struct ProductionOperand {
     std::optional<GrammarSymbol> Symbol; // nullopt <=> this is a fixed operand
     Operon::Scalar FixedValue {};
 
-    ProductionOperand(GrammarSymbol s)
-        : Symbol(s)
-    {
-    } // NOLINT(*explicit*) - see class comment
+    ProductionOperand(GrammarSymbol s) : Symbol(s) {} // NOLINT(*explicit*) - see class comment
 
     static auto Fixed(Operon::Scalar value) -> ProductionOperand
     {
@@ -169,10 +166,7 @@ enum class EnumerationPreset : uint8_t {
 // Configurable grammar for exhaustive enumeration.
 class OPERON_CORE_EXPORT Grammar {
 public:
-    Grammar()
-        : Grammar(PrimitiveSetConfig {}, {})
-    {
-    }
+    Grammar() : Grammar(PrimitiveSetConfig {}, {}) {}
     Grammar(PrimitiveSetConfig enabledFunctions, std::vector<Operon::Hash> variableHashes);
 
     // Rebuilds from legacy primitive-set configuration.

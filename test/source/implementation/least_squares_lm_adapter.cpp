@@ -26,9 +26,7 @@ using Mapping = std::layout_stride::mapping<Extents>;
 // y = c0 + c1 * x, Jacobian columns [1, x_i].
 class LinearModelCost final : public Operon::LeastSquaresCostFunction {
 public:
-    LinearModelCost(std::vector<Operon::Scalar> x, std::vector<Operon::Scalar> y)
-        : x_(std::move(x))
-        , y_(std::move(y))
+    LinearModelCost(std::vector<Operon::Scalar> x, std::vector<Operon::Scalar> y) : x_(std::move(x)), y_(std::move(y))
     {
     }
 
@@ -347,10 +345,7 @@ public:
         std::size_t ColumnStride {};
     };
 
-    RecordingCost(std::vector<Operon::Scalar> x, std::vector<Operon::Scalar> y)
-        : inner_(std::move(x), std::move(y))
-    {
-    }
+    RecordingCost(std::vector<Operon::Scalar> x, std::vector<Operon::Scalar> y) : inner_(std::move(x), std::move(y)) {}
 
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return inner_.NumParameters(); }
     [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return inner_.NumResiduals(); }

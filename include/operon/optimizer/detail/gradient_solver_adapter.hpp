@@ -28,10 +28,7 @@ public:
     using Scalar = Operon::Scalar;
     using scalar_t = Scalar; // NOLINT(readability-identifier-naming) -- required spelling for lbfgs::solver
 
-    explicit GradientSolverAdapter(gsl::not_null<Cost const*> cost)
-        : cost_(cost)
-    {
-    }
+    explicit GradientSolverAdapter(gsl::not_null<Cost const*> cost) : cost_(cost) {}
 
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t { return cost_->NumParameters(); }
 

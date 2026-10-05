@@ -213,10 +213,7 @@ struct Node {
         return Operon::Hash { 0 };
     }
 
-    explicit Node(NodeType type) noexcept
-        : Node(type, DefaultHash(type))
-    {
-    }
+    explicit Node(NodeType type) noexcept : Node(type, DefaultHash(type)) {}
 
     explicit Node(NodeType type, Operon::Hash hashValue) noexcept
         : HashValue(hashValue)

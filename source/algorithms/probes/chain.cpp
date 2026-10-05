@@ -17,8 +17,7 @@ struct JsonlSink::Impl {
     std::ofstream Out;
 };
 
-JsonlSink::JsonlSink(std::string_view path)
-    : impl_(std::make_unique<Impl>())
+JsonlSink::JsonlSink(std::string_view path) : impl_(std::make_unique<Impl>())
 {
     // Truncates by default rather than appending, to avoid silently mixing
     // an old trace's lines into a new run.

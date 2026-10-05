@@ -68,11 +68,7 @@ public:
         SetDefaultInputs();
     }
 
-    explicit Problem(gsl::not_null<Dataset*> dataset)
-        : dataset_ { dataset.get() }
-    {
-        SetDefaultInputs();
-    }
+    explicit Problem(gsl::not_null<Dataset*> dataset) : dataset_ { dataset.get() } { SetDefaultInputs(); }
 
     template <typename T> auto SetTarget(T t)
     {

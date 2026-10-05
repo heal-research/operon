@@ -32,11 +32,7 @@ using ResultRecord = Operon::Map<std::string, ResultValue>;
 // reports per budget level, not per generation, so it's out of scope here.
 class ProbeContext {
 public:
-    ProbeContext(GeneticAlgorithmBase const& algo, ResultRecord& record)
-        : algo_(algo)
-        , record_(record)
-    {
-    }
+    ProbeContext(GeneticAlgorithmBase const& algo, ResultRecord& record) : algo_(algo), record_(record) {}
 
     [[nodiscard]] auto Algorithm() const -> GeneticAlgorithmBase const& { return algo_; }
     [[nodiscard]] auto Generation() const -> std::size_t { return algo_.Generation(); }

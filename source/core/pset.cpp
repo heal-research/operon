@@ -21,15 +21,9 @@
 
 namespace Operon {
 
-PrimitiveSet::PrimitiveSet(PrimitiveSet const& other)
-    : pset_(other.pset_)
-{
-}
+PrimitiveSet::PrimitiveSet(PrimitiveSet const& other) : pset_(other.pset_) {}
 
-PrimitiveSet::PrimitiveSet(PrimitiveSet&& other) noexcept
-    : pset_(std::move(other.pset_))
-{
-}
+PrimitiveSet::PrimitiveSet(PrimitiveSet&& other) noexcept : pset_(std::move(other.pset_)) {}
 
 auto PrimitiveSet::operator=(PrimitiveSet const& other) -> PrimitiveSet&
 {

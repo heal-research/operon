@@ -29,22 +29,11 @@ namespace Operon {
 // std::string values explicitly (`ProbeParamValue{std::string{...}}`).
 class ProbeParamValue {
 public:
-    ProbeParamValue(std::int64_t v)
-        : value_(v)
-    {
-    } // NOLINT(google-explicit-constructor,hicpp-explicit-conversions)
-    ProbeParamValue(double v)
-        : value_(v)
-    {
-    } // NOLINT(google-explicit-constructor,hicpp-explicit-conversions)
-    ProbeParamValue(bool v)
-        : value_(v)
-    {
-    } // NOLINT(google-explicit-constructor,hicpp-explicit-conversions)
+    ProbeParamValue(std::int64_t v) : value_(v) {} // NOLINT(google-explicit-constructor,hicpp-explicit-conversions)
+    ProbeParamValue(double v) : value_(v) {} // NOLINT(google-explicit-constructor,hicpp-explicit-conversions)
+    ProbeParamValue(bool v) : value_(v) {} // NOLINT(google-explicit-constructor,hicpp-explicit-conversions)
     ProbeParamValue(std::string v)
-        : value_(std::move(v))
-    {
-    } // NOLINT(google-explicit-constructor,hicpp-explicit-conversions)
+        : value_(std::move(v)) {} // NOLINT(google-explicit-constructor,hicpp-explicit-conversions)
     ProbeParamValue(char const*) = delete; // use std::string(...) explicitly - see class comment
 
     template <typename T> [[nodiscard]] auto Holds() const -> bool { return std::holds_alternative<T>(value_); }

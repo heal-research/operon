@@ -397,10 +397,7 @@ TEST_CASE("PrimitiveSet publishes reachability cache snapshots safely", "[operat
 TEST_CASE("AchievableLength snap-down table", "[operators]") // NOLINT(readability-function-cognitive-complexity)
 {
     struct TestCreator final : public CreatorBase {
-        TestCreator(PrimitiveSet const* pset, size_t maxLen)
-            : CreatorBase(pset, {}, maxLen)
-        {
-        }
+        TestCreator(PrimitiveSet const* pset, size_t maxLen) : CreatorBase(pset, {}, maxLen) {}
         auto operator()(RandomGenerator& /*rng*/, size_t /*targetLen*/, size_t /*minDepth*/, size_t /*maxDepth*/) const
             -> Tree override
         {

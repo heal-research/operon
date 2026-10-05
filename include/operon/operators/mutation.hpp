@@ -112,10 +112,7 @@ private:
 };
 
 struct OPERON_EXPORT ChangeFunctionMutation : public MutatorBase {
-    explicit ChangeFunctionMutation(PrimitiveSet ps)
-        : pset_(std::move(ps))
-    {
-    }
+    explicit ChangeFunctionMutation(PrimitiveSet ps) : pset_(std::move(ps)) {}
 
     auto operator()(Operon::RandomGenerator& /*random*/, Tree /*args*/) const -> Tree override;
 
@@ -124,10 +121,7 @@ private:
 };
 
 struct OPERON_EXPORT RemoveChildMutation final : public MutatorBase {
-    explicit RemoveChildMutation(PrimitiveSet ps)
-        : pset_(std::move(ps))
-    {
-    }
+    explicit RemoveChildMutation(PrimitiveSet ps) : pset_(std::move(ps)) {}
 
     auto operator()(Operon::RandomGenerator& /*random*/, Tree /*args*/) const -> Tree override;
 

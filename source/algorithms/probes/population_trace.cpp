@@ -16,8 +16,7 @@ struct PopulationTraceProbe::Impl {
     std::ofstream Out;
 };
 
-PopulationTraceProbe::PopulationTraceProbe(std::string_view path)
-    : impl_(std::make_unique<Impl>())
+PopulationTraceProbe::PopulationTraceProbe(std::string_view path) : impl_(std::make_unique<Impl>())
 {
     impl_->Out.open(std::string(path), std::ios::out | std::ios::binary | std::ios::trunc);
     if (!impl_->Out) {

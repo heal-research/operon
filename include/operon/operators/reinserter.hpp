@@ -64,10 +64,7 @@ private:
 
 class OPERON_EXPORT KeepBestReinserter : public ReinserterBase {
 public:
-    explicit KeepBestReinserter(ComparisonCallback const& cb, size_t eliteCount = 0)
-        : ReinserterBase(cb, eliteCount)
-    {
-    }
+    explicit KeepBestReinserter(ComparisonCallback const& cb, size_t eliteCount = 0) : ReinserterBase(cb, eliteCount) {}
 
 protected:
     // keep the best |pop| individuals from pop+pool

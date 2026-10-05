@@ -64,11 +64,7 @@ struct RangeCache::Entry {
     Interval Value;
 };
 
-RangeCache::RangeCache(Zobrist const& zobrist)
-    : zobrist_(&zobrist)
-    , cache_(std::make_unique<ZobristCache<Entry>>())
-{
-}
+RangeCache::RangeCache(Zobrist const& zobrist) : zobrist_(&zobrist), cache_(std::make_unique<ZobristCache<Entry>>()) {}
 
 RangeCache::~RangeCache() = default;
 

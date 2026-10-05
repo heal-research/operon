@@ -24,9 +24,7 @@ using Mapping = std::layout_stride::mapping<Extents>;
 // y = c0 + c1 * x, Jacobian columns [1, x_i]. No likelihood/Fisher method.
 class LinearModelCost final : public Operon::LeastSquaresCostFunction {
 public:
-    LinearModelCost(std::vector<Operon::Scalar> x, std::vector<Operon::Scalar> y)
-        : x_(std::move(x))
-        , y_(std::move(y))
+    LinearModelCost(std::vector<Operon::Scalar> x, std::vector<Operon::Scalar> y) : x_(std::move(x)), y_(std::move(y))
     {
     }
 

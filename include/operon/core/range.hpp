@@ -17,15 +17,9 @@ public:
     [[nodiscard]] auto Bounds() const noexcept -> std::pair<std::size_t, std::size_t> { return range_; }
 
     Range() = default;
-    Range(std::size_t start, std::size_t end)
-        : range_(CheckRange(start, end))
-    {
-    }
+    Range(std::size_t start, std::size_t end) : range_(CheckRange(start, end)) {}
 
-    explicit Range(std::pair<std::size_t, std::size_t> range)
-        : range_(CheckRange(range.first, range.second))
-    {
-    }
+    explicit Range(std::pair<std::size_t, std::size_t> range) : range_(CheckRange(range.first, range.second)) {}
 
     [[nodiscard]] auto operator==(Range const& other) const noexcept -> bool { return range_ == other.range_; }
 

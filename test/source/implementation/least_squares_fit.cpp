@@ -30,11 +30,7 @@ constexpr std::array<Operon::OptimizerType, 2> BACKENDS { Operon::OptimizerType:
 // can be told to fail from a given call onward or to emit a NaN residual.
 class AffineCost final : public Operon::LeastSquaresCostFunction {
 public:
-    AffineCost(std::vector<Scalar> x, std::vector<Scalar> y)
-        : x_(std::move(x))
-        , y_(std::move(y))
-    {
-    }
+    AffineCost(std::vector<Scalar> x, std::vector<Scalar> y) : x_(std::move(x)), y_(std::move(y)) {}
 
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return 2; }
     [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return x_.size(); }
@@ -127,9 +123,7 @@ private:
 // r_i = a * exp(b * x_i) - y_i on x in [0, 2], with y generated from (aTrue, bTrue).
 class ExponentialCost final : public Operon::LeastSquaresCostFunction {
 public:
-    ExponentialCost(std::size_t n, Scalar aTrue, Scalar bTrue)
-        : x_(n)
-        , y_(n)
+    ExponentialCost(std::size_t n, Scalar aTrue, Scalar bTrue) : x_(n), y_(n)
     {
         for (std::size_t i = 0; i < n; ++i) {
             x_[i] = Scalar { 2 } * static_cast<Scalar>(i) / static_cast<Scalar>(n - 1);
@@ -378,11 +372,7 @@ namespace {
 // reject this before evaluating the cost or allocating a residual buffer.
 class OversizedCost final : public Operon::LeastSquaresCostFunction {
 public:
-    OversizedCost(std::size_t residuals, std::size_t parameters)
-        : residuals_(residuals)
-        , parameters_(parameters)
-    {
-    }
+    OversizedCost(std::size_t residuals, std::size_t parameters) : residuals_(residuals), parameters_(parameters) {}
 
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return parameters_; }
     [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return residuals_; }

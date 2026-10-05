@@ -170,7 +170,7 @@
             nativeBuildInputs =
               operon.nativeBuildInputs
               ++ (with pkgs; [
-                clang-tools
+                llvmPackages_21.clang-tools
                 cmake-language-server
                 cppcheck
                 include-what-you-use

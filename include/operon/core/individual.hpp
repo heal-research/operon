@@ -28,25 +28,13 @@ struct Individual {
 
     [[nodiscard]] inline auto Size() const noexcept -> size_t { return Fitness.size(); }
 
-    Individual()
-        : Individual(1)
-    {
-    }
-    explicit Individual(size_t nObj)
-        : Fitness(nObj, std::numeric_limits<Operon::Scalar>::max())
-    {
-    }
+    Individual() : Individual(1) {}
+    explicit Individual(size_t nObj) : Fitness(nObj, std::numeric_limits<Operon::Scalar>::max()) {}
 };
 
 struct SingleObjectiveComparison {
-    explicit SingleObjectiveComparison(size_t idx)
-        : obj_(idx)
-    {
-    }
-    SingleObjectiveComparison()
-        : SingleObjectiveComparison(0)
-    {
-    }
+    explicit SingleObjectiveComparison(size_t idx) : obj_(idx) {}
+    SingleObjectiveComparison() : SingleObjectiveComparison(0) {}
 
     auto operator()(Individual const& lhs, Individual const& rhs, Operon::Scalar eps = 0) const -> bool
     {

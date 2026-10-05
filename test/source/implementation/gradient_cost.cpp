@@ -23,10 +23,7 @@ class QuadraticBowlCost final : public Operon::GradientCostFunction {
 public:
     using Scalar = Operon::Scalar;
 
-    explicit QuadraticBowlCost(std::vector<Operon::Scalar> target)
-        : target_(std::move(target))
-    {
-    }
+    explicit QuadraticBowlCost(std::vector<Operon::Scalar> target) : target_(std::move(target)) {}
 
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return target_.size(); }
 

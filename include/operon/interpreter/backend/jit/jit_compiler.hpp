@@ -173,10 +173,7 @@ struct JitRuntimePool {
 // small, expected numeric differences, not a JIT bug.
 class OPERON_EXPORT TreeCompiler {
 public:
-    explicit TreeCompiler(JitRuntimePool const* pool)
-        : pool_(pool)
-    {
-    }
+    explicit TreeCompiler(JitRuntimePool const* pool) : pool_(pool) {}
 
     // AVX2 vectorized path (8 rows/iter). No scalar/SSE fallback path
     // (deleted along with EmitNodesScalar — dead code given operon's own

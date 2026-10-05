@@ -42,10 +42,7 @@ namespace UpdateRule {
         auto operator=(const LearningRateUpdateRule&) -> LearningRateUpdateRule& = delete;
         auto operator=(LearningRateUpdateRule&&) -> LearningRateUpdateRule& = delete;
 
-        explicit LearningRateUpdateRule(std::string name)
-            : name_(std::move(name))
-        {
-        }
+        explicit LearningRateUpdateRule(std::string name) : name_(std::move(name)) {}
 
         [[nodiscard]] auto Name() const -> std::string const& { return name_; }
 
@@ -67,16 +64,9 @@ namespace UpdateRule {
         T r_ { 0.1 };
 
     public:
-        explicit Constant(Eigen::Index /*dim*/ = 0, T r = 0.1)
-            : Base("constant")
-            , r_(r)
-        {
-        }
+        explicit Constant(Eigen::Index /*dim*/ = 0, T r = 0.1) : Base("constant"), r_(r) {}
 
-        explicit Constant(T r = 0.1)
-            : Constant(0, r)
-        {
-        }
+        explicit Constant(T r = 0.1) : Constant(0, r) {}
 
         [[nodiscard]] auto Update(Eigen::Ref<U const> const& gradient) const -> U final
         {

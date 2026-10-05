@@ -42,10 +42,7 @@ struct OPERON_EXPORT ErrorMetric {
     using Iterator = Operon::Scalar const*;
     using ProjIterator = ProjectionIterator<Iterator>;
 
-    explicit ErrorMetric(ErrorType type)
-        : type_(type)
-    {
-    }
+    explicit ErrorMetric(ErrorType type) : type_(type) {}
 
     [[nodiscard]] auto Type() const noexcept -> ErrorType { return type_; }
 
@@ -67,52 +64,31 @@ private:
 };
 
 struct OPERON_EXPORT SSE : public ErrorMetric {
-    SSE()
-        : ErrorMetric(ErrorType::SSE)
-    {
-    }
+    SSE() : ErrorMetric(ErrorType::SSE) {}
 };
 
 struct OPERON_EXPORT MSE : public ErrorMetric {
-    MSE()
-        : ErrorMetric(ErrorType::MSE)
-    {
-    }
+    MSE() : ErrorMetric(ErrorType::MSE) {}
 };
 
 struct OPERON_EXPORT NMSE : public ErrorMetric {
-    NMSE()
-        : ErrorMetric(ErrorType::NMSE)
-    {
-    }
+    NMSE() : ErrorMetric(ErrorType::NMSE) {}
 };
 
 struct OPERON_EXPORT RMSE : public ErrorMetric {
-    RMSE()
-        : ErrorMetric(ErrorType::RMSE)
-    {
-    }
+    RMSE() : ErrorMetric(ErrorType::RMSE) {}
 };
 
 struct OPERON_EXPORT MAE : public ErrorMetric {
-    MAE()
-        : ErrorMetric(ErrorType::MAE)
-    {
-    }
+    MAE() : ErrorMetric(ErrorType::MAE) {}
 };
 
 struct OPERON_EXPORT R2 : public ErrorMetric {
-    R2()
-        : ErrorMetric(ErrorType::R2)
-    {
-    }
+    R2() : ErrorMetric(ErrorType::R2) {}
 };
 
 struct OPERON_EXPORT C2 : public ErrorMetric {
-    C2()
-        : ErrorMetric(ErrorType::C2)
-    {
-    }
+    C2() : ErrorMetric(ErrorType::C2) {}
 };
 
 auto OPERON_EXPORT FitLeastSquares(Operon::Span<float const> estimated, Operon::Span<float const> target) noexcept
@@ -129,9 +105,7 @@ auto OPERON_EXPORT FitLeastSquares(Operon::Span<double const> estimated, Operon:
 class EvaluatedBuffer {
 public:
     EvaluatedBuffer(EvaluatedBuffer const&) = delete;
-    EvaluatedBuffer(EvaluatedBuffer&& other) noexcept
-        : individual_(other.individual_)
-        , span_(other.span_)
+    EvaluatedBuffer(EvaluatedBuffer&& other) noexcept : individual_(other.individual_), span_(other.span_)
     {
         other.individual_ = nullptr;
         other.span_ = {};
@@ -208,10 +182,7 @@ struct EvaluatorBase
     // by pointer throughout (EvaluatorBase const*) and never copied or moved.
     ~EvaluatorBase() override = default;
 
-    explicit EvaluatorBase(gsl::not_null<Problem const*> problem)
-        : problem_(problem)
-    {
-    }
+    explicit EvaluatorBase(gsl::not_null<Problem const*> problem) : problem_(problem) {}
 
     // Closes out OperatorBase's pure-virtual 3-arg operator() by composing the
     // two phase hooks below. `final` so no subclass can re-declare operator()
@@ -389,10 +360,7 @@ public:
     // of concatenating into a multi-objective vector.
     enum class AggregateType : int { Min, Max, Median, Mean, HarmonicMean, Sum };
 
-    explicit MultiEvaluator(Problem const* problem)
-        : EvaluatorBase(problem)
-    {
-    }
+    explicit MultiEvaluator(Problem const* problem) : EvaluatorBase(problem) {}
 
     auto Add(EvaluatorBase const* evaluator) { evaluators_.emplace_back(evaluator); }
 

@@ -46,10 +46,7 @@ class OptimizerBase {
     mutable std::size_t iterations_ { 100 }; // NOLINT
 
 public:
-    explicit OptimizerBase(gsl::not_null<Problem const*> problem)
-        : problem_ { problem }
-    {
-    }
+    explicit OptimizerBase(gsl::not_null<Problem const*> problem) : problem_ { problem } {}
 
     OptimizerBase(const OptimizerBase&) = default;
     OptimizerBase(OptimizerBase&&) = delete;

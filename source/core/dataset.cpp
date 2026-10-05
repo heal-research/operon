@@ -158,8 +158,7 @@ Dataset::Dataset(ViewTag /*unused*/, gsl::not_null<Scalar const*> data, int rows
     // storage_ stays empty → IsView() == true; caller guarantees padding
 }
 
-Dataset::Dataset(gsl::not_null<Scalar const*> data, int rows, int cols)
-    : variables_(DefaultVariables(cols))
+Dataset::Dataset(gsl::not_null<Scalar const*> data, int rows, int cols) : variables_(DefaultVariables(cols))
 {
     auto const pr = (rows + 7) & ~7; // NOLINT(hicpp-signed-bitwise)
     storage_ = Storage(pr, cols);
@@ -171,10 +170,7 @@ Dataset::Dataset(gsl::not_null<Scalar const*> data, int rows, int cols)
     rows_ = rows;
 }
 
-Dataset::Dataset(Dataset const& rhs)
-    : variables_(rhs.variables_)
-    , rows_(rhs.rows_)
-    , weights_(rhs.weights_)
+Dataset::Dataset(Dataset const& rhs) : variables_(rhs.variables_), rows_(rhs.rows_), weights_(rhs.weights_)
 {
     auto const pr = static_cast<ptrdiff_t>(rhs.view_.extent(0)); // paddedRows
     auto const ncols = static_cast<int>(rhs.view_.extent(1));

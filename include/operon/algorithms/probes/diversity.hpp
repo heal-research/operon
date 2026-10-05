@@ -58,10 +58,7 @@ namespace detail {
 
 class StructuralDiversityProbe final : public GenerationProbe {
 public:
-    explicit StructuralDiversityProbe(HashMode mode = HashMode::Strict)
-        : mode_(mode)
-    {
-    }
+    explicit StructuralDiversityProbe(HashMode mode = HashMode::Strict) : mode_(mode) {}
 
     auto operator()(ProbeContext& ctx) -> void override
     {

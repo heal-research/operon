@@ -101,11 +101,7 @@ struct Subtree {
     private:
         friend struct Subtree;
 
-        ChildRange(Operon::Span<T> nodes, std::size_t parent)
-            : nodes_(nodes)
-            , parent_(parent)
-        {
-        }
+        ChildRange(Operon::Span<T> nodes, std::size_t parent) : nodes_(nodes), parent_(parent) {}
 
         Operon::Span<T> nodes_ {};
         std::size_t parent_ {};
@@ -152,10 +148,7 @@ struct Subtree {
     private:
         friend class EnumerateRange<ReturnIndices>;
 
-        explicit Enumerator(Iterator iterator)
-            : iterator_(std::move(iterator))
-        {
-        }
+        explicit Enumerator(Iterator iterator) : iterator_(std::move(iterator)) {}
 
         Iterator iterator_ {};
         std::size_t index_ {};
@@ -172,11 +165,7 @@ struct Subtree {
     private:
         friend struct Subtree;
 
-        EnumerateRange(Operon::Span<T> nodes, std::size_t parent)
-            : nodes_(nodes)
-            , parent_(parent)
-        {
-        }
+        EnumerateRange(Operon::Span<T> nodes, std::size_t parent) : nodes_(nodes), parent_(parent) {}
 
         Operon::Span<T> nodes_ {};
         std::size_t parent_ {};
@@ -187,9 +176,7 @@ struct Subtree {
     using IndexRange = ChildRange<true>;
     using NodeRange = ChildRange<false>;
 
-    Subtree(Operon::Span<T> nodes, std::size_t parent)
-        : nodes_(nodes)
-        , parent_(parent)
+    Subtree(Operon::Span<T> nodes, std::size_t parent) : nodes_(nodes), parent_(parent)
     {
         EXPECT(parent < nodes_.size());
     }

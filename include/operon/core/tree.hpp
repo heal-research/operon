@@ -39,22 +39,13 @@ enum class TreeValidationError : std::uint8_t {
 class OPERON_CORE_EXPORT Tree { // NOLINT
 public:
     Tree() = default;
-    Tree(std::initializer_list<Node> list)
-        : nodes_(list)
-    {
-    }
-    explicit Tree(Operon::Vector<Node> vec)
-        : nodes_(std::move(vec))
-    {
-    }
+    Tree(std::initializer_list<Node> list) : nodes_(list) {}
+    explicit Tree(Operon::Vector<Node> vec) : nodes_(std::move(vec)) {}
     Tree(Tree const& rhs) // NOLINT
         : nodes_(rhs.nodes_)
     {
     }
-    Tree(Tree&& rhs) noexcept
-        : nodes_(std::move(rhs.nodes_))
-    {
-    }
+    Tree(Tree&& rhs) noexcept : nodes_(std::move(rhs.nodes_)) {}
 
     ~Tree() = default;
 

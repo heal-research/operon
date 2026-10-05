@@ -87,10 +87,7 @@ struct EvaluatorFixture {
 
 class FixedCoefficientOptimizer final : public OptimizerBase {
 public:
-    explicit FixedCoefficientOptimizer(gsl::not_null<Problem const*> problem)
-        : OptimizerBase(problem)
-    {
-    }
+    explicit FixedCoefficientOptimizer(gsl::not_null<Problem const*> problem) : OptimizerBase(problem) {}
 
     [[nodiscard]] auto Optimize(Operon::RandomGenerator& /*rng*/, Tree const& tree) const -> FitOutcome override
     {

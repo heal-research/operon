@@ -33,11 +33,7 @@ struct DomainContext {
     Dataset const* Data {};
     Range Rows {};
 
-    DomainContext(Dataset const& data, Range rows)
-        : Data(&data)
-        , Rows(rows)
-    {
-    }
+    DomainContext(Dataset const& data, Range rows) : Data(&data), Rows(rows) {}
 };
 
 // Conservative, coefficient-independent analysis of a tree over selected rows.

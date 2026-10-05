@@ -21,15 +21,9 @@ struct TreeInitializerBase : public OperatorBase<Tree> {};
 template <typename Dist> struct OPERON_EXPORT CoefficientInitializer : public CoefficientInitializerBase {
     using NodeCheckCallback = std::function<bool(Operon::Node)>;
 
-    explicit CoefficientInitializer(NodeCheckCallback callback)
-        : callback_(std::move(callback))
-    {
-    }
+    explicit CoefficientInitializer(NodeCheckCallback callback) : callback_(std::move(callback)) {}
 
-    CoefficientInitializer()
-        : CoefficientInitializer([](auto const& node) { return node.IsLeaf(); })
-    {
-    }
+    CoefficientInitializer() : CoefficientInitializer([](auto const& node) { return node.IsLeaf(); }) {}
 
     auto operator()(Operon::RandomGenerator& random, Operon::Tree& tree) const -> void override
     {
@@ -51,10 +45,7 @@ private:
 };
 
 template <typename Dist> struct OPERON_EXPORT TreeInitializer : public TreeInitializerBase {
-    explicit TreeInitializer(Operon::CreatorBase const* creator)
-        : creator_(creator)
-    {
-    }
+    explicit TreeInitializer(Operon::CreatorBase const* creator) : creator_(creator) {}
 
     auto operator()(Operon::RandomGenerator& random) const -> Operon::Tree override
     {

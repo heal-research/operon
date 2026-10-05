@@ -305,27 +305,12 @@ public:
 
     template <typename U> static constexpr auto SupportsType = TypeIndex<U> < N;
 
-    explicit DispatchTable(Map const& map)
-        : map_(map)
-    {
-    }
-    explicit DispatchTable(Map&& map)
-        : map_(std::move(map))
-    {
-    }
-    explicit DispatchTable(std::unordered_map<Operon::Hash, Tuple> const& map)
-        : map_(map.begin(), map.end())
-    {
-    }
+    explicit DispatchTable(Map const& map) : map_(map) {}
+    explicit DispatchTable(Map&& map) : map_(std::move(map)) {}
+    explicit DispatchTable(std::unordered_map<Operon::Hash, Tuple> const& map) : map_(map.begin(), map.end()) {}
 
-    DispatchTable(DispatchTable const& other)
-        : map_(other.map_)
-    {
-    }
-    DispatchTable(DispatchTable&& other) noexcept
-        : map_(std::move(other.map_))
-    {
-    }
+    DispatchTable(DispatchTable const& other) : map_(other.map_) {}
+    DispatchTable(DispatchTable&& other) noexcept : map_(std::move(other.map_)) {}
 
     template <typename Self> [[nodiscard]] auto GetMap(this Self& self) -> decltype(auto) { return (self.map_); }
 

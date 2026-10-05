@@ -22,16 +22,8 @@ template <typename InputIt, typename Func = std::identity> struct ProjectionIter
     using difference_type = typename std::iterator_traits<InputIt>::difference_type; // NOLINT
     using iterator_category = typename std::iterator_traits<InputIt>::iterator_category; // NOLINT
 
-    explicit ProjectionIterator(InputIt it, Func const& f)
-        : it_(it)
-        , pr_(f)
-    {
-    }
-    explicit ProjectionIterator(InputIt it, Func&& f)
-        : it_(it)
-        , pr_(std::move(f))
-    {
-    }
+    explicit ProjectionIterator(InputIt it, Func const& f) : it_(it), pr_(f) {}
+    explicit ProjectionIterator(InputIt it, Func&& f) : it_(it), pr_(std::move(f)) {}
 
     inline auto operator*() const noexcept -> value_type
     {
@@ -114,11 +106,7 @@ private:
 template <typename Container, typename Func = std::identity> struct Projection {
     using InputIt = ProjectionIterator<typename Container::const_iterator, Func>;
 
-    explicit Projection(Container const& c, Func const& f)
-        : beg_(c.begin(), f)
-        , end_(c.end(), f)
-    {
-    }
+    explicit Projection(Container const& c, Func const& f) : beg_(c.begin(), f), end_(c.end(), f) {}
 
     auto begin() const -> InputIt { return beg_; } // NOLINT
     auto end() const -> InputIt { return end_; } // NOLINT

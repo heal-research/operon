@@ -50,16 +50,8 @@ concept NameSource = std::same_as<T, Operon::Dataset> || std::same_as<T, Variabl
 class OPERON_EXPORT NameView {
 public:
     NameView() noexcept = default;
-    explicit NameView(Operon::Dataset const& dataset) noexcept
-        : kind_(Kind::Dataset)
-        , source_(&dataset)
-    {
-    }
-    explicit NameView(VariableNameMap const& names) noexcept
-        : kind_(Kind::Map)
-        , source_(&names)
-    {
-    }
+    explicit NameView(Operon::Dataset const& dataset) noexcept : kind_(Kind::Dataset), source_(&dataset) {}
+    explicit NameView(VariableNameMap const& names) noexcept : kind_(Kind::Map), source_(&names) {}
 
     // Resolve() returning nullopt is ambiguous on its own (missing hash vs.
     // no source supplied at all) -- callers needing to throw on a genuinely

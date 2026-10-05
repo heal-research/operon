@@ -18,20 +18,11 @@ class SelectorBase : public OperatorBase<size_t> {
 public:
     using SelectableType = Individual;
 
-    SelectorBase()
-        : comp_(nullptr)
-    {
-    }
+    SelectorBase() : comp_(nullptr) {}
 
-    explicit SelectorBase(ComparisonCallback&& cb)
-        : comp_(std::move(cb))
-    {
-    }
+    explicit SelectorBase(ComparisonCallback&& cb) : comp_(std::move(cb)) {}
 
-    explicit SelectorBase(ComparisonCallback cb)
-        : comp_(std::move(cb))
-    {
-    }
+    explicit SelectorBase(ComparisonCallback cb) : comp_(std::move(cb)) {}
 
     virtual void Prepare(Operon::Span<Individual const> pop) const
     {
@@ -52,14 +43,8 @@ private:
 
 class OPERON_EXPORT TournamentSelector : public SelectorBase {
 public:
-    explicit TournamentSelector(ComparisonCallback&& cb)
-        : SelectorBase(cb)
-        , tournamentSize_(DefaultTournamentSize)
-    {
-    }
-    explicit TournamentSelector(ComparisonCallback const& cb)
-        : SelectorBase(cb)
-        , tournamentSize_(DefaultTournamentSize)
+    explicit TournamentSelector(ComparisonCallback&& cb) : SelectorBase(cb), tournamentSize_(DefaultTournamentSize) {}
+    explicit TournamentSelector(ComparisonCallback const& cb) : SelectorBase(cb), tournamentSize_(DefaultTournamentSize)
     {
     }
 
@@ -75,14 +60,8 @@ private:
 
 class OPERON_EXPORT ProportionalSelector : public SelectorBase {
 public:
-    explicit ProportionalSelector(ComparisonCallback&& cb)
-        : SelectorBase(cb)
-    {
-    }
-    explicit ProportionalSelector(ComparisonCallback const& cb)
-        : SelectorBase(cb)
-    {
-    }
+    explicit ProportionalSelector(ComparisonCallback&& cb) : SelectorBase(cb) {}
+    explicit ProportionalSelector(ComparisonCallback const& cb) : SelectorBase(cb) {}
 
     auto operator()(Operon::RandomGenerator& random) const -> size_t override;
 

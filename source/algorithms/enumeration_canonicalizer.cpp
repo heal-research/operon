@@ -273,10 +273,7 @@ namespace {
 
     class Canonicalizer {
     public:
-        explicit Canonicalizer(Operon::Tree const& tree)
-            : nodes_(tree.Nodes())
-        {
-        }
+        explicit Canonicalizer(Operon::Tree const& tree) : nodes_(tree.Nodes()) {}
 
         auto Canonicalize(std::size_t i) -> Sum
         {
