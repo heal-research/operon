@@ -1,4 +1,4 @@
-name: Continuous Integration
+name: Sanitizers and documentation
 
 on:
   push:
@@ -10,128 +10,38 @@ on:
     - main
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v2
-
-    - uses: actions/setup-python@v2
-      with: { python-version: "3.8" }
-
-    - name: Install codespell
-      run: pip3 install codespell
-
-    - name: Lint
-      run: cmake -D FORMAT_COMMAND=clang-format-11 -P cmake/lint.cmake
-
-    - name: Spell check
-      if: always()
-      run: cmake -P cmake/spell.cmake
-
-  coverage:
-    needs: [lint]
-
-    runs-on: ubuntu-latest
-
-    # To enable coverage, go to https://codecov.io/, acquire a token, put it
-    # into your secrets (Settings > Secrets > New repository secret), delete
-    # the last line from the conditional below and edit the "<name>"
-    # placeholder to your GitHub name.
-    # If you do not wish to use codecov, then simply delete this job from the
-    # workflow.
-    if: github.repository_owner == '<name>'
-      && false
-
-    steps:
-    - uses: actions/checkout@v2
-
-    - name: Install LCov
-      run: sudo apt-get update -q
-        && sudo apt-get install lcov -q -y
-
-    - name: Configure
-      run: cmake --preset=ci-coverage
-
-    - name: Build
-      run: cmake --build build/coverage -j 2
-
-    - name: Test
-      working-directory: build/coverage
-      run: ctest --output-on-failure -j 2
-
-    - name: Process coverage info
-      run: cmake --build build/coverage -t coverage
-
-    - name: Submit to codecov.io
-      uses: codecov/codecov-action@v1
-      with:
-        file: build/coverage/coverage.info
-
   sanitize:
-    needs: [lint]
-
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
+    - uses: cachix/install-nix-action@v27
 
     - name: Configure
-      env: { CXX: clang++-11 }
-      run: cmake --preset=ci-sanitize
+      run: >-
+        nix develop -c cmake -S . -B build/sanitize -G "Unix Makefiles"
+        -DCMAKE_BUILD_TYPE=Debug
+        -DCMAKE_C_COMPILER=clang
+        -DCMAKE_CXX_COMPILER=clang++
+        -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+        -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+        -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+        -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=address,undefined"
+        -DUSE_SINGLE_PRECISION=ON
+        -Doperon_DEVELOPER_MODE=ON
 
-    - name: Build
-      run: cmake --build build/sanitize -j 2
+    - name: Build test binary
+      run: nix develop -c cmake --build build/sanitize --target operon_test -j2
 
     - name: Test
-      working-directory: build/sanitize
       env:
-        ASAN_OPTIONS: "strict_string_checks=1:\
-          detect_stack_use_after_return=1:\
-          check_initialization_order=1:\
-          strict_init_order=1:\
-          detect_leaks=1"
+        ASAN_OPTIONS: strict_string_checks=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1:detect_leaks=1
         UBSAN_OPTIONS: print_stacktrace=1
-      run: ctest --output-on-failure -j 2
+      run: nix develop -c ctest --test-dir build/sanitize --output-on-failure -j2
 
-  test:
-    needs: [lint]
-
-    strategy:
-      matrix:
-        os: [macos, ubuntu, windows]
-
-        type: [shared, static]
-
-        include:
-        - { type: shared, shared: YES }
-        - { type: static, shared: NO }
-
-    runs-on: ${{ matrix.os }}-latest
-
-    steps:
-    - uses: actions/checkout@v2
-
-    - name: Install static analyzers
-      if: matrix.os == 'ubuntu'
-      run: sudo apt-get install clang-tidy cppcheck -y -q
-
-    - name: Configure
-      run: cmake --preset=ci-${{ matrix.os }}
-        -D BUILD_SHARED_LIBS=${{ matrix.shared }}
-
-    - name: Build
-      run: cmake --build build --config Release -j 2
-
-    - name: Install
-      run: cmake --install build --config Release --prefix prefix
-
-    - name: Test
-      working-directory: build
-      run: ctest --output-on-failure -C Release -j 2
 
   docs:
-    needs: [sanitize, test]
+    needs: [sanitize]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -139,21 +49,15 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-
-    - uses: actions/setup-python@v5
-      with: { python-version: "3.11" }
-
-    - name: Install documentation dependencies
-      run: pip install mkdocs-material
-        && sudo apt-get update -q
-        && sudo apt-get install graphviz -q -y
+    - uses: cachix/install-nix-action@v27
 
     - name: Build docs
-      run: cmake -S . -B build -D BUILD_DOCS=ON
-        && cmake --build build --target docs
+      run: >-
+        nix develop -c cmake -S . -B build/docs -D BUILD_DOCS=ON
+        && nix develop -c cmake --build build/docs --target docs
 
     - name: Deploy docs
       uses: peaceiris/actions-gh-pages@v4
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: build/docs/html
+        publish_dir: build/docs/docs/html

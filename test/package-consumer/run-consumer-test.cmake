@@ -61,16 +61,23 @@ if(DEFINED OPERON_CONFIGURATION AND NOT "${OPERON_CONFIGURATION}" STREQUAL "")
     list(APPEND operon_ctest_config_args -C "${OPERON_CONFIGURATION}")
 endif()
 
-# Preserve the parent's dependency-discovery and runtime ABI context when it
-# uses vcpkg. The relocated prefix remains the only package-specific search
-# location; these settings merely let operonConfig.cmake resolve its declared
-# third-party dependencies on Windows.
+# Preserve the parent's toolchain, build mode, and flags when required. In
+# particular, a statically linked sanitizer build must link its consumer with
+# the same sanitizer runtime; a fresh consumer configuration does not inherit
+# those settings automatically.
 set(operon_consumer_config_args)
 foreach(var
     OPERON_TOOLCHAIN_FILE
     OPERON_VCPKG_TARGET_TRIPLET
     OPERON_VCPKG_INSTALLED_DIR
     OPERON_MSVC_RUNTIME_LIBRARY
+    OPERON_CMAKE_C_COMPILER
+    OPERON_CMAKE_CXX_COMPILER
+    OPERON_CMAKE_C_FLAGS
+    OPERON_CMAKE_CXX_FLAGS
+    OPERON_CMAKE_EXE_LINKER_FLAGS
+    OPERON_CMAKE_SHARED_LINKER_FLAGS
+    OPERON_CMAKE_BUILD_TYPE
 )
     if(DEFINED ${var} AND NOT "${${var}}" STREQUAL "")
         if(var STREQUAL "OPERON_TOOLCHAIN_FILE")
@@ -102,8 +109,8 @@ run_step("install development"
 file(RENAME "${OPERON_STAGE_DIR}" "${OPERON_RELOCATED_PREFIX}")
 
 # 3. Configure the fixture with the relocated prefix as its only package
-# location. Forwarded vcpkg settings preserve the parent toolchain's
-# dependency discovery and MSVC runtime ABI without exposing its build tree.
+# location. Forwarded parent settings preserve dependency discovery,
+# compiler/runtime ABI, and instrumentation without exposing the build tree.
 run_step("configure"
     "${CMAKE_COMMAND}"
         -S "${OPERON_CONSUMER_SOURCE_DIR}"
