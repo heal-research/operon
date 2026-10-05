@@ -14,11 +14,12 @@ namespace Operon::Test {
 
 TEST_CASE("Uniform random sampling", "[core]")
 {
-    std::vector<size_t> vec{0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+    std::vector<size_t> vec { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
     size_t samples = 1'000'000;
     Operon::RandomGenerator rng(1234);
 
-    SECTION("All indices are sampled") {
+    SECTION("All indices are sampled")
+    {
         std::vector<size_t> counts(vec.size(), 0);
 
         for (size_t i = 0; i < samples; ++i) {
@@ -30,7 +31,8 @@ TEST_CASE("Uniform random sampling", "[core]")
         }
     }
 
-    SECTION("Samples are within bounds") {
+    SECTION("Samples are within bounds")
+    {
         for (size_t i = 0; i < 1000; ++i) {
             auto val = *Operon::Random::Sample(rng, vec.begin(), vec.end());
             CHECK(val < vec.size());
@@ -40,7 +42,7 @@ TEST_CASE("Uniform random sampling", "[core]")
 
 TEST_CASE("Conditional random sampling", "[core]")
 {
-    std::vector<size_t> vec{0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+    std::vector<size_t> vec { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
     size_t samples = 1'000'000;
     Operon::RandomGenerator rng(1234);
 

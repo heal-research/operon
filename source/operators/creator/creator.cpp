@@ -22,21 +22,15 @@ static_assert(Concepts::Creator<BalancedTreeCreator>);
 static_assert(Concepts::Creator<GrowTreeCreator>);
 static_assert(Concepts::Creator<ProbabilisticTreeCreator>);
 
-CreatorBase::CreatorBase(gsl::not_null<PrimitiveSet const*> pset, std::vector<Operon::Hash> variables, size_t /*maxLength*/)
+CreatorBase::CreatorBase(
+    gsl::not_null<PrimitiveSet const*> pset, std::vector<Operon::Hash> variables, size_t /*maxLength*/)
     : pset_(pset)
     , variables_(std::move(variables))
 {
 }
 
-auto CreatorBase::SetPrimitiveSet(gsl::not_null<PrimitiveSet const*> pset) -> void
-{
-    pset_ = pset;
-}
+auto CreatorBase::SetPrimitiveSet(gsl::not_null<PrimitiveSet const*> pset) -> void { pset_ = pset; }
 
-auto CreatorBase::AchievableLength(size_t targetLen) const -> size_t
-{
-    return pset_->AchievableLength(targetLen);
-}
-
+auto CreatorBase::AchievableLength(size_t targetLen) const -> size_t { return pset_->AchievableLength(targetLen); }
 
 } // namespace Operon

@@ -2,25 +2,28 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
-#include <cstddef>
-#include <numeric>
 #include <algorithm>
+#include <cstddef>
 #include <functional>
 #include <limits>
+#include <numeric>
 #include <random>
 #include <utility>
 #include <vector>
 
-#include "operon/operators/selector.hpp"
 #include "operon/core/individual.hpp"
 #include "operon/core/types.hpp"
+#include "operon/operators/selector.hpp"
 
 namespace Operon {
 
 auto ProportionalSelector::operator()(Operon::RandomGenerator& random) const -> size_t
 {
-    std::uniform_real_distribution<Operon::Scalar> uniformReal(0, fitness_.back().first - std::numeric_limits<Operon::Scalar>::epsilon());
-    return std::lower_bound(fitness_.begin(), fitness_.end(), std::make_pair(uniformReal(random), size_t{0}), std::less {})->second;
+    std::uniform_real_distribution<Operon::Scalar> uniformReal(
+        0, fitness_.back().first - std::numeric_limits<Operon::Scalar>::epsilon());
+    return std::lower_bound(
+        fitness_.begin(), fitness_.end(), std::make_pair(uniformReal(random), size_t { 0 }), std::less {})
+        ->second;
 }
 
 void ProportionalSelector::Prepare(const Operon::Span<const Individual> pop) const
@@ -42,13 +45,14 @@ void ProportionalSelector::Prepare() const
 
     for (size_t i = 0; i < populationSize; ++i) {
         auto f = population[i][idx_];
-        fitness_.emplace_back( f, i );
+        fitness_.emplace_back(f, i);
         vmin = std::min(vmin, f);
         vmax = std::max(vmax, f);
     }
     auto prepare = [=](auto p) -> auto { return std::make_pair(vmax - p.first, p.second); };
     std::transform(fitness_.begin(), fitness_.end(), fitness_.begin(), prepare);
     std::sort(fitness_.begin(), fitness_.end());
-    std::inclusive_scan(fitness_.begin(), fitness_.end(), fitness_.begin(), [](auto lhs, auto rhs) -> auto { return std::make_pair(lhs.first + rhs.first, rhs.second); });
+    std::inclusive_scan(fitness_.begin(), fitness_.end(), fitness_.begin(),
+        [](auto lhs, auto rhs) -> auto { return std::make_pair(lhs.first + rhs.first, rhs.second); });
 }
-}  // namespace Operon
+} // namespace Operon

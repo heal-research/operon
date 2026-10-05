@@ -5,8 +5,8 @@
 #include <cstddef>
 #include <random>
 
-#include "operon/operators/selector.hpp"
 #include "operon/core/types.hpp"
+#include "operon/operators/selector.hpp"
 
 namespace Operon {
 

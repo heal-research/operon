@@ -60,13 +60,14 @@ auto NearlyEqual(double actual, double expected, double tolerance = 1e-3) -> boo
 
 } // namespace
 
-auto main() -> int {
+auto main() -> int
+{
     // 3 observations x 2 parameters, row-major: J = [[1,0],[0,1],[1,1]].
-    std::array<Operon::Scalar, 6> jacobianStorage {1, 0, 0, 1, 1, 1};
+    std::array<Operon::Scalar, 6> jacobianStorage { 1, 0, 0, 1, 1, 1 };
     using Extents = std::dextents<std::size_t, 2>;
     using Mapping = std::layout_stride::mapping<Extents>;
-    Operon::ConstScalarMatrixView jacobian {
-        jacobianStorage.data(), Mapping {Extents {3, 2}, std::array<std::size_t, 2> {2, 1}}};
+    Operon::ConstScalarMatrixView jacobian { jacobianStorage.data(),
+        Mapping { Extents { 3, 2 }, std::array<std::size_t, 2> { 2, 1 } } };
 
     // Same view, built through the C-compatible descriptor
     // (view_descriptor.h + view_descriptor.hpp) instead of a bare mdspan
@@ -89,15 +90,15 @@ auto main() -> int {
         std::cerr << "package-consumer(core): view_descriptor rejected a valid descriptor\n";
         return EXIT_FAILURE;
     }
-    if (Operon::At(*descriptorView, 2, 1) != Operon::Scalar {1}) {
+    if (Operon::At(*descriptorView, 2, 1) != Operon::Scalar { 1 }) {
         std::cerr << "package-consumer(core): view_descriptor built an incorrect view\n";
         return EXIT_FAILURE;
     }
 
     // F = J^T J (unweighted, sigma empty): [[2,1],[1,2]].
     std::array<Operon::Scalar, 4> fisherStorage {};
-    Operon::ScalarMatrixView fisher {
-        fisherStorage.data(), Mapping {Extents {2, 2}, std::array<std::size_t, 2> {2, 1}}};
+    Operon::ScalarMatrixView fisher { fisherStorage.data(),
+        Mapping { Extents { 2, 2 }, std::array<std::size_t, 2> { 2, 1 } } };
     auto fisherResult = Operon::ComputeFisherMatrix(jacobian, {}, fisher);
     if (!fisherResult) {
         std::cerr << "package-consumer(core): ComputeFisherMatrix failed\n";
@@ -110,7 +111,7 @@ auto main() -> int {
     }
 
     // Cost = 0.5 * sum(r_i^2) = 7; gradient = J^T r = [4, 5].
-    std::array<Operon::Scalar, 3> residuals {1, 2, 3};
+    std::array<Operon::Scalar, 3> residuals { 1, 2, 3 };
     std::array<Operon::Scalar, 2> gradient {};
     auto gradientResult = Operon::ComputeGradient(residuals, jacobian, gradient);
     if (!gradientResult) {
@@ -136,9 +137,10 @@ auto main() -> int {
 
     // Typed weight validation and the public location-preserving error
     // conversion are Eigen-free core symbols (header-only here).
-    std::array<Operon::Scalar, 3> badWeights {1, -1, 1};
+    std::array<Operon::Scalar, 3> badWeights { 1, -1, 1 };
     auto weightResult = Operon::ValidateWeights(badWeights, 3);
-    if (weightResult || weightResult.error().Code != Operon::WeightErrorCode::NegativeValue || weightResult.error().Row != 1) {
+    if (weightResult || weightResult.error().Code != Operon::WeightErrorCode::NegativeValue
+        || weightResult.error().Row != 1) {
         std::cerr << "package-consumer(core): ValidateWeights did not report the negative weight\n";
         return EXIT_FAILURE;
     }
@@ -155,10 +157,11 @@ auto main() -> int {
     // check, not just a header-compiles-standalone check.
     auto const addHash = static_cast<Operon::Hash>(Operon::BuiltinOp::Add);
     Operon::Tree const sumTree = Operon::Tree({
-        Operon::Node::Constant(1.0),
-        Operon::Node::Constant(2.0),
-        Operon::Node::Function(addHash, /*arity=*/2),
-    }).UpdateNodes();
+                                                  Operon::Node::Constant(1.0),
+                                                  Operon::Node::Constant(2.0),
+                                                  Operon::Node::Function(addHash, /*arity=*/2),
+                                              })
+                                     .UpdateNodes();
     if (!sumTree.Validate()) {
         std::cerr << "package-consumer(core): well-formed tree failed Validate()\n";
         return EXIT_FAILURE;
@@ -187,7 +190,7 @@ auto main() -> int {
     // only seeded (to 1, for a bare Variable leaf) when at least one
     // variable is registered; with none, every nonterminal -- including
     // Expression -- stays permanently Unreachable.
-    Operon::Grammar const grammar(Operon::PrimitiveSet::Full, /*variableHashes=*/{ 1 });
+    Operon::Grammar const grammar(Operon::PrimitiveSet::Full, /*variableHashes=*/ { 1 });
     if (grammar.Productions(Operon::GrammarSymbol::RecurringFactor).empty()) {
         std::cerr << "package-consumer(core): Grammar produced no RecurringFactor productions\n";
         return EXIT_FAILURE;
@@ -202,8 +205,10 @@ auto main() -> int {
     // same Key (commutative reordering), exercising
     // CanonicalizeEnumerationTree, compiled into operon_core
     // (source/algorithms/enumeration_canonicalizer.cpp).
-    Operon::Node varX(Operon::NodeType::Variable); varX.HashValue = 1;
-    Operon::Node varY(Operon::NodeType::Variable); varY.HashValue = 2;
+    Operon::Node varX(Operon::NodeType::Variable);
+    varX.HashValue = 1;
+    Operon::Node varY(Operon::NodeType::Variable);
+    varY.HashValue = 2;
     Operon::Tree const xy = Operon::Tree({ varX, varY, Operon::Node::Function(addHash, 2) }).UpdateNodes();
     Operon::Tree const yx = Operon::Tree({ varY, varX, Operon::Node::Function(addHash, 2) }).UpdateNodes();
     if (Operon::CanonicalizeEnumerationTree(xy).Key != Operon::CanonicalizeEnumerationTree(yx).Key) {

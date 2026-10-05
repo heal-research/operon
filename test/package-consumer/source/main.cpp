@@ -27,11 +27,14 @@ public:
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return 1; }
     [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return X.size(); }
     [[nodiscard]] auto Evaluate(std::span<Operon::Scalar const> parameters, std::span<Operon::Scalar> residuals,
-        std::optional<Operon::ScalarMatrixView> jacobian) const -> tl::expected<void, Operon::LeastSquaresError> override
+        std::optional<Operon::ScalarMatrixView> jacobian) const
+        -> tl::expected<void, Operon::LeastSquaresError> override
     {
         for (std::size_t i = 0; i < X.size(); ++i) {
             residuals[i] = (parameters[0] - Operon::Scalar { 3 }) * X[i];
-            if (jacobian) { Operon::At(*jacobian, i, 0) = X[i]; }
+            if (jacobian) {
+                Operon::At(*jacobian, i, 0) = X[i];
+            }
         }
         return {};
     }
@@ -39,14 +42,15 @@ public:
 };
 } // namespace
 
-auto main() -> int {
+auto main() -> int
+{
     // A one-node tree is enough to prove that the installed public headers
     // are self-sufficient (no missing transitive includes) and that
     // liboperon's implementation is actually reachable through the
     // operon::operon imported target (UpdateNodes() is defined in
     // source/core/tree.cpp, not header-only).
     auto node = Operon::Node::Constant(2.0);
-    Operon::Tree tree({node});
+    Operon::Tree tree({ node });
     tree.UpdateNodes();
 
     if (tree.Length() != 1) {

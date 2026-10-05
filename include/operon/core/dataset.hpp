@@ -12,27 +12,26 @@
 
 #include <gsl/pointers>
 
-#include "operon/operon_export.hpp"
 #include "contracts.hpp"
+#include "operon/operon_export.hpp"
 #include "range.hpp"
 #include "types.hpp"
 #include "variable.hpp"
 
 namespace Operon {
 
-
 class OPERON_EXPORT Dataset {
 public:
     using Variables = Operon::Map<Operon::Hash, Operon::Variable>;
-    using Extents   = std::dextents<int, 2>;
-    using Storage   = MDArray<Scalar, Extents>;
-    using View      = MDSpan<Scalar const, Extents>;
+    using Extents = std::dextents<int, 2>;
+    using Storage = MDArray<Scalar, Extents>;
+    using View = MDSpan<Scalar const, Extents>;
 
 private:
     Variables variables_;
-    Storage   storage_;
-    View      view_;
-    int       rows_{0}; // logical row count; storage_ has (rows_+7)&~7 rows for owning datasets
+    Storage storage_;
+    View view_;
+    int rows_ { 0 }; // logical row count; storage_ has (rows_+7)&~7 rows for owning datasets
 
     std::optional<Vector<Scalar>> weights_;
 
@@ -42,7 +41,8 @@ private:
     auto ReadCsv(std::string const& path, bool hasHeader) -> std::pair<Storage, int>;
     void InitializeVariables(std::vector<std::string> const&);
 
-    [[nodiscard]] auto ColSpan(int idx) const noexcept -> Span<Scalar const> {
+    [[nodiscard]] auto ColSpan(int idx) const noexcept -> Span<Scalar const>
+    {
         return { view_.data_handle() + (static_cast<ptrdiff_t>(idx) * view_.extent(0)), static_cast<size_t>(rows_) };
     }
 
@@ -57,7 +57,11 @@ public:
 
     ~Dataset() = default;
 
-    auto operator=(Dataset rhs) -> Dataset& { Swap(rhs); return *this; }
+    auto operator=(Dataset rhs) -> Dataset&
+    {
+        Swap(rhs);
+        return *this;
+    }
     auto operator=(Dataset&& rhs) noexcept -> Dataset&;
 
     void Swap(Dataset& rhs) noexcept;
@@ -75,14 +79,14 @@ public:
     //   - buffer outlives the Dataset
     static auto Wrap(gsl::not_null<Scalar const*> data, int rows, int cols) -> Dataset;
 
-    template<std::integral T = int>
-    [[nodiscard]] auto Rows() const -> T { return static_cast<T>(rows_); }
+    template <std::integral T = int> [[nodiscard]] auto Rows() const -> T { return static_cast<T>(rows_); }
 
-    template<std::integral T = int>
-    [[nodiscard]] auto Cols() const -> T { return static_cast<T>(view_.extent(1)); }
+    template <std::integral T = int> [[nodiscard]] auto Cols() const -> T { return static_cast<T>(view_.extent(1)); }
 
-    template<std::integral T = int>
-    [[nodiscard]] auto Dimensions() const -> std::pair<T, T> { return { Rows<T>(), Cols<T>() }; }
+    template <std::integral T = int> [[nodiscard]] auto Dimensions() const -> std::pair<T, T>
+    {
+        return { Rows<T>(), Cols<T>() };
+    }
 
     [[nodiscard]] auto Data() const noexcept -> View { return view_; }
 
@@ -94,7 +98,10 @@ public:
     [[nodiscard]] auto GetValues(std::string const& name) const noexcept -> Span<Scalar const>;
     [[nodiscard]] auto GetValues(Operon::Hash hash) const noexcept -> Span<Scalar const>;
     [[nodiscard]] auto GetValues(int64_t index) const noexcept -> Span<Scalar const>;
-    [[nodiscard]] auto GetValues(Variable const& var) const noexcept -> Span<Scalar const> { return GetValues(var.Hash); }
+    [[nodiscard]] auto GetValues(Variable const& var) const noexcept -> Span<Scalar const>
+    {
+        return GetValues(var.Hash);
+    }
 
     // Padded column accessors for SIMD consumers. For owning datasets, storage_ has
     // (nRows+7)&~7 rows; for Wrap()-created views, the caller pre-padded the buffer.
@@ -104,7 +111,10 @@ public:
     [[nodiscard]] auto GetPaddedValues(int64_t index) const noexcept -> Scalar const*;
     [[nodiscard]] auto GetPaddedValues(Operon::Hash hash) const noexcept -> Scalar const*;
     [[nodiscard]] auto GetPaddedValues(std::string const& name) const noexcept -> Scalar const*;
-    [[nodiscard]] auto GetPaddedValues(Variable const& var) const noexcept -> Scalar const* { return GetPaddedValues(var.Hash); }
+    [[nodiscard]] auto GetPaddedValues(Variable const& var) const noexcept -> Scalar const*
+    {
+        return GetPaddedValues(var.Hash);
+    }
 
     [[nodiscard]] auto GetVariable(std::string const& name) const noexcept -> std::optional<Variable>;
     [[nodiscard]] auto GetVariable(Operon::Hash hash) const noexcept -> std::optional<Variable>;

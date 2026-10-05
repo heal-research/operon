@@ -12,35 +12,39 @@
 namespace Operon {
 namespace {
 
-using RowStatus = DomainStatus;
+    using RowStatus = DomainStatus;
 
-[[nodiscard]] auto Combine(DomainPolicy policy, std::vector<RowStatus> const& rows) -> DomainStatus
-{
-    if (rows.empty()) {
-        return DomainStatus::Unknown;
+    [[nodiscard]] auto Combine(DomainPolicy policy, std::vector<RowStatus> const& rows) -> DomainStatus
+    {
+        if (rows.empty()) {
+            return DomainStatus::Unknown;
+        }
+        bool anyValid = false;
+        bool anyInvalid = false;
+        bool anyUnknown = false;
+        for (auto status : rows) {
+            anyValid |= status == DomainStatus::Valid;
+            anyInvalid |= status == DomainStatus::Invalid;
+            anyUnknown |= status == DomainStatus::Unknown;
+        }
+        if (policy == DomainPolicy::NoFiniteRows) {
+            if (anyValid)
+                return DomainStatus::Valid;
+            if (anyUnknown)
+                return DomainStatus::Unknown;
+            return DomainStatus::Invalid;
+        }
+        if (anyUnknown)
+            return DomainStatus::Unknown;
+        if (anyInvalid)
+            return DomainStatus::Invalid;
+        return DomainStatus::Valid;
     }
-    bool anyValid = false;
-    bool anyInvalid = false;
-    bool anyUnknown = false;
-    for (auto status : rows) {
-        anyValid |= status == DomainStatus::Valid;
-        anyInvalid |= status == DomainStatus::Invalid;
-        anyUnknown |= status == DomainStatus::Unknown;
-    }
-    if (policy == DomainPolicy::NoFiniteRows) {
-        if (anyValid) return DomainStatus::Valid;
-        if (anyUnknown) return DomainStatus::Unknown;
-        return DomainStatus::Invalid;
-    }
-    if (anyUnknown) return DomainStatus::Unknown;
-    if (anyInvalid) return DomainStatus::Invalid;
-    return DomainStatus::Valid;
-}
 
-[[nodiscard]] auto Finite(double value) -> RowStatus
-{
-    return std::isfinite(value) ? DomainStatus::Valid : DomainStatus::Invalid;
-}
+    [[nodiscard]] auto Finite(double value) -> RowStatus
+    {
+        return std::isfinite(value) ? DomainStatus::Valid : DomainStatus::Invalid;
+    }
 
 } // namespace
 
@@ -66,14 +70,17 @@ auto AnalyzeDomain(Tree const& tree, DomainContext const& context, DomainPolicy 
             }
             if (node.IsVariable()) {
                 auto values = context.Data->GetValues(node.HashValue);
-                if (values.empty() || row >= values.size()) return DomainStatus::Unknown;
+                if (values.empty() || row >= values.size())
+                    return DomainStatus::Unknown;
                 return Finite(static_cast<double>(values[row]));
             }
             if (node.IsRef()) {
-                if (node.RefTo >= index) return DomainStatus::Unknown;
+                if (node.RefTo >= index)
+                    return DomainStatus::Unknown;
                 return eval(node.RefTo);
             }
-            if (!node.IsFunction()) return DomainStatus::Unknown;
+            if (!node.IsFunction())
+                return DomainStatus::Unknown;
 
             auto const op = static_cast<BuiltinOp>(node.HashValue);
             bool const restricted = op == BuiltinOp::Log || op == BuiltinOp::Logabs || op == BuiltinOp::Sqrt
@@ -83,65 +90,97 @@ auto AnalyzeDomain(Tree const& tree, DomainContext const& context, DomainPolicy 
                 children.reserve(node.Arity);
                 auto child = index - 1;
                 for (uint16_t i = 0; i < node.Arity; ++i) {
-                    if (i != 0) child -= nodes[child].Length + 1;
+                    if (i != 0)
+                        child -= nodes[child].Length + 1;
                     children.push_back(eval(child));
                 }
                 bool unknownChild = false;
                 for (auto status : children) {
                     unknownChild |= status == DomainStatus::Unknown;
-                    if (status == DomainStatus::Invalid && unknownChild) return DomainStatus::Unknown;
+                    if (status == DomainStatus::Invalid && unknownChild)
+                        return DomainStatus::Unknown;
                 }
-                if (unknownChild) return DomainStatus::Unknown;
+                if (unknownChild)
+                    return DomainStatus::Unknown;
                 for (auto status : children) {
-                    if (status == DomainStatus::Invalid) return DomainStatus::Invalid;
+                    if (status == DomainStatus::Invalid)
+                        return DomainStatus::Invalid;
                 }
                 return DomainStatus::Unknown;
             }
 
             std::function<std::optional<double>(std::size_t)> fixed = [&](std::size_t idx) -> std::optional<double> {
                 auto const& n = nodes[idx];
-                if (n.Optimize) return std::nullopt;
-                if (n.IsConstant()) return static_cast<double>(n.Value);
-                if (n.IsRef()) return n.RefTo < idx ? fixed(n.RefTo) : std::nullopt;
+                if (n.Optimize)
+                    return std::nullopt;
+                if (n.IsConstant())
+                    return static_cast<double>(n.Value);
+                if (n.IsRef())
+                    return n.RefTo < idx ? fixed(n.RefTo) : std::nullopt;
                 if (n.IsVariable()) {
                     auto values = context.Data->GetValues(n.HashValue);
-                    if (values.empty() || row >= values.size()) return std::nullopt;
+                    if (values.empty() || row >= values.size())
+                        return std::nullopt;
                     return static_cast<double>(values[row]);
                 }
-                if (!n.IsFunction()) return std::nullopt;
+                if (!n.IsFunction())
+                    return std::nullopt;
                 auto childRoot = idx - 1;
                 std::vector<std::size_t> roots;
                 roots.reserve(n.Arity);
                 for (uint16_t i = 0; i < n.Arity; ++i) {
-                    if (i != 0) childRoot -= nodes[childRoot].Length + 1;
+                    if (i != 0)
+                        childRoot -= nodes[childRoot].Length + 1;
                     roots.push_back(childRoot);
                 }
                 std::vector<double> args;
                 args.reserve(roots.size());
                 for (auto childIndex : roots) {
                     auto value = fixed(childIndex);
-                    if (!value) return std::nullopt;
+                    if (!value)
+                        return std::nullopt;
                     args.push_back(*value);
                 }
                 auto const nOp = static_cast<BuiltinOp>(n.HashValue);
                 switch (nOp) {
-                case BuiltinOp::Add: { double result = 0; for (auto value : args) result += value; return result; }
-                case BuiltinOp::Mul: { double result = 1; for (auto value : args) result *= value; return result; }
-                case BuiltinOp::Sub: return args.size() == 2 ? std::optional<double>{args[0] - args[1]} : std::nullopt;
+                case BuiltinOp::Add: {
+                    double result = 0;
+                    for (auto value : args)
+                        result += value;
+                    return result;
+                }
+                case BuiltinOp::Mul: {
+                    double result = 1;
+                    for (auto value : args)
+                        result *= value;
+                    return result;
+                }
+                case BuiltinOp::Sub:
+                    return args.size() == 2 ? std::optional<double> { args[0] - args[1] } : std::nullopt;
                 case BuiltinOp::Div:
-                    if (args.size() == 1) return args[0] == 0 ? std::nullopt : std::optional<double>{1.0 / args[0]};
-                    return args.size() == 2 && args[1] != 0 ? std::optional<double>{args[0] / args[1]} : std::nullopt;
-                case BuiltinOp::Pow: return args.size() == 2 ? std::optional<double>{std::pow(args[0], args[1])} : std::nullopt;
-                case BuiltinOp::Log: return args.size() == 1 && args[0] > 0 ? std::optional<double>{std::log(args[0])} : std::nullopt;
-                case BuiltinOp::Logabs: return args.size() == 1 && args[0] != 0 ? std::optional<double>{std::log(std::abs(args[0]))} : std::nullopt;
-                case BuiltinOp::Sqrt: return args.size() == 1 && args[0] >= 0 ? std::optional<double>{std::sqrt(args[0])} : std::nullopt;
-                case BuiltinOp::Sqrtabs: return args.size() == 1 ? std::optional<double>{std::sqrt(std::abs(args[0]))} : std::nullopt;
-                default: return std::nullopt;
+                    if (args.size() == 1)
+                        return args[0] == 0 ? std::nullopt : std::optional<double> { 1.0 / args[0] };
+                    return args.size() == 2 && args[1] != 0 ? std::optional<double> { args[0] / args[1] }
+                                                            : std::nullopt;
+                case BuiltinOp::Pow:
+                    return args.size() == 2 ? std::optional<double> { std::pow(args[0], args[1]) } : std::nullopt;
+                case BuiltinOp::Log:
+                    return args.size() == 1 && args[0] > 0 ? std::optional<double> { std::log(args[0]) } : std::nullopt;
+                case BuiltinOp::Logabs:
+                    return args.size() == 1 && args[0] != 0 ? std::optional<double> { std::log(std::abs(args[0])) }
+                                                            : std::nullopt;
+                case BuiltinOp::Sqrt:
+                    return args.size() == 1 && args[0] >= 0 ? std::optional<double> { std::sqrt(args[0]) }
+                                                            : std::nullopt;
+                case BuiltinOp::Sqrtabs:
+                    return args.size() == 1 ? std::optional<double> { std::sqrt(std::abs(args[0])) } : std::nullopt;
+                default:
+                    return std::nullopt;
                 }
             };
 
-            bool const unary = op == BuiltinOp::Log || op == BuiltinOp::Logabs || op == BuiltinOp::Sqrt
-                || op == BuiltinOp::Sqrtabs;
+            bool const unary
+                = op == BuiltinOp::Log || op == BuiltinOp::Logabs || op == BuiltinOp::Sqrt || op == BuiltinOp::Sqrtabs;
             if ((unary && node.Arity != 1) || (op == BuiltinOp::Div && (node.Arity < 1 || node.Arity > 2))
                 || (op == BuiltinOp::Pow && node.Arity != 2)) {
                 return DomainStatus::Unknown;
@@ -150,29 +189,42 @@ auto AnalyzeDomain(Tree const& tree, DomainContext const& context, DomainPolicy 
             std::vector<std::size_t> roots;
             roots.reserve(node.Arity);
             for (uint16_t i = 0; i < node.Arity; ++i) {
-                if (i != 0) childRoot -= nodes[childRoot].Length + 1;
+                if (i != 0)
+                    childRoot -= nodes[childRoot].Length + 1;
                 roots.push_back(childRoot);
             }
             auto first = fixed(roots[0]);
-            if (!first) return DomainStatus::Unknown;
+            if (!first)
+                return DomainStatus::Unknown;
             auto const a = *first;
-            if (op == BuiltinOp::Log) return a > 0 ? Finite(std::log(a)) : DomainStatus::Invalid;
-            if (op == BuiltinOp::Logabs) return a != 0 ? Finite(std::log(std::abs(a))) : DomainStatus::Invalid;
-            if (op == BuiltinOp::Sqrt) return a >= 0 ? Finite(std::sqrt(a)) : DomainStatus::Invalid;
-            if (op == BuiltinOp::Sqrtabs) return Finite(std::sqrt(std::abs(a)));
+            if (op == BuiltinOp::Log)
+                return a > 0 ? Finite(std::log(a)) : DomainStatus::Invalid;
+            if (op == BuiltinOp::Logabs)
+                return a != 0 ? Finite(std::log(std::abs(a))) : DomainStatus::Invalid;
+            if (op == BuiltinOp::Sqrt)
+                return a >= 0 ? Finite(std::sqrt(a)) : DomainStatus::Invalid;
+            if (op == BuiltinOp::Sqrtabs)
+                return Finite(std::sqrt(std::abs(a)));
             if (op == BuiltinOp::Div) {
-                if (node.Arity == 1) return a != 0 ? Finite(1.0 / a) : DomainStatus::Invalid;
-                if (node.Arity != 2) return DomainStatus::Unknown;
+                if (node.Arity == 1)
+                    return a != 0 ? Finite(1.0 / a) : DomainStatus::Invalid;
+                if (node.Arity != 2)
+                    return DomainStatus::Unknown;
                 auto second = fixed(roots[1]);
-                if (!second) return DomainStatus::Unknown;
+                if (!second)
+                    return DomainStatus::Unknown;
                 return *second != 0 ? Finite(a / *second) : DomainStatus::Invalid;
             }
-            if (node.Arity != 2) return DomainStatus::Unknown;
+            if (node.Arity != 2)
+                return DomainStatus::Unknown;
             auto second = fixed(roots[1]);
-            if (!second) return DomainStatus::Unknown;
+            if (!second)
+                return DomainStatus::Unknown;
             auto const exponent = *second;
-            if (a == 0 && exponent < 0) return DomainStatus::Invalid;
-            if (a < 0 && std::floor(exponent) != exponent) return DomainStatus::Invalid;
+            if (a == 0 && exponent < 0)
+                return DomainStatus::Invalid;
+            if (a < 0 && std::floor(exponent) != exponent)
+                return DomainStatus::Invalid;
             return Finite(std::pow(a, exponent));
         };
         statuses.push_back(eval(nodes.size() - 1));
@@ -180,4 +232,3 @@ auto AnalyzeDomain(Tree const& tree, DomainContext const& context, DomainPolicy 
     return Combine(policy, statuses);
 }
 } // namespace Operon
-

@@ -10,14 +10,14 @@
 #include <utility>
 #include <vector>
 
-#include "operon/operon_export.hpp"
 #include "operon/core/concepts.hpp"
+#include "operon/core/contracts.hpp"
+#include "operon/core/node.hpp"
 #include "operon/core/operator.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/tree.hpp"
-#include "operon/core/contracts.hpp"
-#include "operon/core/node.hpp"
 #include "operon/core/types.hpp"
+#include "operon/operon_export.hpp"
 #include "operon/random/random.hpp"
 
 namespace Operon {
@@ -26,11 +26,9 @@ struct CoefficientInitializerBase;
 struct CreatorBase;
 
 // the mutator can work in place or return a copy (child)
-struct MutatorBase : public OperatorBase<Tree, Tree> {
-};
+struct MutatorBase : public OperatorBase<Tree, Tree> {};
 
-template<typename Dist>
-struct OPERON_EXPORT OnePointMutation : public MutatorBase {
+template <typename Dist> struct OPERON_EXPORT OnePointMutation : public MutatorBase {
     auto operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree override
     {
         auto& nodes = tree.Nodes();
@@ -42,18 +40,16 @@ struct OPERON_EXPORT OnePointMutation : public MutatorBase {
         return tree;
     }
 
-    template <typename... Args>
-    auto ParameterizeDistribution(Args... args) const -> void
+    template <typename... Args> auto ParameterizeDistribution(Args... args) const -> void
     {
         params_ = typename Dist::param_type { std::forward<Args&&>(args)... };
     }
 
-    private:
+private:
     mutable typename Dist::param_type params_;
 };
 
-template<typename Dist>
-struct OPERON_EXPORT MultiPointMutation : public MutatorBase {
+template <typename Dist> struct OPERON_EXPORT MultiPointMutation : public MutatorBase {
     auto operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree override
     {
         for (auto& node : tree.Nodes()) {
@@ -64,27 +60,27 @@ struct OPERON_EXPORT MultiPointMutation : public MutatorBase {
         return tree;
     }
 
-    template <typename... Args>
-    auto ParameterizeDistribution(Args... args) const -> void
+    template <typename... Args> auto ParameterizeDistribution(Args... args) const -> void
     {
         params_ = typename Dist::param_type { std::forward<Args&&>(args)... };
     }
 
-    private:
+private:
     mutable typename Dist::param_type params_;
 };
 
 struct OPERON_EXPORT DiscretePointMutation : public MutatorBase {
     auto operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree override;
 
-    auto Add(Operon::Scalar value, Operon::Scalar weight = 1.0) -> void {
+    auto Add(Operon::Scalar value, Operon::Scalar weight = 1.0) -> void
+    {
         values_.push_back(value);
         weights_.push_back(weight);
     }
 
-    private:
-        std::vector<Operon::Scalar> weights_;
-        std::vector<Operon::Scalar> values_;
+private:
+    std::vector<Operon::Scalar> weights_;
+    std::vector<Operon::Scalar> values_;
 };
 
 struct OPERON_EXPORT MultiMutation : public MutatorBase {
@@ -128,7 +124,10 @@ private:
 };
 
 struct OPERON_EXPORT RemoveChildMutation final : public MutatorBase {
-    explicit RemoveChildMutation(PrimitiveSet ps) : pset_(std::move(ps)) { }
+    explicit RemoveChildMutation(PrimitiveSet ps)
+        : pset_(std::move(ps))
+    {
+    }
 
     auto operator()(Operon::RandomGenerator& /*random*/, Tree /*args*/) const -> Tree override;
 
@@ -137,7 +136,8 @@ private:
 };
 
 struct OPERON_EXPORT InsertSubtreeMutation final : public MutatorBase {
-    InsertSubtreeMutation(gsl::not_null<CreatorBase const*> creator, gsl::not_null<CoefficientInitializerBase const*> coeffInit, size_t maxDepth, size_t maxLength)
+    InsertSubtreeMutation(gsl::not_null<CreatorBase const*> creator,
+        gsl::not_null<CoefficientInitializerBase const*> coeffInit, size_t maxDepth, size_t maxLength)
         : creator_(creator)
         , coefficientInitializer_(coeffInit)
         , maxDepth_(maxDepth)
@@ -155,7 +155,8 @@ private:
 };
 
 struct OPERON_EXPORT ReplaceSubtreeMutation : public MutatorBase {
-    ReplaceSubtreeMutation(gsl::not_null<CreatorBase const*> creator, gsl::not_null<CoefficientInitializerBase const*> coeffInit, size_t maxDepth, size_t maxLength)
+    ReplaceSubtreeMutation(gsl::not_null<CreatorBase const*> creator,
+        gsl::not_null<CoefficientInitializerBase const*> coeffInit, size_t maxDepth, size_t maxLength)
         : creator_(creator)
         , coefficientInitializer_(coeffInit)
         , maxDepth_(maxDepth)
@@ -182,7 +183,8 @@ struct OPERON_EXPORT ShuffleSubtreesMutation : public MutatorBase {
 // Distinct from RemoveChildMutation, which only reduces a variadic-arity
 // parent's own child count.
 struct OPERON_EXPORT RemoveSubtreeMutation : public MutatorBase {
-    RemoveSubtreeMutation(gsl::not_null<CreatorBase const*> creator, gsl::not_null<CoefficientInitializerBase const*> coeffInit, size_t maxDepth)
+    RemoveSubtreeMutation(gsl::not_null<CreatorBase const*> creator,
+        gsl::not_null<CoefficientInitializerBase const*> coeffInit, size_t maxDepth)
         : creator_(creator)
         , coefficientInitializer_(coeffInit)
         , maxDepth_(maxDepth)

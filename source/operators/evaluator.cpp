@@ -164,8 +164,8 @@ auto OPERON_EXPORT Evaluator<ScalarDispatch>::Evaluate(Operon::Individual const&
 }
 
 template <>
-auto OPERON_EXPORT Evaluator<ScalarDispatch>::Score(
-    ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const -> typename EvaluatorBase::ReturnType
+auto OPERON_EXPORT Evaluator<ScalarDispatch>::Score(ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const ->
+    typename EvaluatorBase::ReturnType
 {
     ++CallCount;
 

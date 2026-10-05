@@ -12,8 +12,8 @@
 #include "operon/core/dispatch.hpp"
 #include "operon/core/problem.hpp"
 #include "operon/operators/evaluator.hpp"
-#include "operon/optimizer/optimizer.hpp"
 #include "operon/operon_export.hpp"
+#include "operon/optimizer/optimizer.hpp"
 
 #include "jit_evaluator.hpp"
 
@@ -25,28 +25,20 @@ namespace Operon::JIT {
 // Zobrist is always a JitZobrist; assign to GeneticAlgorithmConfig::Cache when a
 // transposition table is also needed.
 struct JitObjects {
-    std::unique_ptr<Operon::EvaluatorBase>  Evaluator;
-    std::unique_ptr<Operon::EvaluatorBase>  OptimizerJacEval;
-    std::unique_ptr<Operon::OptimizerBase>  Optimizer;
-    std::unique_ptr<JitZobrist>             Zobrist;
-    std::function<void()>                   Report = [](){};
+    std::unique_ptr<Operon::EvaluatorBase> Evaluator;
+    std::unique_ptr<Operon::EvaluatorBase> OptimizerJacEval;
+    std::unique_ptr<Operon::OptimizerBase> Optimizer;
+    std::unique_ptr<JitZobrist> Zobrist;
+    std::function<void()> Report = []() {};
 };
 
 // Create JIT-backed evaluator/optimizer for mode "all" or "jac".
 // metric is already resolved by the caller (no string parsing here).
 // maxLength is the tree size used to size the Zobrist table; jitMaxLength/jitMinVisits
 // gate per-tree compilation.
-OPERON_EXPORT auto MakeJitObjects(
-    std::string_view          mode,
-    Operon::Problem&          problem,
-    Operon::ScalarDispatch const& dtable,
-    Operon::ErrorMetric const& metric,
-    int                       maxLength,
-    int                       jitMaxLength,
-    std::size_t               jitMinVisits,
-    std::size_t               seed,
-    std::size_t               cacheMaxAge = 0
-) -> JitObjects;
+OPERON_EXPORT auto MakeJitObjects(std::string_view mode, Operon::Problem& problem, Operon::ScalarDispatch const& dtable,
+    Operon::ErrorMetric const& metric, int maxLength, int jitMaxLength, std::size_t jitMinVisits, std::size_t seed,
+    std::size_t cacheMaxAge = 0) -> JitObjects;
 
 } // namespace Operon::JIT
 

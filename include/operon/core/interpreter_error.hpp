@@ -26,7 +26,7 @@ struct InterpreterError {
         InvalidRootIndex,
     };
 
-    Code Kind {Code::MissingVariable};
+    Code Kind { Code::MissingVariable };
     Operon::Hash Hash {};
     std::size_t ExpectedSize {};
     std::size_t ActualSize {};
@@ -35,12 +35,18 @@ struct InterpreterError {
 [[nodiscard]] inline auto FormatInterpreterError(InterpreterError const& error) -> std::string
 {
     switch (error.Kind) {
-    case InterpreterError::Code::MissingVariable: return fmt::format("missing dataset variable with hash {}", error.Hash);
-    case InterpreterError::Code::MissingPrimitive: return fmt::format("missing primitive with hash {}", error.Hash);
-    case InterpreterError::Code::MissingDerivative: return fmt::format("missing derivative for primitive with hash {}", error.Hash);
-    case InterpreterError::Code::InvalidOutputSize: return fmt::format("invalid output size: expected {}, got {}", error.ExpectedSize, error.ActualSize);
-    case InterpreterError::Code::InvalidCoefficientSize: return fmt::format("invalid coefficient size: expected {}, got {}", error.ExpectedSize, error.ActualSize);
-    case InterpreterError::Code::InvalidRootIndex: return fmt::format("invalid root index: expected less than {}, got {}", error.ExpectedSize, error.ActualSize);
+    case InterpreterError::Code::MissingVariable:
+        return fmt::format("missing dataset variable with hash {}", error.Hash);
+    case InterpreterError::Code::MissingPrimitive:
+        return fmt::format("missing primitive with hash {}", error.Hash);
+    case InterpreterError::Code::MissingDerivative:
+        return fmt::format("missing derivative for primitive with hash {}", error.Hash);
+    case InterpreterError::Code::InvalidOutputSize:
+        return fmt::format("invalid output size: expected {}, got {}", error.ExpectedSize, error.ActualSize);
+    case InterpreterError::Code::InvalidCoefficientSize:
+        return fmt::format("invalid coefficient size: expected {}, got {}", error.ExpectedSize, error.ActualSize);
+    case InterpreterError::Code::InvalidRootIndex:
+        return fmt::format("invalid root index: expected less than {}, got {}", error.ExpectedSize, error.ActualSize);
     }
     std::unreachable();
 }

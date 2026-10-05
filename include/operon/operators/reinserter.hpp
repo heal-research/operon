@@ -5,11 +5,11 @@
 #ifndef OPERON_REINSERTER_HPP
 #define OPERON_REINSERTER_HPP
 
-#include <algorithm>
 #include "operon/core/concepts.hpp"
-#include "operon/core/operator.hpp"
 #include "operon/core/individual.hpp"
+#include "operon/core/operator.hpp"
 #include "operon/operon_export.hpp"
+#include <algorithm>
 
 namespace Operon {
 // Elitism lives here (rather than as a separate per-algorithm mechanism,
@@ -31,10 +31,13 @@ public:
     {
     }
 
-    void operator()(Operon::RandomGenerator& random, Operon::Span<Individual> pop, Operon::Span<Individual> pool) const final
+    void operator()(
+        Operon::RandomGenerator& random, Operon::Span<Individual> pop, Operon::Span<Individual> pool) const final
     {
         auto elites = std::min(eliteCount_, pop.size());
-        if (elites > 0) { Sort(pop); }
+        if (elites > 0) {
+            Sort(pop);
+        }
         Combine(random, pop.subspan(elites), pool);
     }
 
@@ -50,7 +53,9 @@ public:
 protected:
     // Merge/replace strategy applied to the non-elite tail of pop and the
     // full pool. `pop` here excludes whatever operator() already protected.
-    virtual void Combine(Operon::RandomGenerator& random, Operon::Span<Individual> pop, Operon::Span<Individual> pool) const = 0;
+    virtual void Combine(
+        Operon::RandomGenerator& random, Operon::Span<Individual> pop, Operon::Span<Individual> pool) const
+        = 0;
 
 private:
     ComparisonCallback comp_;
@@ -66,7 +71,8 @@ public:
 
 protected:
     // keep the best |pop| individuals from pop+pool
-    void Combine(Operon::RandomGenerator& /*random*/, Operon::Span<Individual> pop, Operon::Span<Individual> pool) const override
+    void Combine(
+        Operon::RandomGenerator& /*random*/, Operon::Span<Individual> pop, Operon::Span<Individual> pool) const override
     {
         // sort the population and the recombination pool
         Sort(pop);
@@ -94,7 +100,8 @@ public:
 
 protected:
     // replace the worst individuals in pop with the best individuals from pool
-    void Combine(Operon::RandomGenerator& /*random*/, Operon::Span<Individual> pop, Operon::Span<Individual> pool) const override
+    void Combine(
+        Operon::RandomGenerator& /*random*/, Operon::Span<Individual> pop, Operon::Span<Individual> pool) const override
     {
         // Both spans must be sorted by the comparator regardless of their
         // relative sizes - when pop.size() == pool.size() (the common case),

@@ -18,8 +18,8 @@
 #include "operon/core/symbol_library.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/tree_diff.hpp"
-#include "operon/interpreter/interpreter.hpp"
 #include "operon/interpreter/affine_evaluator.hpp"
+#include "operon/interpreter/interpreter.hpp"
 #include "operon/interpreter/interval_evaluator.hpp"
 
 #ifdef HAVE_ASMJIT
@@ -30,7 +30,7 @@ namespace Operon::Test {
 
 TEST_CASE("User-defined function via registries: recip(x) = 1/x", "[registry][user-defined]")
 {
-    auto const hash = Operon::Hasher{}("recip");
+    auto const hash = Operon::Hasher {}("recip");
     REQUIRE(hash >= Operon::BuiltinOpCount); // sanity: lands outside the built-in range
 
     // 1. Numeric evaluation — RegisterUnaryFunction (existing DispatchTable
@@ -40,16 +40,16 @@ TEST_CASE("User-defined function via registries: recip(x) = 1/x", "[registry][us
     Operon::ScalarDispatch dtable;
     PrimitiveSet pset;
     pset.SetConfig(NodeType::Constant | NodeType::Variable | BuiltinOp::Add | BuiltinOp::Mul);
-    RegisterUnaryFunction<Operon::ScalarDispatch, Operon::Scalar>(
-        dtable, pset, { .Name = "recip", .Desc = "f(x) = 1/x", .Arity = 1, .Frequency = 1 },
-        [](auto v) { return decltype(v){1} / v; });
+    RegisterUnaryFunction<Operon::ScalarDispatch, Operon::Scalar>(dtable, pset,
+        { .Name = "recip", .Desc = "f(x) = 1/x", .Arity = 1, .Frequency = 1 },
+        [](auto v) { return decltype(v) { 1 } / v; });
 
     auto tree = Tree({ Node::Constant(2.0), Node::Function(hash, 1) }).UpdateNodes();
     tree.Nodes()[0].Optimize = true;
 
-    Dataset const ds(std::vector<std::string>{ "dummy" }, std::vector<std::vector<Operon::Scalar>>{ { 0.0F } });
+    Dataset const ds(std::vector<std::string> { "dummy" }, std::vector<std::vector<Operon::Scalar>> { { 0.0F } });
     Interpreter<Operon::Scalar, Operon::ScalarDispatch> interp(&dtable, &ds, &tree);
-    auto result = interp.Evaluate(tree.GetCoefficients(), Range{ 0, 1 }).value();
+    auto result = interp.Evaluate(tree.GetCoefficients(), Range { 0, 1 }).value();
     CHECK(result[0] == Catch::Approx(0.5).epsilon(1e-5)); // 1/2
 
     // 2. Symbolic differentiation — RegisterUnarySymbolicDeriv. d(1/x)/dx =
@@ -58,11 +58,12 @@ TEST_CASE("User-defined function via registries: recip(x) = 1/x", "[registry][us
     // same node-sharing behavior every built-in rule gets, without needing
     // to know tree_diff.cpp's internal node-append protocol.
     RegisterUnarySymbolicDeriv(hash,
-        [](Operon::Vector<Node>& dag, Operon::Map<Operon::Hash, std::size_t>& memo,
-           Operon::Vector<Operon::Hash>& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
-            auto negOne = GetSymbolicDerivConst(dag, memo, h, Scalar{ -1 });
-            auto sq     = MakeSymbolicDerivUnary(dag, memo, h, BuiltinOp::Square, j);
-            return MakeSymbolicDerivBinary(dag, memo, h, BuiltinOp::Div, negOne, sq); // -1 / x^2, non-commutative — exercises binary child ordering
+        [](Operon::Vector<Node>& dag, Operon::Map<Operon::Hash, std::size_t>& memo, Operon::Vector<Operon::Hash>& h,
+            std::size_t /*i*/, std::size_t j) -> std::size_t {
+            auto negOne = GetSymbolicDerivConst(dag, memo, h, Scalar { -1 });
+            auto sq = MakeSymbolicDerivUnary(dag, memo, h, BuiltinOp::Square, j);
+            return MakeSymbolicDerivBinary(dag, memo, h, BuiltinOp::Div, negOne,
+                sq); // -1 / x^2, non-commutative — exercises binary child ordering
         });
     REQUIRE(HasUnarySymbolicDeriv(hash));
 
@@ -74,27 +75,29 @@ TEST_CASE("User-defined function via registries: recip(x) = 1/x", "[registry][us
     // plain Tree does (original tree at [0, OriginalSize), derivative
     // subtrees appended after) — sliceable into a standalone, directly
     // evaluable Tree.
-    Operon::Vector<Node> sliced(jdag.Nodes.begin(), jdag.Nodes.begin() + static_cast<std::ptrdiff_t>(jdag.Roots[0]) + 1);
+    Operon::Vector<Node> sliced(
+        jdag.Nodes.begin(), jdag.Nodes.begin() + static_cast<std::ptrdiff_t>(jdag.Roots[0]) + 1);
     Tree derivTree(std::move(sliced));
     derivTree.UpdateNodes();
     auto derivCoeff = derivTree.GetCoefficients(); // the constant's Optimize flag was preserved from the original tree
     Interpreter<Operon::Scalar, Operon::ScalarDispatch> derivInterp(&dtable, &ds, &derivTree);
-    auto derivResult = derivInterp.Evaluate(derivCoeff, Range{ 0, 1 }).value();
+    auto derivResult = derivInterp.Evaluate(derivCoeff, Range { 0, 1 }).value();
     CHECK(derivResult[0] == Catch::Approx(-0.25).epsilon(1e-4)); // -1/2^2
 
     // 3. Interval bound propagation — RegisterUnaryInterval.
     RegisterUnaryInterval<Scalar>(hash, [](IntervalEvaluator<Scalar>::Interval const& v) {
-        return IntervalEvaluator<Scalar>::Interval{ Scalar{1} } / v;
+        return IntervalEvaluator<Scalar>::Interval { Scalar { 1 } } / v;
     });
     {
         // Interval/affine evaluators don't consult a Dataset for hash
         // assignment (unlike the JIT section below) — any self-chosen
         // hash is fine as long as the Variable node and DomainMap key agree.
-        auto varHash = Operon::Hash{ 1 };
-        Node var(NodeType::Variable, varHash); var.Value = 1.0F;
+        auto varHash = Operon::Hash { 1 };
+        Node var(NodeType::Variable, varHash);
+        var.Value = 1.0F;
         auto ivTree = Tree({ var, Node::Function(hash, 1) }).UpdateNodes();
         IntervalEvaluator<Scalar>::DomainMap dm;
-        dm[varHash] = { Scalar{ 1 }, Scalar{ 4 } };
+        dm[varHash] = { Scalar { 1 }, Scalar { 4 } };
         IntervalEvaluator<Scalar> ivEval(&ivTree, std::move(dm));
         auto iv = ivEval.Evaluate(ivTree.GetCoefficients());
         CHECK(iv.inf() <= 0.25 + 1e-4);
@@ -107,16 +110,17 @@ TEST_CASE("User-defined function via registries: recip(x) = 1/x", "[registry][us
     // affine_context that allocated its epsilon terms) — but its friend
     // `operator/(T, affine_form const&)` exists precisely to avoid needing
     // one here, so the ctx parameter genuinely goes unused for this rule.
-    RegisterUnaryAffine<Scalar>(hash,
-        [](AffineEvaluator<Scalar>::Context const&, AffineEvaluator<Scalar>::Affine const& v) {
-            return Scalar{1} / v;
+    RegisterUnaryAffine<Scalar>(
+        hash, [](AffineEvaluator<Scalar>::Context const&, AffineEvaluator<Scalar>::Affine const& v) {
+            return Scalar { 1 } / v;
         });
     {
-        auto varHash = Operon::Hash{ 2 };
-        Node var(NodeType::Variable, varHash); var.Value = 1.0F;
+        auto varHash = Operon::Hash { 2 };
+        Node var(NodeType::Variable, varHash);
+        var.Value = 1.0F;
         auto afTree = Tree({ var, Node::Function(hash, 1) }).UpdateNodes();
         AffineEvaluator<Scalar>::DomainMap dm;
-        dm[varHash] = { Scalar{ 1 }, Scalar{ 4 } };
+        dm[varHash] = { Scalar { 1 }, Scalar { 4 } };
         AffineEvaluator<Scalar> afEval(&afTree, std::move(dm));
         auto af = afEval.Evaluate(afTree.GetCoefficients());
         auto ivFromAffine = af.to_interval();
@@ -132,7 +136,7 @@ TEST_CASE("User-defined function via registries: recip(x) = 1/x", "[registry][us
     // asmjit::x86::Compiler calls (the virtual-register API only, never
     // raw Assembler, per the registry's documented safety contract).
     JIT::RegisterUnaryJitCodegen(hash, [](asmjit::x86::Compiler& cc, asmjit::x86::Vec const& a) {
-        uint32_t bits{};
+        uint32_t bits {};
         float const one = 1.0F;
         std::memcpy(&bits, &one, sizeof bits);
         auto tmp = cc.new_gp32();
@@ -156,14 +160,15 @@ TEST_CASE("User-defined function via registries: recip(x) = 1/x", "[registry][us
             // applied to the name) — read it back rather than assume one,
             // so the tree's Variable node and the dataset's column lookup
             // agree.
-            Dataset const jitDs(std::vector<std::string>{ "V" },
-                std::vector<std::vector<Operon::Scalar>>{ { 1.0F, 2.0F, 4.0F, 0.5F } });
+            Dataset const jitDs(std::vector<std::string> { "V" },
+                std::vector<std::vector<Operon::Scalar>> { { 1.0F, 2.0F, 4.0F, 0.5F } });
             auto varHash = jitDs.GetVariable("V").value().Hash;
-            Node var(NodeType::Variable, varHash); var.Value = 1.0F;
+            Node var(NodeType::Variable, varHash);
+            var.Value = 1.0F;
             auto jitTree = Tree({ var, Node::Function(hash, 1) }).UpdateNodes();
 
             Interpreter<Operon::Scalar, Operon::ScalarDispatch> refInterp(&dtable, &jitDs, &jitTree);
-            auto ref = refInterp.Evaluate(jitTree.GetCoefficients(), Range{ 0, jitDs.Rows<std::size_t>() }).value();
+            auto ref = refInterp.Evaluate(jitTree.GetCoefficients(), Range { 0, jitDs.Rows<std::size_t>() }).value();
 
             JIT::TreeCompiler compiler(&pool);
             auto compiled = compiler.CompileAVX2(jitTree);
@@ -173,8 +178,8 @@ TEST_CASE("User-defined function via registries: recip(x) = 1/x", "[registry][us
             // Invoke the compiled function directly (same calling
             // convention jit.cpp's own tests use — nRows padded to a
             // multiple of 8, columns in JIT::VarOrder(tree)'s order).
-            Range const jitRange{ 0, jitDs.Rows<std::size_t>() };
-            auto const nRows    = static_cast<int32_t>(jitRange.Size());
+            Range const jitRange { 0, jitDs.Rows<std::size_t>() };
+            auto const nRows = static_cast<int32_t>(jitRange.Size());
             auto const nRowsPad = (nRows + 7) & ~7;
             auto const varOrder = JIT::VarOrder(jitTree);
             std::vector<float const*> colPtrs(varOrder.size());
@@ -183,8 +188,7 @@ TEST_CASE("User-defined function via registries: recip(x) = 1/x", "[registry][us
             }
             auto jitCoeff = jitTree.GetCoefficients();
             std::vector<float> scratch(static_cast<std::size_t>(nRowsPad));
-            compiled->fn(scratch.data(), colPtrs.data(), nRowsPad,
-                         jitCoeff.empty() ? nullptr : jitCoeff.data());
+            compiled->fn(scratch.data(), colPtrs.data(), nRowsPad, jitCoeff.empty() ? nullptr : jitCoeff.data());
 
             REQUIRE(ref.size() == static_cast<std::size_t>(nRows));
             for (std::size_t i = 0; i < ref.size(); ++i) {

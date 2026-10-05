@@ -26,7 +26,7 @@ enum class ShapeConstraintOp {
 //   - Sign: +1 (non-decreasing/non-negative) or -1 (non-increasing/non-positive)
 //   - Bound: [lo, hi] on the quantity Op selects
 struct ShapeConstraint {
-    ShapeConstraintOp Op{ShapeConstraintOp::Identity};
+    ShapeConstraintOp Op { ShapeConstraintOp::Identity };
     std::string Variable; // empty when Op == Identity
     std::optional<int> Sign;
     std::optional<std::pair<Operon::Scalar, Operon::Scalar>> Bound;

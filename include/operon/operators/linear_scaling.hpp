@@ -10,8 +10,8 @@
 #include "operon/core/dispatch.hpp"
 #include "operon/core/problem.hpp"
 #include "operon/core/range.hpp"
-#include "operon/core/types.hpp"
 #include "operon/core/tree.hpp"
+#include "operon/core/types.hpp"
 #include "operon/operon_export.hpp"
 
 namespace Operon {
@@ -19,8 +19,8 @@ namespace Operon {
 // y = Scale*f(x) + Offset -- Keijzer-style linear scaling fitted per
 // individual by ordinary least squares against training targets.
 struct OPERON_EXPORT LinearScaling {
-    double Scale{1};
-    double Offset{0};
+    double Scale { 1 };
+    double Offset { 0 };
 
     [[nodiscard]] auto IsIdentity() const noexcept -> bool;
 
@@ -49,22 +49,17 @@ struct OPERON_EXPORT LinearScaling {
 // fit (vstat nan_policy::omit) instead of the plain fit. Never returns a
 // non-finite Scale (falls back to 1, matching the pre-existing
 // FitLeastSquaresImpl behavior).
-[[nodiscard]] OPERON_EXPORT auto FitLinearScaling(
-    Operon::Span<Operon::Scalar const> estimated,
-    Operon::Span<Operon::Scalar const> target,
-    Operon::Span<Operon::Scalar const> weights = {},
+[[nodiscard]] OPERON_EXPORT auto FitLinearScaling(Operon::Span<Operon::Scalar const> estimated,
+    Operon::Span<Operon::Scalar const> target, Operon::Span<Operon::Scalar const> weights = {},
     bool omitNonFinite = false) -> LinearScaling;
 
 // Runs the interpreter over `range` and fits (a,b) against `problem`'s target/weights. Returns nullopt iff
 // problem.LinearScalingEnabled() is false. `scratch`, if >= range.Size(), is reused as the output buffer
 // instead of allocating (caller-owned, e.g. ShapeConstrainedEvaluator/ShapeViolationEvaluator's per-call
 // scoring buffer); too-small/empty allocates internally.
-[[nodiscard]] OPERON_EXPORT auto FitLinearScaling(
-    Operon::Tree const& tree,
-    Operon::Problem const& problem,
-    Operon::ScalarDispatch const& dtable,
-    Operon::Range range,
-    Operon::Span<Operon::Scalar> scratch = {}) -> std::optional<LinearScaling>;
+[[nodiscard]] OPERON_EXPORT auto FitLinearScaling(Operon::Tree const& tree, Operon::Problem const& problem,
+    Operon::ScalarDispatch const& dtable, Operon::Range range, Operon::Span<Operon::Scalar> scratch = {})
+    -> std::optional<LinearScaling>;
 
 } // namespace Operon
 

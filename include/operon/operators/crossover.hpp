@@ -5,27 +5,30 @@
 #ifndef OPERON_CROSSOVER_HPP
 #define OPERON_CROSSOVER_HPP
 
-#include <cstddef>
-#include <vector>
 #include <algorithm>
+#include <cstddef>
 #include <iterator>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
-#include "operon/operon_export.hpp"
 #include "operon/core/concepts.hpp"
+#include "operon/core/node.hpp"
 #include "operon/core/operator.hpp"
 #include "operon/core/tree.hpp"
-#include "operon/core/node.hpp"
 #include "operon/core/types.hpp"
+#include "operon/operon_export.hpp"
 
 namespace Operon {
 // crossover takes two parent trees and returns a child
 struct OPERON_EXPORT CrossoverBase : public OperatorBase<Tree, const Tree&, const Tree&> {
     using Limits = std::pair<std::size_t, std::size_t>;
-    static auto FindCompatibleSwapLocations(Operon::RandomGenerator& random, Tree const& lhs, Tree const& rhs, size_t maxDepth, size_t maxLength, double internalProbability = 1.0) -> std::pair<size_t, size_t>;
-    static auto SelectRandomBranch(Operon::RandomGenerator& random, Tree const& tree, double internalProb, Limits length, Limits level, Limits depth) -> size_t;
-    static auto Cross(const Tree& lhs, const Tree& rhs, /* index of subtree 1 */ size_t i, /* index of subtree 2 */ size_t j) -> Tree;
+    static auto FindCompatibleSwapLocations(Operon::RandomGenerator& random, Tree const& lhs, Tree const& rhs,
+        size_t maxDepth, size_t maxLength, double internalProbability = 1.0) -> std::pair<size_t, size_t>;
+    static auto SelectRandomBranch(Operon::RandomGenerator& random, Tree const& tree, double internalProb,
+        Limits length, Limits level, Limits depth) -> size_t;
+    static auto Cross(
+        const Tree& lhs, const Tree& rhs, /* index of subtree 1 */ size_t i, /* index of subtree 2 */ size_t j) -> Tree;
 };
 
 class OPERON_EXPORT SubtreeCrossover : public CrossoverBase {
@@ -34,7 +37,8 @@ public:
         : internalProbability_(internalProbability)
         , maxDepth_(maxDepth)
         , maxLength_(maxLength)
-    { }
+    {
+    }
 
     auto operator()(Operon::RandomGenerator& random, const Tree& lhs, const Tree& rhs) const -> Tree override;
 

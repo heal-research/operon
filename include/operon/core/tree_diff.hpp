@@ -10,9 +10,9 @@
 
 #include "contracts.hpp"
 #include "node.hpp"
+#include "operon/operon_export.hpp"
 #include "tree.hpp"
 #include "types.hpp"
-#include "operon/operon_export.hpp"
 
 namespace Operon {
 
@@ -27,12 +27,8 @@ namespace Operon {
 // Exp registers a fresh MakeUnary(Exp, j), not a reuse of `i`), matching
 // the outer applyWeight() step in Deriv() that supplies this node's own
 // weight exactly once regardless of which rule fired.
-using UnarySymbolicDerivRule = std::function<std::size_t(
-    Operon::Vector<Node>& dag,
-    Operon::Map<Operon::Hash, std::size_t>& memo,
-    Operon::Vector<Operon::Hash>& h,
-    std::size_t i,
-    std::size_t j)>;
+using UnarySymbolicDerivRule = std::function<std::size_t(Operon::Vector<Node>& dag,
+    Operon::Map<Operon::Hash, std::size_t>& memo, Operon::Vector<Operon::Hash>& h, std::size_t i, std::size_t j)>;
 
 // Register a symbolic derivative rule for a unary function (built-in or
 // user-defined), keyed by the same hash the function's Node::HashValue
@@ -64,12 +60,8 @@ OPERON_EXPORT auto GetUnarySymbolicDeriv(Operon::Hash hash) -> UnarySymbolicDeri
 // ∂f/∂j and of ∂f/∂k, each independently possibly `Zero` if that partial
 // isn't computable. Mirrors UnarySymbolicDerivRule exactly, just for two
 // operands instead of one.
-using BinarySymbolicDerivRule = std::function<std::pair<std::size_t, std::size_t>(
-    Operon::Vector<Node>& dag,
-    Operon::Map<Operon::Hash, std::size_t>& memo,
-    Operon::Vector<Operon::Hash>& h,
-    std::size_t i,
-    std::size_t j,
+using BinarySymbolicDerivRule = std::function<std::pair<std::size_t, std::size_t>(Operon::Vector<Node>& dag,
+    Operon::Map<Operon::Hash, std::size_t>& memo, Operon::Vector<Operon::Hash>& h, std::size_t i, std::size_t j,
     std::size_t k)>;
 
 // Register a symbolic derivative rule for a binary function (built-in or
@@ -125,8 +117,8 @@ OPERON_EXPORT auto MakeSymbolicDerivBinary(Operon::Vector<Node>& dag, Operon::Ma
 // plus appended symbolic derivative subtrees. Shared subexpressions between
 // derivative columns are referenced via NodeType::Ref back-pointers.
 struct JacobianDag {
-    Operon::Vector<Node> Nodes;        // original nodes [0..OriginalSize-1] + derivative nodes
-    std::size_t OriginalSize{};        // number of nodes in the source tree
+    Operon::Vector<Node> Nodes; // original nodes [0..OriginalSize-1] + derivative nodes
+    std::size_t OriginalSize {}; // number of nodes in the source tree
     Operon::Vector<std::size_t> Roots; // Roots[k] = dag index of df/dc_k; SIZE_MAX means zero
 };
 
@@ -144,12 +136,13 @@ OPERON_EXPORT auto BuildJacobianDag(Tree const& tree) -> JacobianDag;
 //   H(i,j) with j >= i at index  i*p - i*(i-1)/2 + (j-i)  where p = NumParams.
 struct HessianDag {
     Operon::Vector<Node> Nodes;
-    std::size_t OriginalSize{};
-    std::size_t NumParams{};
+    std::size_t OriginalSize {};
+    std::size_t NumParams {};
     Operon::Vector<std::size_t> JacobianRoots; // [p] roots of df/dc_k
-    Operon::Vector<std::size_t> HessianRoots;  // [p*(p+1)/2] upper triangle
+    Operon::Vector<std::size_t> HessianRoots; // [p*(p+1)/2] upper triangle
 
-    [[nodiscard]] auto UpperIdx(std::size_t i, std::size_t j) const -> std::size_t {
+    [[nodiscard]] auto UpperIdx(std::size_t i, std::size_t j) const -> std::size_t
+    {
         EXPECT(i <= j);
         return (i * NumParams) - (i * (i - 1) / 2) + (j - i);
     }
@@ -163,10 +156,10 @@ OPERON_EXPORT auto BuildHessianDag(Tree const& tree) -> HessianDag;
 // into a single root.
 struct VariableGradientDag {
     Operon::Vector<Node> Nodes;
-    std::size_t OriginalSize{};
+    std::size_t OriginalSize {};
     Operon::Vector<Operon::Hash> Variables; // Variables[k] pairs with Roots[k]/Certain[k]
-    Operon::Vector<std::size_t> Roots;      // SIZE_MAX means zero
-    Operon::Vector<bool> Certain;           // false iff this variable's dependency path hits an unsupported op
+    Operon::Vector<std::size_t> Roots; // SIZE_MAX means zero
+    Operon::Vector<bool> Certain; // false iff this variable's dependency path hits an unsupported op
 };
 
 // Gradient of tree's output w.r.t. each distinct input variable's value.
@@ -176,8 +169,7 @@ struct VariableGradientDag {
 // (optional) supplies live weights for Optimize==true Variable nodes, since
 // — unlike every other Deriv() leaf case — this one bakes a numeric weight
 // into the dag at build time rather than resolving it later.
-OPERON_EXPORT auto BuildVariableGradientDag(
-    Tree const& tree, Operon::Span<Operon::Scalar const> coeff = {}
-) -> VariableGradientDag;
+OPERON_EXPORT auto BuildVariableGradientDag(Tree const& tree, Operon::Span<Operon::Scalar const> coeff = {})
+    -> VariableGradientDag;
 
 } // namespace Operon

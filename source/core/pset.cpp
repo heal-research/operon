@@ -4,18 +4,18 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <ranges>
 #include <cstdint>
 #include <fmt/format.h>
 #include <random>
+#include <ranges>
 #include <stdexcept>
 #include <tuple>
 #include <utility>
 #include <vector>
 
-#include "operon/core/pset.hpp"
 #include "operon/core/contracts.hpp"
 #include "operon/core/node.hpp"
+#include "operon/core/pset.hpp"
 #include "operon/core/standard_library.hpp"
 #include "operon/core/types.hpp"
 
@@ -60,7 +60,9 @@ void PrimitiveSet::SetConfig(PrimitiveSetConfig config)
     pset_.clear();
 
     for (size_t i = 0; i < Operon::BuiltinOpCount; ++i) {
-        if (!config.Test(i)) { continue; }
+        if (!config.Test(i)) {
+            continue;
+        }
         auto const op = static_cast<Operon::BuiltinOp>(i);
         auto const [minArity, maxArity] = StandardLibrary::ArityLimits(op);
         auto n = Operon::Node::Function(static_cast<Operon::Hash>(op), minArity);
@@ -68,7 +70,9 @@ void PrimitiveSet::SetConfig(PrimitiveSetConfig config)
     }
 
     for (auto type : { Operon::NodeType::Constant, Operon::NodeType::Variable, Operon::NodeType::Ref }) {
-        if (!config.Test(Operon::BuiltinOpCount + Operon::NodeTypes::GetIndex(type))) { continue; }
+        if (!config.Test(Operon::BuiltinOpCount + Operon::NodeTypes::GetIndex(type))) {
+            continue;
+        }
         Operon::Node n(type);
         pset_[n.HashValue] = { n, 1, 0, 0 };
     }
@@ -80,7 +84,9 @@ auto PrimitiveSet::ReachableLengths(size_t maxLength) const -> std::shared_ptr<s
 {
 #if defined(__cpp_lib_atomic_shared_ptr)
     auto reachable = reachable_.load(std::memory_order_acquire);
-    if (!reachableDirty_.load(std::memory_order_acquire) && reachable != nullptr && reachable->size() >= maxLength) { return reachable; }
+    if (!reachableDirty_.load(std::memory_order_acquire) && reachable != nullptr && reachable->size() >= maxLength) {
+        return reachable;
+    }
 #endif
 
     std::lock_guard lock(reachableMutex_);
@@ -89,7 +95,9 @@ auto PrimitiveSet::ReachableLengths(size_t maxLength) const -> std::shared_ptr<s
 #else
     auto const& reachable = reachable_;
 #endif
-    if (!reachableDirty_.load(std::memory_order_relaxed) && reachable != nullptr && reachable->size() >= maxLength) { return reachable; }
+    if (!reachableDirty_.load(std::memory_order_relaxed) && reachable != nullptr && reachable->size() >= maxLength) {
+        return reachable;
+    }
 
     auto rebuilt = std::make_shared<std::vector<bool>>(maxLength, false);
     if (maxLength != 0) {
@@ -97,14 +105,18 @@ auto PrimitiveSet::ReachableLengths(size_t maxLength) const -> std::shared_ptr<s
         for (size_t i = 1; i < maxLength; ++i) {
             for (auto const& [_, primitive] : pset_) {
                 auto const& [node, frequency, minArity, maxArity] = primitive;
-                if (node.IsLeaf() || !node.IsEnabled || frequency == 0) { continue; }
+                if (node.IsLeaf() || !node.IsEnabled || frequency == 0) {
+                    continue;
+                }
                 for (size_t arity = minArity; arity <= std::min(maxArity, i); ++arity) {
                     if ((*rebuilt)[i - arity]) {
                         (*rebuilt)[i] = true;
                         break;
                     }
                 }
-                if ((*rebuilt)[i]) { break; }
+                if ((*rebuilt)[i]) {
+                    break;
+                }
             }
         }
     }
@@ -121,55 +133,65 @@ auto PrimitiveSet::ReachableLengths(size_t maxLength) const -> std::shared_ptr<s
 
 auto PrimitiveSet::AchievableLength(size_t targetLen) const -> size_t
 {
-    if (targetLen <= 1) { return 1; }
+    if (targetLen <= 1) {
+        return 1;
+    }
     auto const reachable = ReachableLengths(targetLen);
     for (auto length = targetLen; length > 0; --length) {
-        if ((*reachable)[length - 1]) { return length; }
+        if ((*reachable)[length - 1]) {
+            return length;
+        }
     }
     return 1;
 }
 
-    auto PrimitiveSet::SampleRandomSymbol(Operon::RandomGenerator& random, size_t minArity, size_t maxArity) const -> Node
-    {
-        EXPECT(minArity <= maxArity);
-        EXPECT(!pset_.empty());
+auto PrimitiveSet::SampleRandomSymbol(Operon::RandomGenerator& random, size_t minArity, size_t maxArity) const -> Node
+{
+    EXPECT(minArity <= maxArity);
+    EXPECT(!pset_.empty());
 
-        std::vector<Primitive> candidates;
-        candidates.reserve(pset_.size());
+    std::vector<Primitive> candidates;
+    candidates.reserve(pset_.size());
 
-        auto sum{0UL};
-        for (auto const& [k, v] : pset_) {
-            auto const& [node, freq, min_arity, max_arity] = v;
-            if (!node.IsEnabled || freq <= 0) { continue; }
-            if (minArity > max_arity || maxArity < min_arity) { continue; }
-            sum += freq;
-            candidates.push_back(v);
+    auto sum { 0UL };
+    for (auto const& [k, v] : pset_) {
+        auto const& [node, freq, min_arity, max_arity] = v;
+        if (!node.IsEnabled || freq <= 0) {
+            continue;
         }
-
-        if (candidates.empty()) {
-            // arity requirements unreasonable
-            throw std::runtime_error(fmt::format("PrimitiveSet::SampleRandomSymbol: unable to find suitable symbol with arity between {} and {}\n", minArity, maxArity));
+        if (minArity > max_arity || maxArity < min_arity) {
+            continue;
         }
-
-        Operon::Node result { Operon::NodeType::Constant };
-
-        auto c { std::uniform_real_distribution<Operon::Scalar>(0, static_cast<Operon::Scalar>(sum))(random) };
-        auto s { 0UL };
-        for (auto const& [node, freq, min_arity, max_arity] : candidates) {
-            s += freq;
-            if (c < static_cast<Operon::Scalar>(s)) {
-                auto amin = std::max(minArity, MinimumArity(node.HashValue));
-                auto amax = std::min(maxArity, MaximumArity(node.HashValue));
-                auto arity = std::uniform_int_distribution<size_t>(amin, amax)(random);
-                result = node;
-                result.Arity = static_cast<uint16_t>(arity);
-                break;
-            }
-        }
-
-        ENSURE(IsEnabled(result.HashValue));
-        ENSURE(Frequency(result.HashValue) > 0);
-
-        return result;
+        sum += freq;
+        candidates.push_back(v);
     }
+
+    if (candidates.empty()) {
+        // arity requirements unreasonable
+        throw std::runtime_error(fmt::format(
+            "PrimitiveSet::SampleRandomSymbol: unable to find suitable symbol with arity between {} and {}\n", minArity,
+            maxArity));
+    }
+
+    Operon::Node result { Operon::NodeType::Constant };
+
+    auto c { std::uniform_real_distribution<Operon::Scalar>(0, static_cast<Operon::Scalar>(sum))(random) };
+    auto s { 0UL };
+    for (auto const& [node, freq, min_arity, max_arity] : candidates) {
+        s += freq;
+        if (c < static_cast<Operon::Scalar>(s)) {
+            auto amin = std::max(minArity, MinimumArity(node.HashValue));
+            auto amax = std::min(maxArity, MaximumArity(node.HashValue));
+            auto arity = std::uniform_int_distribution<size_t>(amin, amax)(random);
+            result = node;
+            result.Arity = static_cast<uint16_t>(arity);
+            break;
+        }
+    }
+
+    ENSURE(IsEnabled(result.HashValue));
+    ENSURE(Frequency(result.HashValue) > 0);
+
+    return result;
+}
 } // namespace Operon

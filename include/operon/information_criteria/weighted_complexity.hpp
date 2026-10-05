@@ -23,12 +23,12 @@ namespace Operon {
 // fComplexity = k * log(q), q = number of unique symbol types.
 inline auto WeightedComplexity(Tree const& tree) -> std::pair<double, double>
 {
-    static auto const MulHash   = static_cast<Operon::Hash>(BuiltinOp::Mul);
-    static auto const ParamHash = Node{NodeType::Constant}.HashValue;
+    static auto const MulHash = static_cast<Operon::Hash>(BuiltinOp::Mul);
+    static auto const ParamHash = Node { NodeType::Constant }.HashValue;
     Operon::Set<Operon::Hash> uniqueSymbols;
     auto k = 0.0;
     for (auto const& node : tree.Nodes()) {
-        auto const isWeighted = node.IsVariable() && node.Value != Operon::Scalar{1};
+        auto const isWeighted = node.IsVariable() && node.Value != Operon::Scalar { 1 };
         k += isWeighted ? 3.0 : 1.0; // NOLINT(cppcoreguidelines-avoid-magic-numbers)
         uniqueSymbols.insert(node.HashValue);
         if (isWeighted) {
@@ -36,9 +36,9 @@ inline auto WeightedComplexity(Tree const& tree) -> std::pair<double, double>
             uniqueSymbols.insert(ParamHash);
         }
     }
-    auto const q           = static_cast<double>(uniqueSymbols.size());
+    auto const q = static_cast<double>(uniqueSymbols.size());
     auto const fComplexity = q > 0.0 ? k * std::log(q) : 0.0;
-    return {k, fComplexity};
+    return { k, fComplexity };
 }
 
 } // namespace Operon

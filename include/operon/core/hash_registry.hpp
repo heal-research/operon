@@ -22,8 +22,7 @@
 
 namespace Operon {
 
-template<typename Fn>
-class HashRegistry {
+template <typename Fn> class HashRegistry {
 public:
     // Write-once: throws on a hash that's already registered. Deliberately
     // stricter than DispatchTable::RegisterFunction (which overwrites), so a

@@ -17,10 +17,8 @@ using AccumulationScalar = double;
 using ScalarSpan = std::span<Scalar>;
 using ConstScalarSpan = std::span<Scalar const>;
 
-using ScalarMatrixView = std::mdspan<Scalar,
-    std::dextents<MemoryIndex, 2>, std::layout_stride>;
-using ConstScalarMatrixView = std::mdspan<Scalar const,
-    std::dextents<MemoryIndex, 2>, std::layout_stride>;
+using ScalarMatrixView = std::mdspan<Scalar, std::dextents<MemoryIndex, 2>, std::layout_stride>;
+using ConstScalarMatrixView = std::mdspan<Scalar const, std::dextents<MemoryIndex, 2>, std::layout_stride>;
 
 /**
  * Canonical logical matrix contract for public numerical APIs.
@@ -33,7 +31,7 @@ using ConstScalarMatrixView = std::mdspan<Scalar const,
  * otherwise by the consuming API.
  */
 struct MatrixViewContract {
-    static constexpr MemoryIndex Rank {2};
+    static constexpr MemoryIndex Rank { 2 };
 };
 
 /** Logical (row, column) accessor over a canonical matrix view. */

@@ -24,8 +24,7 @@
 namespace Operon {
 
 /** Levenberg-Marquardt implementation used to solve a least-squares problem. */
-enum class OptimizerType : int { Tiny,
-    Eigen };
+enum class OptimizerType : int { Tiny, Eigen };
 
 namespace detail {
     // LM backends: evaluates the weighted half sum of squares (the cost
@@ -37,14 +36,16 @@ namespace detail {
         auto const ok = cf.Evaluate(diag.InitialParameters.data(), residuals.data(), nullptr);
         auto const functionEvaluations = static_cast<int>(cf.ResidualCalls());
         if (!ok) {
-            auto failed = ZeroParameterDiagnostics(std::move(diag), std::numeric_limits<Operon::Scalar>::quiet_NaN(), functionEvaluations);
+            auto failed = ZeroParameterDiagnostics(
+                std::move(diag), std::numeric_limits<Operon::Scalar>::quiet_NaN(), functionEvaluations);
             if (auto const& error = cf.Error(); error) {
                 return MakeFitEvaluationError(ToGradientError(*error), std::move(failed));
             }
             return MakeFitOutcome(std::move(failed));
         }
         Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1> const> r(residuals.data(), std::ssize(residuals));
-        return MakeFitOutcome(ZeroParameterDiagnostics(std::move(diag), Operon::Scalar { 0.5 } * r.squaredNorm(), functionEvaluations));
+        return MakeFitOutcome(
+            ZeroParameterDiagnostics(std::move(diag), Operon::Scalar { 0.5 } * r.squaredNorm(), functionEvaluations));
     }
 
     // The single least-squares driver shared by LevenbergMarquardtOptimizer
@@ -100,8 +101,9 @@ namespace detail {
 
         if constexpr (Backend == OptimizerType::Eigen) {
             if (cf.ResidualCount() < cf.ParameterCount()) {
-                return MakeUnevaluatedFitEvaluationError(
-                    GradientError { .Code = GradientErrorCode::InvalidShape, .Expected = cf.ParameterCount(), .Actual = cf.ResidualCount() },
+                return MakeUnevaluatedFitEvaluationError(GradientError { .Code = GradientErrorCode::InvalidShape,
+                                                             .Expected = cf.ParameterCount(),
+                                                             .Actual = cf.ResidualCount() },
                     std::move(diag));
             }
         }
@@ -145,10 +147,12 @@ namespace detail {
             // do the minimization loop manually because we want to extract the initial cost
             auto status = lm.minimizeInit(m);
             if (status == Eigen::LevenbergMarquardtSpace::NotStarted) {
-                diag.InitialCost = lm.fnorm() * lm.fnorm() * Operon::Scalar { 0.5 }; // initial cost after minimizeInit()
+                diag.InitialCost
+                    = lm.fnorm() * lm.fnorm() * Operon::Scalar { 0.5 }; // initial cost after minimizeInit()
                 // lm.iterations() is 1 after minimizeInit() and gains one per
                 // accepted step, so accepted steps = lm.iterations() - 1.
-                while ((status == Eigen::LevenbergMarquardtSpace::NotStarted || status == Eigen::LevenbergMarquardtSpace::Running)
+                while ((status == Eigen::LevenbergMarquardtSpace::NotStarted
+                           || status == Eigen::LevenbergMarquardtSpace::Running)
                     && lm.iterations() - 1 < budget) {
                     status = lm.minimizeOneStep(m);
                 }
@@ -276,17 +280,16 @@ struct LeastSquaresFitOptions {
  * improvement), or a FitEvaluationError if that single evaluation fails (costs
  * are then NaN).
  */
-[[nodiscard]] inline auto FitLeastSquares(
-    LeastSquaresCostFunction const& cost,
-    ConstScalarSpan initialParameters,
+[[nodiscard]] inline auto FitLeastSquares(LeastSquaresCostFunction const& cost, ConstScalarSpan initialParameters,
     LeastSquaresFitOptions const& options = {}) -> FitOutcome
 {
     FitDiagnostics diag;
     diag.InitialParameters.assign(initialParameters.begin(), initialParameters.end());
 
     if (initialParameters.size() != cost.NumParameters()) {
-        return detail::MakeUnevaluatedFitEvaluationError(
-            GradientError { .Code = GradientErrorCode::InvalidShape, .Expected = cost.NumParameters(), .Actual = initialParameters.size() },
+        return detail::MakeUnevaluatedFitEvaluationError(GradientError { .Code = GradientErrorCode::InvalidShape,
+                                                             .Expected = cost.NumParameters(),
+                                                             .Actual = initialParameters.size() },
             std::move(diag));
     }
     if (auto validWeights = ValidateWeights(options.Weights, cost.NumResiduals()); !validWeights) {

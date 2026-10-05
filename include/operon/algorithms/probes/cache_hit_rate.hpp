@@ -20,7 +20,9 @@ public:
     auto operator()(ProbeContext& ctx) -> void override
     {
         auto const* cache = ctx.Config().Cache;
-        if (cache == nullptr) { return; }
+        if (cache == nullptr) {
+            return;
+        }
 
         auto const hits = cache->Hits();
         auto const lookups = cache->Lookups();
@@ -35,13 +37,14 @@ public:
 
         ctx.Emit("cache_hits", static_cast<std::int64_t>(deltaHits));
         ctx.Emit("cache_lookups", static_cast<std::int64_t>(deltaLookups));
-        ctx.Emit("cache_hit_rate", deltaLookups != 0 ? static_cast<double>(deltaHits) / static_cast<double>(deltaLookups) : 0.0);
+        ctx.Emit("cache_hit_rate",
+            deltaLookups != 0 ? static_cast<double>(deltaHits) / static_cast<double>(deltaLookups) : 0.0);
         ctx.Emit("cache_size", static_cast<std::int64_t>(cache->Size()));
     }
 
 private:
-    std::size_t prevHits_{0};
-    std::size_t prevLookups_{0};
+    std::size_t prevHits_ { 0 };
+    std::size_t prevLookups_ { 0 };
 };
 
 } // namespace Operon

@@ -2,33 +2,30 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
-#include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
 
+#include "../operon_test.hpp"
 #include <cmath>
 #include <cstdint>
 #include <fmt/format.h>
 #include <string>
 #include <vector>
-#include "../operon_test.hpp"
 
 #include "../../../source/core/subtree_rewrite.hpp"
 #include "operon/core/dataset.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/variable.hpp"
 #include "operon/interpreter/interpreter.hpp"
-#include "operon/operators/crossover.hpp"
 #include "operon/operators/creator.hpp"
+#include "operon/operators/crossover.hpp"
 #include "operon/operators/initializer.hpp"
 #include "operon/operators/mutation.hpp"
 
 namespace Operon::Test {
 
 namespace {
-    auto Add() -> Node
-    {
-        return Node::Function(static_cast<Hash>(BuiltinOp::Add), 2);
-    }
+    auto Add() -> Node { return Node::Function(static_cast<Hash>(BuiltinOp::Add), 2); }
 
     auto Variable(Hash hash) -> Node
     {
@@ -42,24 +39,26 @@ namespace {
     {
         std::string result;
         for (auto const& node : tree.Nodes()) {
-            fmt::format_to(std::back_inserter(result), "{{type={}, hash={}, value={}, arity={}, length={}, depth={}, level={}, parent={}, ref={}}}",
-                static_cast<unsigned>(node.Type), node.HashValue, node.Value, node.Arity, node.Length, node.Depth, node.Level, node.Parent, node.RefTo);
+            fmt::format_to(std::back_inserter(result),
+                "{{type={}, hash={}, value={}, arity={}, length={}, depth={}, level={}, parent={}, ref={}}}",
+                static_cast<unsigned>(node.Type), node.HashValue, node.Value, node.Arity, node.Length, node.Depth,
+                node.Level, node.Parent, node.RefTo);
         }
         return result;
     }
 
     auto SameNodeMetadata(Node const& lhs, Node const& rhs) -> bool
     {
-        return lhs.HashValue == rhs.HashValue && lhs.CalculatedHashValue == rhs.CalculatedHashValue && lhs.Value == rhs.Value
-            && lhs.Arity == rhs.Arity && lhs.Length == rhs.Length && lhs.Depth == rhs.Depth && lhs.Level == rhs.Level
-            && lhs.Parent == rhs.Parent && lhs.Type == rhs.Type && lhs.IsEnabled == rhs.IsEnabled && lhs.Optimize == rhs.Optimize
-            && lhs.RefTo == rhs.RefTo;
+        return lhs.HashValue == rhs.HashValue && lhs.CalculatedHashValue == rhs.CalculatedHashValue
+            && lhs.Value == rhs.Value && lhs.Arity == rhs.Arity && lhs.Length == rhs.Length && lhs.Depth == rhs.Depth
+            && lhs.Level == rhs.Level && lhs.Parent == rhs.Parent && lhs.Type == rhs.Type
+            && lhs.IsEnabled == rhs.IsEnabled && lhs.Optimize == rhs.Optimize && lhs.RefTo == rhs.RefTo;
     }
 
     auto Evaluate(Tree const& tree, Dataset const& dataset) -> std::vector<Scalar>
     {
         using DTable = DispatchTable<Scalar>;
-        return Interpreter<Scalar, DTable>::Evaluate(tree, dataset, Range{0, dataset.Rows<std::size_t>()}).value();
+        return Interpreter<Scalar, DTable>::Evaluate(tree, dataset, Range { 0, dataset.Rows<std::size_t>() }).value();
     }
 
     void CheckFinite(std::vector<Scalar> const& values)
@@ -81,7 +80,6 @@ namespace {
 
 } // namespace
 
-
 TEST_CASE("Mapped subtree segments preserve Ref safety", "[operators]")
 {
     auto nodes = Operon::Vector<Node> { Node::Constant(1), Node::Constant(2), Add(), Node::Ref(2), Add() };
@@ -93,7 +91,8 @@ TEST_CASE("Mapped subtree segments preserve Ref safety", "[operators]")
     CHECK((*unchanged)[3].RefTo == 2);
     CHECK(Tree(*unchanged).UpdateNodes().Validate());
 
-    auto const selfContained = Operon::Vector<Node> { Node::Constant(1), Node::Ref(0), Node::Function(static_cast<Hash>(BuiltinOp::Mul), 2), Node::Constant(2), Add() };
+    auto const selfContained = Operon::Vector<Node> { Node::Constant(1), Node::Ref(0),
+        Node::Function(static_cast<Hash>(BuiltinOp::Mul), 2), Node::Constant(2), Add() };
     auto const reorderedSegments = Operon::Vector<detail::PermutationSegment> { { 3, 1 }, { 0, 3 }, { 4, 1 } };
     auto const reordered = detail::PermuteSegments(selfContained, reorderedSegments);
     REQUIRE(reordered);
@@ -105,7 +104,8 @@ TEST_CASE("Mapped subtree segments preserve Ref safety", "[operators]")
     CHECK_FALSE(detail::PermuteSegments(nodes, incompleteSegments));
 
     auto const malformedSegments = Operon::Vector<detail::PermutationSegment> { { 0, 1 }, { 2, 1 }, { 1, 1 } };
-    CHECK_FALSE(detail::PermuteSegments(Operon::Vector<Node> { Node::Constant(1), Node::Constant(2), Add() }, malformedSegments));
+    CHECK_FALSE(detail::PermuteSegments(
+        Operon::Vector<Node> { Node::Constant(1), Node::Constant(2), Add() }, malformedSegments));
 }
 
 TEST_CASE("Mapped subtree segments reject out-of-range Refs", "[operators]")
@@ -126,7 +126,7 @@ TEST_CASE("Mapped subtree segments reject out-of-range Refs", "[operators]")
 
 TEST_CASE("Sort leaves malformed out-of-range Refs untouched", "[operators]")
 {
-    for (auto const refTo : { uint16_t{3}, uint16_t{99} }) {
+    for (auto const refTo : { uint16_t { 3 }, uint16_t { 99 } }) {
         auto tree = Tree({ Node::Constant(1), Node::Ref(refTo), Add() }).UpdateNodes();
         auto const before = Fixture(tree);
 
@@ -148,8 +148,11 @@ TEST_CASE("Tree transforms preserve finite evaluation", "[properties][tree-trans
     Dataset const domain({ "X" }, { { -2.0F, -0.5F, 0.5F, 2.0F } });
     auto const x = domain.GetVariable("X").value().Hash;
 
-    SECTION("UpdateNodes is metadata-idempotent") {
-        auto tree = Tree({ Variable(x), Node::Constant(2), Add(), Node::Ref(2), Node::Function(Hash(BuiltinOp::Mul), 2) }).UpdateNodes();
+    SECTION("UpdateNodes is metadata-idempotent")
+    {
+        auto tree
+            = Tree({ Variable(x), Node::Constant(2), Add(), Node::Ref(2), Node::Function(Hash(BuiltinOp::Mul), 2) })
+                  .UpdateNodes();
         auto const once = tree.Nodes();
         tree.UpdateNodes();
         INFO(fmt::format("tree={}", Fixture(tree)));
@@ -160,8 +163,11 @@ TEST_CASE("Tree transforms preserve finite evaluation", "[properties][tree-trans
         }
     }
 
-    SECTION("Sort preserves finite commutative evaluation, including extrema") {
-        auto tree = Tree({ Variable(x), Node::Constant(3), Add(), Node::Constant(2), Node::Function(Hash(BuiltinOp::Mul), 2) }).UpdateNodes();
+    SECTION("Sort preserves finite commutative evaluation, including extrema")
+    {
+        auto tree = Tree(
+            { Variable(x), Node::Constant(3), Add(), Node::Constant(2), Node::Function(Hash(BuiltinOp::Mul), 2) })
+                        .UpdateNodes();
         auto const before = Evaluate(tree, domain);
         tree.Sort();
         INFO(fmt::format("tree={}", Fixture(tree)));
@@ -187,7 +193,8 @@ TEST_CASE("Tree transforms preserve finite evaluation", "[properties][tree-trans
             CheckFiniteEqual(extremaBefore, Evaluate(extrema, domain), tolerance);
         }
     }
-    SECTION("Sort snapshots unequal child spans before reordering") {
+    SECTION("Sort snapshots unequal child spans before reordering")
+    {
         auto tree = Tree({ Node::Constant(1), Node::Constant(9), Node::Constant(4), Add(), Add() }).UpdateNodes();
         [[maybe_unused]] auto const& hashed = tree.Hash(HashMode::Strict);
         auto const before = Evaluate(tree, domain);
@@ -203,8 +210,11 @@ TEST_CASE("Tree transforms preserve finite evaluation", "[properties][tree-trans
         CheckFiniteEqual(before, Evaluate(tree, domain), tolerance);
     }
 
-    SECTION("Sort remaps self-contained Ref subtrees") {
-        auto tree = Tree({ Node::Constant(1), Node::Constant(5), Node::Ref(1), Node::Function(Hash(BuiltinOp::Mul), 2), Add() }).UpdateNodes();
+    SECTION("Sort remaps self-contained Ref subtrees")
+    {
+        auto tree = Tree(
+            { Node::Constant(1), Node::Constant(5), Node::Ref(1), Node::Function(Hash(BuiltinOp::Mul), 2), Add() })
+                        .UpdateNodes();
         [[maybe_unused]] auto const& hashed = tree.Hash(HashMode::Strict);
         auto const before = Evaluate(tree, domain);
 
@@ -217,7 +227,8 @@ TEST_CASE("Tree transforms preserve finite evaluation", "[properties][tree-trans
         CheckFiniteEqual(before, Evaluate(tree, domain), tolerance);
     }
 
-    SECTION("Sort leaves a cross-subtree forward Ref order unchanged") {
+    SECTION("Sort leaves a cross-subtree forward Ref order unchanged")
+    {
         auto tree = Tree({ Node::Constant(5), Node::Ref(0), Add() }).UpdateNodes();
         [[maybe_unused]] auto const& hashed = tree.Hash(HashMode::Strict);
         auto const before = Evaluate(tree, domain);
@@ -231,7 +242,8 @@ TEST_CASE("Tree transforms preserve finite evaluation", "[properties][tree-trans
         CheckFiniteEqual(before, Evaluate(tree, domain), tolerance);
     }
 
-    SECTION("Reduce flattens nested addition without changing evaluation") {
+    SECTION("Reduce flattens nested addition without changing evaluation")
+    {
         auto tree = Tree({ Variable(x), Node::Constant(2), Add(), Node::Constant(3), Add() }).UpdateNodes();
         auto const before = Evaluate(tree, domain);
         auto const beforeFixture = Fixture(tree);
@@ -244,7 +256,8 @@ TEST_CASE("Tree transforms preserve finite evaluation", "[properties][tree-trans
         CheckFiniteEqual(before, Evaluate(tree, domain), tolerance);
     }
 
-    SECTION("Simplify removes multiplicative identity without changing evaluation") {
+    SECTION("Simplify removes multiplicative identity without changing evaluation")
+    {
         auto tree = Tree({ Variable(x), Node::Constant(1), Node::Function(Hash(BuiltinOp::Mul), 2) }).UpdateNodes();
         auto const before = Evaluate(tree, domain);
         auto const beforeFixture = Fixture(tree);
@@ -272,7 +285,8 @@ TEST_CASE("Structural operators honor deterministic configured bounds", "[proper
     ProbabilisticTreeCreator const creator { &grammar, inputs, 0.0, maxLength };
     UniformCoefficientInitializer initializer;
 
-    SECTION("direct crossover inserts the selected donor subtree") {
+    SECTION("direct crossover inserts the selected donor subtree")
+    {
         auto const left = Tree({ Node::Constant(11), Node::Constant(13), Add() }).UpdateNodes();
         auto const right = Tree({ Node::Constant(29), Node::Constant(31), Add() }).UpdateNodes();
         auto const beforeFixture = Fixture(left);
@@ -285,9 +299,12 @@ TEST_CASE("Structural operators honor deterministic configured bounds", "[proper
         CHECK(Fixture(child) != beforeFixture);
         CheckFinite(Evaluate(child, domain));
     }
-    SECTION("configured crossover rejects oversized and overdeep donors") {
+    SECTION("configured crossover rejects oversized and overdeep donors")
+    {
         auto const left = Tree({ Node::Constant(11), Node::Constant(13), Add() }).UpdateNodes();
-        auto const right = Tree({ Node::Constant(1), Node::Constant(2), Add(), Node::Constant(3), Add(), Node::Constant(4), Add() }).UpdateNodes();
+        auto const right
+            = Tree({ Node::Constant(1), Node::Constant(2), Add(), Node::Constant(3), Add(), Node::Constant(4), Add() })
+                  .UpdateNodes();
         auto const invalidDonor = right.Splice(right.Length() - 1U);
         REQUIRE(invalidDonor.Depth() > 2);
         REQUIRE(invalidDonor.Length() > 3);
@@ -311,10 +328,12 @@ TEST_CASE("Structural operators honor deterministic configured bounds", "[proper
         REQUIRE(crossed);
     }
 
-    SECTION("insertion grows a known eligible n-ary node") {
+    SECTION("insertion grows a known eligible n-ary node")
+    {
         auto const parent = Tree({ Variable(inputs[0]), Node::Constant(2), Add() }).UpdateNodes();
         auto random = RandomGenerator(0xF6B0A0D5ULL);
-        InsertSubtreeMutation const mutation { gsl::not_null<CreatorBase const*> { &creator }, gsl::not_null<CoefficientInitializerBase const*> { &initializer }, maxDepth, maxLength };
+        InsertSubtreeMutation const mutation { gsl::not_null<CreatorBase const*> { &creator },
+            gsl::not_null<CoefficientInitializerBase const*> { &initializer }, maxDepth, maxLength };
         auto const child = mutation(random, parent);
         INFO(fmt::format("parent={}, child={}", Fixture(parent), Fixture(child)));
         REQUIRE(child.Validate());
@@ -375,7 +394,8 @@ TEST_CASE("InsertSubtreeMutation produces valid tree", "[operators]")
 
     auto tree = btc(random, targetLen, 1, maxDepth);
 
-    InsertSubtreeMutation const mut(gsl::not_null<Operon::CreatorBase const*> { &btc }, gsl::not_null<Operon::CoefficientInitializerBase const*> { &cfi }, 2 * targetLen, maxDepth);
+    InsertSubtreeMutation const mut(gsl::not_null<Operon::CreatorBase const*> { &btc },
+        gsl::not_null<Operon::CoefficientInitializerBase const*> { &cfi }, 2 * targetLen, maxDepth);
     auto child = mut(random, tree);
 
     CHECK(child.Length() > 0);
@@ -406,7 +426,8 @@ TEST_CASE("RemoveSubtreeMutation replaces a random subtree with the grammar-mini
     auto tree = btc(random, targetLen, 1, maxDepth);
     auto const originalLength = tree.Length();
 
-    RemoveSubtreeMutation const mut(gsl::not_null<Operon::CreatorBase const*> { &btc }, gsl::not_null<Operon::CoefficientInitializerBase const*> { &cfi }, maxDepth);
+    RemoveSubtreeMutation const mut(gsl::not_null<Operon::CreatorBase const*> { &btc },
+        gsl::not_null<Operon::CoefficientInitializerBase const*> { &cfi }, maxDepth);
 
     // Every replacement subtree is a single terminal (the smallest possible),
     // so the result can only shrink or stay the same length - never grow -
@@ -441,7 +462,8 @@ TEST_CASE("RemoveSubtreeMutation on a single-node tree does not crash", "[operat
     auto tree = btc(random, /*targetLen=*/1, 1, maxDepth);
     REQUIRE(tree.Length() == 1);
 
-    RemoveSubtreeMutation const mut(gsl::not_null<Operon::CreatorBase const*> { &btc }, gsl::not_null<Operon::CoefficientInitializerBase const*> { &cfi }, maxDepth);
+    RemoveSubtreeMutation const mut(gsl::not_null<Operon::CreatorBase const*> { &btc },
+        gsl::not_null<Operon::CoefficientInitializerBase const*> { &cfi }, maxDepth);
     auto child = mut(random, tree);
     CHECK(child.Length() == 1);
 }
@@ -464,7 +486,8 @@ TEST_CASE("Mutation tree stays within bounds", "[operators]")
 
     for (int i = 0; i < 100; ++i) {
         auto tree = btc(random, 10, 1, maxDepth);
-        InsertSubtreeMutation const mut(gsl::not_null<Operon::CreatorBase const*> { &btc }, gsl::not_null<Operon::CoefficientInitializerBase const*> { &cfi }, maxLength, maxDepth);
+        InsertSubtreeMutation const mut(gsl::not_null<Operon::CreatorBase const*> { &btc },
+            gsl::not_null<Operon::CoefficientInitializerBase const*> { &cfi }, maxLength, maxDepth);
         auto child = mut(random, tree);
         CHECK(child.Length() > 0);
         CHECK(child.Length() <= static_cast<size_t>(maxLength));
@@ -488,7 +511,8 @@ TEST_CASE("ReplaceSubtreeMutation via PTC2 respects maxDepth", "[operators]")
     // honor it when growing the replacement subtree.
     ProbabilisticTreeCreator const ptc { &grammar, inputs, /* bias= */ 0.0, maxLength };
     UniformCoefficientInitializer cfi;
-    ReplaceSubtreeMutation const mut(gsl::not_null<Operon::CreatorBase const*> { &ptc }, gsl::not_null<Operon::CoefficientInitializerBase const*> { &cfi }, maxDepth, maxLength);
+    ReplaceSubtreeMutation const mut(gsl::not_null<Operon::CreatorBase const*> { &ptc },
+        gsl::not_null<Operon::CoefficientInitializerBase const*> { &cfi }, maxDepth, maxLength);
 
     Operon::RandomGenerator random(42);
 
@@ -527,7 +551,8 @@ TEST_CASE("InsertSubtreeMutation leaves trees without eligible n-ary operators u
     Tree const tree({ variable, sin });
 
     Operon::RandomGenerator random(1234);
-    InsertSubtreeMutation const mut(gsl::not_null<Operon::CreatorBase const*> { &btc }, gsl::not_null<Operon::CoefficientInitializerBase const*> { &cfi }, maxLength, maxDepth);
+    InsertSubtreeMutation const mut(gsl::not_null<Operon::CreatorBase const*> { &btc },
+        gsl::not_null<Operon::CoefficientInitializerBase const*> { &cfi }, maxLength, maxDepth);
     auto child = mut(random, tree);
 
     CHECK(child.Length() == tree.Length());

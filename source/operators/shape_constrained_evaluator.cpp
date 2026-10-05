@@ -9,8 +9,8 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <tuple>
 #include <string_view>
+#include <tuple>
 #include <vector>
 
 #include <fmt/format.h>
@@ -309,8 +309,8 @@ namespace {
             if (bound) {
                 return bound;
             }
-            return tl::unexpected(
-                fmt::format("affine evaluation failed: {}; interval fallback failed: {}", affineResult.error(), bound.error()));
+            return tl::unexpected(fmt::format(
+                "affine evaluation failed: {}; interval fallback failed: {}", affineResult.error(), bound.error()));
         }
         auto const& affine = *affineResult;
         // Catastrophic cancellation can make this float32 enclosure unsound: an intermediate center orders
@@ -813,7 +813,7 @@ auto ValidateShapeBoundMode(ShapeBoundMode mode) -> std::optional<std::string>
 
 auto ParseShapeBoundModeConfig(std::string const& str) -> ShapeBoundModeConfig
 {
-    ShapeBoundModeConfig config{};
+    ShapeBoundModeConfig config {};
     std::size_t pos = 0;
     bool sawBisected = false;
     while (pos <= str.size()) {
@@ -834,7 +834,7 @@ auto ParseShapeBoundModeConfig(std::string const& str) -> ShapeBoundModeConfig
             if (token == "bisected") {
                 // Leave the optional unset so an explicit CLI depth wins.
             } else {
-                auto const depthText = token.substr(std::string_view{"bisected:"}.size());
+                auto const depthText = token.substr(std::string_view { "bisected:" }.size());
                 if (depthText.empty()) {
                     throw std::invalid_argument("shape-bound-mode: bisected: requires a depth");
                 }
@@ -846,7 +846,8 @@ auto ParseShapeBoundModeConfig(std::string const& str) -> ShapeBoundModeConfig
                     throw std::invalid_argument(fmt::format("unable to parse shape-bound-mode depth '{}'", depthText));
                 }
                 if (consumed != depthText.size() || depth < 0 || depth > 20) {
-                    throw std::invalid_argument(fmt::format("shape-bound-mode bisection depth must be in [0, 20] (got '{}')", depthText));
+                    throw std::invalid_argument(
+                        fmt::format("shape-bound-mode bisection depth must be in [0, 20] (got '{}')", depthText));
                 }
                 config.BisectionDepth = depth;
             }
@@ -864,10 +865,7 @@ auto ParseShapeBoundModeConfig(std::string const& str) -> ShapeBoundModeConfig
     return config;
 }
 
-auto ParseShapeBoundMode(std::string const& str) -> ShapeBoundMode
-{
-    return ParseShapeBoundModeConfig(str).Mode;
-}
+auto ParseShapeBoundMode(std::string const& str) -> ShapeBoundMode { return ParseShapeBoundModeConfig(str).Mode; }
 
 auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2) -> std::optional<std::string>
 {
@@ -953,8 +951,8 @@ auto ShapeConstrainedEvaluator::Prepare(Operon::Span<Individual const> pop) cons
     feasibleCache_.Clear();
 }
 
-auto ShapeConstrainedEvaluator::FeasibleFromValues(
-    Operon::Tree const& tree, Operon::Span<Operon::Scalar> values) const -> bool
+auto ShapeConstrainedEvaluator::FeasibleFromValues(Operon::Tree const& tree, Operon::Span<Operon::Scalar> values) const
+    -> bool
 {
     auto const hash = Operon::detail::HashTreeForMemo(tree, static_cast<Operon::Hash>(boundMode_));
     ShapeConstraintMeasurementSummary result;
@@ -983,9 +981,8 @@ auto ShapeConstrainedEvaluator::Evaluate(Operon::Individual const& ind, Operon::
         ++evaluator_->CallCount;
         return tl::unexpected(std::move(evaluated.error()));
     }
-    auto const feasible = evaluated->has_value()
-        ? FeasibleFromValues(ind.Genotype, (*evaluated)->Values(ind, buf))
-        : Feasible(ind.Genotype);
+    auto const feasible = evaluated->has_value() ? FeasibleFromValues(ind.Genotype, (*evaluated)->Values(ind, buf))
+                                                 : Feasible(ind.Genotype);
     if (!feasible) {
         return std::nullopt;
     }

@@ -42,151 +42,159 @@
 namespace Operon::Test {
 namespace {
 
-using DTable = DispatchTable<Operon::Scalar>;
+    using DTable = DispatchTable<Operon::Scalar>;
 
-auto MakeDataset() -> Operon::Dataset
-{
-    std::vector<std::vector<Operon::Scalar>> data(2, std::vector<Operon::Scalar>(10));
-    std::iota(data[0].begin(), data[0].end(), Operon::Scalar{1});
-    for (std::size_t i = 0; i < 10; ++i) { data[1][i] = data[0][i] * Operon::Scalar{2}; }
-    return Operon::Dataset({"X1", "Y"}, data);
-}
-
-auto MakePset() -> Operon::PrimitiveSet
-{
-    Operon::PrimitiveSet p;
-    p.SetConfig(PrimitiveSet::Arithmetic);
-    return p;
-}
-
-// Trimmed down from ga_base.cpp's GaBaseFixture - just enough to populate
-// Parents()/Offspring() via RestoreIndividuals(), which is all ProbeContext reads.
-struct ProbeFixture {
-    static constexpr std::size_t PopSize  = 6;
-    static constexpr std::size_t PoolSize = 4;
-
-    Operon::Dataset Ds{ MakeDataset() };
-    Operon::Problem Problem{ gsl::not_null<Operon::Dataset*>(&Ds) };
-    Operon::PrimitiveSet Pset{ MakePset() };
-    std::vector<Operon::Hash> Vars{ Ds.GetVariable("X1")->Hash };
-
-    DTable Dtable;
-    Operon::Evaluator<DTable>             Evaluator{ &Problem, &Dtable };
-    Operon::SubtreeCrossover              Crossover{ 0.9, /*maxDepth=*/6, /*maxLength=*/20 };
-    Operon::OnePointMutation<std::normal_distribution<Operon::Scalar>> OnePoint;
-    Operon::MultiMutation                 Mutator;
-    Operon::TournamentSelector            FemSel{ Operon::SingleObjectiveComparison{0} };
-    Operon::TournamentSelector            MaleSel{ Operon::SingleObjectiveComparison{0} };
-    Operon::BasicOffspringGenerator       Generator{ &Evaluator, &Crossover, &Mutator, &FemSel, &MaleSel };
-    Operon::KeepBestReinserter            Reinserter{ Operon::SingleObjectiveComparison{0} };
-    Operon::BalancedTreeCreator           Creator{ &Pset, Vars, 0.0, 10 };
-    Operon::UniformTreeInitializer        TreeInit{ &Creator };
-    Operon::UniformCoefficientInitializer CoeffInit;
-    Operon::GeneticAlgorithmConfig        Config{ [] -> Operon::GeneticAlgorithmConfig { Operon::GeneticAlgorithmConfig c; c.PopulationSize = PopSize; c.PoolSize = PoolSize; c.Generations = 1; return c; }() };
-    Operon::GeneticProgrammingAlgorithm   Gp{ Config, &Problem, &TreeInit, &CoeffInit, &Generator, &Reinserter };
-
-    ProbeFixture()
+    auto MakeDataset() -> Operon::Dataset
     {
-        Problem.SetTrainingRange({0, 10});
-        Problem.SetTestRange({0, 10});
-        Problem.SetTarget("Y");
-
-        std::vector<Operon::Individual> inds(PopSize + PoolSize);
-        for (std::size_t i = 0; i < inds.size(); ++i) {
-            inds[i].Fitness.resize(1);
-            inds[i].Fitness[0] = static_cast<Operon::Scalar>(i);
+        std::vector<std::vector<Operon::Scalar>> data(2, std::vector<Operon::Scalar>(10));
+        std::iota(data[0].begin(), data[0].end(), Operon::Scalar { 1 });
+        for (std::size_t i = 0; i < 10; ++i) {
+            data[1][i] = data[0][i] * Operon::Scalar { 2 };
         }
-        Gp.RestoreIndividuals(inds);
+        return Operon::Dataset({ "X1", "Y" }, data);
     }
-};
 
-// Same wiring as ProbeFixture, but with a Zobrist transposition cache wired
-// into GeneticAlgorithmConfig::Cache, for CacheHitRateProbe tests.
-struct CacheProbeFixture {
-    static constexpr std::size_t PopSize = 4;
-    static constexpr std::size_t PoolSize = 2;
+    auto MakePset() -> Operon::PrimitiveSet
+    {
+        Operon::PrimitiveSet p;
+        p.SetConfig(PrimitiveSet::Arithmetic);
+        return p;
+    }
 
-    Operon::Dataset Ds{ MakeDataset() };
-    Operon::Problem Problem{ gsl::not_null<Operon::Dataset*>(&Ds) };
-    Operon::PrimitiveSet Pset{ MakePset() };
-    std::vector<Operon::Hash> Vars{ Ds.GetVariable("X1")->Hash };
+    // Trimmed down from ga_base.cpp's GaBaseFixture - just enough to populate
+    // Parents()/Offspring() via RestoreIndividuals(), which is all ProbeContext reads.
+    struct ProbeFixture {
+        static constexpr std::size_t PopSize = 6;
+        static constexpr std::size_t PoolSize = 4;
 
-    Operon::RandomGenerator CacheRng{1234};
-    Operon::Zobrist Cache{ CacheRng, /*maxLength=*/50, Vars };
+        Operon::Dataset Ds { MakeDataset() };
+        Operon::Problem Problem { gsl::not_null<Operon::Dataset*>(&Ds) };
+        Operon::PrimitiveSet Pset { MakePset() };
+        std::vector<Operon::Hash> Vars { Ds.GetVariable("X1")->Hash };
 
-    DTable Dtable;
-    Operon::Evaluator<DTable>             Evaluator{ &Problem, &Dtable };
-    Operon::SubtreeCrossover              Crossover{ 0.9, /*maxDepth=*/6, /*maxLength=*/20 };
-    Operon::OnePointMutation<std::normal_distribution<Operon::Scalar>> OnePoint;
-    Operon::MultiMutation                 Mutator;
-    Operon::TournamentSelector            FemSel{ Operon::SingleObjectiveComparison{0} };
-    Operon::TournamentSelector            MaleSel{ Operon::SingleObjectiveComparison{0} };
-    Operon::BasicOffspringGenerator       Generator{ &Evaluator, &Crossover, &Mutator, &FemSel, &MaleSel };
-    Operon::KeepBestReinserter            Reinserter{ Operon::SingleObjectiveComparison{0} };
-    Operon::BalancedTreeCreator           Creator{ &Pset, Vars, 0.0, 10 };
-    Operon::UniformTreeInitializer        TreeInit{ &Creator };
-    Operon::UniformCoefficientInitializer CoeffInit;
-    Operon::GeneticProgrammingAlgorithm   Gp{
-        [&] -> Operon::GeneticAlgorithmConfig {
+        DTable Dtable;
+        Operon::Evaluator<DTable> Evaluator { &Problem, &Dtable };
+        Operon::SubtreeCrossover Crossover { 0.9, /*maxDepth=*/6, /*maxLength=*/20 };
+        Operon::OnePointMutation<std::normal_distribution<Operon::Scalar>> OnePoint;
+        Operon::MultiMutation Mutator;
+        Operon::TournamentSelector FemSel { Operon::SingleObjectiveComparison { 0 } };
+        Operon::TournamentSelector MaleSel { Operon::SingleObjectiveComparison { 0 } };
+        Operon::BasicOffspringGenerator Generator { &Evaluator, &Crossover, &Mutator, &FemSel, &MaleSel };
+        Operon::KeepBestReinserter Reinserter { Operon::SingleObjectiveComparison { 0 } };
+        Operon::BalancedTreeCreator Creator { &Pset, Vars, 0.0, 10 };
+        Operon::UniformTreeInitializer TreeInit { &Creator };
+        Operon::UniformCoefficientInitializer CoeffInit;
+        Operon::GeneticAlgorithmConfig Config { [] -> Operon::GeneticAlgorithmConfig {
             Operon::GeneticAlgorithmConfig c;
             c.PopulationSize = PopSize;
             c.PoolSize = PoolSize;
             c.Generations = 1;
-            c.Cache = &Cache;
             return c;
-        }(),
-        &Problem, &TreeInit, &CoeffInit, &Generator, &Reinserter
+        }() };
+        Operon::GeneticProgrammingAlgorithm Gp { Config, &Problem, &TreeInit, &CoeffInit, &Generator, &Reinserter };
+
+        ProbeFixture()
+        {
+            Problem.SetTrainingRange({ 0, 10 });
+            Problem.SetTestRange({ 0, 10 });
+            Problem.SetTarget("Y");
+
+            std::vector<Operon::Individual> inds(PopSize + PoolSize);
+            for (std::size_t i = 0; i < inds.size(); ++i) {
+                inds[i].Fitness.resize(1);
+                inds[i].Fitness[0] = static_cast<Operon::Scalar>(i);
+            }
+            Gp.RestoreIndividuals(inds);
+        }
     };
 
-    CacheProbeFixture()
-    {
-        Problem.SetTrainingRange({0, 10});
-        Problem.SetTestRange({0, 10});
-        Problem.SetTarget("Y");
+    // Same wiring as ProbeFixture, but with a Zobrist transposition cache wired
+    // into GeneticAlgorithmConfig::Cache, for CacheHitRateProbe tests.
+    struct CacheProbeFixture {
+        static constexpr std::size_t PopSize = 4;
+        static constexpr std::size_t PoolSize = 2;
 
-        std::vector<Operon::Individual> inds(PopSize + PoolSize);
-        for (std::size_t i = 0; i < inds.size(); ++i) {
-            inds[i].Fitness.resize(1);
-            inds[i].Fitness[0] = static_cast<Operon::Scalar>(i);
+        Operon::Dataset Ds { MakeDataset() };
+        Operon::Problem Problem { gsl::not_null<Operon::Dataset*>(&Ds) };
+        Operon::PrimitiveSet Pset { MakePset() };
+        std::vector<Operon::Hash> Vars { Ds.GetVariable("X1")->Hash };
+
+        Operon::RandomGenerator CacheRng { 1234 };
+        Operon::Zobrist Cache { CacheRng, /*maxLength=*/50, Vars };
+
+        DTable Dtable;
+        Operon::Evaluator<DTable> Evaluator { &Problem, &Dtable };
+        Operon::SubtreeCrossover Crossover { 0.9, /*maxDepth=*/6, /*maxLength=*/20 };
+        Operon::OnePointMutation<std::normal_distribution<Operon::Scalar>> OnePoint;
+        Operon::MultiMutation Mutator;
+        Operon::TournamentSelector FemSel { Operon::SingleObjectiveComparison { 0 } };
+        Operon::TournamentSelector MaleSel { Operon::SingleObjectiveComparison { 0 } };
+        Operon::BasicOffspringGenerator Generator { &Evaluator, &Crossover, &Mutator, &FemSel, &MaleSel };
+        Operon::KeepBestReinserter Reinserter { Operon::SingleObjectiveComparison { 0 } };
+        Operon::BalancedTreeCreator Creator { &Pset, Vars, 0.0, 10 };
+        Operon::UniformTreeInitializer TreeInit { &Creator };
+        Operon::UniformCoefficientInitializer CoeffInit;
+        Operon::GeneticProgrammingAlgorithm Gp { [&] -> Operon::GeneticAlgorithmConfig {
+                                                    Operon::GeneticAlgorithmConfig c;
+                                                    c.PopulationSize = PopSize;
+                                                    c.PoolSize = PoolSize;
+                                                    c.Generations = 1;
+                                                    c.Cache = &Cache;
+                                                    return c;
+                                                }(),
+            &Problem, &TreeInit, &CoeffInit, &Generator, &Reinserter };
+
+        CacheProbeFixture()
+        {
+            Problem.SetTrainingRange({ 0, 10 });
+            Problem.SetTestRange({ 0, 10 });
+            Problem.SetTarget("Y");
+
+            std::vector<Operon::Individual> inds(PopSize + PoolSize);
+            for (std::size_t i = 0; i < inds.size(); ++i) {
+                inds[i].Fitness.resize(1);
+                inds[i].Fitness[0] = static_cast<Operon::Scalar>(i);
+            }
+            Gp.RestoreIndividuals(inds);
         }
-        Gp.RestoreIndividuals(inds);
-    }
-};
+    };
 
-// Records every generation it was invoked on, and emits a scalar + a vector
-// so both ResultValue shapes get exercised through ProbeContext::Emit.
-struct RecordingProbe final : Operon::GenerationProbe {
-    std::vector<std::size_t> Seen;
-    int FinishCount{0};
-    // Outlives the probe, for tests checking Finish() after the owning
-    // ProbeChain (and thus this probe) is already destroyed.
-    int* ExternalFinishCount{nullptr};
+    // Records every generation it was invoked on, and emits a scalar + a vector
+    // so both ResultValue shapes get exercised through ProbeContext::Emit.
+    struct RecordingProbe final : Operon::GenerationProbe {
+        std::vector<std::size_t> Seen;
+        int FinishCount { 0 };
+        // Outlives the probe, for tests checking Finish() after the owning
+        // ProbeChain (and thus this probe) is already destroyed.
+        int* ExternalFinishCount { nullptr };
 
-    auto operator()(Operon::ProbeContext& ctx) -> void override
+        auto operator()(Operon::ProbeContext& ctx) -> void override
+        {
+            Seen.push_back(ctx.Generation());
+            // Exercises every ResultValue alternative, not just int64_t/vector<double>.
+            ctx.Emit("seen_count", static_cast<std::int64_t>(Seen.size()));
+            ctx.Emit("mean", 1.5);
+            ctx.Emit("flag", true);
+            ctx.Emit("label", std::string { "gen" });
+            ctx.Emit("counts", std::vector<std::int64_t> { 1, 2, 3 });
+            ctx.Emit("readings", std::vector<double> { 1.0, 2.0, 3.0 });
+        }
+
+        auto Finish() -> void override
+        {
+            ++FinishCount;
+            if (ExternalFinishCount != nullptr) {
+                ++*ExternalFinishCount;
+            }
+        }
+    };
+
+    // Generation() returns a mutable reference for non-const callers (same as
+    // production's ++Generation() in source/algorithms/gp.cpp); no setter exists.
+    auto AdvanceTo(Operon::GeneticProgrammingAlgorithm& gp, std::size_t generation) -> void
     {
-        Seen.push_back(ctx.Generation());
-        // Exercises every ResultValue alternative, not just int64_t/vector<double>.
-        ctx.Emit("seen_count", static_cast<std::int64_t>(Seen.size()));
-        ctx.Emit("mean", 1.5);
-        ctx.Emit("flag", true);
-        ctx.Emit("label", std::string{"gen"});
-        ctx.Emit("counts", std::vector<std::int64_t>{1, 2, 3});
-        ctx.Emit("readings", std::vector<double>{1.0, 2.0, 3.0});
+        gp.Generation() = generation;
     }
-
-    auto Finish() -> void override
-    {
-        ++FinishCount;
-        if (ExternalFinishCount != nullptr) { ++*ExternalFinishCount; }
-    }
-};
-
-// Generation() returns a mutable reference for non-const callers (same as
-// production's ++Generation() in source/algorithms/gp.cpp); no setter exists.
-auto AdvanceTo(Operon::GeneticProgrammingAlgorithm& gp, std::size_t generation) -> void
-{
-    gp.Generation() = generation;
-}
 
 } // namespace
 
@@ -194,19 +202,19 @@ TEST_CASE("ProbeContext exposes the wrapped algorithm's read surface", "[probes]
 {
     ProbeFixture f;
     Operon::ResultRecord record;
-    Operon::ProbeContext ctx{f.Gp, record};
+    Operon::ProbeContext ctx { f.Gp, record };
 
     CHECK(ctx.Generation() == 0);
     CHECK(ctx.Parents().size() == ProbeFixture::PopSize);
     CHECK(ctx.Offspring().size() == ProbeFixture::PoolSize);
     CHECK(ctx.Problem() == &f.Problem);
 
-    ctx.Emit("x", std::int64_t{42});
+    ctx.Emit("x", std::int64_t { 42 });
     REQUIRE(record.contains("x"));
     CHECK(std::get<std::int64_t>(record.at("x")) == 42);
 
     // Emit overwrites, it doesn't accumulate.
-    ctx.Emit("x", std::int64_t{7});
+    ctx.Emit("x", std::int64_t { 7 });
     CHECK(record.size() == 1);
     CHECK(std::get<std::int64_t>(record.at("x")) == 7);
 }
@@ -224,7 +232,7 @@ TEST_CASE("ProbeChain runs a probe every generation by default", "[probes]")
         chain(f.Gp);
     }
 
-    REQUIRE(probe->Seen == std::vector<std::size_t>{0, 1, 2, 3});
+    REQUIRE(probe->Seen == std::vector<std::size_t> { 0, 1, 2, 3 });
 
     chain.Finish();
     CHECK(probe->FinishCount == 1);
@@ -275,7 +283,7 @@ TEST_CASE("ProbeChain respects every/offset scheduling", "[probes]")
         chain(f.Gp);
     }
 
-    CHECK(probe->Seen == std::vector<std::size_t>{1, 3, 5});
+    CHECK(probe->Seen == std::vector<std::size_t> { 1, 3, 5 });
 }
 
 TEST_CASE("ProbeChain every=0 disables a probe without removing it", "[probes]")
@@ -314,8 +322,8 @@ TEST_CASE("ProbeChain runs every registered probe and later probes win on shared
     chain(f.Gp);
 
     // Both probes ran (each independently tracks that it saw generation 0).
-    CHECK(firstPtr->Seen == std::vector<std::size_t>{0});
-    CHECK(secondPtr->Seen == std::vector<std::size_t>{0});
+    CHECK(firstPtr->Seen == std::vector<std::size_t> { 0 });
+    CHECK(secondPtr->Seen == std::vector<std::size_t> { 0 });
 }
 
 TEST_CASE("ProbeChain move-construction preserves single Finish() semantics", "[probes]")
@@ -327,7 +335,7 @@ TEST_CASE("ProbeChain move-construction preserves single Finish() semantics", "[
     Operon::ProbeChain original;
     original.Add(std::move(owned));
 
-    Operon::ProbeChain moved{std::move(original)};
+    Operon::ProbeChain moved { std::move(original) };
     CHECK(finishCount == 0);
 
     // The moved-from chain's entries_ is now empty, so its destructor's
@@ -359,7 +367,9 @@ TEST_CASE("JsonlSink writes one line per generation that ran a probe, none other
     std::ifstream in(path);
     std::vector<std::string> lines;
     for (std::string line; std::getline(in, line);) {
-        if (!line.empty()) { lines.push_back(line); }
+        if (!line.empty()) {
+            lines.push_back(line);
+        }
     }
     in.close();
     std::filesystem::remove(path);
@@ -399,7 +409,9 @@ TEST_CASE("JsonlSink truncates a pre-existing file rather than appending", "[pro
     std::ifstream in(path);
     std::vector<std::string> lines;
     for (std::string line; std::getline(in, line);) {
-        if (!line.empty()) { lines.push_back(line); }
+        if (!line.empty()) {
+            lines.push_back(line);
+        }
     }
     in.close();
     std::filesystem::remove(path);
@@ -418,7 +430,7 @@ TEST_CASE("JsonlSink reports IsOpen() == false when it fails to open", "[probes]
 
     // Write() on a sink that failed to open must no-op, not crash.
     Operon::ResultRecord record;
-    record.insert_or_assign("x", std::int64_t{1});
+    record.insert_or_assign("x", std::int64_t { 1 });
     sink.Write(record);
 }
 
@@ -427,9 +439,10 @@ TEST_CASE("ProbeRegistry creates probes by registered type name", "[probes]")
     Operon::ProbeRegistry registry;
     CHECK_FALSE(registry.Contains("recording"));
 
-    registry.Register("recording", [](Operon::ProbeParams const& /*params*/) -> std::unique_ptr<Operon::GenerationProbe> {
-        return std::make_unique<RecordingProbe>();
-    });
+    registry.Register(
+        "recording", [](Operon::ProbeParams const& /*params*/) -> std::unique_ptr<Operon::GenerationProbe> {
+            return std::make_unique<RecordingProbe>();
+        });
     CHECK(registry.Contains("recording"));
 
     auto probe = registry.Create("recording", {});
@@ -442,14 +455,15 @@ TEST_CASE("ProbeRegistry creates probes by registered type name", "[probes]")
 TEST_CASE("ProbeRegistry factory receives its params", "[probes]")
 {
     Operon::ProbeRegistry registry;
-    registry.Register("check-params", [](Operon::ProbeParams const& params) -> std::unique_ptr<Operon::GenerationProbe> {
-        REQUIRE(params.contains("path"));
-        CHECK(params.at("path").Get<std::string>() == "out.beve");
-        return std::make_unique<RecordingProbe>();
-    });
+    registry.Register(
+        "check-params", [](Operon::ProbeParams const& params) -> std::unique_ptr<Operon::GenerationProbe> {
+            REQUIRE(params.contains("path"));
+            CHECK(params.at("path").Get<std::string>() == "out.beve");
+            return std::make_unique<RecordingProbe>();
+        });
 
     Operon::ProbeParams params;
-    params.insert_or_assign("path", Operon::ProbeParamValue{std::string{"out.beve"}});
+    params.insert_or_assign("path", Operon::ProbeParamValue { std::string { "out.beve" } });
     auto probe = registry.Create("check-params", params);
     CHECK(probe != nullptr);
 }
@@ -475,7 +489,7 @@ TEST_CASE("RegisterBuiltinProbes: population_trace requires a 'path' param", "[p
 
     Operon::ProbeParams params;
     auto const path = std::filesystem::temp_directory_path() / "operon_probes_builtin_test.beve";
-    params.insert_or_assign("path", Operon::ProbeParamValue{path.string()});
+    params.insert_or_assign("path", Operon::ProbeParamValue { path.string() });
     auto probe = registry.Create("population_trace", params);
     REQUIRE(probe != nullptr);
     probe.reset(); // Windows can't remove a file with an open handle
@@ -488,7 +502,7 @@ TEST_CASE("RegisterBuiltinProbes: population_trace rejects a non-string 'path' w
     Operon::RegisterBuiltinProbes(registry);
 
     Operon::ProbeParams params;
-    params.insert_or_assign("path", Operon::ProbeParamValue{std::int64_t{123}});
+    params.insert_or_assign("path", Operon::ProbeParamValue { std::int64_t { 123 } });
     // Must be a descriptive std::runtime_error, not a raw std::bad_variant_access
     // from an unchecked Get<std::string>() inside the factory.
     CHECK_THROWS_AS(registry.Create("population_trace", params), std::runtime_error);
@@ -511,19 +525,19 @@ TEST_CASE("RegisterBuiltinProbes: structural_diversity accepts strict/relaxed an
     CHECK(registry.Create("structural_diversity", {}) != nullptr); // defaults to strict
 
     Operon::ProbeParams strict;
-    strict.insert_or_assign("hash_mode", Operon::ProbeParamValue{std::string{"strict"}});
+    strict.insert_or_assign("hash_mode", Operon::ProbeParamValue { std::string { "strict" } });
     CHECK(registry.Create("structural_diversity", strict) != nullptr);
 
     Operon::ProbeParams relaxed;
-    relaxed.insert_or_assign("hash_mode", Operon::ProbeParamValue{std::string{"relaxed"}});
+    relaxed.insert_or_assign("hash_mode", Operon::ProbeParamValue { std::string { "relaxed" } });
     CHECK(registry.Create("structural_diversity", relaxed) != nullptr);
 
     Operon::ProbeParams bogus;
-    bogus.insert_or_assign("hash_mode", Operon::ProbeParamValue{std::string{"bogus"}});
+    bogus.insert_or_assign("hash_mode", Operon::ProbeParamValue { std::string { "bogus" } });
     CHECK_THROWS_AS(registry.Create("structural_diversity", bogus), std::runtime_error);
 
     Operon::ProbeParams wrongType;
-    wrongType.insert_or_assign("hash_mode", Operon::ProbeParamValue{true});
+    wrongType.insert_or_assign("hash_mode", Operon::ProbeParamValue { true });
     // Must be a descriptive std::runtime_error, not a raw std::bad_variant_access.
     CHECK_THROWS_AS(registry.Create("structural_diversity", wrongType), std::runtime_error);
 }
@@ -545,7 +559,7 @@ TEST_CASE("PopulationTraceProbe appends framed BEVE population dumps", "[probes]
         for (std::size_t g = 0; g < 3; ++g) {
             AdvanceTo(f.Gp, g);
             Operon::ResultRecord record;
-            Operon::ProbeContext ctx{f.Gp, record};
+            Operon::ProbeContext ctx { f.Gp, record };
             probe(ctx);
             REQUIRE(record.contains("trace_bytes"));
             CHECK(std::get<std::int64_t>(record.at("trace_bytes")) == static_cast<std::int64_t>(expectedBytes.size()));
@@ -556,8 +570,8 @@ TEST_CASE("PopulationTraceProbe appends framed BEVE population dumps", "[probes]
     std::ifstream in(path, std::ios::binary);
     REQUIRE(in.is_open());
     for (std::uint64_t expectedGen = 0; expectedGen < 3; ++expectedGen) {
-        std::uint64_t generation{};
-        std::uint64_t length{};
+        std::uint64_t generation {};
+        std::uint64_t length {};
         in.read(reinterpret_cast<char*>(&generation), sizeof(generation));
         in.read(reinterpret_cast<char*>(&length), sizeof(length));
         REQUIRE(in);
@@ -569,7 +583,7 @@ TEST_CASE("PopulationTraceProbe appends framed BEVE population dumps", "[probes]
         REQUIRE(in);
         CHECK(bytes == expectedBytes);
     }
-    char extra{};
+    char extra {};
     in.read(&extra, 1);
     CHECK(in.eof()); // exactly 3 frames, nothing trailing
     in.close(); // Windows can't remove a file with an open handle
@@ -588,7 +602,7 @@ TEST_CASE("CacheHitRateProbe emits nothing when no cache is configured", "[probe
 {
     ProbeFixture f;
     Operon::ResultRecord record;
-    Operon::ProbeContext ctx{f.Gp, record};
+    Operon::ProbeContext ctx { f.Gp, record };
 
     Operon::CacheHitRateProbe probe;
     probe(ctx);
@@ -601,9 +615,9 @@ TEST_CASE("CacheHitRateProbe reports per-generation deltas of hits/lookups/rate/
     CacheProbeFixture f;
     Operon::CacheHitRateProbe probe;
 
-    auto const hash1 = Operon::Hash{1};
-    auto const hash2 = Operon::Hash{2};
-    f.Cache.Insert(hash1, { Operon::Scalar{0.1} });
+    auto const hash1 = Operon::Hash { 1 };
+    auto const hash2 = Operon::Hash { 2 };
+    f.Cache.Insert(hash1, { Operon::Scalar { 0.1 } });
 
     Operon::Vector<Operon::Scalar> val;
     std::ignore = f.Cache.TryGet(hash1, val); // hit
@@ -611,7 +625,7 @@ TEST_CASE("CacheHitRateProbe reports per-generation deltas of hits/lookups/rate/
 
     {
         Operon::ResultRecord record;
-        Operon::ProbeContext ctx{f.Gp, record};
+        Operon::ProbeContext ctx { f.Gp, record };
         probe(ctx);
         CHECK(std::get<std::int64_t>(record.at("cache_hits")) == 1);
         CHECK(std::get<std::int64_t>(record.at("cache_lookups")) == 2);
@@ -623,7 +637,7 @@ TEST_CASE("CacheHitRateProbe reports per-generation deltas of hits/lookups/rate/
     // back to 0 rather than dividing by zero.
     {
         Operon::ResultRecord record;
-        Operon::ProbeContext ctx{f.Gp, record};
+        Operon::ProbeContext ctx { f.Gp, record };
         probe(ctx);
         CHECK(std::get<std::int64_t>(record.at("cache_hits")) == 0);
         CHECK(std::get<std::int64_t>(record.at("cache_lookups")) == 0);
@@ -637,14 +651,14 @@ TEST_CASE("CacheHitRateProbe does not underflow when the cache is Clear()-ed bet
     CacheProbeFixture f;
     Operon::CacheHitRateProbe probe;
 
-    auto const hash1 = Operon::Hash{1};
-    f.Cache.Insert(hash1, { Operon::Scalar{0.1} });
+    auto const hash1 = Operon::Hash { 1 };
+    f.Cache.Insert(hash1, { Operon::Scalar { 0.1 } });
     Operon::Vector<Operon::Scalar> val;
     std::ignore = f.Cache.TryGet(hash1, val); // hit -> cumulative hits=1, lookups=1
 
     {
         Operon::ResultRecord record;
-        Operon::ProbeContext ctx{f.Gp, record};
+        Operon::ProbeContext ctx { f.Gp, record };
         probe(ctx);
         CHECK(std::get<std::int64_t>(record.at("cache_hits")) == 1);
         CHECK(std::get<std::int64_t>(record.at("cache_lookups")) == 1);
@@ -657,7 +671,7 @@ TEST_CASE("CacheHitRateProbe does not underflow when the cache is Clear()-ed bet
     f.Cache.Clear();
     {
         Operon::ResultRecord record;
-        Operon::ProbeContext ctx{f.Gp, record};
+        Operon::ProbeContext ctx { f.Gp, record };
         probe(ctx);
         CHECK(std::get<std::int64_t>(record.at("cache_hits")) == 0);
         CHECK(std::get<std::int64_t>(record.at("cache_lookups")) == 0);
@@ -666,11 +680,11 @@ TEST_CASE("CacheHitRateProbe does not underflow when the cache is Clear()-ed bet
 
     // Activity resumes post-reset - deltas should reflect it normally, not
     // still be thrown off by the earlier reset.
-    f.Cache.Insert(hash1, { Operon::Scalar{0.2} });
+    f.Cache.Insert(hash1, { Operon::Scalar { 0.2 } });
     std::ignore = f.Cache.TryGet(hash1, val);
     {
         Operon::ResultRecord record;
-        Operon::ProbeContext ctx{f.Gp, record};
+        Operon::ProbeContext ctx { f.Gp, record };
         probe(ctx);
         CHECK(std::get<std::int64_t>(record.at("cache_hits")) == 1);
         CHECK(std::get<std::int64_t>(record.at("cache_lookups")) == 1);
@@ -681,12 +695,14 @@ TEST_CASE("PopulationDiversity: 0 for identical trees, positive for different on
 {
     ProbeFixture f;
     Operon::RandomGenerator rng(42);
-    Operon::BalancedTreeCreator creator{ &f.Pset, f.Vars, 0.0, 10 };
+    Operon::BalancedTreeCreator creator { &f.Pset, f.Vars, 0.0, 10 };
     auto treeA = creator(rng, 5, 1, 10);
     auto treeB = creator(rng, 8, 1, 10); // different target size - vanishingly unlikely to collide
 
     std::vector<Operon::Individual> identical(3);
-    for (auto& ind : identical) { ind.Genotype = treeA; }
+    for (auto& ind : identical) {
+        ind.Genotype = treeA;
+    }
     CHECK(Operon::PopulationDiversity(identical) == 0.0);
 
     std::vector<Operon::Individual> mixed(2);
@@ -710,7 +726,7 @@ TEST_CASE("PopulationDiversity handles individuals with an empty/default Genotyp
     // have a default-constructed (zero-length) Genotype, exactly this case.
     ProbeFixture f;
     Operon::RandomGenerator rng(11);
-    Operon::BalancedTreeCreator creator{ &f.Pset, f.Vars, 0.0, 10 };
+    Operon::BalancedTreeCreator creator { &f.Pset, f.Vars, 0.0, 10 };
     auto tree = creator(rng, 5, 1, 10);
 
     std::vector<Operon::Individual> bothEmpty(2); // default Genotype on both
@@ -734,12 +750,14 @@ TEST_CASE("StructuralDiversityProbe emits diversity_jaccard from ctx.Parents()",
 {
     ProbeFixture f;
     Operon::RandomGenerator rng(7);
-    Operon::BalancedTreeCreator creator{ &f.Pset, f.Vars, 0.0, 10 };
+    Operon::BalancedTreeCreator creator { &f.Pset, f.Vars, 0.0, 10 };
     auto tree = creator(rng, 5, 1, 10);
-    for (auto& ind : f.Gp.Parents()) { ind.Genotype = tree; }
+    for (auto& ind : f.Gp.Parents()) {
+        ind.Genotype = tree;
+    }
 
     Operon::ResultRecord record;
-    Operon::ProbeContext ctx{f.Gp, record};
+    Operon::ProbeContext ctx { f.Gp, record };
     Operon::StructuralDiversityProbe probe;
     probe(ctx);
 

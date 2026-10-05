@@ -43,14 +43,25 @@ auto const kCorpus = std::vector<CorpusCase> {
     { "ia_difference_square", { { "X1", { 0, 10 } }, { "X2", { 0, 10 } } }, "(X1 - X2) ^ 2" },
     { "ia_product_cancellation", { { "X1", { 0, 10 } }, { "X2", { 0, 10 } } }, "X1 * X2 - X1 * X2" },
     { "ia_difference_of_squares", { { "X1", { 0, 10 } }, { "X2", { 0, 10 } } }, "(X1 - X2) * (X1 + X2)" },
-    { "feynman_gravitation", { { "G", { 1, 2 } }, { "m1", { 1, 2 } }, { "m2", { 1, 2 } }, { "x1", { 3, 4 } }, { "x2", { 1, 2 } }, { "y1", { 3, 4 } }, { "y2", { 1, 2 } }, { "z1", { 3, 4 } }, { "z2", { 1, 2 } } },
+    { "feynman_gravitation",
+        { { "G", { 1, 2 } }, { "m1", { 1, 2 } }, { "m2", { 1, 2 } }, { "x1", { 3, 4 } }, { "x2", { 1, 2 } },
+            { "y1", { 3, 4 } }, { "y2", { 1, 2 } }, { "z1", { 3, 4 } }, { "z2", { 1, 2 } } },
         "G * m1 * m2 / ((x2 - x1) ^ 2 + (y2 - y1) ^ 2 + (z2 - z1) ^ 2)" },
-    { "feynman_planck", { { "omega", { 1, 5 } }, { "T", { 1, 5 } }, { "h", { 1, 5 } }, { "kb", { 1, 5 } }, { "c", { 1, 5 } } },
+    { "feynman_planck",
+        { { "omega", { 1, 5 } }, { "T", { 1, 5 } }, { "h", { 1, 5 } }, { "kb", { 1, 5 } }, { "c", { 1, 5 } } },
         "h * omega ^ 3 / (3.141592653589793 ^ 2 * c ^ 2 * (exp(h * omega / (kb * T)) - 1))" },
     { "operon_gp_i_48_20", { { "c", { 3, 10 } }, { "v", { 1, 2 } }, { "m", { 1, 5 } } },
-        "((-1.833329) + (0.854424 * ((((((-0.396240) * c) ^ 2) * (((2.610423 ^ 2) / cos((((-1.972425) * v) / (tanh((((0.572300 * v) / (tanh((0.199622 * c)) + ((-0.739473) * c))) ^ 2)) + ((-1.927949) * c))))) * (1.093432 * m))) + ((0.572300 * v) / ((tanh(((-0.739473) * c)) * (((tanh((-1.058995)) / ((-0.469899) * m)) + ((((-0.411143) * v) / ((-0.469899) * m)) / (0.199622 * c))) + ((0.572300 * v) / ((0.376507 * c) ^ 2)))) + ((-0.396240) * c)))) + (0.846632 / exp(tanh(((-0.739473) * c)))))))" },
+        "((-1.833329) + (0.854424 * ((((((-0.396240) * c) ^ 2) * (((2.610423 ^ 2) / cos((((-1.972425) * v) / "
+        "(tanh((((0.572300 * v) / (tanh((0.199622 * c)) + ((-0.739473) * c))) ^ 2)) + ((-1.927949) * c))))) * "
+        "(1.093432 * m))) + ((0.572300 * v) / ((tanh(((-0.739473) * c)) * (((tanh((-1.058995)) / ((-0.469899) * m)) + "
+        "((((-0.411143) * v) / ((-0.469899) * m)) / (0.199622 * c))) + ((0.572300 * v) / ((0.376507 * c) ^ 2)))) + "
+        "((-0.396240) * c)))) + (0.846632 / exp(tanh(((-0.739473) * c)))))))" },
     { "operon_gp_fuel_flow", { { "Astar", { 0.5, 1.5 } }, { "T0", { 250, 260 } }, { "p0", { 400000, 600000 } } },
-        "((-0.026927) + (0.026880 * ((((tanh((cos((((0.449930 * Astar) / (1.366455 * T0)) * (6.154615 * p0))) / tanh(tanh(tanh(tanh(exp(((-0.760431) * T0)))))))) / ((cos(tanh(tanh(((-1.112441) * T0)))) / ((-0.836549) * T0)) * (5.931292 * p0))) + (((0.449930 * Astar) / (1.366455 * T0)) * (6.154615 * p0))) * (sqrt((1.354045 * T0)) * cos(cos(tanh((-0.544384)))))) + cos(tanh(tanh(tanh((((0.254493 * Astar) / cos(tanh(exp(((-0.760431) * T0))))) * 0.189909))))))))" },
+        "((-0.026927) + (0.026880 * ((((tanh((cos((((0.449930 * Astar) / (1.366455 * T0)) * (6.154615 * p0))) / "
+        "tanh(tanh(tanh(tanh(exp(((-0.760431) * T0)))))))) / ((cos(tanh(tanh(((-1.112441) * T0)))) / ((-0.836549) * "
+        "T0)) * (5.931292 * p0))) + (((0.449930 * Astar) / (1.366455 * T0)) * (6.154615 * p0))) * (sqrt((1.354045 * "
+        "T0)) * cos(cos(tanh((-0.544384)))))) + cos(tanh(tanh(tanh((((0.254493 * Astar) / cos(tanh(exp(((-0.760431) * "
+        "T0))))) * 0.189909))))))))" },
 };
 
 struct Outcome {
@@ -148,8 +159,8 @@ auto EvaluateGrid(Operon::Tree const& tree, DomainMap const& root, std::vector<O
         for (std::size_t axis = 0; axis < axes.size(); ++axis) {
             auto const [lo, hi] = root.at(axes[axis]);
             auto const step = (hi - lo) / static_cast<Scalar>(std::size_t { 1 } << splits[axis]);
-            leafDomains[axes[axis]] = { lo + static_cast<Scalar>(cell[axis]) * step,
-                lo + static_cast<Scalar>(cell[axis] + 1) * step };
+            leafDomains[axes[axis]]
+                = { lo + static_cast<Scalar>(cell[axis]) * step, lo + static_cast<Scalar>(cell[axis] + 1) * step };
         }
         auto const bound = Evaluate(tree, leafDomains, evaluations);
         if (!bound) {
@@ -235,28 +246,31 @@ struct Method {
 };
 
 auto const kMethods = std::vector<Method> {
-    { "widest", [](auto const& tree, auto const& domains, int depth) {
-         auto const axes = ReferencedAxes(tree, domains);
-         return EvaluateGrid(tree, domains, axes, RepeatedAxisSchedule(tree, domains, depth, false));
-     } },
-    { "occurrence", [](auto const& tree, auto const& domains, int depth) {
-         auto const axes = ReferencedAxes(tree, domains);
-         return EvaluateGrid(tree, domains, axes, RepeatedAxisSchedule(tree, domains, depth, true));
-     } },
-    { "round_robin", [](auto const& tree, auto const& domains, int depth) {
-         auto const axes = ReferencedAxes(tree, domains);
-         return EvaluateGrid(tree, domains, axes, RoundRobinSchedule(tree, domains, depth));
-     } },
-    { "greedy_grid", [](auto const& tree, auto const& domains, int depth) {
-         auto const axes = ReferencedAxes(tree, domains);
-         auto [schedule, probes] = GreedyGridSchedule(tree, domains, depth);
-         auto outcome = EvaluateGrid(tree, domains, axes, schedule);
-         outcome.evaluations += probes;
-         return outcome;
-     } },
-    { "simplify_widest", [](auto const& tree, auto const& domains, int depth) {
-         return SimplifiedWidest(tree, domains, depth);
-     } },
+    { "widest",
+        [](auto const& tree, auto const& domains, int depth) {
+            auto const axes = ReferencedAxes(tree, domains);
+            return EvaluateGrid(tree, domains, axes, RepeatedAxisSchedule(tree, domains, depth, false));
+        } },
+    { "occurrence",
+        [](auto const& tree, auto const& domains, int depth) {
+            auto const axes = ReferencedAxes(tree, domains);
+            return EvaluateGrid(tree, domains, axes, RepeatedAxisSchedule(tree, domains, depth, true));
+        } },
+    { "round_robin",
+        [](auto const& tree, auto const& domains, int depth) {
+            auto const axes = ReferencedAxes(tree, domains);
+            return EvaluateGrid(tree, domains, axes, RoundRobinSchedule(tree, domains, depth));
+        } },
+    { "greedy_grid",
+        [](auto const& tree, auto const& domains, int depth) {
+            auto const axes = ReferencedAxes(tree, domains);
+            auto [schedule, probes] = GreedyGridSchedule(tree, domains, depth);
+            auto outcome = EvaluateGrid(tree, domains, axes, schedule);
+            outcome.evaluations += probes;
+            return outcome;
+        } },
+    { "simplify_widest",
+        [](auto const& tree, auto const& domains, int depth) { return SimplifiedWidest(tree, domains, depth); } },
 };
 
 void RunCase(nb::Bench& bench, CorpusCase const& corpus, int depth)
@@ -267,9 +281,9 @@ void RunCase(nb::Bench& bench, CorpusCase const& corpus, int depth)
     REQUIRE(direct);
     auto const directWidth = Width(*direct);
 
-    fmt::print("\n{} nodes={} depth={} leaves={} direct=[{:.8g},{:.8g}] width={:.8g}\n",
-        corpus.name, prepared.tree.Length(), depth, std::size_t { 1 } << depth,
-        static_cast<double>(direct->inf()), static_cast<double>(direct->sup()), directWidth);
+    fmt::print("\n{} nodes={} depth={} leaves={} direct=[{:.8g},{:.8g}] width={:.8g}\n", corpus.name,
+        prepared.tree.Length(), depth, std::size_t { 1 } << depth, static_cast<double>(direct->inf()),
+        static_cast<double>(direct->sup()), directWidth);
     for (auto const& method : kMethods) {
         Outcome latest;
         bench.run(fmt::format("{} {} d{}", corpus.name, method.name, depth), [&] {
@@ -282,8 +296,8 @@ void RunCase(nb::Bench& bench, CorpusCase const& corpus, int depth)
         auto const width = Width(*latest.bound);
         auto const reduction = directWidth > 0 ? 100.0 * (directWidth - width) / directWidth : 0.0;
         auto const ns = bench.results().back().average(nb::Result::Measure::elapsed) * 1e9;
-        fmt::print("  {:16s} width={:12.8g} reduction={:7.3f}% evals={:5d} time={:11.1f}ns\n",
-            method.name, width, reduction, latest.evaluations, ns);
+        fmt::print("  {:16s} width={:12.8g} reduction={:7.3f}% evals={:5d} time={:11.1f}ns\n", method.name, width,
+            reduction, latest.evaluations, ns);
     }
 }
 

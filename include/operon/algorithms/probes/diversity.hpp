@@ -35,14 +35,18 @@ namespace detail {
 // length): schedule sparingly via ProbeChain's `every`.
 [[nodiscard]] inline auto PopulationDiversity(Span<Individual const> pop, HashMode mode = HashMode::Strict) -> double
 {
-    if (pop.size() < 2) { return 0.0; }
+    if (pop.size() < 2) {
+        return 0.0;
+    }
 
     std::vector<Vector<Hash>> hashes;
     hashes.reserve(pop.size());
-    for (auto const& ind : pop) { hashes.push_back(detail::SortedNodeHashes(ind.Genotype, mode)); }
+    for (auto const& ind : pop) {
+        hashes.push_back(detail::SortedNodeHashes(ind.Genotype, mode));
+    }
 
-    double sum{0};
-    std::size_t count{0};
+    double sum { 0 };
+    std::size_t count { 0 };
     for (std::size_t i = 0; i + 1 < pop.size(); ++i) {
         for (std::size_t j = i + 1; j < pop.size(); ++j) {
             sum += Distance::Jaccard(hashes[i], hashes[j]);
@@ -54,7 +58,10 @@ namespace detail {
 
 class StructuralDiversityProbe final : public GenerationProbe {
 public:
-    explicit StructuralDiversityProbe(HashMode mode = HashMode::Strict) : mode_(mode) { }
+    explicit StructuralDiversityProbe(HashMode mode = HashMode::Strict)
+        : mode_(mode)
+    {
+    }
 
     auto operator()(ProbeContext& ctx) -> void override
     {

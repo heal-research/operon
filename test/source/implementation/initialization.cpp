@@ -5,8 +5,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
-#include <random>
 #include <future>
+#include <random>
 
 #include "../operon_test.hpp"
 
@@ -18,30 +18,32 @@
 namespace Operon::Test {
 namespace {
 
-auto GenerateTrees(Operon::RandomGenerator& random, Operon::CreatorBase& creator, std::vector<size_t> lengths, size_t maxDepth) -> std::vector<Tree>
-{
-    std::vector<Tree> trees;
-    trees.reserve(lengths.size());
-    UniformTreeInitializer treeInit(&creator);
-    treeInit.ParameterizeDistribution(1UL, 100UL);
-    treeInit.SetMaxDepth(maxDepth);
-    UniformCoefficientInitializer coeffInit;
-    coeffInit.ParameterizeDistribution(Operon::Scalar{-1}, Operon::Scalar{+1});
+    auto GenerateTrees(Operon::RandomGenerator& random, Operon::CreatorBase& creator, std::vector<size_t> lengths,
+        size_t maxDepth) -> std::vector<Tree>
+    {
+        std::vector<Tree> trees;
+        trees.reserve(lengths.size());
+        UniformTreeInitializer treeInit(&creator);
+        treeInit.ParameterizeDistribution(1UL, 100UL);
+        treeInit.SetMaxDepth(maxDepth);
+        UniformCoefficientInitializer coeffInit;
+        coeffInit.ParameterizeDistribution(Operon::Scalar { -1 }, Operon::Scalar { +1 });
 
-    std::transform(lengths.begin(), lengths.end(), std::back_inserter(trees), [&](size_t /*not used*/) -> Operon::Tree {
-        auto tree = treeInit(random);
-        coeffInit(random, tree);
-        return tree;
-    });
+        std::transform(
+            lengths.begin(), lengths.end(), std::back_inserter(trees), [&](size_t /*not used*/) -> Operon::Tree {
+                auto tree = treeInit(random);
+                coeffInit(random, tree);
+                return tree;
+            });
 
-    return trees;
-}
+        return trees;
+    }
 } // namespace
 
 TEST_CASE("Grammar sampling", "[operators]")
 {
     PrimitiveSet grammar;
-    grammar.SetConfig(~PrimitiveSetConfig{});
+    grammar.SetConfig(~PrimitiveSetConfig {});
     Operon::RandomGenerator rd(1234);
 
     // Bucket by primitive hash rather than NodeType: post-collapse, every
@@ -59,7 +61,9 @@ TEST_CASE("Grammar sampling", "[operators]")
     }
 
     Operon::Map<Operon::Hash, double> observed;
-    for (auto h : hashes) { observed[h] = 0; }
+    for (auto h : hashes) {
+        observed[h] = 0;
+    }
     size_t const r = grammar.EnabledPrimitives().size() + 1;
 
     const size_t nTrials = 1'000'000;
@@ -67,13 +71,21 @@ TEST_CASE("Grammar sampling", "[operators]")
         auto node = grammar.SampleRandomSymbol(rd, 0, 2);
         ++observed[node.HashValue];
     }
-    for (auto& [h, v] : observed) { v /= static_cast<double>(nTrials); }
+    for (auto& [h, v] : observed) {
+        v /= static_cast<double>(nTrials);
+    }
 
     Operon::Map<Operon::Hash, double> actual;
-    for (auto h : hashes) { actual[h] = static_cast<double>(grammar.Frequency(h)); }
+    for (auto h : hashes) {
+        actual[h] = static_cast<double>(grammar.Frequency(h));
+    }
     auto freqSum = 0.0;
-    for (auto const& [h, v] : actual) { freqSum += v; }
-    for (auto& [h, v] : actual) { v /= freqSum; }
+    for (auto const& [h, v] : actual) {
+        freqSum += v;
+    }
+    for (auto& [h, v] : actual) {
+        v /= freqSum;
+    }
 
     auto chi = 0.0;
     for (auto h : hashes) {
@@ -106,11 +118,12 @@ TEST_CASE("GROW creator", "[operators]") // NOLINT(readability-function-cognitiv
     grammar.SetMaximumArity(Util::MakeOp<BuiltinOp::Sub>(), 2);
     grammar.SetMaximumArity(Util::MakeOp<BuiltinOp::Div>(), 2);
 
-    GrowTreeCreator gtc{&grammar, inputs, maxLength};
+    GrowTreeCreator gtc { &grammar, inputs, maxLength };
     Operon::RandomGenerator random(1234);
     auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
 
-    SECTION("Trees are within size bounds") {
+    SECTION("Trees are within size bounds")
+    {
         std::vector<size_t> lengths(n);
         std::generate(lengths.begin(), lengths.end(), [&]() -> size_t { return sizeDistribution(random); });
         auto trees = GenerateTrees(random, gtc, lengths, maxDepth);
@@ -121,7 +134,8 @@ TEST_CASE("GROW creator", "[operators]") // NOLINT(readability-function-cognitiv
         }
     }
 
-    SECTION("Only enabled primitives appear") {
+    SECTION("Only enabled primitives appear")
+    {
         auto tree = gtc(random, 20, 1, maxDepth);
         for (auto const& node : tree.Nodes()) {
             if (!node.IsLeaf()) {
@@ -147,11 +161,12 @@ TEST_CASE("BTC creator", "[operators]")
     grammar.SetMaximumArity(Util::MakeOp<BuiltinOp::Sub>(), 2);
     grammar.SetMaximumArity(Util::MakeOp<BuiltinOp::Div>(), 2);
 
-    BalancedTreeCreator btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
+    BalancedTreeCreator btc { &grammar, inputs, /* bias= */ 0.0, maxLength };
     Operon::RandomGenerator random(1234);
     auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
 
-    SECTION("Trees are within size bounds") {
+    SECTION("Trees are within size bounds")
+    {
         std::vector<size_t> lengths(n);
         std::generate(lengths.begin(), lengths.end(), [&]() -> size_t { return sizeDistribution(random); });
         auto trees = GenerateTrees(random, btc, lengths, maxDepth);
@@ -161,10 +176,11 @@ TEST_CASE("BTC creator", "[operators]")
         }
     }
 
-    SECTION("Coefficients are initialized") {
+    SECTION("Coefficients are initialized")
+    {
         auto tree = btc(random, 20, 1, maxDepth);
         UniformCoefficientInitializer const coeffInit;
-        coeffInit.ParameterizeDistribution(Operon::Scalar{-1}, Operon::Scalar{+1});
+        coeffInit.ParameterizeDistribution(Operon::Scalar { -1 }, Operon::Scalar { +1 });
         coeffInit(random, tree);
 
         bool hasCoeff = false;
@@ -189,11 +205,12 @@ TEST_CASE("PTC2 creator", "[operators]")
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic | BuiltinOp::Log | BuiltinOp::Exp);
 
-    ProbabilisticTreeCreator ptc{&grammar, inputs, /* bias= */ 0.0, maxLength};
+    ProbabilisticTreeCreator ptc { &grammar, inputs, /* bias= */ 0.0, maxLength };
     Operon::RandomGenerator random(1234);
     auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
 
-    SECTION("Trees are within size bounds") {
+    SECTION("Trees are within size bounds")
+    {
         std::vector<size_t> lengths(n);
         std::generate(lengths.begin(), lengths.end(), [&]() -> size_t { return sizeDistribution(random); });
         auto trees = GenerateTrees(random, ptc, lengths, maxDepth);
@@ -214,12 +231,13 @@ TEST_CASE("PTC2 creator respects maxDepth", "[operators]")
     grammar.SetConfig(PrimitiveSet::Arithmetic | BuiltinOp::Log | BuiltinOp::Exp);
 
     constexpr size_t maxLength = 100;
-    ProbabilisticTreeCreator const ptc{&grammar, inputs, /* bias= */ 0.0, maxLength};
+    ProbabilisticTreeCreator const ptc { &grammar, inputs, /* bias= */ 0.0, maxLength };
     Operon::RandomGenerator random(1234);
     auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
 
-    SECTION("produced trees never exceed the requested depth budget") {
-        for (size_t const maxDepth : { size_t{1}, size_t{2}, size_t{3}, size_t{5} }) {
+    SECTION("produced trees never exceed the requested depth budget")
+    {
+        for (size_t const maxDepth : { size_t { 1 }, size_t { 2 }, size_t { 3 }, size_t { 5 } }) {
             for (int i = 0; i < 2000; ++i) {
                 auto const targetLen = sizeDistribution(random);
                 auto const tree = ptc(random, targetLen, 1, maxDepth);
@@ -230,7 +248,8 @@ TEST_CASE("PTC2 creator respects maxDepth", "[operators]")
         }
     }
 
-    SECTION("a depth budget of 1 yields a single-terminal tree") {
+    SECTION("a depth budget of 1 yields a single-terminal tree")
+    {
         // the root sits at depth 1, so maxDepth == 1 must force a terminal at the root.
         for (int i = 0; i < 1000; ++i) {
             auto const tree = ptc(random, sizeDistribution(random), 1, 1);
@@ -243,7 +262,7 @@ TEST_CASE("PTC2 creator respects maxDepth", "[operators]")
 
 TEST_CASE("BTC preserves attainable lengths across irregularity biases", "[operators]")
 {
-    PrimitiveSet pset{ PrimitiveSet::Arithmetic };
+    PrimitiveSet pset { PrimitiveSet::Arithmetic };
     pset.Disable(Node(NodeType::Variable));
 
     constexpr size_t maxLength = 99;
@@ -261,13 +280,13 @@ TEST_CASE("BTC preserves attainable lengths across irregularity biases", "[opera
 
 TEST_CASE("BTC irregularity bias deepens trees", "[operators]")
 {
-    PrimitiveSet pset{ PrimitiveSet::Arithmetic };
+    PrimitiveSet pset { PrimitiveSet::Arithmetic };
     pset.Disable(Node(NodeType::Variable));
 
     constexpr size_t targetLength = 99;
     auto sumDepths = [&](double bias) {
         BalancedTreeCreator const btc(&pset, {}, bias, targetLength);
-        size_t total{};
+        size_t total {};
         for (size_t seed = 0; seed < 100; ++seed) {
             RandomGenerator random(seed);
             total += btc(random, targetLength, 1, 1000).Depth();
@@ -284,11 +303,11 @@ TEST_CASE("BTC irregularity bias deepens trees", "[operators]")
 
 TEST_CASE("BTC depth arguments preserve its seeded output", "[operators]")
 {
-    PrimitiveSet pset{ PrimitiveSet::Arithmetic };
+    PrimitiveSet pset { PrimitiveSet::Arithmetic };
     pset.Disable(Node(NodeType::Variable));
     BalancedTreeCreator const btc(&pset, {}, /* bias= */ 1.0, 99);
 
-    for (size_t target : { size_t{1}, size_t{17}, size_t{99} }) {
+    for (size_t target : { size_t { 1 }, size_t { 17 }, size_t { 99 } }) {
         RandomGenerator unrestricted(42);
         RandomGenerator constrained(42);
         auto const baseline = btc(unrestricted, target, 1, 1000);
@@ -302,7 +321,7 @@ TEST_CASE("BTC depth arguments preserve its seeded output", "[operators]")
 
 TEST_CASE("BTC reaches gapped-arity snapped targets at every bias", "[operators]")
 {
-    PrimitiveSet pset{ PrimitiveSet::Arithmetic };
+    PrimitiveSet pset { PrimitiveSet::Arithmetic };
     BalancedTreeCreator btc(&pset, {}, /* bias= */ 0.5, /* maxLength= */ 99);
 
     // Reconfigure after creator construction: the creator must not use its
@@ -314,7 +333,7 @@ TEST_CASE("BTC reaches gapped-arity snapped targets at every bias", "[operators]
     for (auto bias : { 0.0, 0.5, 1.0 }) {
         btc.SetBias(bias);
         for (size_t target = 1; target <= maxLength; ++target) {
-            auto const expected = target == 2 ? size_t{1} : target;
+            auto const expected = target == 2 ? size_t { 1 } : target;
             for (size_t seed = 0; seed < 10; ++seed) {
                 RandomGenerator random(seed);
                 CHECK(btc(random, target, 1, 1000).Length() == expected);
@@ -322,7 +341,6 @@ TEST_CASE("BTC reaches gapped-arity snapped targets at every bias", "[operators]
         }
     }
 }
-
 
 TEST_CASE("PrimitiveSet reachability cache invalidates on arity changes", "[operators]")
 {
@@ -350,7 +368,6 @@ TEST_CASE("PrimitiveSet reachability cache invalidates on arity changes", "[oper
     for (size_t i = 1; i < terminalsOnly->size(); ++i) {
         CHECK_FALSE((*terminalsOnly)[i]);
     }
-
 }
 
 TEST_CASE("PrimitiveSet publishes reachability cache snapshots safely", "[operators]")
@@ -365,7 +382,9 @@ TEST_CASE("PrimitiveSet publishes reachability cache snapshots safely", "[operat
         readers.emplace_back(std::async(std::launch::async, [&pset] {
             for (size_t n = 1; n <= 100; ++n) {
                 auto const reachable = pset.ReachableLengths(n);
-                if (reachable->size() < n || !(*reachable)[0]) { return false; }
+                if (reachable->size() < n || !(*reachable)[0]) {
+                    return false;
+                }
             }
             return true;
         }));
@@ -379,14 +398,19 @@ TEST_CASE("AchievableLength snap-down table", "[operators]") // NOLINT(readabili
 {
     struct TestCreator final : public CreatorBase {
         TestCreator(PrimitiveSet const* pset, size_t maxLen)
-            : CreatorBase(pset, {}, maxLen) {}
-        auto operator()(RandomGenerator& /*rng*/, size_t /*targetLen*/, size_t /*minDepth*/, size_t /*maxDepth*/) const -> Tree override {
+            : CreatorBase(pset, {}, maxLen)
+        {
+        }
+        auto operator()(RandomGenerator& /*rng*/, size_t /*targetLen*/, size_t /*minDepth*/, size_t /*maxDepth*/) const
+            -> Tree override
+        {
             return Tree({ Node(NodeType::Constant) }).UpdateNodes();
         }
         [[nodiscard]] auto SnapDown(size_t n) const -> size_t { return AchievableLength(n); }
     };
 
-    SECTION("Edge cases") {
+    SECTION("Edge cases")
+    {
         PrimitiveSet pset;
         pset.SetConfig(PrimitiveSet::Arithmetic);
         TestCreator const tc(&pset, 20);
@@ -394,7 +418,8 @@ TEST_CASE("AchievableLength snap-down table", "[operators]") // NOLINT(readabili
         CHECK(tc.SnapDown(1) == 1);
     }
 
-    SECTION("Binary-only pset: achievable lengths are 1, 3, 5, 7, ...") {
+    SECTION("Binary-only pset: achievable lengths are 1, 3, 5, 7, ...")
+    {
         // Only arity-2 functions: n > 1 is achievable iff (n-1) is a multiple of 2,
         // i.e. n is odd. So snap_[i] carries the last odd value seen.
         PrimitiveSet pset;
@@ -411,7 +436,8 @@ TEST_CASE("AchievableLength snap-down table", "[operators]") // NOLINT(readabili
         CHECK(tc.SnapDown(7) == 7);
     }
 
-    SECTION("Mixed pset (arities 1 and 2): every length is achievable") {
+    SECTION("Mixed pset (arities 1 and 2): every length is achievable")
+    {
         // Arity-1 means we can always add exactly 1 node, so all lengths >= 1 are reachable.
         PrimitiveSet pset;
         pset.SetConfig(BuiltinOp::Sin | BuiltinOp::Add | NodeType::Variable);
@@ -424,7 +450,8 @@ TEST_CASE("AchievableLength snap-down table", "[operators]") // NOLINT(readabili
         }
     }
 
-    SECTION("Ternary-only pset: achievable lengths are 1, 4, 7, 10, ...") {
+    SECTION("Ternary-only pset: achievable lengths are 1, 4, 7, 10, ...")
+    {
         // Only arity-3 functions: n > 1 is achievable iff (n-1) is a multiple of 3.
         // Achievable: 1, 4, 7, 10, 13, ...
         PrimitiveSet pset;
@@ -445,7 +472,8 @@ TEST_CASE("AchievableLength snap-down table", "[operators]") // NOLINT(readabili
     }
 }
 
-TEST_CASE("Creator length contract with unachievable targets", "[operators]") // NOLINT(readability-function-cognitive-complexity)
+TEST_CASE("Creator length contract with unachievable targets",
+    "[operators]") // NOLINT(readability-function-cognitive-complexity)
 {
     // Binary-only pset: achievable lengths are 1, 3, 5, 7, ...
     // Requesting any even target must snap down — the returned tree must be strictly
@@ -461,7 +489,8 @@ TEST_CASE("Creator length contract with unachievable targets", "[operators]") //
     constexpr size_t maxDepth = 1000;
     constexpr size_t maxLength = 20;
 
-    SECTION("BTC never exceeds requested length") {
+    SECTION("BTC never exceeds requested length")
+    {
         BalancedTreeCreator const btc(&pset, inputs, /* bias= */ 0.0, maxLength);
         for (size_t target = 1; target <= maxLength; ++target) {
             auto tree = btc(rng, target, 1, maxDepth);
@@ -470,7 +499,8 @@ TEST_CASE("Creator length contract with unachievable targets", "[operators]") //
         }
     }
 
-    SECTION("PTC2 never exceeds requested length") {
+    SECTION("PTC2 never exceeds requested length")
+    {
         ProbabilisticTreeCreator const ptc(&pset, inputs, /* bias= */ 0.0, maxLength);
         for (size_t target = 1; target <= maxLength; ++target) {
             auto tree = ptc(rng, target, 1, maxDepth);
@@ -479,6 +509,5 @@ TEST_CASE("Creator length contract with unachievable targets", "[operators]") //
         }
     }
 }
-
 
 } // namespace Operon::Test

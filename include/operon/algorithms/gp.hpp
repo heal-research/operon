@@ -28,13 +28,17 @@ struct TreeInitializerBase;
 
 class OPERON_EXPORT GeneticProgrammingAlgorithm : public GeneticAlgorithmBase {
 public:
-    GeneticProgrammingAlgorithm(GeneticAlgorithmConfig config, gsl::not_null<Problem const*> problem, gsl::not_null<TreeInitializerBase const*> treeInit, gsl::not_null<CoefficientInitializerBase const*> coeffInit, gsl::not_null<OffspringGeneratorBase const*> generator, gsl::not_null<ReinserterBase const*> reinserter)
+    GeneticProgrammingAlgorithm(GeneticAlgorithmConfig config, gsl::not_null<Problem const*> problem,
+        gsl::not_null<TreeInitializerBase const*> treeInit, gsl::not_null<CoefficientInitializerBase const*> coeffInit,
+        gsl::not_null<OffspringGeneratorBase const*> generator, gsl::not_null<ReinserterBase const*> reinserter)
         : GeneticAlgorithmBase(config, problem, treeInit, coeffInit, generator, reinserter)
     {
     }
 
-    auto Run(tf::Executor& /*executor*/, Operon::RandomGenerator& /*rng*/, Operon::ReportCallback /*report*/ = nullptr, /*warmStart*/ bool = false) -> void;
-    auto Run(Operon::RandomGenerator& /*rng*/, Operon::ReportCallback /*report*/ = nullptr, size_t /*threads*/ = 0, /*warmStart*/ bool = false) -> void;
+    auto Run(tf::Executor& /*executor*/, Operon::RandomGenerator& /*rng*/, Operon::ReportCallback /*report*/ = nullptr,
+        /*warmStart*/ bool = false) -> void;
+    auto Run(Operon::RandomGenerator& /*rng*/, Operon::ReportCallback /*report*/ = nullptr, size_t /*threads*/ = 0,
+        /*warmStart*/ bool = false) -> void;
 };
 } // namespace Operon
 

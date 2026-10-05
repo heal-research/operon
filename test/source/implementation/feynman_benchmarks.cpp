@@ -36,19 +36,19 @@ namespace Operon::Test {
 
 namespace {
 
-struct Var {
-    std::string name;
-    double lo;
-    double hi;
-};
+    struct Var {
+        std::string name;
+        double lo;
+        double hi;
+    };
 
-struct Problem {
-    std::string name;
-    std::string formula; // operon infix syntax: ^ for pow, asin/acos, pi already substituted
-    std::vector<Var> vars;
-};
+    struct Problem {
+        std::string name;
+        std::string formula; // operon infix syntax: ^ for pow, asin/acos, pi already substituted
+        std::vector<Var> vars;
+    };
 
-// clang-format off
+    // clang-format off
 auto const PI = 3.14159265358979323846;
 
 auto Problems() -> std::vector<Problem> const&
@@ -110,11 +110,12 @@ auto Problems() -> std::vector<Problem> const&
     };
     return problems;
 }
-// clang-format on
+    // clang-format on
 
 } // namespace
 
-TEST_CASE("Feynman benchmark suite - TightenRange/TightenRangeBisected soundness and tightness", "[range_tightening][feynman]")
+TEST_CASE("Feynman benchmark suite - TightenRange/TightenRangeBisected soundness and tightness",
+    "[range_tightening][feynman]")
 {
     using DTable = DispatchTable<Operon::Scalar>;
     using Interp = Interpreter<Operon::Scalar, DTable>;
@@ -132,9 +133,11 @@ TEST_CASE("Feynman benchmark suite - TightenRange/TightenRangeBisected soundness
 
         std::vector<std::string> names;
         names.reserve(p.vars.size());
-        for (auto const& v : p.vars) { names.push_back(v.name); }
+        for (auto const& v : p.vars) {
+            names.push_back(v.name);
+        }
         std::vector<std::vector<Operon::Scalar>> dummyData(
-            p.vars.size(), std::vector<Operon::Scalar>(1, Operon::Scalar{1}));
+            p.vars.size(), std::vector<Operon::Scalar>(1, Operon::Scalar { 1 }));
         Dataset const ds(names, dummyData);
 
         auto tree = Operon::InfixParser::ParseOrThrow(p.formula, ds);
@@ -143,19 +146,21 @@ TEST_CASE("Feynman benchmark suite - TightenRange/TightenRangeBisected soundness
         IntervalEvaluator<Operon::Scalar>::DomainMap domains;
         for (auto const& v : p.vars) {
             auto const hash = ds.GetVariable(v.name)->Hash;
-            domains[hash] = {static_cast<Operon::Scalar>(v.lo), static_cast<Operon::Scalar>(v.hi)};
+            domains[hash] = { static_cast<Operon::Scalar>(v.lo), static_cast<Operon::Scalar>(v.hi) };
         }
 
-        auto const naive     = IntervalEvaluator<Operon::Scalar>(&tree, domains).Evaluate(coeff);
+        auto const naive = IntervalEvaluator<Operon::Scalar>(&tree, domains).Evaluate(coeff);
         auto const tightened = TightenRange(tree, domains, coeff);
-        auto const bisected  = TightenRangeBisected(tree, domains, coeff, 3);
+        auto const bisected = TightenRangeBisected(tree, domains, coeff, 3);
 
         auto const naiveWidth = naive.diameter();
         if (std::isfinite(naiveWidth) && naiveWidth > 0) {
-            auto const tightPct = 100.0 * (1.0 - static_cast<double>(tightened.diameter()) / static_cast<double>(naiveWidth));
-            auto const bisPct   = 100.0 * (1.0 - static_cast<double>(bisected.diameter()) / static_cast<double>(naiveWidth));
-            fmt::print("{:<40} naive=[{:.4g},{:.4g}] tightened: {:5.1f}%  bisected: {:5.1f}%\n",
-                p.name, naive.inf(), naive.sup(), tightPct, bisPct);
+            auto const tightPct
+                = 100.0 * (1.0 - static_cast<double>(tightened.diameter()) / static_cast<double>(naiveWidth));
+            auto const bisPct
+                = 100.0 * (1.0 - static_cast<double>(bisected.diameter()) / static_cast<double>(naiveWidth));
+            fmt::print("{:<40} naive=[{:.4g},{:.4g}] tightened: {:5.1f}%  bisected: {:5.1f}%\n", p.name, naive.inf(),
+                naive.sup(), tightPct, bisPct);
         } else {
             fmt::print("{:<40} naive=[{:.4g},{:.4g}] (unbounded)\n", p.name, naive.inf(), naive.sup());
         }
@@ -166,7 +171,9 @@ TEST_CASE("Feynman benchmark suite - TightenRange/TightenRangeBisected soundness
         CHECK(bisected.inf() >= tightened.inf() - tol);
         CHECK(bisected.sup() <= tightened.sup() + tol);
 
-        if (bisected.is_empty()) { continue; } // domain edge somewhere in the formula; nothing to sample
+        if (bisected.is_empty()) {
+            continue;
+        } // domain edge somewhere in the formula; nothing to sample
 
         // Soundness: dense random point sampling must never fall outside
         // the tightened enclosure.
@@ -174,16 +181,22 @@ TEST_CASE("Feynman benchmark suite - TightenRange/TightenRangeBisected soundness
         for (std::size_t vi = 0; vi < p.vars.size(); ++vi) {
             std::uniform_real_distribution<Operon::Scalar> pd(
                 static_cast<Operon::Scalar>(p.vars[vi].lo), static_cast<Operon::Scalar>(p.vars[vi].hi));
-            for (auto& v : pointData[vi]) { v = pd(rng); }
+            for (auto& v : pointData[vi]) {
+                v = pd(rng);
+            }
         }
         Dataset const pointDs(names, pointData);
-        Range const range{0, nSamples};
+        Range const range { 0, nSamples };
         auto const values = Interp::Evaluate(tree, pointDs, range, Operon::Span<Operon::Scalar const>(coeff)).value();
 
         for (auto v : values) {
-            if (!std::isfinite(v)) { continue; }
+            if (!std::isfinite(v)) {
+                continue;
+            }
             ++totalSoundnessChecks;
-            if (v < bisected.inf() - tol || v > bisected.sup() + tol) { ++totalViolations; }
+            if (v < bisected.inf() - tol || v > bisected.sup() + tol) {
+                ++totalViolations;
+            }
         }
     }
 

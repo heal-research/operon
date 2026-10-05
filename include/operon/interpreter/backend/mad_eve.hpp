@@ -6,8 +6,8 @@
 
 #include "operon/core/dispatch.hpp"
 #include "operon/core/types.hpp"
-#include "operon/interpreter/backend/mad_eve/functions.hpp"
 #include "operon/interpreter/backend/mad_eve/derivatives.hpp"
+#include "operon/interpreter/backend/mad_eve/functions.hpp"
 
 static_assert(std::is_same_v<Operon::Scalar, float>,
     "MadEve backend requires single-precision float. Build with -DUSE_SINGLE_PRECISION=ON.");

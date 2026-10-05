@@ -195,8 +195,8 @@ void MetroHash64::Hash(const uint8_t* buffer, const uint64_t length, uint8_t* co
     uint64_t h = (static_cast<uint64_t>(seed) + k2) * k0;
 
     if (length >= 32) { // NOLINT
-        //uint64_t v[4];
-        std::array<uint64_t, 4> v{h, h, h, h};
+        // uint64_t v[4];
+        std::array<uint64_t, 4> v { h, h, h, h };
 
         do {
             v[0] += read_u64(ptr) * k0;
@@ -262,4 +262,3 @@ void MetroHash64::Hash(const uint8_t* buffer, const uint64_t length, uint8_t* co
     memcpy(hash, &h, 8); // NOLINT
 }
 } // namespace Operon::HashUtil
-

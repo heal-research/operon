@@ -41,7 +41,8 @@ namespace Operon {
  * a negative stride here is rejected as malformed input
  * (`OPERON_VIEW_ERR_STRIDE`).
  */
-[[nodiscard]] auto MakeConstMatrixView(OperonViewDescriptor const& desc) -> tl::expected<ConstScalarMatrixView, OperonViewStatus>;
+[[nodiscard]] auto MakeConstMatrixView(OperonViewDescriptor const& desc)
+    -> tl::expected<ConstScalarMatrixView, OperonViewStatus>;
 
 /**
  * Same as `MakeConstMatrixView`, for a caller that holds a genuinely mutable
@@ -56,7 +57,8 @@ namespace Operon {
  * only for shape validation (rank/extents/strides/scalar code) and to
  * reject a descriptor additionally carrying `OPERON_VIEW_READONLY`.
  */
-[[nodiscard]] auto MakeMatrixView(OperonViewDescriptor const& desc, gsl::not_null<Scalar*> data) -> tl::expected<ScalarMatrixView, OperonViewStatus>;
+[[nodiscard]] auto MakeMatrixView(OperonViewDescriptor const& desc, gsl::not_null<Scalar*> data)
+    -> tl::expected<ScalarMatrixView, OperonViewStatus>;
 
 namespace detail {
     [[nodiscard]] constexpr auto ScalarCodeFor() -> std::uint32_t
@@ -72,7 +74,8 @@ namespace detail {
     }
 
     template <typename T>
-    [[nodiscard]] auto MakeStridedView(OperonViewDescriptor const& desc, T* data) -> std::mdspan<T, std::dextents<MemoryIndex, 2>, std::layout_stride>
+    [[nodiscard]] auto MakeStridedView(OperonViewDescriptor const& desc, T* data)
+        -> std::mdspan<T, std::dextents<MemoryIndex, 2>, std::layout_stride>
     {
         using Extents = std::dextents<MemoryIndex, 2>;
         using Mapping = std::layout_stride::mapping<Extents>;
@@ -85,7 +88,8 @@ namespace detail {
     }
 } // namespace detail
 
-inline auto MakeConstMatrixView(OperonViewDescriptor const& desc) -> tl::expected<ConstScalarMatrixView, OperonViewStatus>
+inline auto MakeConstMatrixView(OperonViewDescriptor const& desc)
+    -> tl::expected<ConstScalarMatrixView, OperonViewStatus>
 {
     if (desc.rank != 2U) {
         return tl::unexpected(OPERON_VIEW_ERR_RANK);
@@ -102,7 +106,8 @@ inline auto MakeConstMatrixView(OperonViewDescriptor const& desc) -> tl::expecte
     return detail::MakeStridedView<Scalar const>(desc, static_cast<Scalar const*>(desc.data));
 }
 
-inline auto MakeMatrixView(OperonViewDescriptor const& desc, gsl::not_null<Scalar*> data) -> tl::expected<ScalarMatrixView, OperonViewStatus>
+inline auto MakeMatrixView(OperonViewDescriptor const& desc, gsl::not_null<Scalar*> data)
+    -> tl::expected<ScalarMatrixView, OperonViewStatus>
 {
     if (desc.rank != 2U) {
         return tl::unexpected(OPERON_VIEW_ERR_RANK);

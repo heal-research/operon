@@ -33,9 +33,7 @@ public:
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return 2; }
     [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return x_.size(); }
 
-    [[nodiscard]] auto Evaluate(
-        std::span<Operon::Scalar const> parameters,
-        std::span<Operon::Scalar> residuals,
+    [[nodiscard]] auto Evaluate(std::span<Operon::Scalar const> parameters, std::span<Operon::Scalar> residuals,
         std::optional<Operon::ScalarMatrixView> jacobian) const
         -> tl::expected<void, Operon::LeastSquaresError> override
     {
@@ -62,9 +60,7 @@ public:
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return 2; }
     [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return 4; }
 
-    [[nodiscard]] auto Evaluate(
-        std::span<Operon::Scalar const> /*parameters*/,
-        std::span<Operon::Scalar> /*residuals*/,
+    [[nodiscard]] auto Evaluate(std::span<Operon::Scalar const> /*parameters*/, std::span<Operon::Scalar> /*residuals*/,
         std::optional<Operon::ScalarMatrixView> /*jacobian*/) const
         -> tl::expected<void, Operon::LeastSquaresError> override
     {
@@ -131,11 +127,14 @@ TEST_CASE("LeastSquaresGradientAdapter drives SGDSolver to reduce the objective"
     CHECK(finalCost < initialCost);
 }
 
-TEST_CASE("LeastSquaresGradientAdapter: weighted fitting matches ComputeGradient directly", "[least-squares][gradient-adapter]")
+TEST_CASE("LeastSquaresGradientAdapter: weighted fitting matches ComputeGradient directly",
+    "[least-squares][gradient-adapter]")
 {
     auto cost = MakeLinearFixture(10, Operon::Scalar { 0.4 }, Operon::Scalar { -0.6 });
     std::vector<Operon::Scalar> weights(10);
-    for (std::size_t i = 0; i < weights.size(); ++i) { weights[i] = static_cast<Operon::Scalar>(1 + i); }
+    for (std::size_t i = 0; i < weights.size(); ++i) {
+        weights[i] = static_cast<Operon::Scalar>(1 + i);
+    }
 
     Operon::LeastSquaresGradientAdapter adapter { &cost, weights };
     std::array<Operon::Scalar, 2> params { 0.1, 0.2 };
@@ -145,18 +144,22 @@ TEST_CASE("LeastSquaresGradientAdapter: weighted fitting matches ComputeGradient
 
     std::vector<Operon::Scalar> residuals(cost.NumResiduals());
     std::vector<Operon::Scalar> jacBuffer(cost.NumResiduals() * 2);
-    Operon::ScalarMatrixView jac { jacBuffer.data(), Mapping { Extents { cost.NumResiduals(), 2 }, std::array<std::size_t, 2> { 2, 1 } } };
+    Operon::ScalarMatrixView jac { jacBuffer.data(),
+        Mapping { Extents { cost.NumResiduals(), 2 }, std::array<std::size_t, 2> { 2, 1 } } };
     REQUIRE(cost.Evaluate(params, residuals, jac).has_value());
     std::array<Operon::Scalar, 2> expectedGradient {};
     auto expectedCost = Operon::ComputeGradient(residuals, jac, expectedGradient, weights);
     REQUIRE(expectedCost.has_value());
 
     CHECK_THAT(static_cast<double>(*result), Catch::Matchers::WithinRel(*expectedCost, 1e-4));
-    CHECK_THAT(static_cast<double>(gradient[0]), Catch::Matchers::WithinAbs(static_cast<double>(expectedGradient[0]), 1e-4));
-    CHECK_THAT(static_cast<double>(gradient[1]), Catch::Matchers::WithinAbs(static_cast<double>(expectedGradient[1]), 1e-4));
+    CHECK_THAT(
+        static_cast<double>(gradient[0]), Catch::Matchers::WithinAbs(static_cast<double>(expectedGradient[0]), 1e-4));
+    CHECK_THAT(
+        static_cast<double>(gradient[1]), Catch::Matchers::WithinAbs(static_cast<double>(expectedGradient[1]), 1e-4));
 }
 
-TEST_CASE("LeastSquaresGradientAdapter: a failing cost propagates a typed error and NaN to both bridges", "[least-squares][gradient-adapter]")
+TEST_CASE("LeastSquaresGradientAdapter: a failing cost propagates a typed error and NaN to both bridges",
+    "[least-squares][gradient-adapter]")
 {
     FailingCost cost;
     Operon::LeastSquaresGradientAdapter adapter { &cost };
@@ -172,10 +175,13 @@ TEST_CASE("LeastSquaresGradientAdapter: a failing cost propagates a typed error 
     CHECK(bridge.Error()->Code == Operon::GradientErrorCode::NonFiniteEvaluation);
     REQUIRE(adapter.Error().has_value());
     CHECK(adapter.Error()->Code == Operon::GradientErrorCode::NonFiniteEvaluation);
-    for (auto g : gradient) { CHECK(std::isnan(static_cast<double>(g))); }
+    for (auto g : gradient) {
+        CHECK(std::isnan(static_cast<double>(g)));
+    }
 }
 
-TEST_CASE("LeastSquaresGradientAdapter: repeated full-batch evaluations are deterministic", "[least-squares][gradient-adapter]")
+TEST_CASE("LeastSquaresGradientAdapter: repeated full-batch evaluations are deterministic",
+    "[least-squares][gradient-adapter]")
 {
     auto cost = MakeLinearFixture(20, Operon::Scalar { 0.9 }, Operon::Scalar { -1.4 });
     Operon::LeastSquaresGradientAdapter adapter { &cost };
@@ -194,7 +200,8 @@ TEST_CASE("LeastSquaresGradientAdapter: repeated full-batch evaluations are dete
     }
 }
 
-TEST_CASE("ToGradientError maps every LeastSquaresErrorCode to a distinct GradientErrorCode and preserves location", "[least-squares][gradient-adapter]")
+TEST_CASE("ToGradientError maps every LeastSquaresErrorCode to a distinct GradientErrorCode and preserves location",
+    "[least-squares][gradient-adapter]")
 {
     using LS = Operon::LeastSquaresErrorCode;
     using GR = Operon::GradientErrorCode;
@@ -209,10 +216,12 @@ TEST_CASE("ToGradientError maps every LeastSquaresErrorCode to a distinct Gradie
 
     std::vector<GR> seen;
     for (auto const& [source, expected] : table) {
-        Operon::LeastSquaresError error {
-            .Code = source, .Expected = 11, .Actual = 7, .Row = 3, .Column = 5,
-            .Cause = Operon::InterpreterError { .Kind = Operon::InterpreterError::Code::MissingVariable, .Hash = 42 }
-        };
+        Operon::LeastSquaresError error { .Code = source,
+            .Expected = 11,
+            .Actual = 7,
+            .Row = 3,
+            .Column = 5,
+            .Cause = Operon::InterpreterError { .Kind = Operon::InterpreterError::Code::MissingVariable, .Hash = 42 } };
         auto const converted = Operon::ToGradientError(error);
         CHECK(converted.Code == expected);
         CHECK(converted.Expected == 11);
@@ -230,8 +239,8 @@ TEST_CASE("ToGradientError maps every LeastSquaresErrorCode to a distinct Gradie
 
 TEST_CASE("ToGradientError(WeightError) reports InvalidWeights with size and row", "[least-squares][gradient-adapter]")
 {
-    auto const converted = Operon::ToGradientError(Operon::WeightError {
-        .Code = Operon::WeightErrorCode::NegativeValue, .Expected = 9, .Actual = 9, .Row = 4 });
+    auto const converted = Operon::ToGradientError(
+        Operon::WeightError { .Code = Operon::WeightErrorCode::NegativeValue, .Expected = 9, .Actual = 9, .Row = 4 });
     CHECK(converted.Code == Operon::GradientErrorCode::InvalidWeights);
     CHECK(converted.Expected == 9);
     CHECK(converted.Actual == 9);
@@ -239,7 +248,8 @@ TEST_CASE("ToGradientError(WeightError) reports InvalidWeights with size and row
     CHECK_FALSE(converted.Cause.has_value());
 }
 
-TEST_CASE("LeastSquaresGradientAdapter: invalid weights are a typed InvalidWeights error with NaN gradient", "[least-squares][gradient-adapter]")
+TEST_CASE("LeastSquaresGradientAdapter: invalid weights are a typed InvalidWeights error with NaN gradient",
+    "[least-squares][gradient-adapter]")
 {
     auto cost = MakeLinearFixture(6, Operon::Scalar { 0.4 }, Operon::Scalar { -0.6 });
     std::vector<Operon::Scalar> weights(6, Operon::Scalar { 1 });
@@ -253,5 +263,7 @@ TEST_CASE("LeastSquaresGradientAdapter: invalid weights are a typed InvalidWeigh
     REQUIRE_FALSE(result.has_value());
     CHECK(result.error().Code == Operon::GradientErrorCode::InvalidWeights);
     CHECK(result.error().Row == 4);
-    for (auto g : gradient) { CHECK(std::isnan(static_cast<double>(g))); }
+    for (auto g : gradient) {
+        CHECK(std::isnan(static_cast<double>(g)));
+    }
 }

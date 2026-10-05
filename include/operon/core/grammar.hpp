@@ -144,7 +144,8 @@ constexpr auto operator|=(EnumerationFunctionSet& lhs, EnumerationFunction rhs) 
 [[nodiscard]] OPERON_CORE_EXPORT auto EnumerationFunctionName(EnumerationFunction f) -> std::string_view;
 
 // Parses an exact function name.
-[[nodiscard]] OPERON_CORE_EXPORT auto ParseEnumerationFunction(std::string_view name) -> std::optional<EnumerationFunction>;
+[[nodiscard]] OPERON_CORE_EXPORT auto ParseEnumerationFunction(std::string_view name)
+    -> std::optional<EnumerationFunction>;
 
 // Built-ins required to evaluate an enumeration function set.
 [[nodiscard]] OPERON_CORE_EXPORT auto UnderlyingPrimitives(EnumerationFunctionSet functions) -> PrimitiveSetConfig;

@@ -11,8 +11,8 @@
 #include <limits>
 #include <optional>
 #include <random>
-#include <vector>
 #include <utility>
+#include <vector>
 
 #include <gsl/pointers>
 
@@ -50,13 +50,8 @@ public:
     using Scalar = Operon::Scalar;
     static constexpr bool UsesDatasetWeights { true };
 
-    GaussianGradientCostFunction(
-        gsl::not_null<InterpreterBase<Scalar> const*> interpreter,
-        ConstScalarSpan target,
-        Range range,
-        RandomGenerator* rng = nullptr,
-        std::size_t batchSize = 0,
-        ConstScalarSpan weights = {})
+    GaussianGradientCostFunction(gsl::not_null<InterpreterBase<Scalar> const*> interpreter, ConstScalarSpan target,
+        Range range, RandomGenerator* rng = nullptr, std::size_t batchSize = 0, ConstScalarSpan weights = {})
         : interpreter_(interpreter)
         , target_(target)
         , range_(range)
@@ -87,7 +82,8 @@ public:
 
         using Extents = std::dextents<MemoryIndex, 2>;
         using Mapping = std::layout_stride::mapping<Extents>;
-        ScalarMatrixView jacobianView { jacobianScratch_.data(), Mapping { Extents { n, numParameters_ }, std::array<MemoryIndex, 2> { 1, n } } };
+        ScalarMatrixView jacobianView { jacobianScratch_.data(),
+            Mapping { Extents { n, numParameters_ }, std::array<MemoryIndex, 2> { 1, n } } };
 
         // The batch is an absolute subrange of the whole-dataset target, so
         // the canonical interpreter cost for exactly this batch yields the

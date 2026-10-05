@@ -12,15 +12,9 @@
 namespace Operon::Test {
 
 namespace {
-    auto Constant(Scalar value) -> Node
-    {
-        return Node::Constant(value);
-    }
+    auto Constant(Scalar value) -> Node { return Node::Constant(value); }
 
-    auto Add() -> Node
-    {
-        return Node::Function(static_cast<Hash>(BuiltinOp::Add), 2);
-    }
+    auto Add() -> Node { return Node::Function(static_cast<Hash>(BuiltinOp::Add), 2); }
 } // namespace
 
 TEST_CASE("Subtree child ranges handle leaves and preserve postfix child order", "[core]")

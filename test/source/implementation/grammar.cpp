@@ -15,7 +15,8 @@
 namespace Operon::Test {
 
 namespace {
-    auto HasUnaryProduction(std::span<Production const> ps, BuiltinOp op) -> bool {
+    auto HasUnaryProduction(std::span<Production const> ps, BuiltinOp op) -> bool
+    {
         return std::ranges::any_of(ps, [&](auto const& p) { return p.Op == op; });
     }
 } // namespace
@@ -69,7 +70,7 @@ TEST_CASE("Grammar - Configure is independent of Reconfigure order", "[grammar]"
 
 TEST_CASE("Grammar - VariableHashes matches what was set", "[grammar]")
 {
-    std::vector<Operon::Hash> const vars{ 10, 20, 30, 40 };
+    std::vector<Operon::Hash> const vars { 10, 20, 30, 40 };
     Grammar grammar(PrimitiveSet::Arithmetic, vars);
     auto got = grammar.VariableHashes();
     REQUIRE(got.size() == vars.size());
@@ -97,7 +98,8 @@ TEST_CASE("Grammar - MinComplexity with no variables is unreachable everywhere",
 
 TEST_CASE("Grammar - default constructor leaves MinComplexity unreachable everywhere, not zero", "[grammar]")
 {
-    Grammar const grammar; // must behave like Grammar(PrimitiveSetConfig{}, {}), not leave minComplexity_ zero-initialized
+    Grammar const
+        grammar; // must behave like Grammar(PrimitiveSetConfig{}, {}), not leave minComplexity_ zero-initialized
     constexpr auto Unreachable = std::numeric_limits<size_t>::max();
     CHECK(grammar.MinComplexity(GrammarSymbol::RecurringFactor) == Unreachable);
     CHECK(grammar.MinComplexity(GrammarSymbol::Term) == Unreachable);
@@ -129,14 +131,15 @@ TEST_CASE("Grammar - Term and SimpleTerm production shapes", "[grammar]")
     auto term = grammar.Productions(GrammarSymbol::Term);
     REQUIRE(term.size() == 2);
     CHECK(term[0].IsCoercion());
-    CHECK(term[0].Operands == std::vector<ProductionOperand>{ GrammarSymbol::RecurringFactor });
+    CHECK(term[0].Operands == std::vector<ProductionOperand> { GrammarSymbol::RecurringFactor });
     CHECK(term[1].Op == BuiltinOp::Mul);
-    CHECK(term[1].Operands == std::vector<ProductionOperand>{ GrammarSymbol::Term, GrammarSymbol::Term });
+    CHECK(term[1].Operands == std::vector<ProductionOperand> { GrammarSymbol::Term, GrammarSymbol::Term });
 
     auto simpleTerm = grammar.Productions(GrammarSymbol::SimpleTerm);
     REQUIRE(simpleTerm.size() == 1);
     CHECK(simpleTerm[0].Op == BuiltinOp::Mul);
-    CHECK(simpleTerm[0].Operands == std::vector<ProductionOperand>{ GrammarSymbol::SimpleTerm, GrammarSymbol::SimpleTerm });
+    CHECK(simpleTerm[0].Operands
+        == std::vector<ProductionOperand> { GrammarSymbol::SimpleTerm, GrammarSymbol::SimpleTerm });
 }
 
 TEST_CASE("Grammar - Expression and SimpleExpr production shapes", "[grammar]")
@@ -148,16 +151,17 @@ TEST_CASE("Grammar - Expression and SimpleExpr production shapes", "[grammar]")
     CHECK(expr[0].Op == BuiltinOp::Add);
     CHECK(expr[0].WeightFirstOperand);
     CHECK(expr[0].TrailingConstant);
-    CHECK(expr[0].Operands == std::vector<ProductionOperand>{ GrammarSymbol::Term });
+    CHECK(expr[0].Operands == std::vector<ProductionOperand> { GrammarSymbol::Term });
     CHECK(expr[1].Op == BuiltinOp::Add);
     CHECK(expr[1].WeightFirstOperand);
     CHECK_FALSE(expr[1].TrailingConstant);
-    CHECK(expr[1].Operands == std::vector<ProductionOperand>{ GrammarSymbol::Term, GrammarSymbol::Expression });
+    CHECK(expr[1].Operands == std::vector<ProductionOperand> { GrammarSymbol::Term, GrammarSymbol::Expression });
 
     auto simpleExpr = grammar.Productions(GrammarSymbol::SimpleExpr);
     REQUIRE(simpleExpr.size() == 2);
-    CHECK(simpleExpr[0].Operands == std::vector<ProductionOperand>{ GrammarSymbol::SimpleTerm });
-    CHECK(simpleExpr[1].Operands == std::vector<ProductionOperand>{ GrammarSymbol::SimpleTerm, GrammarSymbol::SimpleExpr });
+    CHECK(simpleExpr[0].Operands == std::vector<ProductionOperand> { GrammarSymbol::SimpleTerm });
+    CHECK(simpleExpr[1].Operands
+        == std::vector<ProductionOperand> { GrammarSymbol::SimpleTerm, GrammarSymbol::SimpleExpr });
 }
 
 TEST_CASE("EnumerationFunctionName/ParseEnumerationFunction round-trip every value", "[grammar]")
@@ -187,14 +191,22 @@ TEST_CASE("ParseEnumerationPreset accepts exactly the six ESR names, rejects cus
 namespace {
     // Every named preset always enables exactly these five binary ops, in addition to its own unary set.
     constexpr std::array AlwaysOnBinary {
-        EnumerationFunction::Add, EnumerationFunction::Sub, EnumerationFunction::Mul,
-        EnumerationFunction::Div, EnumerationFunction::Pow,
+        EnumerationFunction::Add,
+        EnumerationFunction::Sub,
+        EnumerationFunction::Mul,
+        EnumerationFunction::Div,
+        EnumerationFunction::Pow,
     };
 
-    auto CheckPresetFunctions(EnumerationPreset preset, std::span<EnumerationFunction const> unary) -> void {
+    auto CheckPresetFunctions(EnumerationPreset preset, std::span<EnumerationFunction const> unary) -> void
+    {
         auto const functions = PresetFunctions(preset);
-        for (auto fn : AlwaysOnBinary) { CHECK(functions.Test(EnumerationFunctions::GetIndex(fn))); }
-        for (auto fn : unary) { CHECK(functions.Test(EnumerationFunctions::GetIndex(fn))); }
+        for (auto fn : AlwaysOnBinary) {
+            CHECK(functions.Test(EnumerationFunctions::GetIndex(fn)));
+        }
+        for (auto fn : unary) {
+            CHECK(functions.Test(EnumerationFunctions::GetIndex(fn)));
+        }
         // Every other EnumerationFunction (not in AlwaysOnBinary or `unary`) must stay disabled - a
         // preset must emit *exactly* its declared roots, not a superset.
         for (std::size_t i = 0; i < EnumerationFunctions::Count; ++i) {
@@ -205,15 +217,17 @@ namespace {
     }
 } // namespace
 
-TEST_CASE("PresetFunctions - each named preset emits exactly its declared unary set plus the five binary ops", "[grammar]")
+TEST_CASE(
+    "PresetFunctions - each named preset emits exactly its declared unary set plus the five binary ops", "[grammar]")
 {
     using EF = EnumerationFunction;
-    CheckPresetFunctions(EnumerationPreset::KeepDuplicates, std::array{ EF::Square, EF::Exp, EF::Inv, EF::SqrtAbs, EF::LogAbs });
-    CheckPresetFunctions(EnumerationPreset::CoreMaths, std::array{ EF::Inv });
-    CheckPresetFunctions(EnumerationPreset::ExtMaths, std::array{ EF::Inv, EF::SqrtAbs, EF::Square, EF::Exp });
-    CheckPresetFunctions(EnumerationPreset::OscMaths, std::array{ EF::Inv, EF::Sin });
-    CheckPresetFunctions(EnumerationPreset::Base10Maths, std::array{ EF::TenExp, EF::Inv, EF::Log10Abs });
-    CheckPresetFunctions(EnumerationPreset::BaseEMaths, std::array{ EF::Inv, EF::Exp, EF::LogAbs });
+    CheckPresetFunctions(
+        EnumerationPreset::KeepDuplicates, std::array { EF::Square, EF::Exp, EF::Inv, EF::SqrtAbs, EF::LogAbs });
+    CheckPresetFunctions(EnumerationPreset::CoreMaths, std::array { EF::Inv });
+    CheckPresetFunctions(EnumerationPreset::ExtMaths, std::array { EF::Inv, EF::SqrtAbs, EF::Square, EF::Exp });
+    CheckPresetFunctions(EnumerationPreset::OscMaths, std::array { EF::Inv, EF::Sin });
+    CheckPresetFunctions(EnumerationPreset::Base10Maths, std::array { EF::TenExp, EF::Inv, EF::Log10Abs });
+    CheckPresetFunctions(EnumerationPreset::BaseEMaths, std::array { EF::Inv, EF::Exp, EF::LogAbs });
 }
 
 TEST_CASE("Grammar::Configure(EnumerationFunctionSet) wires every enabled recipe onto RecurringFactor", "[grammar]")
@@ -228,7 +242,11 @@ TEST_CASE("Grammar::Configure(EnumerationFunctionSet) wires every enabled recipe
     REQUIRE(ps.size() == 8); // tenexp, inv, log10_abs, add, sub, mul, div, pow
 
     auto findOp = [&](BuiltinOp op) -> Production const* {
-        for (auto const& p : ps) { if (p.Op == op && p.Operands.size() == 1) { return &p; } }
+        for (auto const& p : ps) {
+            if (p.Op == op && p.Operands.size() == 1) {
+                return &p;
+            }
+        }
         return nullptr;
     };
 
@@ -236,45 +254,61 @@ TEST_CASE("Grammar::Configure(EnumerationFunctionSet) wires every enabled recipe
     auto const* inv = findOp(BuiltinOp::Div);
     REQUIRE(inv != nullptr);
     CHECK_FALSE(inv->Operands.front().IsFixed());
-    CHECK(inv->ResultScale == Operon::Scalar{1});
+    CHECK(inv->ResultScale == Operon::Scalar { 1 });
 
     // log10_abs: Op=Logabs, single nonterminal operand, ResultScale == 1/ln(10).
     auto const* log10Abs = findOp(BuiltinOp::Logabs);
     REQUIRE(log10Abs != nullptr);
     CHECK_FALSE(log10Abs->Operands.front().IsFixed());
-    CHECK(log10Abs->ResultScale != Operon::Scalar{1});
+    CHECK(log10Abs->ResultScale != Operon::Scalar { 1 });
 
     // tenexp: Op=Pow, two operands - first fixed (base 10), second nonterminal (exponent). Distinct
     // from the ordinary binary Pow(SimpleExpr,SimpleExpr) production (also Op=Pow, Operands.size()==2)
     // by having a fixed operand.
     Production const* tenexp = nullptr;
     for (auto const& p : ps) {
-        if (p.Op == BuiltinOp::Pow && p.Operands.size() == 2 && (p.Operands[0].IsFixed() || p.Operands[1].IsFixed())) { tenexp = &p; break; }
+        if (p.Op == BuiltinOp::Pow && p.Operands.size() == 2 && (p.Operands[0].IsFixed() || p.Operands[1].IsFixed())) {
+            tenexp = &p;
+            break;
+        }
     }
     REQUIRE(tenexp != nullptr);
     CHECK(tenexp->Operands[0].IsFixed());
-    CHECK(tenexp->Operands[0].FixedValue == Operon::Scalar{10});
+    CHECK(tenexp->Operands[0].FixedValue == Operon::Scalar { 10 });
     CHECK_FALSE(tenexp->Operands[1].IsFixed());
 
     // The five binary ops: both nonterminal operands, over SimpleExpr.
     for (auto op : { BuiltinOp::Add, BuiltinOp::Sub, BuiltinOp::Mul, BuiltinOp::Div, BuiltinOp::Pow }) {
         Production const* binary = nullptr;
         for (auto const& p : ps) {
-            if (p.Op == op && p.Operands.size() == 2 && !p.Operands[0].IsFixed() && !p.Operands[1].IsFixed()) { binary = &p; break; }
+            if (p.Op == op && p.Operands.size() == 2 && !p.Operands[0].IsFixed() && !p.Operands[1].IsFixed()) {
+                binary = &p;
+                break;
+            }
         }
         REQUIRE(binary != nullptr);
-        CHECK(binary->Operands[0] == ProductionOperand{ GrammarSymbol::SimpleExpr });
-        CHECK(binary->Operands[1] == ProductionOperand{ GrammarSymbol::SimpleExpr });
+        CHECK(binary->Operands[0] == ProductionOperand { GrammarSymbol::SimpleExpr });
+        CHECK(binary->Operands[1] == ProductionOperand { GrammarSymbol::SimpleExpr });
     }
     // Add/Mul are commutative, Sub/Div/Pow are not - checked only on the pure two-nonterminal-operand
     // productions (Commutative is meaningless for tenexp's mixed fixed/nonterminal Pow, which never
     // reaches ProcessNonterminal's two-nonterminal-operand branch that reads it).
-    auto isPureBinary = [](Production const& p) { return p.Operands.size() == 2 && !p.Operands[0].IsFixed() && !p.Operands[1].IsFixed(); };
+    auto isPureBinary = [](Production const& p) {
+        return p.Operands.size() == 2 && !p.Operands[0].IsFixed() && !p.Operands[1].IsFixed();
+    };
     for (auto op : { BuiltinOp::Add, BuiltinOp::Mul }) {
-        for (auto const& p : ps) { if (p.Op == op && isPureBinary(p)) { CHECK(p.Commutative); } }
+        for (auto const& p : ps) {
+            if (p.Op == op && isPureBinary(p)) {
+                CHECK(p.Commutative);
+            }
+        }
     }
     for (auto op : { BuiltinOp::Sub, BuiltinOp::Div, BuiltinOp::Pow }) {
-        for (auto const& p : ps) { if (p.Op == op && isPureBinary(p)) { CHECK_FALSE(p.Commutative); } }
+        for (auto const& p : ps) {
+            if (p.Op == op && isPureBinary(p)) {
+                CHECK_FALSE(p.Commutative);
+            }
+        }
     }
 }
 

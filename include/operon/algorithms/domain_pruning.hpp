@@ -30,8 +30,8 @@ enum class DomainPolicy : uint8_t {
 // Non-owning immutable view of the selected dataset rows. The caller owns the
 // dataset and must keep it alive for the duration of analysis/enumeration.
 struct DomainContext {
-    Dataset const* Data{};
-    Range Rows{};
+    Dataset const* Data {};
+    Range Rows {};
 
     DomainContext(Dataset const& data, Range rows)
         : Data(&data)
@@ -46,13 +46,11 @@ struct DomainContext {
     Tree const& tree, DomainContext const& context, DomainPolicy policy = DomainPolicy::AllRowsFinite) -> DomainStatus;
 
 struct DomainPruningConfig {
-    bool Enabled{false};
-    DomainPolicy Policy{DomainPolicy::AllRowsFinite};
-    DomainContext const* Context{};
+    bool Enabled { false };
+    DomainPolicy Policy { DomainPolicy::AllRowsFinite };
+    DomainContext const* Context {};
 };
 
 } // namespace Operon
 
 #endif
-
-

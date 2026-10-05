@@ -18,10 +18,10 @@
 #include "operon/interpreter/functions.hpp"
 
 #ifdef OPERON_HAVE_VDT
+#include <vdt/cos.h>
 #include <vdt/exp.h>
 #include <vdt/log.h>
 #include <vdt/sin.h>
-#include <vdt/cos.h>
 #endif
 
 namespace Operon::Test {
@@ -30,23 +30,40 @@ namespace {
     using T = Operon::Scalar;
     constexpr std::size_t S = Dispatch::DefaultBatchSize<T>;
 
-    struct alignas(32) Buf { std::array<T, S> v; };
+    struct alignas(32) Buf {
+        std::array<T, S> v;
+    };
 
-    auto UlpDistance(T a, T b) -> uint64_t {
-        if (std::isnan(a) && std::isnan(b)) { return 0; }
-        if (std::isinf(a) && std::isinf(b) && (a > 0) == (b > 0)) { return 0; }
+    auto UlpDistance(T a, T b) -> uint64_t
+    {
+        if (std::isnan(a) && std::isnan(b)) {
+            return 0;
+        }
+        if (std::isinf(a) && std::isinf(b) && (a > 0) == (b > 0)) {
+            return 0;
+        }
         using U = std::conditional_t<sizeof(T) == 4, uint32_t, uint64_t>;
-        constexpr U SignBit = U{1} << (sizeof(U) * 8 - 1);
+        constexpr U SignBit = U { 1 } << (sizeof(U) * 8 - 1);
         auto ua = std::bit_cast<U>(a);
         auto ub = std::bit_cast<U>(b);
-        if (ua & SignBit) { ua = SignBit - ua; }
-        if (ub & SignBit) { ub = SignBit - ub; }
+        if (ua & SignBit) {
+            ua = SignBit - ua;
+        }
+        if (ub & SignBit) {
+            ub = SignBit - ub;
+        }
         return ua > ub ? ua - ub : ub - ua;
     }
 
-    struct UlpResult { uint64_t max_ulp; T worst_input; T got; T expected; };
+    struct UlpResult {
+        uint64_t max_ulp;
+        T worst_input;
+        T got;
+        T expected;
+    };
 
-    auto MaxUlpError(auto fn, auto ref, std::vector<T> const& inputs) -> UlpResult {
+    auto MaxUlpError(auto fn, auto ref, std::vector<T> const& inputs) -> UlpResult
+    {
         auto const nbatch = (inputs.size() + S - 1) / S;
         std::vector<Buf> src(nbatch), dst(nbatch);
 
@@ -54,46 +71,49 @@ namespace {
             src[i / S].v[i % S] = inputs[i];
         }
         for (auto i = inputs.size(); i < nbatch * S; ++i) {
-            src[i / S].v[i % S] = T{0.5};
+            src[i / S].v[i % S] = T { 0.5 };
         }
         for (auto b = 0UL; b < nbatch; ++b) {
-            fn(dst[b].v.data(), T{1}, src[b].v.data());
+            fn(dst[b].v.data(), T { 1 }, src[b].v.data());
         }
 
-        UlpResult res{0, T{0}, T{0}, T{0}};
+        UlpResult res { 0, T { 0 }, T { 0 }, T { 0 } };
         for (auto i = 0UL; i < inputs.size(); ++i) {
-            auto got      = dst[i / S].v[i % S];
+            auto got = dst[i / S].v[i % S];
             auto expected = static_cast<T>(ref(static_cast<double>(inputs[i])));
             if (auto d = UlpDistance(got, expected); d > res.max_ulp) {
-                res = {d, inputs[i], got, expected};
+                res = { d, inputs[i], got, expected };
             }
         }
         return res;
     }
 
     // Generate N+1 evenly spaced values in [lo, hi] plus extra edge values.
-    auto Linspace(double lo, double hi, int n, std::vector<T> extra = {}) -> std::vector<T> {
+    auto Linspace(double lo, double hi, int n, std::vector<T> extra = {}) -> std::vector<T>
+    {
         std::vector<T> v;
         v.reserve(static_cast<std::size_t>(n + 1) + extra.size());
         for (int i = 0; i <= n; ++i) {
             v.push_back(static_cast<T>(lo + (hi - lo) * i / n));
         }
-        for (auto x : extra) { v.push_back(x); }
+        for (auto x : extra) {
+            v.push_back(x);
+        }
         return v;
     }
 
-    constexpr T   Inf = std::numeric_limits<T>::infinity();
-    constexpr T   NaN = std::numeric_limits<T>::quiet_NaN();
-    constexpr int N   = 10000;
+    constexpr T Inf = std::numeric_limits<T>::infinity();
+    constexpr T NaN = std::numeric_limits<T>::quiet_NaN();
+    constexpr int N = 10000;
 } // namespace
 
 TEST_CASE("Backend transcendental ULP accuracy", "[backend]")
 {
     struct Case {
         std::string_view name;
-        void(*fn)(T*, T, T const*);
+        void (*fn)(T*, T, T const*);
         std::vector<T> inputs;
-        double(*ref)(double);
+        double (*ref)(double);
         uint64_t max_ulp;
     };
 
@@ -191,8 +211,8 @@ TEST_CASE("Backend transcendental ULP accuracy", "[backend]")
 
     for (auto& [name, fn, inputs, ref, ulp_limit] : cases) {
         auto [max_ulp, worst, got, expected] = MaxUlpError(fn, ref, inputs);
-        INFO(name << ": max ULP = " << max_ulp << " (limit " << ulp_limit
-             << ") at x=" << worst << " got=" << got << " expected=" << expected);
+        INFO(name << ": max ULP = " << max_ulp << " (limit " << ulp_limit << ") at x=" << worst << " got=" << got
+                  << " expected=" << expected);
         CHECK(max_ulp <= ulp_limit);
     }
 }
@@ -218,43 +238,47 @@ TEST_CASE("Backend transcendental ULP accuracy", "[backend]")
 TEST_CASE("Backend NaN propagation", "[backend]")
 {
     auto allNan = [](auto fn) -> bool {
-        Buf src{};
-        src.v.fill(T{0.5});
+        Buf src {};
+        src.v.fill(T { 0.5 });
         src.v[0] = NaN;
-        Buf dst{};
-        fn(dst.v.data(), T{1}, src.v.data());
+        Buf dst {};
+        fn(dst.v.data(), T { 1 }, src.v.data());
         return std::isnan(dst.v[0]);
     };
 
-    CHECK(allNan(Backend::Exp<T,S>));
-    CHECK(allNan(Backend::Log<T,S>));
-    CHECK(allNan(Backend::Log1p<T,S>));
-    CHECK(allNan(Backend::Logabs<T,S>));
-    CHECK(allNan(Backend::Sin<T,S>));
-    CHECK(allNan(Backend::Cos<T,S>));
-    CHECK(allNan(Backend::Tan<T,S>));
-    CHECK(allNan(Backend::Asin<T,S>));
-    CHECK(allNan(Backend::Acos<T,S>));
-    CHECK(allNan(Backend::Atan<T,S>));
-    CHECK(allNan(Backend::Sinh<T,S>));
-    CHECK(allNan(Backend::Cosh<T,S>));
-    CHECK(allNan(Backend::Tanh<T,S>));
-    CHECK(allNan(Backend::Sqrt<T,S>));
-    CHECK(allNan(Backend::Sqrtabs<T,S>));
-    CHECK(allNan(Backend::Cbrt<T,S>));
+    CHECK(allNan(Backend::Exp<T, S>));
+    CHECK(allNan(Backend::Log<T, S>));
+    CHECK(allNan(Backend::Log1p<T, S>));
+    CHECK(allNan(Backend::Logabs<T, S>));
+    CHECK(allNan(Backend::Sin<T, S>));
+    CHECK(allNan(Backend::Cos<T, S>));
+    CHECK(allNan(Backend::Tan<T, S>));
+    CHECK(allNan(Backend::Asin<T, S>));
+    CHECK(allNan(Backend::Acos<T, S>));
+    CHECK(allNan(Backend::Atan<T, S>));
+    CHECK(allNan(Backend::Sinh<T, S>));
+    CHECK(allNan(Backend::Cosh<T, S>));
+    CHECK(allNan(Backend::Tanh<T, S>));
+    CHECK(allNan(Backend::Sqrt<T, S>));
+    CHECK(allNan(Backend::Sqrtabs<T, S>));
+    CHECK(allNan(Backend::Cbrt<T, S>));
 
     auto allNan2 = [](auto fn, T x, T y) -> bool {
-        Buf sa{}; sa.v.fill(T{0.5}); sa.v[0] = x;
-        Buf sb{}; sb.v.fill(T{0.5}); sb.v[0] = y;
-        Buf dst{};
-        fn(dst.v.data(), T{1}, sa.v.data(), sb.v.data());
+        Buf sa {};
+        sa.v.fill(T { 0.5 });
+        sa.v[0] = x;
+        Buf sb {};
+        sb.v.fill(T { 0.5 });
+        sb.v[0] = y;
+        Buf dst {};
+        fn(dst.v.data(), T { 1 }, sa.v.data(), sb.v.data());
         return std::isnan(dst.v[0]);
     };
 
-    CHECK(allNan2(Backend::Pow<T,S>, NaN, 2.f));
-    CHECK(allNan2(Backend::Pow<T,S>, 2.f, NaN));
-    CHECK(allNan2(Backend::Powabs<T,S>, NaN, 2.f));
-    CHECK(allNan2(Backend::Powabs<T,S>, 2.f, NaN));
+    CHECK(allNan2(Backend::Pow<T, S>, NaN, 2.f));
+    CHECK(allNan2(Backend::Pow<T, S>, 2.f, NaN));
+    CHECK(allNan2(Backend::Powabs<T, S>, NaN, 2.f));
+    CHECK(allNan2(Backend::Powabs<T, S>, 2.f, NaN));
 }
 
 // eve::sinh had a third-party cross-lane bug (a NaN in one SIMD lane
@@ -266,19 +290,19 @@ TEST_CASE("Backend NaN propagation", "[backend]")
 // all-clean batch.
 TEST_CASE("Backend Sinh is immune to eve::sinh's cross-lane NaN corruption", "[backend]")
 {
-    Buf clean{};
+    Buf clean {};
     for (std::size_t i = 0; i < S; ++i) {
         clean.v[i] = static_cast<T>(-2.0 + 0.1 * static_cast<double>(i));
     }
 
-    Buf dstClean{};
-    Backend::Sinh<T,S>(dstClean.v.data(), T{1}, clean.v.data());
+    Buf dstClean {};
+    Backend::Sinh<T, S>(dstClean.v.data(), T { 1 }, clean.v.data());
 
     for (std::size_t nanPos = 0; nanPos < S; ++nanPos) {
         Buf dirty = clean;
         dirty.v[nanPos] = NaN;
-        Buf dstDirty{};
-        Backend::Sinh<T,S>(dstDirty.v.data(), T{1}, dirty.v.data());
+        Buf dstDirty {};
+        Backend::Sinh<T, S>(dstDirty.v.data(), T { 1 }, dirty.v.data());
         for (std::size_t i = 0; i < S; ++i) {
             INFO("nanPos=" << nanPos << " lane=" << i);
             if (i == nanPos) {
@@ -296,28 +320,34 @@ TEST_CASE("Backend Pow/Powabs ULP accuracy", "[backend]")
     auto MaxUlpError2 = [](auto fn, auto ref, std::vector<T> const& xs, std::vector<T> const& ys) {
         auto n = std::min(xs.size(), ys.size());
         auto nbatch = (n + S - 1) / S;
-        struct alignas(32) Buf2 { std::array<T, S> v; };
+        struct alignas(32) Buf2 {
+            std::array<T, S> v;
+        };
         std::vector<Buf2> sa(nbatch), sb(nbatch), dst(nbatch);
         for (auto i = 0UL; i < n; ++i) {
-            sa[i/S].v[i%S] = xs[i]; sb[i/S].v[i%S] = ys[i];
+            sa[i / S].v[i % S] = xs[i];
+            sb[i / S].v[i % S] = ys[i];
         }
         for (auto i = n; i < nbatch * S; ++i) {
-            sa[i/S].v[i%S] = T{1}; sb[i/S].v[i%S] = T{1};
+            sa[i / S].v[i % S] = T { 1 };
+            sb[i / S].v[i % S] = T { 1 };
         }
         for (auto b = 0UL; b < nbatch; ++b) {
-            fn(dst[b].v.data(), T{1}, sa[b].v.data(), sb[b].v.data());
+            fn(dst[b].v.data(), T { 1 }, sa[b].v.data(), sb[b].v.data());
         }
-        UlpResult res{0, T{0}, T{0}, T{0}};
+        UlpResult res { 0, T { 0 }, T { 0 }, T { 0 } };
         for (auto i = 0UL; i < n; ++i) {
-            auto got      = dst[i/S].v[i%S];
+            auto got = dst[i / S].v[i % S];
             auto expected = static_cast<T>(ref(static_cast<double>(xs[i]), static_cast<double>(ys[i])));
             if (std::isnan(expected)) {
                 // domain error: backend must also return NaN; a finite result is a max-ULP failure
-                if (!std::isnan(got)) { return UlpResult{std::numeric_limits<uint64_t>::max(), xs[i], got, expected}; }
+                if (!std::isnan(got)) {
+                    return UlpResult { std::numeric_limits<uint64_t>::max(), xs[i], got, expected };
+                }
                 continue;
             }
             if (auto d = UlpDistance(got, expected); d > res.max_ulp) {
-                res = {d, xs[i], got, expected};
+                res = { d, xs[i], got, expected };
             }
         }
         return res;
@@ -325,41 +355,43 @@ TEST_CASE("Backend Pow/Powabs ULP accuracy", "[backend]")
 
     // Positive x (excluding 0 — FastPow(0,y) is a degenerate path not testing poly accuracy):
     // compare against std::pow for all y.
-    auto xs_pos  = Linspace(0.01, 10.0, 200, {1.f, 2.f, 0.5f});
-    auto ys_mixed = Linspace(-3, 3, 200, {0.f, 1.f, -1.f, 2.f, -2.f, 3.f, -3.f, 0.5f, -0.5f});
+    auto xs_pos = Linspace(0.01, 10.0, 200, { 1.f, 2.f, 0.5f });
+    auto ys_mixed = Linspace(-3, 3, 200, { 0.f, 1.f, -1.f, 2.f, -2.f, 3.f, -3.f, 0.5f, -0.5f });
 
     // Negative x with integer y only: std::pow is well-defined here, sign correction tested.
     std::vector<T> xs_neg_int, ys_neg_int;
     for (auto x : Linspace(-10, -0.01, 50)) {
-        for (T y : {-3.f, -2.f, -1.f, 0.f, 1.f, 2.f, 3.f}) {
-            xs_neg_int.push_back(x); ys_neg_int.push_back(y);
+        for (T y : { -3.f, -2.f, -1.f, 0.f, 1.f, 2.f, 3.f }) {
+            xs_neg_int.push_back(x);
+            ys_neg_int.push_back(y);
         }
     }
 
     // Powabs: any x (abs applied internally), any real y.
-    auto xs_abs = Linspace(-10, 10, 200, {0.f, 1.f, -1.f});
+    auto xs_abs = Linspace(-10, 10, 200, { 0.f, 1.f, -1.f });
 
     // Limit is 8 ULP: FastPow compounds FastExp+FastLog errors (~2 ULP each), and the
     // sign-correction + x==0 fixup paths add up to ~4-6 ULP in practice.
-    SECTION("Pow positive base") {
-        auto ref = [](double x, double y){ return std::pow(x, y); };
-        auto [max_ulp, worst, got, expected] = MaxUlpError2(Backend::Pow<T,S>, ref, xs_pos, ys_mixed);
-        INFO("Pow(x>0): max ULP = " << max_ulp << " at x=" << worst
-             << " got=" << got << " expected=" << expected);
+    SECTION("Pow positive base")
+    {
+        auto ref = [](double x, double y) { return std::pow(x, y); };
+        auto [max_ulp, worst, got, expected] = MaxUlpError2(Backend::Pow<T, S>, ref, xs_pos, ys_mixed);
+        INFO("Pow(x>0): max ULP = " << max_ulp << " at x=" << worst << " got=" << got << " expected=" << expected);
         CHECK(max_ulp <= 8UL);
     }
-    SECTION("Pow negative base integer exponent") {
-        auto ref = [](double x, double y){ return std::pow(x, y); };
-        auto [max_ulp, worst, got, expected] = MaxUlpError2(Backend::Pow<T,S>, ref, xs_neg_int, ys_neg_int);
-        INFO("Pow(x<0,y int): max ULP = " << max_ulp << " at x=" << worst
-             << " got=" << got << " expected=" << expected);
+    SECTION("Pow negative base integer exponent")
+    {
+        auto ref = [](double x, double y) { return std::pow(x, y); };
+        auto [max_ulp, worst, got, expected] = MaxUlpError2(Backend::Pow<T, S>, ref, xs_neg_int, ys_neg_int);
+        INFO(
+            "Pow(x<0,y int): max ULP = " << max_ulp << " at x=" << worst << " got=" << got << " expected=" << expected);
         CHECK(max_ulp <= 8UL);
     }
-    SECTION("Powabs") {
-        auto ref = [](double x, double y){ return std::pow(std::abs(x), y); };
-        auto [max_ulp, worst, got, expected] = MaxUlpError2(Backend::Powabs<T,S>, ref, xs_abs, ys_mixed);
-        INFO("Powabs: max ULP = " << max_ulp << " at x=" << worst
-             << " got=" << got << " expected=" << expected);
+    SECTION("Powabs")
+    {
+        auto ref = [](double x, double y) { return std::pow(std::abs(x), y); };
+        auto [max_ulp, worst, got, expected] = MaxUlpError2(Backend::Powabs<T, S>, ref, xs_abs, ys_mixed);
+        INFO("Powabs: max ULP = " << max_ulp << " at x=" << worst << " got=" << got << " expected=" << expected);
         CHECK(max_ulp <= 8UL);
     }
 }
@@ -374,9 +406,9 @@ TEST_CASE("Backend vs vdt ULP accuracy", "[backend]")
         // Expected max ULP is 0-1 for functions sharing identical coefficients.
         struct Case {
             std::string_view name;
-            void(*fn)(T*, T, T const*);
+            void (*fn)(T*, T, T const*);
             std::vector<T> inputs;
-            float(*ref)(float);
+            float (*ref)(float);
             uint64_t max_ulp;
         };
 
@@ -404,9 +436,10 @@ TEST_CASE("Backend vs vdt ULP accuracy", "[backend]")
         // clang-format on
 
         for (auto& [name, fn, inputs, ref, ulp_limit] : cases) {
-            auto [max_ulp, worst, got, expected] = MaxUlpError(fn, [&](double x){ return static_cast<double>(ref(static_cast<float>(x))); }, inputs);
-            INFO(name << ": max ULP = " << max_ulp << " (limit " << ulp_limit
-                 << ") at x=" << worst << " got=" << got << " expected=" << expected);
+            auto [max_ulp, worst, got, expected]
+                = MaxUlpError(fn, [&](double x) { return static_cast<double>(ref(static_cast<float>(x))); }, inputs);
+            INFO(name << ": max ULP = " << max_ulp << " (limit " << ulp_limit << ") at x=" << worst << " got=" << got
+                      << " expected=" << expected);
             CHECK(max_ulp <= ulp_limit);
         }
     }

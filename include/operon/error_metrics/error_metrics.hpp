@@ -14,4 +14,3 @@
 #include "operon/error_metrics/sum_of_squared_errors.hpp"
 
 #endif
-

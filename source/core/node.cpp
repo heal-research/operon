@@ -6,9 +6,9 @@
 
 #include <gtl/phmap.hpp>
 
-#include <stdexcept>      // for invalid_argument, out_of_range
-#include <utility>        // for make_pair, pair, move
-#include <string>         // for string
+#include <stdexcept> // for invalid_argument, out_of_range
+#include <string> // for string
+#include <utility> // for make_pair, pair, move
 
 #include "operon/core/standard_library.hpp"
 #include "operon/core/types.hpp"
@@ -23,7 +23,8 @@ namespace {
     // user-defined Dynamic functions during setup.
     auto Descriptions() -> gtl::parallel_flat_hash_map_m<Operon::Hash, pair<string, string>>&
     {
-        static gtl::parallel_flat_hash_map_m<Operon::Hash, pair<string, string>> desc; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+        static gtl::parallel_flat_hash_map_m<Operon::Hash, pair<string, string>>
+            desc; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
         return desc;
     }
 
@@ -57,30 +58,28 @@ namespace {
     }
 } // namespace
 
-    void Node::RegisterName(Operon::Hash hash, string name, string desc)
-    {
-        // Also used internally by StandardLibrary::RegisterNames() to seed
-        // built-in entries, whose hashes ARE in [0, BuiltinOpCount) by
-        // construction (static_cast<Hash>(some BuiltinOp)) - so this can't
-        // reject that range itself. User-facing callers (symbol_library.hpp)
-        // guard against landing in the reserved range before calling this.
-        Descriptions().lazy_emplace_l(
-            hash,
-            [&](auto& kv)         { kv.second = { std::move(name), std::move(desc) }; },
-            [&](auto const& ctor) { ctor(hash, std::make_pair(std::move(name), std::move(desc))); }
-        );
-    }
+void Node::RegisterName(Operon::Hash hash, string name, string desc)
+{
+    // Also used internally by StandardLibrary::RegisterNames() to seed
+    // built-in entries, whose hashes ARE in [0, BuiltinOpCount) by
+    // construction (static_cast<Hash>(some BuiltinOp)) - so this can't
+    // reject that range itself. User-facing callers (symbol_library.hpp)
+    // guard against landing in the reserved range before calling this.
+    Descriptions().lazy_emplace_l(
+        hash, [&](auto& kv) { kv.second = { std::move(name), std::move(desc) }; },
+        [&](auto const& ctor) { ctor(hash, std::make_pair(std::move(name), std::move(desc))); });
+}
 
-    auto Node::Name() const -> std::string
-    {
-        StandardLibrary::RegisterNames();
-        return LookupDescription(*this).first;
-    }
+auto Node::Name() const -> std::string
+{
+    StandardLibrary::RegisterNames();
+    return LookupDescription(*this).first;
+}
 
-    auto Node::Desc() const -> std::string
-    {
-        StandardLibrary::RegisterNames();
-        return LookupDescription(*this).second;
-    }
+auto Node::Desc() const -> std::string
+{
+    StandardLibrary::RegisterNames();
+    return LookupDescription(*this).second;
+}
 
 } // namespace Operon

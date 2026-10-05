@@ -10,16 +10,15 @@
 namespace Operon {
 struct Variable {
     std::string Name;
-    Operon::Hash Hash{0};
-    int64_t Index{0};
+    Operon::Hash Hash { 0 };
+    int64_t Index { 0 };
 
-    constexpr auto operator==(Variable const& rhs) const noexcept -> bool {
+    constexpr auto operator==(Variable const& rhs) const noexcept -> bool
+    {
         return std::tie(Name, Hash, Index) == std::tie(rhs.Name, rhs.Hash, rhs.Index);
     }
 
-    constexpr auto operator!=(Variable const& rhs) const noexcept -> bool {
-        return !(*this == rhs);
-    }
+    constexpr auto operator!=(Variable const& rhs) const noexcept -> bool { return !(*this == rhs); }
 };
 } // namespace Operon
 

@@ -9,7 +9,8 @@
 
 namespace Operon {
 
-auto CoefficientOptimizer::operator()(Operon::RandomGenerator& rng, Operon::Tree tree) const -> std::tuple<Operon::Tree, FitOutcome>
+auto CoefficientOptimizer::operator()(Operon::RandomGenerator& rng, Operon::Tree tree) const
+    -> std::tuple<Operon::Tree, FitOutcome>
 {
     auto const* optimizer = optimizer_.get();
 

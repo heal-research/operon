@@ -327,7 +327,8 @@ TEST_CASE("ParseShapeBoundModeConfig accepts combined alongside an explicit bise
     CHECK(*cfg.BisectionDepth == 5);
 }
 
-TEST_CASE("CLI bisection-depth precedence: explicit bisected:N overrides --shape-bisection-depth", "[shape-constraints]")
+TEST_CASE(
+    "CLI bisection-depth precedence: explicit bisected:N overrides --shape-bisection-depth", "[shape-constraints]")
 {
     // Mirrors the precedence pattern each CLI (operon_gp, operon_nsgp,
     // operon_parse_model) applies after parsing --shape-bound-mode and
@@ -338,7 +339,9 @@ TEST_CASE("CLI bisection-depth precedence: explicit bisected:N overrides --shape
         auto const config = Operon::ParseShapeBoundModeConfig(modeStr);
         Operon::ShapeBoundOptions options {};
         options.BisectionDepth = cliDepthOption;
-        if (config.BisectionDepth) { options.BisectionDepth = *config.BisectionDepth; }
+        if (config.BisectionDepth) {
+            options.BisectionDepth = *config.BisectionDepth;
+        }
         Operon::ValidateShapeBoundOptions(options);
         return options;
     };
@@ -949,7 +952,8 @@ TEST_CASE("SetBoundOptions validates bisection depths and invalidates cached mea
         data(static_cast<Eigen::Index>(i), 1) = Operon::Scalar { 0 };
     }
     Operon::Dataset ds(gsl::not_null { data.data() }, nrow, ncol);
-    auto tree = InfixParser::ParseOrThrow("X1 - X1", ds); // plain interval: [-8, 8]; bisected depth d: [-h, h], h = 8/2^d
+    auto tree
+        = InfixParser::ParseOrThrow("X1 - X1", ds); // plain interval: [-8, 8]; bisected depth d: [-h, h], h = 8/2^d
 
     Operon::Problem problem(&ds);
     problem.SetTrainingRange({ 0, nrow });
@@ -1345,23 +1349,25 @@ TEST_CASE("ShapeConstrainedEvaluator - a throwing user-registered rule is treate
         auto const hash = Operon::Hasher {}("shape_throw_affine_rule");
         bool invoked = false;
         RegisterUnaryAffine<Scalar>(hash,
-            [&invoked](AffineEvaluator<Scalar>::Context const&, AffineEvaluator<Scalar>::Affine const&)
-                -> tl::expected<AffineEvaluator<Scalar>::Affine, std::string> {
+            [&invoked](AffineEvaluator<Scalar>::Context const&,
+                AffineEvaluator<Scalar>::Affine const&) -> tl::expected<AffineEvaluator<Scalar>::Affine, std::string> {
                 invoked = true;
                 return tl::unexpected("user affine rule failed");
             });
         Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
         sce.SetBoundMode(ShapeBoundMode::Combined);
         assertDegradesToUncertified(sce, makeTree(hash));
-        CHECK(invoked); // proves the callback's tl::unexpected genuinely propagated, not a missing-registry short-circuit
+        CHECK(
+            invoked); // proves the callback's tl::unexpected genuinely propagated, not a missing-registry short-circuit
     }
 
     SECTION("interval rule returning tl::unexpected, combined mode: degrades to uncertified")
     {
         auto const hash = Operon::Hasher {}("shape_throw_interval_rule_combined");
         bool invoked = false;
-        RegisterUnaryInterval<Scalar>(
-            hash, [&invoked](IntervalEvaluator<Scalar>::Interval const&) -> tl::expected<IntervalEvaluator<Scalar>::Interval, std::string> {
+        RegisterUnaryInterval<Scalar>(hash,
+            [&invoked](IntervalEvaluator<Scalar>::Interval const&)
+                -> tl::expected<IntervalEvaluator<Scalar>::Interval, std::string> {
                 invoked = true;
                 return tl::unexpected("user interval rule failed");
             });
@@ -1375,8 +1381,9 @@ TEST_CASE("ShapeConstrainedEvaluator - a throwing user-registered rule is treate
     {
         auto const hash = Operon::Hasher {}("shape_throw_interval_rule_interval_mode");
         bool invoked = false;
-        RegisterUnaryInterval<Scalar>(
-            hash, [&invoked](IntervalEvaluator<Scalar>::Interval const&) -> tl::expected<IntervalEvaluator<Scalar>::Interval, std::string> {
+        RegisterUnaryInterval<Scalar>(hash,
+            [&invoked](IntervalEvaluator<Scalar>::Interval const&)
+                -> tl::expected<IntervalEvaluator<Scalar>::Interval, std::string> {
                 invoked = true;
                 return tl::unexpected("user interval rule failed");
             });

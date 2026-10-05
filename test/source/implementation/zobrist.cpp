@@ -20,10 +20,11 @@
 namespace Operon::Test {
 
 namespace {
-    constexpr auto Seed      = 42UL;
+    constexpr auto Seed = 42UL;
     constexpr auto MaxLength = 50;
 
-    auto MakeSetup() {
+    auto MakeSetup()
+    {
         auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
         auto inputs = ds.VariableHashes();
         std::erase(inputs, ds.GetVariable("Y").value().Hash);
@@ -39,7 +40,7 @@ TEST_CASE("Zobrist - same tree yields same hash", "[zobrist]")
     Operon::RandomGenerator rng(Seed);
     Zobrist const cache(rng, MaxLength, inputs);
 
-    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    BalancedTreeCreator const creator { &pset, inputs, /* bias= */ 0.0, MaxLength };
     auto tree = creator(rng, 20, 1, MaxLength);
 
     auto h1 = cache.ComputeHash(tree);
@@ -55,7 +56,7 @@ TEST_CASE("Zobrist - different coefficients yield same hash", "[zobrist]")
     Operon::RandomGenerator rng(Seed);
     Zobrist const cache(rng, MaxLength, inputs);
 
-    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    BalancedTreeCreator const creator { &pset, inputs, /* bias= */ 0.0, MaxLength };
     Operon::NormalCoefficientInitializer const coeffInit;
 
     auto tree1 = creator(rng, 20, 1, MaxLength);
@@ -72,12 +73,16 @@ TEST_CASE("Zobrist - position sensitivity (deterministic)", "[zobrist]")
     // sin(cos(c)) and cos(sin(c)) have the same node types but at different
     // positions — the position-aware hash must distinguish them.
     Operon::RandomGenerator rng(Seed);
-    Zobrist const cache(rng, MaxLength, {});  // no variables needed: trees use only constants
+    Zobrist const cache(rng, MaxLength, {}); // no variables needed: trees use only constants
 
     // postfix: [Constant, Cos, Sin]  =>  sin(cos(c))
-    Tree const tree1 = Tree({ Node(NodeType::Constant), Util::MakeOp<BuiltinOp::Cos>(), Util::MakeOp<BuiltinOp::Sin>() }).UpdateNodes();
+    Tree const tree1
+        = Tree({ Node(NodeType::Constant), Util::MakeOp<BuiltinOp::Cos>(), Util::MakeOp<BuiltinOp::Sin>() })
+              .UpdateNodes();
     // postfix: [Constant, Sin, Cos]  =>  cos(sin(c))
-    Tree const tree2 = Tree({ Node(NodeType::Constant), Util::MakeOp<BuiltinOp::Sin>(), Util::MakeOp<BuiltinOp::Cos>() }).UpdateNodes();
+    Tree const tree2
+        = Tree({ Node(NodeType::Constant), Util::MakeOp<BuiltinOp::Sin>(), Util::MakeOp<BuiltinOp::Cos>() })
+              .UpdateNodes();
 
     REQUIRE(cache.ComputeHash(tree1) != cache.ComputeHash(tree2));
 }
@@ -93,8 +98,12 @@ TEST_CASE("Zobrist - commuted variables yield different hashes", "[zobrist]")
     auto const varX = ds.GetVariable("X1").value();
     auto const varY = ds.GetVariable("X2").value();
 
-    Node nX(NodeType::Variable); nX.HashValue = varX.Hash; nX.IsEnabled = true;
-    Node nY(NodeType::Variable); nY.HashValue = varY.Hash; nY.IsEnabled = true;
+    Node nX(NodeType::Variable);
+    nX.HashValue = varX.Hash;
+    nX.IsEnabled = true;
+    Node nY(NodeType::Variable);
+    nY.HashValue = varY.Hash;
+    nY.IsEnabled = true;
 
     // postfix: [X, Y, Add] => Add(X, Y)
     Tree const treeXY = Tree({ nX, nY, Util::MakeOp<BuiltinOp::Add>() }).UpdateNodes();
@@ -127,7 +136,7 @@ TEST_CASE("Zobrist - TryGet returns false on miss", "[zobrist]")
     Operon::RandomGenerator rng(Seed);
     Zobrist const cache(rng, MaxLength, inputs);
 
-    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    BalancedTreeCreator const creator { &pset, inputs, /* bias= */ 0.0, MaxLength };
     auto tree = creator(rng, 10, 1, MaxLength);
     auto hash = cache.ComputeHash(tree);
 
@@ -143,11 +152,11 @@ TEST_CASE("Zobrist - Insert then TryGet roundtrip", "[zobrist]")
     Operon::RandomGenerator rng(Seed);
     Zobrist cache(rng, MaxLength, inputs);
 
-    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    BalancedTreeCreator const creator { &pset, inputs, /* bias= */ 0.0, MaxLength };
     auto tree = creator(rng, 10, 1, MaxLength);
     auto hash = cache.ComputeHash(tree);
 
-    Operon::Vector<Operon::Scalar> const stored = { Operon::Scalar{0.5}, Operon::Scalar{1.0} };
+    Operon::Vector<Operon::Scalar> const stored = { Operon::Scalar { 0.5 }, Operon::Scalar { 1.0 } };
     cache.Insert(hash, stored);
     REQUIRE(cache.Size() == 1);
 
@@ -165,11 +174,11 @@ TEST_CASE("Zobrist - Clear resets table and hit counter", "[zobrist]")
     Operon::RandomGenerator rng(Seed);
     Zobrist cache(rng, MaxLength, inputs);
 
-    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    BalancedTreeCreator const creator { &pset, inputs, /* bias= */ 0.0, MaxLength };
     auto tree = creator(rng, 10, 1, MaxLength);
     auto hash = cache.ComputeHash(tree);
 
-    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar{0.1} };
+    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar { 0.1 } };
     cache.Insert(hash, val);
 
     Operon::Vector<Operon::Scalar> tmp;
@@ -189,13 +198,13 @@ TEST_CASE("Zobrist - Lookups counts every TryGet call regardless of outcome", "[
     Operon::RandomGenerator rng(Seed);
     Zobrist cache(rng, MaxLength, inputs);
 
-    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    BalancedTreeCreator const creator { &pset, inputs, /* bias= */ 0.0, MaxLength };
     auto tree1 = creator(rng, 10, 1, MaxLength);
     auto tree2 = creator(rng, 10, 1, MaxLength);
     auto hash1 = cache.ComputeHash(tree1);
     auto hash2 = cache.ComputeHash(tree2);
 
-    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar{0.1} };
+    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar { 0.1 } };
     cache.Insert(hash1, val);
 
     Operon::Vector<Operon::Scalar> tmp;
@@ -214,11 +223,11 @@ TEST_CASE("Zobrist - duplicate inserts collapse to one entry", "[zobrist]")
     Operon::RandomGenerator rng(Seed);
     Zobrist cache(rng, MaxLength, inputs);
 
-    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    BalancedTreeCreator const creator { &pset, inputs, /* bias= */ 0.0, MaxLength };
     auto tree = creator(rng, 10, 1, MaxLength);
     auto hash = cache.ComputeHash(tree);
 
-    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar{0.3} };
+    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar { 0.3 } };
     cache.Insert(hash, val);
     cache.Insert(hash, val);
     cache.Insert(hash, val);
@@ -236,8 +245,10 @@ TEST_CASE("Zobrist - distinct built-in ops at the same position yield distinct h
     Operon::RandomGenerator rng(Seed);
     Zobrist const cache(rng, MaxLength, {});
 
-    REQUIRE(cache.ComputeHash(Util::MakeOp<BuiltinOp::Add>(), 0) != cache.ComputeHash(Util::MakeOp<BuiltinOp::Mul>(), 0));
-    REQUIRE(cache.ComputeHash(Util::MakeOp<BuiltinOp::Sin>(), 0) != cache.ComputeHash(Util::MakeOp<BuiltinOp::Cos>(), 0));
+    REQUIRE(
+        cache.ComputeHash(Util::MakeOp<BuiltinOp::Add>(), 0) != cache.ComputeHash(Util::MakeOp<BuiltinOp::Mul>(), 0));
+    REQUIRE(
+        cache.ComputeHash(Util::MakeOp<BuiltinOp::Sin>(), 0) != cache.ComputeHash(Util::MakeOp<BuiltinOp::Cos>(), 0));
 }
 
 TEST_CASE("Zobrist - distinct Dynamic-hash user functions yield distinct hashes", "[zobrist]")
@@ -252,8 +263,8 @@ TEST_CASE("Zobrist - distinct Dynamic-hash user functions yield distinct hashes"
     Operon::RandomGenerator rng(Seed);
     Zobrist const cache(rng, MaxLength, {});
 
-    Operon::Hash const hashA = Operon::Hasher{}("userFunctionA");
-    Operon::Hash const hashB = Operon::Hasher{}("userFunctionB");
+    Operon::Hash const hashA = Operon::Hasher {}("userFunctionA");
+    Operon::Hash const hashB = Operon::Hasher {}("userFunctionB");
     REQUIRE(hashA != hashB);
 
     Node const nodeA(NodeType::Function, hashA);
@@ -278,8 +289,12 @@ TEST_CASE("Zobrist - different Optimize flags yield different hashes", "[zobrist
 
     // Two identical trees: sin(constant)
     // One has the constant optimizable, the other does not.
-    Node c1(NodeType::Constant); c1.Value = 1.0f; c1.Optimize = true;
-    Node c2(NodeType::Constant); c2.Value = 1.0f; c2.Optimize = false;
+    Node c1(NodeType::Constant);
+    c1.Value = 1.0f;
+    c1.Optimize = true;
+    Node c2(NodeType::Constant);
+    c2.Value = 1.0f;
+    c2.Optimize = false;
 
     Tree const tree1 = Tree({ c1, Util::MakeOp<BuiltinOp::Sin>() }).UpdateNodes();
     Tree const tree2 = Tree({ c2, Util::MakeOp<BuiltinOp::Sin>() }).UpdateNodes();
@@ -293,11 +308,11 @@ TEST_CASE("Zobrist - maxAge disabled (default) never expires entries", "[zobrist
     Operon::RandomGenerator rng(Seed);
     Zobrist cache(rng, MaxLength, inputs); // maxAge defaults to 0 = disabled
 
-    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    BalancedTreeCreator const creator { &pset, inputs, /* bias= */ 0.0, MaxLength };
     auto tree = creator(rng, 10, 1, MaxLength);
     auto hash = cache.ComputeHash(tree);
 
-    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar{0.1} };
+    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar { 0.1 } };
     cache.Insert(hash, val);
 
     // advance the clock far beyond any plausible age and confirm the entry
@@ -316,12 +331,12 @@ TEST_CASE("Zobrist - entry older than maxAge is treated as a miss", "[zobrist]")
     constexpr std::size_t maxAge = 5;
     Zobrist cache(rng, MaxLength, inputs, maxAge);
 
-    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    BalancedTreeCreator const creator { &pset, inputs, /* bias= */ 0.0, MaxLength };
     auto tree = creator(rng, 10, 1, MaxLength);
     auto hash = cache.ComputeHash(tree);
 
     cache.SetGeneration(0);
-    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar{0.1} };
+    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar { 0.1 } };
     cache.Insert(hash, val); // stamped with generation 0
 
     cache.SetGeneration(maxAge + 1); // strictly older than maxAge
@@ -337,12 +352,12 @@ TEST_CASE("Zobrist - a stale-triggered miss actually removes the entry", "[zobri
     constexpr std::size_t maxAge = 5;
     Zobrist cache(rng, MaxLength, inputs, maxAge);
 
-    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    BalancedTreeCreator const creator { &pset, inputs, /* bias= */ 0.0, MaxLength };
     auto tree = creator(rng, 10, 1, MaxLength);
     auto hash = cache.ComputeHash(tree);
 
     cache.SetGeneration(0);
-    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar{0.1} };
+    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar { 0.1 } };
     cache.Insert(hash, val);
     REQUIRE(cache.Size() == 1);
 
@@ -358,7 +373,9 @@ TEST_CASE("Zobrist - a stale-triggered miss actually removes the entry", "[zobri
     REQUIRE(cache.Size() == 0);
 }
 
-TEST_CASE("Zobrist - an entry inserted after the clock is set to a high starting value (warm resume) is not immediately stale", "[zobrist]")
+TEST_CASE("Zobrist - an entry inserted after the clock is set to a high starting value (warm resume) is not "
+          "immediately stale",
+    "[zobrist]")
 {
     // This verifies the Zobrist-level contract that CLI warm-resume relies
     // on (SetGeneration() before re-caching avoids the immediate-eviction
@@ -380,13 +397,13 @@ TEST_CASE("Zobrist - an entry inserted after the clock is set to a high starting
     constexpr std::size_t maxAge = 5;
     Zobrist cache(rng, MaxLength, inputs, maxAge);
 
-    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    BalancedTreeCreator const creator { &pset, inputs, /* bias= */ 0.0, MaxLength };
     auto tree = creator(rng, 10, 1, MaxLength);
     auto hash = cache.ComputeHash(tree);
 
     constexpr std::size_t resumedGeneration = 500;
     cache.SetGeneration(resumedGeneration); // as the fixed resume path does, before re-evaluation
-    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar{0.1} };
+    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar { 0.1 } };
     cache.Insert(hash, val);
 
     // The GA loop's own SetGeneration(Generation() + 1) call follows next.
@@ -408,12 +425,12 @@ TEST_CASE("Zobrist - Clear resets the generation clock", "[zobrist]")
     constexpr std::size_t maxAge = 5;
     Zobrist cache(rng, MaxLength, inputs, maxAge);
 
-    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    BalancedTreeCreator const creator { &pset, inputs, /* bias= */ 0.0, MaxLength };
     auto tree = creator(rng, 10, 1, MaxLength);
     auto hash = cache.ComputeHash(tree);
 
     cache.SetGeneration(500);
-    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar{0.1} };
+    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar { 0.1 } };
     cache.Insert(hash, val);
 
     cache.Clear();
@@ -439,11 +456,14 @@ TEST_CASE("Zobrist - EraseIf generation guard preserves a value refreshed betwee
     // (new InsertGeneration). A's erase, guarded by the generation it
     // originally observed, must not remove the fresh entry that replaced it.
     ZobristCache<FitnessEntry> cache;
-    Operon::Hash const hash = Operon::Hasher{}("erase-guard-repro");
+    Operon::Hash const hash = Operon::Hasher {}("erase-guard-repro");
 
-    cache.LazyEmplace(hash,
-        [](FitnessEntry&) {},
-        [](FitnessEntry& e) { e.Value = { Operon::Scalar{0.1} }; e.InsertGeneration = 5; });
+    cache.LazyEmplace(
+        hash, [](FitnessEntry&) {},
+        [](FitnessEntry& e) {
+            e.Value = { Operon::Scalar { 0.1 } };
+            e.InsertGeneration = 5;
+        });
 
     // Thread A "observes" the entry while it's still stale at generation 5.
     constexpr std::uint32_t observedGen = 5;
@@ -451,9 +471,12 @@ TEST_CASE("Zobrist - EraseIf generation guard preserves a value refreshed betwee
     // Before A's erase runs: another thread erases the entry, then a third
     // thread inserts a fresh one for the same hash at a later generation.
     cache.EraseIf(hash, [](FitnessEntry const&) { return true; });
-    cache.LazyEmplace(hash,
-        [](FitnessEntry&) {},
-        [](FitnessEntry& e) { e.Value = { Operon::Scalar{0.9} }; e.InsertGeneration = 6; });
+    cache.LazyEmplace(
+        hash, [](FitnessEntry&) {},
+        [](FitnessEntry& e) {
+            e.Value = { Operon::Scalar { 0.9 } };
+            e.InsertGeneration = 6;
+        });
 
     // A's delayed erase, guarded by the generation it originally observed -
     // this must be a no-op now that the entry has moved on to generation 6.
@@ -464,7 +487,7 @@ TEST_CASE("Zobrist - EraseIf generation guard preserves a value refreshed betwee
     cache.IfContains(hash, [&](FitnessEntry const& e) {
         found = true;
         REQUIRE(e.InsertGeneration == 6);
-        REQUIRE(e.Value[0] == Operon::Scalar{0.9});
+        REQUIRE(e.Value[0] == Operon::Scalar { 0.9 });
     });
     REQUIRE(found);
 }
@@ -483,16 +506,16 @@ TEST_CASE("Zobrist - concurrent readers racing an expiry-erase-then-reinsert nev
     constexpr std::size_t maxAge = 1;
     Zobrist cache(rng, MaxLength, inputs, maxAge);
 
-    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    BalancedTreeCreator const creator { &pset, inputs, /* bias= */ 0.0, MaxLength };
     auto tree = creator(rng, 10, 1, MaxLength);
     auto hash = cache.ComputeHash(tree);
 
     cache.SetGeneration(0);
-    Operon::Vector<Operon::Scalar> const initial = { Operon::Scalar{0.1} };
+    Operon::Vector<Operon::Scalar> const initial = { Operon::Scalar { 0.1 } };
     cache.Insert(hash, initial);
 
-    std::atomic<bool> stop{false};
-    Operon::Vector<Operon::Scalar> const fresh = { Operon::Scalar{0.9} };
+    std::atomic<bool> stop { false };
+    Operon::Vector<Operon::Scalar> const fresh = { Operon::Scalar { 0.9 } };
 
     // Advance generations and keep re-inserting a fresh value for the same
     // hash, racing against two reader threads that will observe stale
@@ -503,7 +526,9 @@ TEST_CASE("Zobrist - concurrent readers racing an expiry-erase-then-reinsert nev
         for (std::size_t g = 1; g < 2000; ++g) {
             cache.SetGeneration(g);
             cache.Insert(hash, fresh); // no-op if entry already fresh (LazyEmplace keeps existing)
-            if (stop.load(std::memory_order_relaxed)) { break; }
+            if (stop.load(std::memory_order_relaxed)) {
+                break;
+            }
         }
     });
 

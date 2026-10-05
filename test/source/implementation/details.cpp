@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
-#include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
 
 #include "../operon_test.hpp"
 
@@ -14,35 +14,28 @@
 #include <utility>
 #include <vector>
 
+#include "operon/core/dataset.hpp"
 #include "operon/core/individual.hpp"
 #include "operon/core/node.hpp"
-#include "operon/core/tree.hpp"
-#include "operon/core/dataset.hpp"
 #include "operon/core/problem.hpp"
 #include "operon/core/pset.hpp"
+#include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
 
 namespace Operon::Test {
 
 TEST_CASE("Node type traits", "[core]")
 {
-    SECTION("Node is trivial") {
-        CHECK(std::is_trivial_v<Operon::Node>);
-    }
+    SECTION("Node is trivial") { CHECK(std::is_trivial_v<Operon::Node>); }
 
-    SECTION("Node is trivially copyable") {
-        CHECK(std::is_trivially_copyable_v<Operon::Node>);
-    }
+    SECTION("Node is trivially copyable") { CHECK(std::is_trivially_copyable_v<Operon::Node>); }
 
-    SECTION("Node is standard layout") {
-        CHECK(std::is_standard_layout_v<Operon::Node>);
-    }
+    SECTION("Node is standard layout") { CHECK(std::is_standard_layout_v<Operon::Node>); }
 
-    SECTION("Node size is at most 64 bytes") {
-        CHECK(sizeof(Node) <= size_t{64});
-    }
+    SECTION("Node size is at most 64 bytes") { CHECK(sizeof(Node) <= size_t { 64 }); }
 
-    SECTION("Ref node is not optimizable") {
+    SECTION("Ref node is not optimizable")
+    {
         Node ref(NodeType::Ref);
         CHECK(ref.IsLeaf());
         CHECK(ref.IsRef());
@@ -54,13 +47,12 @@ TEST_CASE("Tree construction and access", "[core]")
 {
     Operon::Vector<Node> nodes;
     std::generate_n(std::back_inserter(nodes), 50, []() { return Util::MakeOp<BuiltinOp::Add>(); }); // NOLINT
-    Tree tree{nodes};
+    Tree tree { nodes };
 
-    SECTION("Tree stores correct number of nodes") {
-        CHECK(tree.Length() == 50);
-    }
+    SECTION("Tree stores correct number of nodes") { CHECK(tree.Length() == 50); }
 
-    SECTION("Individual holds a tree") {
+    SECTION("Individual holds a tree")
+    {
         Individual ind(1);
         ind.Genotype = std::move(tree);
         CHECK(ind.Genotype.Length() == 50);
@@ -74,54 +66,62 @@ TEST_CASE("Tree validation reports postfix invariants", "[core][tree-validation]
         x.HashValue = x.CalculatedHashValue = 1;
         Node y(NodeType::Variable);
         y.HashValue = y.CalculatedHashValue = 2;
-        return Tree({x, y, Util::MakeOp<BuiltinOp::Add>(), Node::Ref(2), Util::MakeOp<BuiltinOp::Mul>()}).UpdateNodes();
+        return Tree({ x, y, Util::MakeOp<BuiltinOp::Add>(), Node::Ref(2), Util::MakeOp<BuiltinOp::Mul>() })
+            .UpdateNodes();
     };
 
-    SECTION("ordinary and empty trees are valid") {
-        CHECK(Tree{}.Validate());
+    SECTION("ordinary and empty trees are valid")
+    {
+        CHECK(Tree {}.Validate());
         CHECK(valid().Validate());
     }
 
-    SECTION("function arity cannot consume missing children") {
-        Tree tree({Util::MakeOp<BuiltinOp::Add>()});
+    SECTION("function arity cannot consume missing children")
+    {
+        Tree tree({ Util::MakeOp<BuiltinOp::Add>() });
         auto const result = tree.Validate();
         REQUIRE_FALSE(result);
         CHECK(result.error() == TreeValidationError::MissingChildren);
     }
 
-    SECTION("postfix input has exactly one root") {
-        Tree tree({Node::Constant(1), Node::Constant(2)});
+    SECTION("postfix input has exactly one root")
+    {
+        Tree tree({ Node::Constant(1), Node::Constant(2) });
         auto const result = tree.Validate();
         REQUIRE_FALSE(result);
         CHECK(result.error() == TreeValidationError::MultipleRoots);
     }
 
-    SECTION("terminals have zero arity") {
+    SECTION("terminals have zero arity")
+    {
         auto leaf = Node::Constant(1);
         leaf.Arity = 1;
-        Tree tree({leaf});
+        Tree tree({ leaf });
         auto const result = tree.Validate();
         REQUIRE_FALSE(result);
         CHECK(result.error() == TreeValidationError::TerminalArityNonZero);
     }
 
-    SECTION("node type must be known") {
+    SECTION("node type must be known")
+    {
         auto node = Node::Constant(1);
         node.Type = static_cast<NodeType>(255);
-        Tree tree({node});
+        Tree tree({ node });
         auto const result = tree.Validate();
         REQUIRE_FALSE(result);
         CHECK(result.error() == TreeValidationError::InvalidNodeType);
     }
 
-    SECTION("Ref points backward") {
-        Tree tree({Node::Ref(0)});
+    SECTION("Ref points backward")
+    {
+        Tree tree({ Node::Ref(0) });
         auto const result = tree.Validate();
         REQUIRE_FALSE(result);
         CHECK(result.error() == TreeValidationError::RefNotBackward);
     }
 
-    SECTION("derived metadata matches the postfix structure") {
+    SECTION("derived metadata matches the postfix structure")
+    {
         auto tree = valid();
         tree[2].Length = 0;
         auto const lengthResult = tree.Validate();
@@ -154,7 +154,8 @@ TEST_CASE("Tree::UpdateNodes is idempotent under validation", "[core][tree-valid
     x.HashValue = x.CalculatedHashValue = 1;
     Node y(NodeType::Variable);
     y.HashValue = y.CalculatedHashValue = 2;
-    auto tree = Tree({x, y, Util::MakeOp<BuiltinOp::Add>(), Node::Ref(2), Util::MakeOp<BuiltinOp::Mul>()}).UpdateNodes();
+    auto tree
+        = Tree({ x, y, Util::MakeOp<BuiltinOp::Add>(), Node::Ref(2), Util::MakeOp<BuiltinOp::Mul>() }).UpdateNodes();
     auto const once = tree.Nodes();
 
     tree.UpdateNodes();
@@ -170,10 +171,14 @@ TEST_CASE("Tree::UpdateNodes is idempotent under validation", "[core][tree-valid
 
 TEST_CASE("Tree coefficients", "[core]")
 {
-    Node c1(NodeType::Constant); c1.Value = 3.14F; c1.Optimize = true;
-    Node c2(NodeType::Constant); c2.Value = 2.71F; c2.Optimize = true;
+    Node c1(NodeType::Constant);
+    c1.Value = 3.14F;
+    c1.Optimize = true;
+    Node c2(NodeType::Constant);
+    c2.Value = 2.71F;
+    c2.Optimize = true;
     auto const add = Util::MakeOp<BuiltinOp::Add>();
-    Tree tree({c1, c2, add});
+    Tree tree({ c1, c2, add });
     tree.UpdateNodes();
 
     auto coeff = tree.GetCoefficients();
@@ -191,8 +196,8 @@ TEST_CASE("Tree coefficients", "[core]")
 
 TEST_CASE("Problem target selection refreshes default inputs", "[core]")
 {
-    Operon::Dataset dataset{{"X1", "Y", "X2"}, {{1.0F}, {2.0F}, {3.0F}}};
-    Operon::Problem problem{&dataset};
+    Operon::Dataset dataset { { "X1", "Y", "X2" }, { { 1.0F }, { 2.0F }, { 3.0F } } };
+    Operon::Problem problem { &dataset };
 
     problem.SetTarget("Y");
 
@@ -201,20 +206,22 @@ TEST_CASE("Problem target selection refreshes default inputs", "[core]")
     CHECK(problem.GetInputs().size() == 2);
 
     auto const x1 = dataset.GetVariable("X1")->Hash;
-    problem.SetInputs(std::vector<Operon::Hash>{x1});
+    problem.SetInputs(std::vector<Operon::Hash> { x1 });
     problem.SetTarget("X2");
-    CHECK(problem.GetInputs() == std::vector<Operon::Hash>{x1});
+    CHECK(problem.GetInputs() == std::vector<Operon::Hash> { x1 });
 }
 
 TEST_CASE("Tree rejects mismatched coefficient spans", "[core]")
 {
-    Node c1(NodeType::Constant); c1.Optimize = true;
-    Node c2(NodeType::Constant); c2.Optimize = true;
-    Tree tree({c1, c2, Util::MakeOp<BuiltinOp::Add>()});
+    Node c1(NodeType::Constant);
+    c1.Optimize = true;
+    Node c2(NodeType::Constant);
+    c2.Optimize = true;
+    Tree tree({ c1, c2, Util::MakeOp<BuiltinOp::Add>() });
     tree.UpdateNodes();
 
-    std::vector<Operon::Scalar> const shortCoefficients{1.0F};
-    std::vector<Operon::Scalar> const longCoefficients{1.0F, 2.0F, 3.0F};
+    std::vector<Operon::Scalar> const shortCoefficients { 1.0F };
+    std::vector<Operon::Scalar> const longCoefficients { 1.0F, 2.0F, 3.0F };
     CHECK_THROWS_AS(tree.SetCoefficients(shortCoefficients), std::invalid_argument);
     CHECK_THROWS_AS(tree.SetCoefficients(longCoefficients), std::invalid_argument);
 }
@@ -223,31 +230,33 @@ TEST_CASE("Dataset loading and access", "[core]")
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
 
-    SECTION("Row and column counts") {
+    SECTION("Row and column counts")
+    {
         CHECK(ds.Rows<std::size_t>() > 0);
         CHECK(ds.Cols<std::size_t>() > 0);
     }
 
-    SECTION("Variable listing") {
+    SECTION("Variable listing")
+    {
         auto variables = ds.GetVariables();
         CHECK(!variables.empty());
     }
 
-    SECTION("Column access by variable hash") {
+    SECTION("Column access by variable hash")
+    {
         auto variables = ds.GetVariables();
         REQUIRE(!variables.empty());
         auto values = ds.GetValues(variables[0].Hash);
         CHECK(values.size() == ds.Rows<std::size_t>());
     }
 
-    SECTION("Target variable lookup") {
+    SECTION("Target variable lookup")
+    {
         auto result = ds.GetVariable("Y");
         CHECK(result.has_value());
     }
 
-    SECTION("Missing variable lookup") {
-        CHECK_FALSE(ds.GetVariable("does-not-exist"));
-    }
+    SECTION("Missing variable lookup") { CHECK_FALSE(ds.GetVariable("does-not-exist")); }
 }
 
 TEST_CASE("PrimitiveSet configuration", "[core]")
@@ -268,13 +277,14 @@ TEST_CASE("PrimitiveSet configuration", "[core]")
 TEST_CASE("Tree::Simplify", "[core][simplify]")
 {
     using NT = Operon::NodeType;
-    using S  = Operon::Scalar;
+    using S = Operon::Scalar;
 
     auto Const = [](S v) { return Node::Constant(v); };
-    auto Var   = []()    { return Node(NT::Variable); };
+    auto Var = []() { return Node(NT::Variable); };
 
-    SECTION("constant folding: Add(2, 3) -> Const(5)") {
-        Operon::Vector<Node> ns{ Const(2), Const(3), Util::MakeOp<BuiltinOp::Add>() };
+    SECTION("constant folding: Add(2, 3) -> Const(5)")
+    {
+        Operon::Vector<Node> ns { Const(2), Const(3), Util::MakeOp<BuiltinOp::Add>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         CHECK(tree.Validate());
         REQUIRE(tree.Length() == 1);
@@ -282,8 +292,9 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
         CHECK(tree[0].Value == Catch::Approx(5.0));
     }
 
-    SECTION("constant folding: Mul(2, 3) -> Const(6)") {
-        Operon::Vector<Node> ns{ Const(2), Const(3), Util::MakeOp<BuiltinOp::Mul>() };
+    SECTION("constant folding: Mul(2, 3) -> Const(6)")
+    {
+        Operon::Vector<Node> ns { Const(2), Const(3), Util::MakeOp<BuiltinOp::Mul>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         CHECK(tree.Validate());
         REQUIRE(tree.Length() == 1);
@@ -291,9 +302,11 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
         CHECK(tree[0].Value == Catch::Approx(6.0));
     }
 
-    SECTION("constant folding: nested Add(Mul(2,3), 4) -> Const(10)") {
+    SECTION("constant folding: nested Add(Mul(2,3), 4) -> Const(10)")
+    {
         // [Const(2), Const(3), Mul, Const(4), Add]
-        Operon::Vector<Node> ns{ Const(2), Const(3), Util::MakeOp<BuiltinOp::Mul>(), Const(4), Util::MakeOp<BuiltinOp::Add>() };
+        Operon::Vector<Node> ns { Const(2), Const(3), Util::MakeOp<BuiltinOp::Mul>(), Const(4),
+            Util::MakeOp<BuiltinOp::Add>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         CHECK(tree.Validate());
         REQUIRE(tree.Length() == 1);
@@ -301,122 +314,137 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
         CHECK(tree[0].Value == Catch::Approx(10.0));
     }
 
-    SECTION("identity: x + 0 -> x") {
-        Operon::Vector<Node> ns{ Const(0), Var(), Util::MakeOp<BuiltinOp::Add>() };
+    SECTION("identity: x + 0 -> x")
+    {
+        Operon::Vector<Node> ns { Const(0), Var(), Util::MakeOp<BuiltinOp::Add>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         CHECK(tree.Validate());
         REQUIRE(tree.Length() == 1);
         CHECK(tree[0].IsVariable());
     }
 
-    SECTION("identity: x * 1 -> x") {
-        Operon::Vector<Node> ns{ Const(1), Var(), Util::MakeOp<BuiltinOp::Mul>() };
+    SECTION("identity: x * 1 -> x")
+    {
+        Operon::Vector<Node> ns { Const(1), Var(), Util::MakeOp<BuiltinOp::Mul>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 1);
         CHECK(tree[0].IsVariable());
     }
 
-    SECTION("annihilator: x * 0 -> 0") {
-        Operon::Vector<Node> ns{ Const(0), Var(), Util::MakeOp<BuiltinOp::Mul>() };
+    SECTION("annihilator: x * 0 -> 0")
+    {
+        Operon::Vector<Node> ns { Const(0), Var(), Util::MakeOp<BuiltinOp::Mul>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 1);
         REQUIRE(tree[0].IsConstant());
         CHECK(tree[0].Value == Catch::Approx(0.0));
     }
 
-    SECTION("identity: x - 0 -> x") {
+    SECTION("identity: x - 0 -> x")
+    {
         // post-order Sub(x, 0) = [Const(0), Var, Sub]: Var is i-1 (minuend), Const(0) is k (subtrahend)
-        Operon::Vector<Node> ns{ Const(0), Var(), Util::MakeOp<BuiltinOp::Sub>() };
+        Operon::Vector<Node> ns { Const(0), Var(), Util::MakeOp<BuiltinOp::Sub>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 1);
         CHECK(tree[0].IsVariable());
     }
 
-    SECTION("identity: x / 1 -> x") {
+    SECTION("identity: x / 1 -> x")
+    {
         // post-order Div(x, 1) = [Const(1), Var, Div]: Var is i-1 (numerator), Const(1) is k (denominator)
-        Operon::Vector<Node> ns{ Const(1), Var(), Util::MakeOp<BuiltinOp::Div>() };
+        Operon::Vector<Node> ns { Const(1), Var(), Util::MakeOp<BuiltinOp::Div>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 1);
         CHECK(tree[0].IsVariable());
     }
 
-    SECTION("constant folding: unary Sub(Const(2)) -> Const(-2)") {
-        Operon::Vector<Node> ns{ Const(2), Node::Function(static_cast<Operon::Hash>(BuiltinOp::Sub), 1) };
+    SECTION("constant folding: unary Sub(Const(2)) -> Const(-2)")
+    {
+        Operon::Vector<Node> ns { Const(2), Node::Function(static_cast<Operon::Hash>(BuiltinOp::Sub), 1) };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 1);
         REQUIRE(tree[0].IsConstant());
         CHECK(tree[0].Value == Catch::Approx(-2.0));
     }
 
-    SECTION("constant folding: unary Div(Const(2)) -> Const(0.5)") {
-        Operon::Vector<Node> ns{ Const(2), Node::Function(static_cast<Operon::Hash>(BuiltinOp::Div), 1) };
+    SECTION("constant folding: unary Div(Const(2)) -> Const(0.5)")
+    {
+        Operon::Vector<Node> ns { Const(2), Node::Function(static_cast<Operon::Hash>(BuiltinOp::Div), 1) };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 1);
         REQUIRE(tree[0].IsConstant());
         CHECK(tree[0].Value == Catch::Approx(0.5));
     }
 
-    SECTION("unary Sub(x) is negation, not identity - must not simplify to x") {
-        Operon::Vector<Node> ns{ Var(), Node::Function(static_cast<Operon::Hash>(BuiltinOp::Sub), 1) };
+    SECTION("unary Sub(x) is negation, not identity - must not simplify to x")
+    {
+        Operon::Vector<Node> ns { Var(), Node::Function(static_cast<Operon::Hash>(BuiltinOp::Sub), 1) };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 2);
         CHECK(tree[tree.Length() - 1].Arity == 1);
         CHECK(tree[tree.Length() - 1].HashValue == static_cast<Operon::Hash>(BuiltinOp::Sub));
     }
 
-    SECTION("unary Div(x) is inversion, not identity - must not simplify to x") {
-        Operon::Vector<Node> ns{ Var(), Node::Function(static_cast<Operon::Hash>(BuiltinOp::Div), 1) };
+    SECTION("unary Div(x) is inversion, not identity - must not simplify to x")
+    {
+        Operon::Vector<Node> ns { Var(), Node::Function(static_cast<Operon::Hash>(BuiltinOp::Div), 1) };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 2);
         CHECK(tree[tree.Length() - 1].Arity == 1);
         CHECK(tree[tree.Length() - 1].HashValue == static_cast<Operon::Hash>(BuiltinOp::Div));
     }
 
-    SECTION("Pow: x^0 -> 1") {
+    SECTION("Pow: x^0 -> 1")
+    {
         // [Const(0), Var, Pow]: base=Var (j=i-1), exp=Const(0) (k)
-        Operon::Vector<Node> ns{ Const(0), Var(), Util::MakeOp<BuiltinOp::Pow>() };
+        Operon::Vector<Node> ns { Const(0), Var(), Util::MakeOp<BuiltinOp::Pow>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 1);
         REQUIRE(tree[0].IsConstant());
         CHECK(tree[0].Value == Catch::Approx(1.0));
     }
 
-    SECTION("Pow: x^1 -> x") {
-        Operon::Vector<Node> ns{ Const(1), Var(), Util::MakeOp<BuiltinOp::Pow>() };
+    SECTION("Pow: x^1 -> x")
+    {
+        Operon::Vector<Node> ns { Const(1), Var(), Util::MakeOp<BuiltinOp::Pow>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 1);
         CHECK(tree[0].IsVariable());
     }
 
-    SECTION("Pow: 1^x -> 1") {
+    SECTION("Pow: 1^x -> 1")
+    {
         // [Var, Const(1), Pow]: base=Const(1) (j=i-1), exp=Var (k)
-        Operon::Vector<Node> ns{ Var(), Const(1), Util::MakeOp<BuiltinOp::Pow>() };
+        Operon::Vector<Node> ns { Var(), Const(1), Util::MakeOp<BuiltinOp::Pow>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 1);
         REQUIRE(tree[0].IsConstant());
         CHECK(tree[0].Value == Catch::Approx(1.0));
     }
 
-    SECTION("n-ary: Add(x, 0, 0) -> x (two zero children removed)") {
+    SECTION("n-ary: Add(x, 0, 0) -> x (two zero children removed)")
+    {
         // Manually set arity=3 for a 3-child Add
         auto addNode = Operon::Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 3);
-        Operon::Vector<Node> ns{ Const(0), Const(0), Var(), addNode };
+        Operon::Vector<Node> ns { Const(0), Const(0), Var(), addNode };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 1);
         CHECK(tree[0].IsVariable());
     }
 
-    SECTION("constant folding: Exp(Const(0)) -> Const(1)") {
-        Operon::Vector<Node> ns{ Const(0), Util::MakeOp<BuiltinOp::Exp>() };
+    SECTION("constant folding: Exp(Const(0)) -> Const(1)")
+    {
+        Operon::Vector<Node> ns { Const(0), Util::MakeOp<BuiltinOp::Exp>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 1);
         REQUIRE(tree[0].IsConstant());
         CHECK(tree[0].Value == Catch::Approx(1.0));
     }
 
-    SECTION("strength reduction: Pow(x, 2) -> Square(x)") {
+    SECTION("strength reduction: Pow(x, 2) -> Square(x)")
+    {
         // [Const(2), Var, Pow]: base=Var (ch[0]=i-1), exp=Const(2) (ch[1])
-        Operon::Vector<Node> ns{ Const(2), Var(), Util::MakeOp<BuiltinOp::Pow>() };
+        Operon::Vector<Node> ns { Const(2), Var(), Util::MakeOp<BuiltinOp::Pow>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 2);
         CHECK(tree[1].IsOp<BuiltinOp::Square>());
@@ -425,8 +453,9 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
         CHECK(tree[0].IsVariable());
     }
 
-    SECTION("strength reduction: Pow(x, 0.5) -> Sqrt(x)") {
-        Operon::Vector<Node> ns{ Const(0.5), Var(), Util::MakeOp<BuiltinOp::Pow>() };
+    SECTION("strength reduction: Pow(x, 0.5) -> Sqrt(x)")
+    {
+        Operon::Vector<Node> ns { Const(0.5), Var(), Util::MakeOp<BuiltinOp::Pow>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 2);
         CHECK(tree[1].IsOp<BuiltinOp::Sqrt>());
@@ -435,24 +464,27 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
         CHECK(tree[0].IsVariable());
     }
 
-    SECTION("structural inverse: Log(Exp(x)) -> x") {
+    SECTION("structural inverse: Log(Exp(x)) -> x")
+    {
         // [Var, Exp, Log] in post-order
-        Operon::Vector<Node> ns{ Var(), Util::MakeOp<BuiltinOp::Exp>(), Util::MakeOp<BuiltinOp::Log>() };
+        Operon::Vector<Node> ns { Var(), Util::MakeOp<BuiltinOp::Exp>(), Util::MakeOp<BuiltinOp::Log>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 1);
         CHECK(tree[0].IsVariable());
     }
 
-    SECTION("structural inverse: Logabs(Exp(x)) -> x") {
-        Operon::Vector<Node> ns{ Var(), Util::MakeOp<BuiltinOp::Exp>(), Util::MakeOp<BuiltinOp::Logabs>() };
+    SECTION("structural inverse: Logabs(Exp(x)) -> x")
+    {
+        Operon::Vector<Node> ns { Var(), Util::MakeOp<BuiltinOp::Exp>(), Util::MakeOp<BuiltinOp::Logabs>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 1);
         CHECK(tree[0].IsVariable());
     }
 
-    SECTION("structural inverse: Sqrt(Square(x)) -> Abs(x)") {
+    SECTION("structural inverse: Sqrt(Square(x)) -> Abs(x)")
+    {
         // [Var, Square, Sqrt] in post-order
-        Operon::Vector<Node> ns{ Var(), Util::MakeOp<BuiltinOp::Square>(), Util::MakeOp<BuiltinOp::Sqrt>() };
+        Operon::Vector<Node> ns { Var(), Util::MakeOp<BuiltinOp::Square>(), Util::MakeOp<BuiltinOp::Sqrt>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 2);
         CHECK(tree[1].IsOp<BuiltinOp::Abs>());
@@ -461,8 +493,9 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
         CHECK(tree[0].IsVariable());
     }
 
-    SECTION("structural inverse: Sqrtabs(Square(x)) -> Abs(x)") {
-        Operon::Vector<Node> ns{ Var(), Util::MakeOp<BuiltinOp::Square>(), Util::MakeOp<BuiltinOp::Sqrtabs>() };
+    SECTION("structural inverse: Sqrtabs(Square(x)) -> Abs(x)")
+    {
+        Operon::Vector<Node> ns { Var(), Util::MakeOp<BuiltinOp::Square>(), Util::MakeOp<BuiltinOp::Sqrtabs>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 2);
         CHECK(tree[1].IsOp<BuiltinOp::Abs>());
@@ -471,7 +504,8 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
         CHECK(tree[0].IsVariable());
     }
 
-    SECTION("regression: a same-pass fold must not corrupt an outer node's sibling lookup") {
+    SECTION("regression: a same-pass fold must not corrupt an outer node's sibling lookup")
+    {
         // x + (2 + 3): the inner Add(2,3) folds to Const(5) via foldToConst,
         // which overwrites that node in place as a bare Constant leaf
         // (Length 0) *within the same linear pass* that later visits the
@@ -483,7 +517,8 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
         // "children" as constant, collapsing the whole expression (losing
         // the Variable dependency entirely) instead of correctly leaving a
         // Var+Const(5).
-        Operon::Vector<Node> ns{ Var(), Const(2), Const(3), Util::MakeOp<BuiltinOp::Add>(), Util::MakeOp<BuiltinOp::Add>() };
+        Operon::Vector<Node> ns { Var(), Const(2), Const(3), Util::MakeOp<BuiltinOp::Add>(),
+            Util::MakeOp<BuiltinOp::Add>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         CHECK(tree.Validate());
         REQUIRE(tree.Length() == 3);

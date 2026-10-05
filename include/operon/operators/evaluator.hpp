@@ -13,8 +13,8 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <utility>
 #include <tl/expected.hpp>
+#include <utility>
 
 #include "operon/collections/projection.hpp"
 #include "operon/core/concepts.hpp"
@@ -149,8 +149,8 @@ public:
     }
     ~EvaluatedBuffer() = default;
 
-    [[nodiscard]] auto Values(Operon::Individual const& individual, Operon::Span<Operon::Scalar> scratch) const
-        noexcept -> Operon::Span<Operon::Scalar>
+    [[nodiscard]] auto Values(Operon::Individual const& individual, Operon::Span<Operon::Scalar> scratch) const noexcept
+        -> Operon::Span<Operon::Scalar>
     {
         ENSURE(Matches(individual, scratch));
         return span_;
@@ -165,8 +165,8 @@ private:
     {
     }
 
-    [[nodiscard]] auto Matches(Operon::Individual const& individual, Operon::Span<Operon::Scalar> scratch) const
-        noexcept -> bool
+    [[nodiscard]] auto Matches(
+        Operon::Individual const& individual, Operon::Span<Operon::Scalar> scratch) const noexcept -> bool
     {
         return individual_ == &individual && span_.data() == scratch.data() && span_.size() <= scratch.size();
     }
@@ -240,6 +240,7 @@ struct EvaluatorBase
     // value-based override must ENSURE(evaluated.has_value()) and read
     // evaluated->Values(ctx.Ind, ctx.Scratch), not `ctx.Scratch`. Each override increments CallCount exactly once.
     virtual auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const -> ReturnType = 0;
+
 protected:
     [[nodiscard]] static auto MarkEvaluated(Operon::Individual const& individual, Operon::Span<Operon::Scalar> values)
         -> EvaluatedBuffer
@@ -248,7 +249,6 @@ protected:
     }
 
 public:
-
     // Non-virtual deducing-this 2-arg facade: allocates a TrainingRange()-sized scratch
     // buffer and forwards to the 3-arg operator() above.
     template <typename Self>
@@ -539,8 +539,9 @@ namespace detail {
             scaling = Operon::FitLinearScaling(yPred, yTrue, weights, problem.LinearScalingOmitsNonFinite());
             scaling->ApplyInPlace(yPred);
         }
-        return { .TrainingRange = trainingRange, .YPred = yPred, .YTrue = yTrue, .Weights = weights,
-            .Scaling = scaling };
+        return {
+            .TrainingRange = trainingRange, .YPred = yPred, .YTrue = yTrue, .Weights = weights, .Scaling = scaling
+        };
     }
 } // namespace detail
 
@@ -577,7 +578,6 @@ public:
         auto const& tree = ctx.Ind.Genotype;
         auto parameters = tree.GetCoefficients();
 
-
         auto [trainingRange, yPred, yTrue, weights, scaling] = detail::PrepareScaledValues(*problem, ctx, evaluated);
 
         Operon::Scalar profiledSigma {};
@@ -596,9 +596,9 @@ public:
         using Mapping = std::layout_stride::mapping<Extents>;
         // Column stride must stay nonzero for an empty training range (extent 0
         // addresses no element, but a zero stride violates layout_stride preconditions).
-        auto const columnStride = std::max<MemoryIndex>(trainingRange.Size(), MemoryIndex {1});
-        auto jacobian = ScalarMatrixView {jacobianStorage.data(),
-            Mapping {Extents {trainingRange.Size(), columns}, std::array<MemoryIndex, 2> {1, columnStride}}};
+        auto const columnStride = std::max<MemoryIndex>(trainingRange.Size(), MemoryIndex { 1 });
+        auto jacobian = ScalarMatrixView { jacobianStorage.data(),
+            Mapping { Extents { trainingRange.Size(), columns }, std::array<MemoryIndex, 2> { 1, columnStride } } };
         Operon::Interpreter<Operon::Scalar, DTable> const interpreter { dtable, dataset, &tree };
         if (auto result = interpreter.JacRev(parameters, trainingRange, jacobianStorage); !result) {
             return typename EvaluatorBase::ReturnType { EvaluatorBase::ErrMax };

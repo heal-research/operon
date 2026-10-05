@@ -7,12 +7,12 @@
 
 #include <algorithm>
 #include <functional>
-#include <limits>
-#include <vector>
 #include <gsl/pointers>
 #include <lbfgs/solver.hpp>
+#include <limits>
 #include <tl/expected.hpp>
 #include <variant>
+#include <vector>
 
 #include "operon/error_metrics/sum_of_squared_errors.hpp"
 
@@ -20,21 +20,21 @@
 
 #include <unsupported/Eigen/LevenbergMarquardt>
 
-#include "operon/optimizer/detail/gradient_solver_adapter.hpp"
-#include "operon/optimizer/gaussian_gradient_cost.hpp"
-#include "operon/optimizer/interpreter_gradient_cost.hpp"
-#include "operon/optimizer/poisson_gradient_cost.hpp"
-#include "operon/optimizer/interpreter_least_squares.hpp"
-#include "operon/optimizer/fit_outcome.hpp"
-#include "operon/optimizer/least_squares_fit.hpp"
-#include "operon/optimizer/least_squares_lm_adapter.hpp"
 #include "operon/core/comparison.hpp"
 #include "operon/core/dispatch.hpp"
 #include "operon/core/problem.hpp"
+#include "operon/optimizer/detail/gradient_solver_adapter.hpp"
+#include "operon/optimizer/fit_outcome.hpp"
+#include "operon/optimizer/gaussian_gradient_cost.hpp"
+#include "operon/optimizer/interpreter_gradient_cost.hpp"
+#include "operon/optimizer/interpreter_least_squares.hpp"
+#include "operon/optimizer/least_squares_fit.hpp"
+#include "operon/optimizer/least_squares_lm_adapter.hpp"
+#include "operon/optimizer/poisson_gradient_cost.hpp"
 #include "solvers/sgd.hpp"
 #if defined(HAVE_ASMJIT)
-#include "operon/optimizer/jit_least_squares.hpp"
 #include "operon/interpreter/backend/jit/jit_evaluator.hpp"
+#include "operon/optimizer/jit_least_squares.hpp"
 #endif
 
 namespace Operon {
@@ -100,7 +100,9 @@ struct LevenbergMarquardtOptimizer : public OptimizerBase {
         }
 
         Operon::Interpreter<Operon::Scalar, DTable> interpreter { dtable, dataset, &tree };
-        Operon::InterpreterLeastSquaresCostFunction costFn { gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> { &interpreter }, target, range };
+        Operon::InterpreterLeastSquaresCostFunction costFn {
+            gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> { &interpreter }, target, range
+        };
         Operon::LeastSquaresLMAdapter<> cf { &costFn, localWeights, true };
         return detail::RunLeastSquares<Type>(cf, iterations, std::move(diag));
     }
@@ -142,7 +144,8 @@ namespace detail {
         return ValidateWeights(column.subspan(range.Start(), range.Size()), range.Size());
     }
 
-    [[nodiscard]] inline auto ScaleBatchEvaluations(std::size_t evaluations, std::size_t batchSize, std::size_t rangeSize) -> int
+    [[nodiscard]] inline auto ScaleBatchEvaluations(
+        std::size_t evaluations, std::size_t batchSize, std::size_t rangeSize) -> int
     {
         auto const effectiveBatchSize = batchSize == 0 ? rangeSize : batchSize;
         if (evaluations == 0 || effectiveBatchSize == 0 || rangeSize == 0) {
@@ -249,7 +252,8 @@ struct SGDOptimizer final : public OptimizerBase {
     {
     }
 
-    SGDOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem, UpdateRule::LearningRateUpdateRule const& update)
+    SGDOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem,
+        UpdateRule::LearningRateUpdateRule const& update)
         : OptimizerBase { problem }
         , dtable_ { dtable }
         , update_ { update.Clone(0) }
@@ -343,10 +347,8 @@ private:
 //
 // Pass a JitEvaluator constructed for the same GP run so the code cache is
 // shared between fitness evaluation and coefficient optimisation.
-template <typename DTable, bool JacobianOnly = false>
-struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
-    explicit JitLevenbergMarquardtOptimizer(gsl::not_null<DTable const*> dtable,
-        gsl::not_null<Problem const*> problem,
+template <typename DTable, bool JacobianOnly = false> struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
+    explicit JitLevenbergMarquardtOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem,
         gsl::not_null<JIT::JitEvaluator const*> jitEvaluator)
         : OptimizerBase { problem }
         , dtable_ { dtable }
@@ -392,7 +394,9 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
 
         if (!useJitCf) {
             // Pure interpreter fallback — no JIT at all.
-            Operon::InterpreterLeastSquaresCostFunction costFn { gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> { &interpreter }, target, range };
+            Operon::InterpreterLeastSquaresCostFunction costFn {
+                gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> { &interpreter }, target, range
+            };
             Operon::LeastSquaresLMAdapter<> cf { &costFn, localWeights, true };
             return detail::RunLeastSquares<OptimizerType::Eigen>(cf, iters, std::move(diag));
         }
@@ -423,16 +427,9 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
             }
         }
 
-        Operon::JitLeastSquaresCostFunction costFn {
-            gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> { &interpreter },
-            evalFn,
-            std::move(colPtrs),
-            target, range,
-            jacFn,
-            std::move(jacColPtrs),
-            meta->nVars,
-            meta->nConsts
-        };
+        Operon::JitLeastSquaresCostFunction costFn { gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> {
+                                                         &interpreter },
+            evalFn, std::move(colPtrs), target, range, jacFn, std::move(jacColPtrs), meta->nVars, meta->nConsts };
         Operon::LeastSquaresLMAdapter<> cf { &costFn, localWeights, true };
         return detail::RunLeastSquares<OptimizerType::Eigen>(cf, iters, std::move(diag));
     }

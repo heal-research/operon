@@ -19,7 +19,8 @@ public:
     {
     }
 
-    auto operator()(Operon::RandomGenerator& rng, Operon::Tree tree) const -> std::tuple<Operon::Tree, FitOutcome> override;
+    auto operator()(Operon::RandomGenerator& rng, Operon::Tree tree) const
+        -> std::tuple<Operon::Tree, FitOutcome> override;
 
 private:
     gsl::not_null<Operon::OptimizerBase const*> optimizer_;

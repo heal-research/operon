@@ -5,15 +5,15 @@
 #ifndef OPERON_PARSER_HPP
 #define OPERON_PARSER_HPP
 
-#include <infix-parser/parser.hpp>
-#include <tl/expected.hpp>
-#include <span>
-#include <string>
-#include <string_view>
 #include "operon/core/dataset.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
 #include "operon/operon_export.hpp"
+#include <infix-parser/parser.hpp>
+#include <span>
+#include <string>
+#include <string_view>
+#include <tl/expected.hpp>
 
 namespace Operon {
 struct InfixParseError {
@@ -21,19 +21,20 @@ struct InfixParseError {
 };
 
 struct InfixParseOptions {
-    bool Reduce{false};
+    bool Reduce { false };
     // Fold constant * variable products into Operon variable weights.
     // Disabled by default; function and compound-subtree weights remain explicit.
-    bool FoldVariableWeights{false};
+    bool FoldVariableWeights { false };
 };
 
 struct OPERON_EXPORT InfixParser {
     static auto Parse(std::string_view infix, InfixParseOptions options = {}) -> tl::expected<Tree, InfixParseError>;
-    static auto Parse(std::string_view infix, Dataset const& dataset, InfixParseOptions options = {}) -> tl::expected<Tree, InfixParseError>;
+    static auto Parse(std::string_view infix, Dataset const& dataset, InfixParseOptions options = {})
+        -> tl::expected<Tree, InfixParseError>;
     static auto ParseOrThrow(std::string_view infix, InfixParseOptions options = {}) -> Tree;
     static auto ParseOrThrow(std::string_view infix, Dataset const& dataset, InfixParseOptions options = {}) -> Tree;
     static auto ParseFunctionBody(std::string_view infix, std::span<std::string const> params,
-                                  InfixParseOptions options = {}) -> tl::expected<Tree, InfixParseError>;
+        InfixParseOptions options = {}) -> tl::expected<Tree, InfixParseError>;
 };
 } // namespace Operon
 

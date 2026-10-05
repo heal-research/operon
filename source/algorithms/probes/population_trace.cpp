@@ -31,7 +31,9 @@ auto PopulationTraceProbe::operator=(PopulationTraceProbe&&) noexcept -> Populat
 
 auto PopulationTraceProbe::operator()(ProbeContext& ctx) -> void
 {
-    if (!impl_->Out) { return; }
+    if (!impl_->Out) {
+        return;
+    }
 
     auto const bytes = Serialization::ToBeve(ctx.Parents());
     auto const generation = static_cast<std::uint64_t>(ctx.Generation());
@@ -46,12 +48,11 @@ auto PopulationTraceProbe::operator()(ProbeContext& ctx) -> void
 
 auto PopulationTraceProbe::Finish() -> void
 {
-    if (impl_->Out) { impl_->Out.flush(); }
+    if (impl_->Out) {
+        impl_->Out.flush();
+    }
 }
 
-auto PopulationTraceProbe::IsOpen() const -> bool
-{
-    return static_cast<bool>(impl_->Out);
-}
+auto PopulationTraceProbe::IsOpen() const -> bool { return static_cast<bool>(impl_->Out); }
 
 } // namespace Operon

@@ -57,7 +57,9 @@ struct Fixture {
         , tree([&]() -> Operon::Tree {
             auto t = Operon::InfixParser::ParseOrThrow("X1 + X2 + X3", ds);
             for (auto& node : t.Nodes()) {
-                if (node.IsVariable()) { node.Value = Operon::Scalar { 0.2 }; }
+                if (node.IsVariable()) {
+                    node.Value = Operon::Scalar { 0.2 };
+                }
             }
             return t;
         }())
@@ -80,7 +82,8 @@ auto ReferenceCost(Operon::Interpreter<Operon::Scalar, Fixture::DTable> const& i
         residuals[i] -= target[range.Start() + i];
     }
     std::vector<Operon::Scalar> jacBuffer(n * p);
-    Operon::ScalarMatrixView jac { jacBuffer.data(), Mapping { Extents { n, p }, std::array<std::size_t, 2> { 1, n } } };
+    Operon::ScalarMatrixView jac { jacBuffer.data(),
+        Mapping { Extents { n, p }, std::array<std::size_t, 2> { 1, n } } };
     REQUIRE(interpreter.JacRev(params, range, jacBuffer).has_value());
     auto result = Operon::ComputeGradient(residuals, jac, gradient, weights);
     REQUIRE(result.has_value());
@@ -95,7 +98,8 @@ static_assert(Operon::GaussianGradientCostFunction::UsesDatasetWeights);
 
 } // namespace
 
-TEST_CASE("GaussianGradientCostFunction: unweighted objective and gradient match ComputeGradient", "[gaussian-gradient-cost]")
+TEST_CASE(
+    "GaussianGradientCostFunction: unweighted objective and gradient match ComputeGradient", "[gaussian-gradient-cost]")
 {
     Fixture fix;
     Operon::Interpreter<Operon::Scalar, Fixture::DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
@@ -113,13 +117,15 @@ TEST_CASE("GaussianGradientCostFunction: unweighted objective and gradient match
 
     CHECK_THAT(static_cast<double>(*result), Catch::Matchers::WithinRel(static_cast<double>(expectedCost), 1e-3));
     for (std::size_t i = 0; i < gradient.size(); ++i) {
-        CHECK_THAT(static_cast<double>(gradient[i]), Catch::Matchers::WithinRel(static_cast<double>(expectedGradient[i]), 1e-3));
+        CHECK_THAT(static_cast<double>(gradient[i]),
+            Catch::Matchers::WithinRel(static_cast<double>(expectedGradient[i]), 1e-3));
     }
     CHECK(cost.FunctionEvaluations() == 1);
     CHECK(cost.JacobianEvaluations() == 1);
 }
 
-TEST_CASE("GaussianGradientCostFunction: scalar weight matches ComputeGradient with a broadcast weight", "[gaussian-gradient-cost]")
+TEST_CASE("GaussianGradientCostFunction: scalar weight matches ComputeGradient with a broadcast weight",
+    "[gaussian-gradient-cost]")
 {
     Fixture fix;
     Operon::Interpreter<Operon::Scalar, Fixture::DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
@@ -138,11 +144,13 @@ TEST_CASE("GaussianGradientCostFunction: scalar weight matches ComputeGradient w
 
     CHECK_THAT(static_cast<double>(*result), Catch::Matchers::WithinRel(static_cast<double>(expectedCost), 1e-3));
     for (std::size_t i = 0; i < gradient.size(); ++i) {
-        CHECK_THAT(static_cast<double>(gradient[i]), Catch::Matchers::WithinRel(static_cast<double>(expectedGradient[i]), 1e-3));
+        CHECK_THAT(static_cast<double>(gradient[i]),
+            Catch::Matchers::WithinRel(static_cast<double>(expectedGradient[i]), 1e-3));
     }
 }
 
-TEST_CASE("GaussianGradientCostFunction: per-row weight matches ComputeGradient with the same weights", "[gaussian-gradient-cost]")
+TEST_CASE("GaussianGradientCostFunction: per-row weight matches ComputeGradient with the same weights",
+    "[gaussian-gradient-cost]")
 {
     Fixture fix;
     Operon::Interpreter<Operon::Scalar, Fixture::DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
@@ -164,7 +172,8 @@ TEST_CASE("GaussianGradientCostFunction: per-row weight matches ComputeGradient 
 
     CHECK_THAT(static_cast<double>(*result), Catch::Matchers::WithinRel(static_cast<double>(expectedCost), 1e-3));
     for (std::size_t i = 0; i < gradient.size(); ++i) {
-        CHECK_THAT(static_cast<double>(gradient[i]), Catch::Matchers::WithinRel(static_cast<double>(expectedGradient[i]), 1e-3));
+        CHECK_THAT(static_cast<double>(gradient[i]),
+            Catch::Matchers::WithinRel(static_cast<double>(expectedGradient[i]), 1e-3));
     }
 }
 
@@ -186,7 +195,8 @@ TEST_CASE("GaussianGradientCostFunction: a non-zero range offset is honored", "[
 
     CHECK_THAT(static_cast<double>(*result), Catch::Matchers::WithinRel(static_cast<double>(expectedCost), 1e-3));
     for (std::size_t i = 0; i < gradient.size(); ++i) {
-        CHECK_THAT(static_cast<double>(gradient[i]), Catch::Matchers::WithinRel(static_cast<double>(expectedGradient[i]), 1e-3));
+        CHECK_THAT(static_cast<double>(gradient[i]),
+            Catch::Matchers::WithinRel(static_cast<double>(expectedGradient[i]), 1e-3));
     }
 }
 
@@ -211,7 +221,8 @@ TEST_CASE("GaussianGradientCostFunction: batchSize==0 always evaluates the full 
     CHECK(firstGradient == secondGradient);
 }
 
-TEST_CASE("GaussianGradientCostFunction: a nonzero batch size selects a reproducible random subrange", "[gaussian-gradient-cost]")
+TEST_CASE("GaussianGradientCostFunction: a nonzero batch size selects a reproducible random subrange",
+    "[gaussian-gradient-cost]")
 {
     Fixture fix;
     Operon::Interpreter<Operon::Scalar, Fixture::DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
@@ -235,7 +246,8 @@ TEST_CASE("GaussianGradientCostFunction: a nonzero batch size selects a reproduc
     CHECK(gradientA == gradientB);
 }
 
-TEST_CASE("GaussianGradientCostFunction: a minibatch of an offset range uses matching absolute target and weight rows", "[gaussian-gradient-cost]")
+TEST_CASE("GaussianGradientCostFunction: a minibatch of an offset range uses matching absolute target and weight rows",
+    "[gaussian-gradient-cost]")
 {
     Fixture fix;
     Operon::Interpreter<Operon::Scalar, Fixture::DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
@@ -257,9 +269,7 @@ TEST_CASE("GaussianGradientCostFunction: a minibatch of an offset range uses mat
     // The batch is some contiguous batchSize-row subrange inside the offset
     // range; the result must equal the reference cost and gradient (with the
     // matching absolute target and weight rows) for one of the possible starts.
-    auto const close = [](double a, double b) {
-        return std::abs(a - b) <= 1e-3 * std::max(std::abs(a), std::abs(b));
-    };
+    auto const close = [](double a, double b) { return std::abs(a - b) <= 1e-3 * std::max(std::abs(a), std::abs(b)); };
     bool matched = false;
     for (std::size_t offset = 0; offset <= range.Size() - batchSize && !matched; ++offset) {
         Operon::Range batch { range.Start() + offset, range.Start() + offset + batchSize };
@@ -274,7 +284,8 @@ TEST_CASE("GaussianGradientCostFunction: a minibatch of an offset range uses mat
     CHECK(matched);
 }
 
-TEST_CASE("GaussianGradientCostFunction: interpreter failures are typed with the original cause", "[gaussian-gradient-cost]")
+TEST_CASE(
+    "GaussianGradientCostFunction: interpreter failures are typed with the original cause", "[gaussian-gradient-cost]")
 {
     Fixture fix;
     constexpr auto missingVariable = Operon::Hash { 0xBADF00D };
@@ -295,12 +306,15 @@ TEST_CASE("GaussianGradientCostFunction: interpreter failures are typed with the
     CHECK(result.error().Cause->Hash == missingVariable);
     REQUIRE(cost.Error().has_value());
     CHECK(cost.Error()->Code == Operon::GradientErrorCode::EvaluationFailure);
-    for (auto g : gradient) { CHECK(std::isnan(static_cast<double>(g))); }
+    for (auto g : gradient) {
+        CHECK(std::isnan(static_cast<double>(g)));
+    }
     CHECK(cost.FunctionEvaluations() == 1);
     CHECK(cost.JacobianEvaluations() == 0);
 }
 
-TEST_CASE("GaussianGradientCostFunction: FunctionEvaluations and JacobianEvaluations count Evaluate calls", "[gaussian-gradient-cost]")
+TEST_CASE("GaussianGradientCostFunction: FunctionEvaluations and JacobianEvaluations count Evaluate calls",
+    "[gaussian-gradient-cost]")
 {
     Fixture fix;
     Operon::Interpreter<Operon::Scalar, Fixture::DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
@@ -321,7 +335,8 @@ TEST_CASE("GaussianGradientCostFunction: FunctionEvaluations and JacobianEvaluat
     CHECK(cost.JacobianEvaluations() == 3);
 }
 
-TEST_CASE("GaussianGradientCostFunction: only successful evaluations count as Jacobian evaluations", "[gaussian-gradient-cost]")
+TEST_CASE("GaussianGradientCostFunction: only successful evaluations count as Jacobian evaluations",
+    "[gaussian-gradient-cost]")
 {
     Fixture fix;
     constexpr auto missingVariable = Operon::Hash { 0xBADF00D };
@@ -344,7 +359,8 @@ TEST_CASE("GaussianGradientCostFunction: only successful evaluations count as Ja
     CHECK(cost.JacobianEvaluations() == 1);
 }
 
-TEST_CASE("GaussianGradientCostFunction: invalid weights are typed InvalidWeights errors, not assertions", "[gaussian-gradient-cost]")
+TEST_CASE("GaussianGradientCostFunction: invalid weights are typed InvalidWeights errors, not assertions",
+    "[gaussian-gradient-cost]")
 {
     Fixture fix;
     Operon::Interpreter<Operon::Scalar, Fixture::DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
@@ -352,10 +368,10 @@ TEST_CASE("GaussianGradientCostFunction: invalid weights are typed InvalidWeight
     Operon::Range range { 0, Fixture::Nrow };
     auto const params = fix.tree.GetCoefficients();
 
-    SECTION("scalar weight that is NaN, infinite, or negative") {
+    SECTION("scalar weight that is NaN, infinite, or negative")
+    {
         for (auto const weight : { std::numeric_limits<Operon::Scalar>::quiet_NaN(),
-                                   std::numeric_limits<Operon::Scalar>::infinity(),
-                                   Operon::Scalar { -1 } }) {
+                 std::numeric_limits<Operon::Scalar>::infinity(), Operon::Scalar { -1 } }) {
             std::array<Operon::Scalar, 1> weights { weight };
             Operon::GaussianGradientCostFunction cost { &interpreter, target, range, nullptr, 0, weights };
             auto gradient = std::vector<Operon::Scalar>(cost.NumParameters());
@@ -363,11 +379,14 @@ TEST_CASE("GaussianGradientCostFunction: invalid weights are typed InvalidWeight
             REQUIRE_FALSE(result.has_value());
             CHECK(result.error().Code == Operon::GradientErrorCode::InvalidWeights);
             CHECK(result.error().Row == 0);
-            for (auto g : gradient) { CHECK(std::isnan(static_cast<double>(g))); }
+            for (auto g : gradient) {
+                CHECK(std::isnan(static_cast<double>(g)));
+            }
         }
     }
 
-    SECTION("per-row weights of the wrong size report expected and actual sizes") {
+    SECTION("per-row weights of the wrong size report expected and actual sizes")
+    {
         std::vector<Operon::Scalar> weights(7, Operon::Scalar { 1 });
         Operon::GaussianGradientCostFunction cost { &interpreter, target, range, nullptr, 0, weights };
         auto gradient = std::vector<Operon::Scalar>(cost.NumParameters());
@@ -378,7 +397,8 @@ TEST_CASE("GaussianGradientCostFunction: invalid weights are typed InvalidWeight
         CHECK(result.error().Actual == weights.size());
     }
 
-    SECTION("a per-row violation reports the absolute row; rows outside the range are not read") {
+    SECTION("a per-row violation reports the absolute row; rows outside the range are not read")
+    {
         Operon::Range offsetRange { 5, Fixture::Nrow };
         std::vector<Operon::Scalar> weights(Fixture::Nrow, Operon::Scalar { 1 });
         weights[2] = Operon::Scalar { -1 }; // before the range: ignored

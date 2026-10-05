@@ -5,8 +5,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <memory>
 #include <limits>
+#include <memory>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
@@ -49,7 +49,8 @@ struct OptimizerFixture {
         : ds([&]() -> Operon::Dataset {
             for (auto i = 0; i < Ncol - 1; ++i) {
                 auto col = data.col(i);
-                std::generate(col.begin(), col.end(), [&]() -> float { return Operon::Random::Uniform(rng, -1.0F, +1.0F); });
+                std::generate(
+                    col.begin(), col.end(), [&]() -> float { return Operon::Random::Uniform(rng, -1.0F, +1.0F); });
             }
             data.col(Ncol - 1) = data.col(0) + data.col(1) + data.col(2);
             std::vector<std::vector<Operon::Scalar>> cols(Ncol);
@@ -110,8 +111,11 @@ TEST_CASE("Gaussian likelihood static methods", "[likelihood]")
         auto const rows = static_cast<std::size_t>(n);
         std::vector<Operon::Scalar> pred(rows, 0.0F);
         std::vector<Operon::Scalar> jac(rows * rows, 0.0F);
-        for (std::size_t i = 0; i < rows; ++i) { jac[(i * rows) + i] = 1.0F; }
-        Operon::ConstScalarMatrixView const view { jac.data(), Mapping { Extents { rows, rows }, std::array<std::size_t, 2> { rows, 1 } } };
+        for (std::size_t i = 0; i < rows; ++i) {
+            jac[(i * rows) + i] = 1.0F;
+        }
+        Operon::ConstScalarMatrixView const view { jac.data(),
+            Mapping { Extents { rows, rows }, std::array<std::size_t, 2> { rows, 1 } } };
         std::vector<Operon::Scalar> sigma(1, 2.0F);
         std::vector<Operon::Scalar> diagonal(rows);
         REQUIRE(Lik::ComputeFisherDiagonal(pred, view, sigma, diagonal).has_value());
@@ -231,7 +235,8 @@ TEST_CASE("Optimizers return typed interpreter errors", "[optimizer][interpreter
         REQUIRE(error != nullptr);
         REQUIRE(error->Error.Cause.has_value());
         CHECK(error->Error.Cause->Kind == expected);
-        CHECK(error->Error.Cause->Hash == (expected == InterpreterError::Code::MissingVariable ? missingVariable : missingPrimitive));
+        CHECK(error->Error.Cause->Hash
+            == (expected == InterpreterError::Code::MissingVariable ? missingVariable : missingPrimitive));
         using OptimizerType_ = std::remove_cvref_t<decltype(optimizer)>;
         if constexpr (std::same_as<OptimizerType_, LevenbergMarquardtOptimizer<DTable, OptimizerType::Tiny>>
             || std::same_as<OptimizerType_, LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen>>) {
@@ -263,13 +268,15 @@ TEST_CASE("Optimizers return typed interpreter errors", "[optimizer][interpreter
     REQUIRE_FALSE(value.has_value());
     REQUIRE(value.error().Cause.has_value());
     CHECK(value.error().Cause->Kind == InterpreterError::Code::MissingPrimitive);
-    for (auto g : gradient) { CHECK(std::isnan(static_cast<double>(g))); }
+    for (auto g : gradient) {
+        CHECK(std::isnan(static_cast<double>(g)));
+    }
 }
 
 TEST_CASE("Optimizers report invalid training weights as typed configuration errors", "[optimizer]")
 {
     for (auto const invalid : { Operon::Scalar { -1 }, std::numeric_limits<Operon::Scalar>::quiet_NaN(),
-                                std::numeric_limits<Operon::Scalar>::infinity() }) {
+             std::numeric_limits<Operon::Scalar>::infinity() }) {
         OptimizerFixture fix;
         using DTable = OptimizerFixture::DTable;
         std::vector<Operon::Scalar> weights(OptimizerFixture::Nrow, Operon::Scalar { 1 });
@@ -455,12 +462,16 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
         auto const weights = *problem.Weights(range);
         Operon::Interpreter<Operon::Scalar, DTable> interpreter { &dtable, &fix.ds, &tree };
 
-        auto const pred0 = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { summary->InitialParameters }, range).value();
-        auto const expectedInitialCost = 0.5 * Operon::SumOfSquaredErrors(pred0.begin(), pred0.end(), target.begin(), weights.begin());
+        auto const pred0
+            = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { summary->InitialParameters }, range).value();
+        auto const expectedInitialCost
+            = 0.5 * Operon::SumOfSquaredErrors(pred0.begin(), pred0.end(), target.begin(), weights.begin());
         CHECK_THAT(static_cast<double>(summary->InitialCost), Catch::Matchers::WithinRel(expectedInitialCost, 1e-3));
 
-        auto const pred1 = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { summary->FinalParameters }, range).value();
-        auto const expectedFinalCost = 0.5 * Operon::SumOfSquaredErrors(pred1.begin(), pred1.end(), target.begin(), weights.begin());
+        auto const pred1
+            = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { summary->FinalParameters }, range).value();
+        auto const expectedFinalCost
+            = 0.5 * Operon::SumOfSquaredErrors(pred1.begin(), pred1.end(), target.begin(), weights.begin());
         CHECK_THAT(static_cast<double>(summary->FinalCost), Catch::Matchers::WithinRel(expectedFinalCost, 1e-3));
     }
 
@@ -480,12 +491,16 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
         auto const weights = *problem.Weights(range);
         Operon::Interpreter<Operon::Scalar, DTable> interpreter { &dtable, &fix.ds, &tree };
 
-        auto const pred0 = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { summary->InitialParameters }, range).value();
-        auto const expectedInitialCost = 0.5 * Operon::SumOfSquaredErrors(pred0.begin(), pred0.end(), target.begin(), weights.begin());
+        auto const pred0
+            = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { summary->InitialParameters }, range).value();
+        auto const expectedInitialCost
+            = 0.5 * Operon::SumOfSquaredErrors(pred0.begin(), pred0.end(), target.begin(), weights.begin());
         CHECK_THAT(static_cast<double>(summary->InitialCost), Catch::Matchers::WithinRel(expectedInitialCost, 1e-3));
 
-        auto const pred1 = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { summary->FinalParameters }, range).value();
-        auto const expectedFinalCost = 0.5 * Operon::SumOfSquaredErrors(pred1.begin(), pred1.end(), target.begin(), weights.begin());
+        auto const pred1
+            = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { summary->FinalParameters }, range).value();
+        auto const expectedFinalCost
+            = 0.5 * Operon::SumOfSquaredErrors(pred1.begin(), pred1.end(), target.begin(), weights.begin());
         CHECK_THAT(static_cast<double>(summary->FinalCost), Catch::Matchers::WithinRel(expectedFinalCost, 1e-3));
     }
 
@@ -532,7 +547,12 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
 
     SECTION("poisson never receives ordinary dataset sample weights as exposure")
     {
-        // Poisson exposure is a deliberate, separate choice from Gaussian's WLS weights: PoissonGradientCostFunction::UsesDatasetWeights is false, so the optimizers never forward dataset sample weights to it. Verified by re-running with an all-ones weight vector (fresh rng, same seed) and checking the result matches the zeroed-weight run to within float noise (not exact ==: defensive against benign future changes to evaluation order/precision elsewhere in the RNG/opt path that wouldn't actually mean weights started being applied).
+        // Poisson exposure is a deliberate, separate choice from Gaussian's WLS weights:
+        // PoissonGradientCostFunction::UsesDatasetWeights is false, so the optimizers never forward dataset sample
+        // weights to it. Verified by re-running with an all-ones weight vector (fresh rng, same seed) and checking the
+        // result matches the zeroed-weight run to within float noise (not exact ==: defensive against benign future
+        // changes to evaluation order/precision elsewhere in the RNG/opt path that wouldn't actually mean weights
+        // started being applied).
         LBFGSOptimizer<DTable, PoissonGradientCostFunction<>> const optimizerZeroed { &dtable, &problem };
         Operon::RandomGenerator rngZeroed { 0 };
         auto summaryZeroed = optimizerZeroed.Optimize(rngZeroed, tree);
@@ -547,9 +567,11 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
 
         REQUIRE(summaryZeroed->FinalParameters.size() == summaryOnes->FinalParameters.size());
         for (auto i = 0UL; i < summaryZeroed->FinalParameters.size(); ++i) {
-            CHECK_THAT(summaryZeroed->FinalParameters[i], Catch::Matchers::WithinRel(summaryOnes->FinalParameters[i], static_cast<Operon::Scalar>(1e-5)));
+            CHECK_THAT(summaryZeroed->FinalParameters[i],
+                Catch::Matchers::WithinRel(summaryOnes->FinalParameters[i], static_cast<Operon::Scalar>(1e-5)));
         }
-        CHECK_THAT(static_cast<double>(summaryZeroed->FinalCost), Catch::Matchers::WithinRel(static_cast<double>(summaryOnes->FinalCost), 1e-5));
+        CHECK_THAT(static_cast<double>(summaryZeroed->FinalCost),
+            Catch::Matchers::WithinRel(static_cast<double>(summaryOnes->FinalCost), 1e-5));
     }
 }
 
@@ -572,8 +594,10 @@ TEST_CASE("Minibatch optimizer diagnostics charge at least one evaluation", "[op
     auto const range = fix.problem.TrainingRange();
     auto const target = fix.problem.TargetValues(range);
     Operon::Interpreter<Operon::Scalar, DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
-    auto const pred0 = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { diagnostics.InitialParameters }, range).value();
-    auto const pred1 = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { diagnostics.FinalParameters }, range).value();
+    auto const pred0
+        = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { diagnostics.InitialParameters }, range).value();
+    auto const pred1
+        = interpreter.Evaluate(Operon::Span<Operon::Scalar const> { diagnostics.FinalParameters }, range).value();
     auto expectedCost = [&](auto const& prediction) {
         double cost = 0;
         for (std::size_t i = 0; i < prediction.size(); ++i) {
@@ -690,7 +714,9 @@ TEST_CASE("Weighted parameter optimization with non-zero training range start", 
         // may legitimately carry negative/sentinel values.
         std::vector<Operon::Scalar> weights(WeightedOptimizerNonZeroStartFixture::Ntotal, Operon::Scalar { 1 });
         std::fill(weights.begin(), weights.begin() + WeightedOptimizerNonZeroStartFixture::Npad, Operon::Scalar { -1 });
-        std::fill(weights.begin() + WeightedOptimizerNonZeroStartFixture::Npad + WeightedOptimizerNonZeroStartFixture::Nclean, weights.end(), Operon::Scalar { 0 });
+        std::fill(
+            weights.begin() + WeightedOptimizerNonZeroStartFixture::Npad + WeightedOptimizerNonZeroStartFixture::Nclean,
+            weights.end(), Operon::Scalar { 0 });
         fix.problem.GetDataset()->SetWeights(weights);
 
         LBFGSOptimizer<DTable, GaussianGradientCostFunction> optimizer { &dtable, &problem };
@@ -889,8 +915,7 @@ struct InterpreterCostCore {
 
 // Conforming custom cost that records the weights span every constructed
 // instance (solver-facing and endpoint) was given.
-template <bool UseWeights>
-struct RecordingCost : InterpreterCostCore {
+template <bool UseWeights> struct RecordingCost : InterpreterCostCore {
     static constexpr bool UsesDatasetWeights { UseWeights };
     static inline std::vector<ConstScalarSpan> Received;
 
@@ -967,8 +992,7 @@ static_assert(Concepts::InterpreterGradientCost<RecordingCost<true>>);
 static_assert(Concepts::InterpreterGradientCost<RecordingCost<false>>);
 
 namespace {
-    template <typename Cost>
-    auto OptimizeWithLbfgsAndSgd(OptimizerFixture& fix) -> std::vector<FitOutcome>
+    template <typename Cost> auto OptimizeWithLbfgsAndSgd(OptimizerFixture& fix) -> std::vector<FitOutcome>
     {
         using DTable = OptimizerFixture::DTable;
         std::vector<FitOutcome> outcomes;
@@ -1145,7 +1169,9 @@ TEST_CASE("Zero-parameter fits report the endpoint cost with no iterations on ev
         // every node fixed, so there is nothing to optimize.
         auto tree = fix.tree;
         for (auto& node : tree.Nodes()) {
-            if (node.IsVariable()) { node.Value = factor; }
+            if (node.IsVariable()) {
+                node.Value = factor;
+            }
             node.Optimize = false;
         }
         REQUIRE(tree.CoefficientsCount() == 0);
@@ -1200,7 +1226,9 @@ TEST_CASE("Zero-parameter fits of an unevaluable tree return the typed evaluatio
         Operon::Node::Constant(2),
         Operon::Node::Function(missingPrimitive, 2),
     });
-    for (auto& node : tree.Nodes()) { node.Optimize = false; }
+    for (auto& node : tree.Nodes()) {
+        node.Optimize = false;
+    }
     REQUIRE(tree.CoefficientsCount() == 0);
 
     auto check = [&](OptimizerBase const& optimizer) {

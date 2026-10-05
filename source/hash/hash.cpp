@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
-#include "operon/core/types.hpp"
 #include "operon/hash/hash.hpp"
+#include "operon/core/types.hpp"
 
 #include "operon/hash/metrohash64.hpp"
 #include <cstdint>
@@ -17,11 +17,12 @@ auto Hasher::operator()(uint8_t const* key, size_t len) const noexcept -> uint64
 {
     if constexpr (Operon::HashFunc == HashFunction::XXHash) {
         return XXH64(key, len, 0);
-    } else if constexpr(Operon::HashFunc == HashFunction::MetroHash) {
+    } else if constexpr (Operon::HashFunc == HashFunction::MetroHash) {
         uint64_t h = 0;
-        HashUtil::MetroHash64::Hash(key, len, reinterpret_cast<uint8_t*>(&h)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+        HashUtil::MetroHash64::Hash(
+            key, len, reinterpret_cast<uint8_t*>(&h)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
         return h;
-    } else if constexpr(Operon::HashFunc == HashFunction::FNV1Hash) {
+    } else if constexpr (Operon::HashFunc == HashFunction::FNV1Hash) {
         uint64_t h = 14695981039346656037ULL; // NOLINT
         for (size_t i = 0; i < len; ++i) {
             h ^= *(key + i);
@@ -34,16 +35,11 @@ auto Hasher::operator()(uint8_t const* key, size_t len) const noexcept -> uint64
 
 auto Hasher::operator()(std::string_view key) const noexcept -> uint64_t
 {
-    return (*this)(reinterpret_cast<uint8_t const*>(key.data()), key.size()); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+    return (*this)(reinterpret_cast<uint8_t const*>(key.data()),
+        key.size()); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
 }
 
-auto Hasher::operator()(std::string const& key) const noexcept -> uint64_t
-{
-    return (*this)(std::string_view{key});
-}
+auto Hasher::operator()(std::string const& key) const noexcept -> uint64_t { return (*this)(std::string_view { key }); }
 
-auto Hasher::operator()(char const* key) const noexcept -> uint64_t
-{
-    return (*this)(std::string_view{key});
-}
+auto Hasher::operator()(char const* key) const noexcept -> uint64_t { return (*this)(std::string_view { key }); }
 } // namespace Operon

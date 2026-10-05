@@ -20,10 +20,11 @@
 namespace Operon::Test {
 
 namespace {
-    constexpr auto Seed      = 42UL;
+    constexpr auto Seed = 42UL;
     constexpr auto MaxLength = 50;
 
-    auto MakeSetup() {
+    auto MakeSetup()
+    {
         auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
         auto inputs = ds.VariableHashes();
         std::erase(inputs, ds.GetVariable("Y").value().Hash);
@@ -39,7 +40,7 @@ TEST_CASE("ContentHash - determinism", "[content_hash]")
     Operon::RandomGenerator rng(Seed);
     Zobrist const zobrist(rng, MaxLength, inputs);
 
-    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    BalancedTreeCreator const creator { &pset, inputs, /* bias= */ 0.0, MaxLength };
     Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> const initializer;
 
     auto tree = creator(rng, 20, 1, MaxLength);
@@ -61,8 +62,10 @@ TEST_CASE("ContentHash - commutative invariance", "[content_hash]")
     auto const varX = ds.GetVariable("X1").value();
     auto const varY = ds.GetVariable("X2").value();
 
-    Node nX(NodeType::Variable); nX.HashValue = varX.Hash;
-    Node nY(NodeType::Variable); nY.HashValue = varY.Hash;
+    Node nX(NodeType::Variable);
+    nX.HashValue = varX.Hash;
+    Node nY(NodeType::Variable);
+    nY.HashValue = varY.Hash;
 
     Tree const treeXY = Tree({ nX, nY, Util::MakeOp<BuiltinOp::Add>() }).UpdateNodes();
     Tree const treeYX = Tree({ nY, nX, Util::MakeOp<BuiltinOp::Add>() }).UpdateNodes();
@@ -81,8 +84,10 @@ TEST_CASE("ContentHash - non-commutative sensitivity", "[content_hash]")
     auto const varX = ds.GetVariable("X1").value();
     auto const varY = ds.GetVariable("X2").value();
 
-    Node nX(NodeType::Variable); nX.HashValue = varX.Hash;
-    Node nY(NodeType::Variable); nY.HashValue = varY.Hash;
+    Node nX(NodeType::Variable);
+    nX.HashValue = varX.Hash;
+    Node nY(NodeType::Variable);
+    nY.HashValue = varY.Hash;
 
     Tree const treeXY = Tree({ nX, nY, Util::MakeOp<BuiltinOp::Sub>() }).UpdateNodes();
     Tree const treeYX = Tree({ nY, nX, Util::MakeOp<BuiltinOp::Sub>() }).UpdateNodes();
@@ -106,14 +111,19 @@ TEST_CASE("ContentHash - position independence", "[content_hash]")
     auto const varY = ds.GetVariable("X2").value();
     auto const varZ = ds.GetVariable("X3").value();
 
-    Node nX(NodeType::Variable); nX.HashValue = varX.Hash;
-    Node nY(NodeType::Variable); nY.HashValue = varY.Hash;
-    Node nZ(NodeType::Variable); nZ.HashValue = varZ.Hash;
+    Node nX(NodeType::Variable);
+    nX.HashValue = varX.Hash;
+    Node nY(NodeType::Variable);
+    nY.HashValue = varY.Hash;
+    Node nZ(NodeType::Variable);
+    nZ.HashValue = varZ.Hash;
 
     // (x+y)*z : postfix [x, y, Add, z, Mul] - subtree root (Add) at index 2
-    Tree const treeA = Tree({ nX, nY, Util::MakeOp<BuiltinOp::Add>(), nZ, Util::MakeOp<BuiltinOp::Mul>() }).UpdateNodes();
+    Tree const treeA
+        = Tree({ nX, nY, Util::MakeOp<BuiltinOp::Add>(), nZ, Util::MakeOp<BuiltinOp::Mul>() }).UpdateNodes();
     // z*(x+y) : postfix [z, x, y, Add, Mul] - subtree root (Add) at index 3
-    Tree const treeB = Tree({ nZ, nX, nY, Util::MakeOp<BuiltinOp::Add>(), Util::MakeOp<BuiltinOp::Mul>() }).UpdateNodes();
+    Tree const treeB
+        = Tree({ nZ, nX, nY, Util::MakeOp<BuiltinOp::Add>(), Util::MakeOp<BuiltinOp::Mul>() }).UpdateNodes();
 
     std::vector<Operon::Hash> scratchA(treeA.Nodes().size());
     std::vector<Operon::Hash> scratchB(treeB.Nodes().size());
@@ -131,7 +141,7 @@ TEST_CASE("ContentHash - scratch overload matches allocating overload", "[conten
     Operon::RandomGenerator rng(Seed);
     Zobrist const zobrist(rng, MaxLength, inputs);
 
-    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    BalancedTreeCreator const creator { &pset, inputs, /* bias= */ 0.0, MaxLength };
     auto tree = creator(rng, 20, 1, MaxLength);
 
     std::vector<Operon::Hash> scratch(tree.Nodes().size());
@@ -153,7 +163,7 @@ TEST_CASE("ContentHash - coefficient insensitivity", "[content_hash]")
     Operon::RandomGenerator rng(Seed);
     Zobrist const zobrist(rng, MaxLength, inputs);
 
-    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    BalancedTreeCreator const creator { &pset, inputs, /* bias= */ 0.0, MaxLength };
     Operon::NormalCoefficientInitializer const coeffInit;
 
     auto tree1 = creator(rng, 20, 1, MaxLength);
@@ -176,13 +186,15 @@ TEST_CASE("ContentHash - Optimize-flag insensitivity", "[content_hash]")
     Operon::RandomGenerator rng(Seed);
     Zobrist const zobrist(rng, MaxLength, inputs);
 
-    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    BalancedTreeCreator const creator { &pset, inputs, /* bias= */ 0.0, MaxLength };
 
     auto tree1 = creator(rng, 20, 1, MaxLength);
     auto tree2 = tree1; // identical structure and coefficients
 
     for (auto& n : tree2.Nodes()) {
-        if (n.IsLeaf()) { n.Optimize = !n.Optimize; }
+        if (n.IsLeaf()) {
+            n.Optimize = !n.Optimize;
+        }
     }
 
     REQUIRE(ComputeContentHash(tree1, zobrist) == ComputeContentHash(tree2, zobrist));
@@ -200,7 +212,8 @@ TEST_CASE("ContentHash - Ref-aware (structural sharing doesn't change the hash)"
     Zobrist const zobrist(rng, MaxLength, inputs);
 
     auto const varX = ds.GetVariable("X1").value();
-    Node nX(NodeType::Variable); nX.HashValue = varX.Hash;
+    Node nX(NodeType::Variable);
+    nX.HashValue = varX.Hash;
 
     // x * x, no sharing: two independent Variable nodes.
     Tree const noRef = Tree({ nX, nX, Util::MakeOp<BuiltinOp::Mul>() }).UpdateNodes();
@@ -232,7 +245,7 @@ TEST_CASE("ContentHash - collision rate sanity check", "[content_hash]")
     Zobrist const zobrist(rd, static_cast<int>(maxLength), inputs);
 
     std::uniform_int_distribution<size_t> sizeDistribution(minLength, maxLength);
-    auto const btc = BalancedTreeCreator{&pset, inputs, /* bias= */ 0.0, maxLength};
+    auto const btc = BalancedTreeCreator { &pset, inputs, /* bias= */ 0.0, maxLength };
 
     std::unordered_set<Operon::Hash> seen;
     for (size_t i = 0; i < n; ++i) {

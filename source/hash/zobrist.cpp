@@ -14,7 +14,8 @@ struct Zobrist::TranspositionTable {
     ZobristCache<FitnessEntry> Cache;
 };
 
-Zobrist::Zobrist(Operon::RandomGenerator& rng, int maxLength, Operon::Span<Operon::Hash const> variableHashes, std::size_t maxAge)
+Zobrist::Zobrist(
+    Operon::RandomGenerator& rng, int maxLength, Operon::Span<Operon::Hash const> variableHashes, std::size_t maxAge)
     : table_(static_cast<int>(variableHashes.size()) + 1, maxLength)
     , tt_(std::make_unique<TranspositionTable>())
     , maxAge_(maxAge)
@@ -41,7 +42,10 @@ auto Zobrist::TryGet(Operon::Hash hash, Value& val) const -> bool
         observedGen = e.InsertGeneration;
         auto const now = clock_.load(std::memory_order_relaxed);
         stale = maxAge_ > 0 && static_cast<std::size_t>(now - e.InsertGeneration) > maxAge_;
-        if (!stale) { val = e.Value; found = true; }
+        if (!stale) {
+            val = e.Value;
+            found = true;
+        }
     });
 
     if (stale) {
@@ -54,12 +58,12 @@ auto Zobrist::TryGet(Operon::Hash hash, Value& val) const -> bool
         // (onNew, new InsertGeneration) before we reach EraseIf here -
         // without the generation recheck we'd delete that fresh entry
         // instead of the stale one we actually observed.
-        tt_->Cache.EraseIf(hash, [&](FitnessEntry const& e) {
-            return e.InsertGeneration == observedGen;
-        });
+        tt_->Cache.EraseIf(hash, [&](FitnessEntry const& e) { return e.InsertGeneration == observedGen; });
         return false; // treat as a miss - caller re-evaluates
     }
-    if (found) { hits_.fetch_add(1, std::memory_order_relaxed); }
+    if (found) {
+        hits_.fetch_add(1, std::memory_order_relaxed);
+    }
     return found;
 }
 
@@ -70,10 +74,12 @@ auto Zobrist::Insert(Operon::Hash hash, Value const& val) -> void
     // thread inserted the same newly-seen hash first) - keep that entry's
     // value (first writer wins), nothing else to do.
     auto const gen = clock_.load(std::memory_order_relaxed);
-    tt_->Cache.LazyEmplace(hash,
-        [](FitnessEntry&) -> void { },
-        [&](FitnessEntry& e) -> void { e.Value = val; e.InsertGeneration = gen; }
-    );
+    tt_->Cache.LazyEmplace(
+        hash, [](FitnessEntry&) -> void {},
+        [&](FitnessEntry& e) -> void {
+            e.Value = val;
+            e.InsertGeneration = gen;
+        });
 }
 
 auto Zobrist::Clear() -> void
@@ -96,9 +102,6 @@ auto Zobrist::SetGeneration(std::size_t generation) -> void
     clock_.store(static_cast<std::uint32_t>(generation), std::memory_order_relaxed);
 }
 
-auto Zobrist::Size() const -> std::size_t
-{
-    return tt_->Cache.Size();
-}
+auto Zobrist::Size() const -> std::size_t { return tt_->Cache.Size(); }
 
 } // namespace Operon

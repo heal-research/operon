@@ -10,8 +10,8 @@
 #include <cstddef>
 #include <limits>
 #include <optional>
-#include <vector>
 #include <utility>
+#include <vector>
 
 #include <gsl/pointers>
 
@@ -46,7 +46,12 @@ namespace Operon {
         // generic evaluation failure rather than undefined behavior.
         return GradientErrorCode::EvaluationFailure;
     }();
-    return GradientError { .Code = code, .Expected = error.Expected, .Actual = error.Actual, .Row = error.Row, .Column = error.Column, .Cause = error.Cause };
+    return GradientError { .Code = code,
+        .Expected = error.Expected,
+        .Actual = error.Actual,
+        .Row = error.Row,
+        .Column = error.Column,
+        .Cause = error.Cause };
 }
 
 /** Weight violations surface as GradientErrorCode::InvalidWeights with Expected/Actual/Row preserved. */
@@ -66,8 +71,8 @@ namespace detail {
      * GradientErrorCode::InvalidWeights; for a per-row column Row is the
      * absolute column row of the first offending entry.
      */
-    [[nodiscard]] inline auto ValidatedBatchWeights(ConstScalarSpan column, std::size_t columnRows, std::size_t start, std::size_t count)
-        -> tl::expected<ConstScalarSpan, GradientError>
+    [[nodiscard]] inline auto ValidatedBatchWeights(ConstScalarSpan column, std::size_t columnRows, std::size_t start,
+        std::size_t count) -> tl::expected<ConstScalarSpan, GradientError>
     {
         if (column.empty() || column.size() == 1) {
             if (auto valid = ValidateWeights(column, count); !valid) {
@@ -76,7 +81,8 @@ namespace detail {
             return column;
         }
         if (column.size() != columnRows) {
-            return tl::unexpected(ToGradientError(WeightError { .Code = WeightErrorCode::SizeMismatch, .Expected = columnRows, .Actual = column.size() }));
+            return tl::unexpected(ToGradientError(WeightError {
+                .Code = WeightErrorCode::SizeMismatch, .Expected = columnRows, .Actual = column.size() }));
         }
         auto const slice = column.subspan(start, count);
         if (auto valid = ValidateWeights(slice, count); !valid) {
@@ -100,7 +106,8 @@ class LeastSquaresGradientAdapter final : public GradientCostFunction {
 public:
     using Scalar = Operon::Scalar;
 
-    explicit LeastSquaresGradientAdapter(gsl::not_null<LeastSquaresCostFunction const*> cost, ConstScalarSpan weights = {})
+    explicit LeastSquaresGradientAdapter(
+        gsl::not_null<LeastSquaresCostFunction const*> cost, ConstScalarSpan weights = {})
         : cost_(cost)
         , weights_(weights)
         , residualScratch_(cost->NumResiduals())
@@ -117,7 +124,8 @@ public:
         auto const p = cost_->NumParameters();
         using Extents = std::dextents<MemoryIndex, 2>;
         using Mapping = std::layout_stride::mapping<Extents>;
-        ScalarMatrixView jacobianView { jacobianScratch_.data(), Mapping { Extents { n, p }, std::array<MemoryIndex, 2> { p, 1 } } };
+        ScalarMatrixView jacobianView { jacobianScratch_.data(),
+            Mapping { Extents { n, p }, std::array<MemoryIndex, 2> { p, 1 } } };
 
         auto evalResult = cost_->Evaluate(parameters, residualScratch_, jacobianView);
         if (!evalResult) {

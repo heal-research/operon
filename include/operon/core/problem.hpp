@@ -5,11 +5,11 @@
 #ifndef PROBLEM_HPP
 #define PROBLEM_HPP
 
+#include <gsl/pointers>
 #include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
-#include <gsl/pointers>
 
 #include "dataset.hpp"
 #include "pset.hpp"
@@ -18,19 +18,26 @@
 namespace Operon {
 
 class Problem {
-    [[nodiscard]] auto GetVariable(auto t) const -> Operon::Variable {
-        if (auto v = dataset_->GetVariable(t); v.has_value()) { return *v; }
+    [[nodiscard]] auto GetVariable(auto t) const -> Operon::Variable
+    {
+        if (auto v = dataset_->GetVariable(t); v.has_value()) {
+            return *v;
+        }
         PANIC("cannot map argument to any known variable");
     }
 
-    auto ValidateInputs(auto const& inputs) const {
+    auto ValidateInputs(auto const& inputs) const
+    {
         using T = typename std::remove_cvref_t<decltype(inputs)>::value_type;
-        static_assert(std::is_same_v<T, std::string> || std::is_same_v<T, Operon::Hash>, "the inputs must be strings or hashes");
-        for (auto const& x : inputs) { (void) GetVariable(x); }
+        static_assert(
+            std::is_same_v<T, std::string> || std::is_same_v<T, Operon::Hash>, "the inputs must be strings or hashes");
+        for (auto const& x : inputs) {
+            (void)GetVariable(x);
+        }
     }
 
     std::unique_ptr<Dataset> ownedDataset_;
-    Dataset* dataset_{};
+    Dataset* dataset_ {};
 
     Range training_;
     Range test_;
@@ -40,13 +47,13 @@ class Problem {
     Operon::Variable target_;
     Operon::Set<Operon::Hash> inputs_;
 
-    bool defaultInputs_{true};
+    bool defaultInputs_ { true };
 
     // Problem owns the PrimitiveSet, so it represents the problem formulation
     // rather than a bare dataset view; whether the fitted model is
     // Keijzer-scaled is part of that formulation.
-    bool linearScaling_{true};
-    bool linearScalingOmitsNonFinite_{false};
+    bool linearScaling_ { true };
+    bool linearScalingOmitsNonFinite_ { false };
 
 public:
     Problem(const Problem&) = delete;
@@ -67,10 +74,12 @@ public:
         SetDefaultInputs();
     }
 
-    template<typename T>
-    auto SetTarget(T t) {
+    template <typename T> auto SetTarget(T t)
+    {
         target_ = GetVariable<std::remove_cvref_t<T>>(t);
-        if (defaultInputs_) { SetDefaultInputs(); }
+        if (defaultInputs_) {
+            SetDefaultInputs();
+        }
     }
 
     auto SetTrainingRange(Operon::Range range) { training_ = range; }
@@ -82,7 +91,8 @@ public:
     auto SetValidationRange(Operon::Range range) { validation_ = range; }
     auto SetValidationRange(int begin, int end) { validation_ = Operon::Range(begin, end); }
 
-    auto SetInputs(auto const& inputs) {
+    auto SetInputs(auto const& inputs)
+    {
         ValidateInputs(inputs);
         defaultInputs_ = false;
         inputs_.clear();
@@ -91,16 +101,17 @@ public:
         }
     }
 
-    [[nodiscard]] auto GetInputs() const -> std::vector<Operon::Hash> const& {
-        return inputs_.values();
-    }
+    [[nodiscard]] auto GetInputs() const -> std::vector<Operon::Hash> const& { return inputs_.values(); }
 
     // set all variables except the target as inputs
-    auto SetDefaultInputs() -> void {
+    auto SetDefaultInputs() -> void
+    {
         defaultInputs_ = true;
         inputs_.clear();
         for (auto const& v : dataset_->GetVariables()) {
-            if (v.Hash != target_.Hash) { inputs_.insert(v.Hash); }
+            if (v.Hash != target_.Hash) {
+                inputs_.insert(v.Hash);
+            }
         }
     }
 
@@ -111,14 +122,17 @@ public:
     [[nodiscard]] auto TargetVariable() const -> Variable const& { return target_; }
     [[nodiscard]] auto InputVariables() const -> std::vector<Variable>
     {
-        std::vector<Variable> variables; variables.reserve(inputs_.size());
+        std::vector<Variable> variables;
+        variables.reserve(inputs_.size());
         std::transform(inputs_.values().begin(), inputs_.values().end(), std::back_inserter(variables),
             [&](auto h) { return GetVariable<Operon::Hash>(h); });
         return variables;
     }
 
-    template<typename Self>
-    [[nodiscard]] auto GetPrimitiveSet(this Self& self) -> decltype(auto) { return (self.pset_); }
+    template <typename Self> [[nodiscard]] auto GetPrimitiveSet(this Self& self) -> decltype(auto)
+    {
+        return (self.pset_);
+    }
     auto ConfigurePrimitiveSet(Operon::PrimitiveSetConfig config) { pset_.SetConfig(config); }
 
     [[nodiscard]] auto LinearScalingEnabled() const noexcept -> bool { return linearScaling_; }
@@ -129,17 +143,28 @@ public:
     // linear scales for the same individual; the library does not enforce this coupling.
     void SetLinearScalingOmitsNonFinite(bool value) noexcept { linearScalingOmitsNonFinite_ = value; }
 
-    template<typename Self>
-    [[nodiscard]] auto GetDataset(this Self& self) -> std::conditional_t<std::is_const_v<Self>, Dataset const*, Dataset*> { return self.dataset_; }
+    template <typename Self>
+    [[nodiscard]] auto GetDataset(this Self& self)
+        -> std::conditional_t<std::is_const_v<Self>, Dataset const*, Dataset*>
+    {
+        return self.dataset_;
+    }
 
-    [[nodiscard]] auto TargetValues() const -> Operon::Span<Operon::Scalar const> { return dataset_->GetValues(target_.Index); }
-    [[nodiscard]] auto TargetValues(Operon::Range range) const -> Operon::Span<Operon::Scalar const> {
+    [[nodiscard]] auto TargetValues() const -> Operon::Span<Operon::Scalar const>
+    {
+        return dataset_->GetValues(target_.Index);
+    }
+    [[nodiscard]] auto TargetValues(Operon::Range range) const -> Operon::Span<Operon::Scalar const>
+    {
         return dataset_->GetValues(target_.Index).subspan(range.Start(), range.Size());
     }
 
-    [[nodiscard]] auto Weights(Operon::Range range) const -> std::optional<Operon::Span<Operon::Scalar const>> {
+    [[nodiscard]] auto Weights(Operon::Range range) const -> std::optional<Operon::Span<Operon::Scalar const>>
+    {
         auto w = dataset_->Weights();
-        if (!w) { return std::nullopt; }
+        if (!w) {
+            return std::nullopt;
+        }
         ENSURE(range.Start() + range.Size() <= w->size());
         return w->subspan(range.Start(), range.Size());
     }

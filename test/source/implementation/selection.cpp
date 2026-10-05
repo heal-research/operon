@@ -4,7 +4,6 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-
 #include "operon/core/individual.hpp"
 #include "operon/core/types.hpp"
 #include "operon/operators/selector.hpp"
@@ -24,9 +23,8 @@ TEST_CASE("Tournament selection bias", "[operators]")
         individuals[i][0] = static_cast<Operon::Scalar>(i) / static_cast<Operon::Scalar>(popSize);
     }
 
-    TournamentSelector const selector([](Individual const& a, Individual const& b) -> bool {
-        return a.Fitness[0] < b.Fitness[0];
-    });
+    TournamentSelector const selector(
+        [](Individual const& a, Individual const& b) -> bool { return a.Fitness[0] < b.Fitness[0]; });
     selector.Prepare(individuals);
 
     std::vector<size_t> hist(popSize, 0);

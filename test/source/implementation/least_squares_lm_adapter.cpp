@@ -35,9 +35,7 @@ public:
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return 2; }
     [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return x_.size(); }
 
-    [[nodiscard]] auto Evaluate(
-        std::span<Operon::Scalar const> parameters,
-        std::span<Operon::Scalar> residuals,
+    [[nodiscard]] auto Evaluate(std::span<Operon::Scalar const> parameters, std::span<Operon::Scalar> residuals,
         std::optional<Operon::ScalarMatrixView> jacobian) const
         -> tl::expected<void, Operon::LeastSquaresError> override
     {
@@ -64,9 +62,7 @@ public:
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return 2; }
     [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return 5; }
 
-    [[nodiscard]] auto Evaluate(
-        std::span<Operon::Scalar const> /*parameters*/,
-        std::span<Operon::Scalar> /*residuals*/,
+    [[nodiscard]] auto Evaluate(std::span<Operon::Scalar const> /*parameters*/, std::span<Operon::Scalar> /*residuals*/,
         std::optional<Operon::ScalarMatrixView> /*jacobian*/) const
         -> tl::expected<void, Operon::LeastSquaresError> override
     {
@@ -99,7 +95,8 @@ TEST_CASE("LeastSquaresLMAdapter drives Eigen::LevenbergMarquardt to the true op
     Eigen::LevenbergMarquardt<decltype(adapter)> lm(adapter);
     auto status = lm.minimize(params);
 
-    CHECK(status >= Eigen::LevenbergMarquardtSpace::Status::RelativeReductionTooSmall); // converged, not still running/improper
+    CHECK(status
+        >= Eigen::LevenbergMarquardtSpace::Status::RelativeReductionTooSmall); // converged, not still running/improper
     CHECK_THAT(static_cast<double>(params[0]), Catch::Matchers::WithinAbs(static_cast<double>(c0), 1e-3));
     CHECK_THAT(static_cast<double>(params[1]), Catch::Matchers::WithinAbs(static_cast<double>(c1), 1e-3));
     CHECK(adapter.ResidualCalls() > 0);
@@ -138,11 +135,16 @@ TEST_CASE("LeastSquaresLMAdapter surfaces evaluation errors and fills NaN", "[le
     CHECK_FALSE(ok);
     REQUIRE(adapter.Error().has_value());
     CHECK(adapter.Error()->Code == Operon::LeastSquaresErrorCode::NonFiniteEvaluation);
-    for (auto r : residuals) { CHECK(std::isnan(static_cast<double>(r))); }
-    for (auto j : jacobian) { CHECK(std::isnan(static_cast<double>(j))); }
+    for (auto r : residuals) {
+        CHECK(std::isnan(static_cast<double>(r)));
+    }
+    for (auto j : jacobian) {
+        CHECK(std::isnan(static_cast<double>(j)));
+    }
 }
 
-TEST_CASE("LeastSquaresLMAdapter: Jacobian-only evaluation matches a residual+Jacobian call", "[least-squares][lm-adapter]")
+TEST_CASE(
+    "LeastSquaresLMAdapter: Jacobian-only evaluation matches a residual+Jacobian call", "[least-squares][lm-adapter]")
 {
     auto cost = MakeLinearFixture(8, Operon::Scalar { 1 }, Operon::Scalar { 0.5 });
     Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost };
@@ -206,13 +208,16 @@ TEST_CASE("LeastSquaresLMAdapter: weighted fit agrees between Tiny and Eigen bac
     tinyParams << 0, 0;
     solver.Solve(tinyAdapter, &tinyParams);
 
-    CHECK_THAT(static_cast<double>(eigenParams[0]), Catch::Matchers::WithinAbs(static_cast<double>(tinyParams[0]), 1e-3));
-    CHECK_THAT(static_cast<double>(eigenParams[1]), Catch::Matchers::WithinAbs(static_cast<double>(tinyParams[1]), 1e-3));
+    CHECK_THAT(
+        static_cast<double>(eigenParams[0]), Catch::Matchers::WithinAbs(static_cast<double>(tinyParams[0]), 1e-3));
+    CHECK_THAT(
+        static_cast<double>(eigenParams[1]), Catch::Matchers::WithinAbs(static_cast<double>(tinyParams[1]), 1e-3));
     CHECK_THAT(static_cast<double>(eigenParams[0]), Catch::Matchers::WithinAbs(static_cast<double>(c0), 1e-2));
     CHECK_THAT(static_cast<double>(eigenParams[1]), Catch::Matchers::WithinAbs(static_cast<double>(c1), 1e-2));
 }
 
-TEST_CASE("LeastSquaresLMAdapter: uniform scalar weight scales the objective without changing the optimum", "[least-squares][lm-adapter]")
+TEST_CASE("LeastSquaresLMAdapter: uniform scalar weight scales the objective without changing the optimum",
+    "[least-squares][lm-adapter]")
 {
     auto const c0 = Operon::Scalar { 0.6 };
     auto const c1 = Operon::Scalar { 1.4 };
@@ -240,7 +245,9 @@ TEST_CASE("LeastSquaresLMAdapter rejects nonfinite canonical outputs", "[least-s
             -> tl::expected<void, Operon::LeastSquaresError> override
         {
             residuals[0] = std::numeric_limits<Operon::Scalar>::quiet_NaN();
-            if (jacobian) { Operon::At(*jacobian, 0, 0) = Operon::Scalar { 1 }; }
+            if (jacobian) {
+                Operon::At(*jacobian, 0, 0) = Operon::Scalar { 1 };
+            }
             return {};
         }
     } cost;
@@ -253,18 +260,25 @@ TEST_CASE("LeastSquaresLMAdapter rejects nonfinite canonical outputs", "[least-s
     CHECK(adapter.Error()->Code == Operon::LeastSquaresErrorCode::NonFiniteEvaluation);
 }
 
-TEST_CASE("LeastSquaresLMAdapter reports the backend limit for an oversized problem without calling the cost", "[least-squares][lm-adapter]")
+TEST_CASE("LeastSquaresLMAdapter reports the backend limit for an oversized problem without calling the cost",
+    "[least-squares][lm-adapter]")
 {
     class OversizedInvalidCost final : public Operon::LeastSquaresCostFunction {
     public:
         [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return 2; }
-        [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return std::numeric_limits<std::size_t>::max(); }
+        [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override
+        {
+            return std::numeric_limits<std::size_t>::max();
+        }
         [[nodiscard]] auto Evaluate(std::span<Operon::Scalar const>, std::span<Operon::Scalar>,
-            std::optional<Operon::ScalarMatrixView>) const
-            -> tl::expected<void, Operon::LeastSquaresError> override
+            std::optional<Operon::ScalarMatrixView>) const -> tl::expected<void, Operon::LeastSquaresError> override
         {
             ++calls;
-            return tl::unexpected(Operon::LeastSquaresError { .Code = Operon::LeastSquaresErrorCode::InvalidShape, .Expected = 9, .Actual = 4, .Row = 1, .Column = 2 });
+            return tl::unexpected(Operon::LeastSquaresError { .Code = Operon::LeastSquaresErrorCode::InvalidShape,
+                .Expected = 9,
+                .Actual = 4,
+                .Row = 1,
+                .Column = 2 });
         }
 
         mutable std::size_t calls {};
@@ -304,7 +318,9 @@ TEST_CASE("LeastSquaresLMAdapter recovers nonfinite solver trials when enabled",
             -> tl::expected<void, Operon::LeastSquaresError> override
         {
             residuals[0] = std::numeric_limits<Operon::Scalar>::quiet_NaN();
-            if (jacobian) { Operon::At(*jacobian, 0, 0) = Operon::Scalar { 1 }; }
+            if (jacobian) {
+                Operon::At(*jacobian, 0, 0) = Operon::Scalar { 1 };
+            }
             return {};
         }
     } cost;
@@ -339,13 +355,13 @@ public:
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return inner_.NumParameters(); }
     [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return inner_.NumResiduals(); }
 
-    [[nodiscard]] auto Evaluate(
-        std::span<Operon::Scalar const> parameters,
-        std::span<Operon::Scalar> residuals,
+    [[nodiscard]] auto Evaluate(std::span<Operon::Scalar const> parameters, std::span<Operon::Scalar> residuals,
         std::optional<Operon::ScalarMatrixView> jacobian) const
         -> tl::expected<void, Operon::LeastSquaresError> override
     {
-        Call call { .Parameters = parameters.size(), .Residuals = residuals.size(), .HasJacobian = jacobian.has_value() };
+        Call call {
+            .Parameters = parameters.size(), .Residuals = residuals.size(), .HasJacobian = jacobian.has_value()
+        };
         if (jacobian) {
             call.Rows = jacobian->extent(0);
             call.Columns = jacobian->extent(1);
@@ -363,7 +379,8 @@ private:
 };
 } // namespace
 
-TEST_CASE("LeastSquaresLMAdapter hands the cost exact-size spans and a logical [row,column] view", "[least-squares][lm-adapter]")
+TEST_CASE("LeastSquaresLMAdapter hands the cost exact-size spans and a logical [row,column] view",
+    "[least-squares][lm-adapter]")
 {
     std::vector<Operon::Scalar> x(7);
     std::vector<Operon::Scalar> y(7);
@@ -408,7 +425,8 @@ TEST_CASE("LeastSquaresLMAdapter hands the cost exact-size spans and a logical [
     CHECK(cost.calls[0].ColumnStride == 1);
 }
 
-TEST_CASE("LeastSquaresLMAdapter: weighted Jacobian-only evaluation scales rows by sqrt(weight)", "[least-squares][lm-adapter]")
+TEST_CASE("LeastSquaresLMAdapter: weighted Jacobian-only evaluation scales rows by sqrt(weight)",
+    "[least-squares][lm-adapter]")
 {
     auto cost = MakeLinearFixture(5, Operon::Scalar { 1 }, Operon::Scalar { 0.5 });
     std::vector<Operon::Scalar> weights { 1, 4, 9, 16, 25 };
@@ -439,7 +457,8 @@ TEST_CASE("LeastSquaresLMAdapter: weighted Jacobian-only evaluation scales rows 
     }
 }
 
-TEST_CASE("LeastSquaresLMAdapter: invalid weights are a typed InvalidWeights error, never a sqrt of a negative", "[least-squares][lm-adapter]")
+TEST_CASE("LeastSquaresLMAdapter: invalid weights are a typed InvalidWeights error, never a sqrt of a negative",
+    "[least-squares][lm-adapter]")
 {
     auto cost = MakeLinearFixture(5, Operon::Scalar { 1 }, Operon::Scalar { 0.5 });
     std::array<Operon::Scalar, 2> params { 0.2, -0.1 };
@@ -454,21 +473,22 @@ TEST_CASE("LeastSquaresLMAdapter: invalid weights are a typed InvalidWeights err
         std::vector<Operon::Scalar> residuals(n);
         std::vector<Operon::Scalar> jacobian(n * 2);
         CHECK_FALSE(adapter.Evaluate(params.data(), residuals.data(), jacobian.data()));
-        for (auto r : residuals) { CHECK(std::isnan(static_cast<double>(r))); }
-        for (auto j : jacobian) { CHECK(std::isnan(static_cast<double>(j))); }
+        for (auto r : residuals) {
+            CHECK(std::isnan(static_cast<double>(r)));
+        }
+        for (auto j : jacobian) {
+            CHECK(std::isnan(static_cast<double>(j)));
+        }
         CHECK(adapter.Error()->Code == Operon::LeastSquaresErrorCode::InvalidWeights);
         CHECK(adapter.ResidualCalls() == 0);
     };
 
-    SECTION("negative weight") {
-        checkRejected({ 1, 1, -4, 1, 1 }, 2);
-    }
+    SECTION("negative weight") { checkRejected({ 1, 1, -4, 1, 1 }, 2); }
 
-    SECTION("NaN weight") {
-        checkRejected({ 1, std::numeric_limits<Operon::Scalar>::quiet_NaN(), 1, 1, 1 }, 1);
-    }
+    SECTION("NaN weight") { checkRejected({ 1, std::numeric_limits<Operon::Scalar>::quiet_NaN(), 1, 1, 1 }, 1); }
 
-    SECTION("wrong per-row size") {
+    SECTION("wrong per-row size")
+    {
         std::vector<Operon::Scalar> wrong { 1, 2, 3 };
         Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost, wrong };
         REQUIRE(adapter.Error().has_value());
@@ -479,28 +499,29 @@ TEST_CASE("LeastSquaresLMAdapter: invalid weights are a typed InvalidWeights err
         CHECK_FALSE(adapter.Evaluate(params.data(), residuals.data(), nullptr));
     }
 
-    SECTION("valid weights record no error") {
+    SECTION("valid weights record no error")
+    {
         std::vector<Operon::Scalar> weights { 1, 2, 3, 4, 5 };
         Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost, weights };
         CHECK_FALSE(adapter.Error().has_value());
     }
 }
 
-TEST_CASE("LeastSquaresLMAdapter preserves typed cost errors through both solver backends", "[least-squares][lm-adapter]")
+TEST_CASE(
+    "LeastSquaresLMAdapter preserves typed cost errors through both solver backends", "[least-squares][lm-adapter]")
 {
     class TypedFailureCost final : public Operon::LeastSquaresCostFunction {
     public:
         [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return 2; }
         [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return 4; }
         [[nodiscard]] auto Evaluate(std::span<Operon::Scalar const>, std::span<Operon::Scalar>,
-            std::optional<Operon::ScalarMatrixView>) const
-            -> tl::expected<void, Operon::LeastSquaresError> override
+            std::optional<Operon::ScalarMatrixView>) const -> tl::expected<void, Operon::LeastSquaresError> override
         {
-            return tl::unexpected(Operon::LeastSquaresError {
-                .Code = Operon::LeastSquaresErrorCode::EvaluationFailure,
+            return tl::unexpected(Operon::LeastSquaresError { .Code = Operon::LeastSquaresErrorCode::EvaluationFailure,
                 .Expected = 4,
                 .Actual = 3,
-                .Cause = Operon::InterpreterError { .Kind = Operon::InterpreterError::Code::MissingVariable, .Hash = 77 } });
+                .Cause
+                = Operon::InterpreterError { .Kind = Operon::InterpreterError::Code::MissingVariable, .Hash = 77 } });
         }
     };
 
@@ -555,12 +576,18 @@ TEST_CASE("LeastSquaresLMAdapter reports where the first non-finite output occur
             -> tl::expected<void, Operon::LeastSquaresError> override
         {
             std::ranges::fill(residuals, Operon::Scalar { 1 });
-            if (badResidual_ < residuals.size()) { residuals[badResidual_] = std::numeric_limits<Operon::Scalar>::infinity(); }
+            if (badResidual_ < residuals.size()) {
+                residuals[badResidual_] = std::numeric_limits<Operon::Scalar>::infinity();
+            }
             if (jacobian) {
                 for (std::size_t i = 0; i < 4; ++i) {
-                    for (std::size_t j = 0; j < 3; ++j) { Operon::At(*jacobian, i, j) = Operon::Scalar { 1 }; }
+                    for (std::size_t j = 0; j < 3; ++j) {
+                        Operon::At(*jacobian, i, j) = Operon::Scalar { 1 };
+                    }
                 }
-                if (badRow_ < 4) { Operon::At(*jacobian, badRow_, badColumn_) = std::numeric_limits<Operon::Scalar>::quiet_NaN(); }
+                if (badRow_ < 4) {
+                    Operon::At(*jacobian, badRow_, badColumn_) = std::numeric_limits<Operon::Scalar>::quiet_NaN();
+                }
             }
             return {};
         }
@@ -595,7 +622,9 @@ TEST_CASE("LeastSquaresLMAdapter TinySolver runs are deterministic", "[least-squ
 {
     auto cost = MakeLinearFixture(12, Operon::Scalar { 0.9 }, Operon::Scalar { -1.7 });
     std::vector<Operon::Scalar> weights(cost.NumResiduals());
-    for (std::size_t i = 0; i < weights.size(); ++i) { weights[i] = Operon::Scalar { 1 } + static_cast<Operon::Scalar>(i); }
+    for (std::size_t i = 0; i < weights.size(); ++i) {
+        weights[i] = Operon::Scalar { 1 } + static_cast<Operon::Scalar>(i);
+    }
 
     auto const solve = [&] {
         Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost, weights };
@@ -604,14 +633,16 @@ TEST_CASE("LeastSquaresLMAdapter TinySolver runs are deterministic", "[least-squ
         params.resize(2);
         params << 0.3, 0.3;
         solver.Solve(adapter, &params);
-        return std::tuple { params[0], params[1], solver.summary.final_cost, solver.summary.iterations, adapter.ResidualCalls(), adapter.JacobianCalls() };
+        return std::tuple { params[0], params[1], solver.summary.final_cost, solver.summary.iterations,
+            adapter.ResidualCalls(), adapter.JacobianCalls() };
     };
 
     CHECK(solve() == solve());
 }
 
 namespace {
-// y_i = 1 + 2 x_i + 0.1 x_i^2 + deterministic perturbation: the model misfit makes the weighted optimum differ from the unweighted one.
+// y_i = 1 + 2 x_i + 0.1 x_i^2 + deterministic perturbation: the model misfit makes the weighted optimum differ from the
+// unweighted one.
 struct NoisyLine {
     std::vector<Operon::Scalar> X;
     std::vector<Operon::Scalar> Y;
@@ -622,9 +653,11 @@ auto MakeNoisyLine(std::size_t n) -> NoisyLine
 {
     NoisyLine line;
     for (std::size_t i = 0; i < n; ++i) {
-        auto const x = (Operon::Scalar { 0.5 } * static_cast<Operon::Scalar>(i)) - (static_cast<Operon::Scalar>(n) / Operon::Scalar { 4 });
+        auto const x = (Operon::Scalar { 0.5 } * static_cast<Operon::Scalar>(i))
+            - (static_cast<Operon::Scalar>(n) / Operon::Scalar { 4 });
         line.X.push_back(x);
-        line.Y.push_back(Operon::Scalar { 1 } + (Operon::Scalar { 2 } * x) + (Operon::Scalar { 0.1 } * x * x) + (Operon::Scalar { 0.8 } * static_cast<Operon::Scalar>(std::sin(3.0 * static_cast<double>(i)))));
+        line.Y.push_back(Operon::Scalar { 1 } + (Operon::Scalar { 2 } * x) + (Operon::Scalar { 0.1 } * x * x)
+            + (Operon::Scalar { 0.8 } * static_cast<Operon::Scalar>(std::sin(3.0 * static_cast<double>(i)))));
         line.W.push_back(Operon::Scalar { 0.1 } + (static_cast<Operon::Scalar>(i) * static_cast<Operon::Scalar>(i)));
     }
     return line;
@@ -663,7 +696,9 @@ auto WeightedObjective(NoisyLine const& line, double a, double b) -> double
 }
 } // namespace
 
-TEST_CASE("LeastSquaresLMAdapter: both backends minimise the same weighted objective and expose the same residual/Jacobian layout", "[least-squares][lm-adapter]")
+TEST_CASE("LeastSquaresLMAdapter: both backends minimise the same weighted objective and expose the same "
+          "residual/Jacobian layout",
+    "[least-squares][lm-adapter]")
 {
     auto const line = MakeNoisyLine(24);
     auto const wls = SolveWeightedLine(line, true);
@@ -692,7 +727,8 @@ TEST_CASE("LeastSquaresLMAdapter: both backends minimise the same weighted objec
         lm.minimize(params);
         CHECK_THAT(static_cast<double>(params[0]), Catch::Matchers::WithinAbs(wls[0], 2e-3));
         CHECK_THAT(static_cast<double>(params[1]), Catch::Matchers::WithinAbs(wls[1], 2e-3));
-        CHECK_THAT(static_cast<double>(lm.fnorm() * lm.fnorm()), Catch::Matchers::WithinRel(referenceObjective, 1e-3)); // fnorm = sqrt(sum w r^2)
+        CHECK_THAT(static_cast<double>(lm.fnorm() * lm.fnorm()),
+            Catch::Matchers::WithinRel(referenceObjective, 1e-3)); // fnorm = sqrt(sum w r^2)
         Eigen::Matrix<Operon::Scalar, -1, -1> jacobian(n, 2);
         REQUIRE(adapter.df(params, jacobian) == 0);
         checkLayout(lm.fvec(), jacobian);
@@ -706,12 +742,14 @@ TEST_CASE("LeastSquaresLMAdapter: both backends minimise the same weighted objec
         solver.Solve(adapter, &params);
         CHECK_THAT(static_cast<double>(params[0]), Catch::Matchers::WithinAbs(wls[0], 2e-3));
         CHECK_THAT(static_cast<double>(params[1]), Catch::Matchers::WithinAbs(wls[1], 2e-3));
-        CHECK_THAT(static_cast<double>(solver.summary.final_cost * 2), Catch::Matchers::WithinRel(referenceObjective, 1e-3)); // final_cost = 1/2 sum w r^2
+        CHECK_THAT(static_cast<double>(solver.summary.final_cost * 2),
+            Catch::Matchers::WithinRel(referenceObjective, 1e-3)); // final_cost = 1/2 sum w r^2
         checkLayout(solver.Residuals(), solver.Jacobian());
     }
 }
 
-TEST_CASE("LeastSquaresLMAdapter: scalar weight is equivalent to the broadcast per-row weight on both backends", "[least-squares][lm-adapter]")
+TEST_CASE("LeastSquaresLMAdapter: scalar weight is equivalent to the broadcast per-row weight on both backends",
+    "[least-squares][lm-adapter]")
 {
     auto const line = MakeNoisyLine(12);
     LinearModelCost cost { line.X, line.Y };
@@ -724,7 +762,8 @@ TEST_CASE("LeastSquaresLMAdapter: scalar weight is equivalent to the broadcast p
         params << 0.3, 0.3;
         Eigen::LevenbergMarquardt<decltype(adapter)> lm(adapter);
         lm.minimize(params);
-        return std::tuple { params[0], params[1], lm.fnorm(), lm.iterations(), adapter.ResidualCalls(), adapter.JacobianCalls() };
+        return std::tuple { params[0], params[1], lm.fnorm(), lm.iterations(), adapter.ResidualCalls(),
+            adapter.JacobianCalls() };
     };
     auto const solveTiny = [&](Operon::ConstScalarSpan weights) {
         Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost, weights };
@@ -733,7 +772,8 @@ TEST_CASE("LeastSquaresLMAdapter: scalar weight is equivalent to the broadcast p
         params.resize(2);
         params << 0.3, 0.3;
         solver.Solve(adapter, &params);
-        return std::tuple { params[0], params[1], solver.summary.final_cost, solver.summary.iterations, adapter.ResidualCalls(), adapter.JacobianCalls() };
+        return std::tuple { params[0], params[1], solver.summary.final_cost, solver.summary.iterations,
+            adapter.ResidualCalls(), adapter.JacobianCalls() };
     };
 
     CHECK(solveEigen(scalar) == solveEigen(broadcast));
@@ -756,7 +796,8 @@ TEST_CASE("LeastSquaresLMAdapter: scalar weight is equivalent to the broadcast p
     CHECK_THAT(weightedObjective, Catch::Matchers::WithinRel(2.5 * plainObjective, 1e-4));
 }
 
-TEST_CASE("LeastSquaresLMAdapter: call counters agree with each backend's own diagnostics and replay deterministically", "[least-squares][lm-adapter]")
+TEST_CASE("LeastSquaresLMAdapter: call counters agree with each backend's own diagnostics and replay deterministically",
+    "[least-squares][lm-adapter]")
 {
     auto const line = MakeNoisyLine(16);
     LinearModelCost cost { line.X, line.Y };
@@ -771,7 +812,8 @@ TEST_CASE("LeastSquaresLMAdapter: call counters agree with each backend's own di
         CHECK(adapter.ResidualCalls() == static_cast<std::size_t>(lm.nfev()));
         CHECK(adapter.JacobianCalls() == static_cast<std::size_t>(lm.njev()));
         CHECK(adapter.JacobianCalls() > 0);
-        return std::tuple { params[0], params[1], lm.fnorm(), lm.iterations(), adapter.ResidualCalls(), adapter.JacobianCalls() };
+        return std::tuple { params[0], params[1], lm.fnorm(), lm.iterations(), adapter.ResidualCalls(),
+            adapter.JacobianCalls() };
     };
     auto const solveTiny = [&] {
         Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost, line.W };
@@ -782,14 +824,16 @@ TEST_CASE("LeastSquaresLMAdapter: call counters agree with each backend's own di
         solver.Solve(adapter, &params);
         CHECK(adapter.ResidualCalls() > 0);
         CHECK(adapter.JacobianCalls() > 0);
-        return std::tuple { params[0], params[1], solver.summary.final_cost, solver.summary.iterations, adapter.ResidualCalls(), adapter.JacobianCalls() };
+        return std::tuple { params[0], params[1], solver.summary.final_cost, solver.summary.iterations,
+            adapter.ResidualCalls(), adapter.JacobianCalls() };
     };
 
     CHECK(solveEigen() == solveEigen());
     CHECK(solveTiny() == solveTiny());
 }
 
-TEST_CASE("LeastSquaresLMAdapter: a cost failing mid-solve surfaces the same typed error on both backends", "[least-squares][lm-adapter]")
+TEST_CASE("LeastSquaresLMAdapter: a cost failing mid-solve surfaces the same typed error on both backends",
+    "[least-squares][lm-adapter]")
 {
     // Succeeds at the start point (0, 0) and fails for every other parameter vector, i.e. on the first trial step.
     class FailsAwayFromStart final : public Operon::LeastSquaresCostFunction {
@@ -805,11 +849,12 @@ TEST_CASE("LeastSquaresLMAdapter: a cost failing mid-solve surfaces the same typ
             -> tl::expected<void, Operon::LeastSquaresError> override
         {
             if (parameters[0] != Operon::Scalar { 0 } || parameters[1] != Operon::Scalar { 0 }) {
-                return tl::unexpected(Operon::LeastSquaresError {
-                    .Code = Operon::LeastSquaresErrorCode::EvaluationFailure,
-                    .Expected = 6,
-                    .Actual = 5,
-                    .Cause = Operon::InterpreterError { .Kind = Operon::InterpreterError::Code::MissingVariable, .Hash = 99 } });
+                return tl::unexpected(
+                    Operon::LeastSquaresError { .Code = Operon::LeastSquaresErrorCode::EvaluationFailure,
+                        .Expected = 6,
+                        .Actual = 5,
+                        .Cause = Operon::InterpreterError {
+                            .Kind = Operon::InterpreterError::Code::MissingVariable, .Hash = 99 } });
             }
             return inner_.Evaluate(parameters, residuals, jacobian);
         }
@@ -856,7 +901,8 @@ TEST_CASE("LeastSquaresLMAdapter: a cost failing mid-solve surfaces the same typ
     }
 }
 
-TEST_CASE("LeastSquaresLMAdapter: non-finite trial steps are recovered or reported identically on both backends", "[least-squares][lm-adapter]")
+TEST_CASE("LeastSquaresLMAdapter: non-finite trial steps are recovered or reported identically on both backends",
+    "[least-squares][lm-adapter]")
 {
     // r(p) = log(p) - log(4): minimum at p = 4, NaN residual for p < 0. From p = 20 the first Gauss-Newton
     // step lands near p = -12, so a solver only converges if it can reject a non-finite trial.
@@ -870,7 +916,9 @@ TEST_CASE("LeastSquaresLMAdapter: non-finite trial steps are recovered or report
         {
             auto const p = static_cast<double>(parameters[0]);
             residuals[0] = static_cast<Operon::Scalar>(std::log(p) - std::log(4.0));
-            if (jacobian) { Operon::At(*jacobian, 0, 0) = static_cast<Operon::Scalar>(1.0 / p); }
+            if (jacobian) {
+                Operon::At(*jacobian, 0, 0) = static_cast<Operon::Scalar>(1.0 / p);
+            }
             return {};
         }
     } cost;
@@ -912,17 +960,18 @@ public:
     [[nodiscard]] auto NumParameters() const noexcept -> std::size_t override { return 2; }
     [[nodiscard]] auto NumResiduals() const noexcept -> std::size_t override { return 3; }
     [[nodiscard]] auto Evaluate(std::span<Operon::Scalar const>, std::span<Operon::Scalar>,
-        std::optional<Operon::ScalarMatrixView>) const
-        -> tl::expected<void, Operon::LeastSquaresError> override
+        std::optional<Operon::ScalarMatrixView>) const -> tl::expected<void, Operon::LeastSquaresError> override
     {
         auto const call = ++calls;
-        return tl::unexpected(Operon::LeastSquaresError {
-            .Code = call == 1 ? Operon::LeastSquaresErrorCode::EvaluationFailure : Operon::LeastSquaresErrorCode::NumericalFailure,
-            .Expected = 10 * call,
-            .Actual = 20 * call,
-            .Row = call,
-            .Column = call + 1,
-            .Cause = Operon::InterpreterError { .Kind = Operon::InterpreterError::Code::MissingVariable, .Hash = 1000 + call } });
+        return tl::unexpected(
+            Operon::LeastSquaresError { .Code = call == 1 ? Operon::LeastSquaresErrorCode::EvaluationFailure
+                                                          : Operon::LeastSquaresErrorCode::NumericalFailure,
+                .Expected = 10 * call,
+                .Actual = 20 * call,
+                .Row = call,
+                .Column = call + 1,
+                .Cause = Operon::InterpreterError {
+                    .Kind = Operon::InterpreterError::Code::MissingVariable, .Hash = 1000 + call } });
     }
     mutable std::size_t calls {};
 };
@@ -938,13 +987,18 @@ public:
     {
         ++calls;
         if (failWithError) {
-            return tl::unexpected(Operon::LeastSquaresError { .Code = Operon::LeastSquaresErrorCode::EvaluationFailure, .Row = 99 });
+            return tl::unexpected(
+                Operon::LeastSquaresError { .Code = Operon::LeastSquaresErrorCode::EvaluationFailure, .Row = 99 });
         }
         std::ranges::fill(residuals, Operon::Scalar { 2 });
-        if (nanResidual < residuals.size()) { residuals[nanResidual] = std::numeric_limits<Operon::Scalar>::quiet_NaN(); }
+        if (nanResidual < residuals.size()) {
+            residuals[nanResidual] = std::numeric_limits<Operon::Scalar>::quiet_NaN();
+        }
         if (jacobian) {
             for (std::size_t i = 0; i < jacobian->extent(0); ++i) {
-                for (std::size_t j = 0; j < jacobian->extent(1); ++j) { Operon::At(*jacobian, i, j) = Operon::Scalar { 1 }; }
+                for (std::size_t j = 0; j < jacobian->extent(1); ++j) {
+                    Operon::At(*jacobian, i, j) = Operon::Scalar { 1 };
+                }
             }
         }
         return {};
@@ -955,7 +1009,8 @@ public:
 };
 } // namespace
 
-TEST_CASE("LeastSquaresLMAdapter keeps the first typed error across repeated failing calls", "[least-squares][lm-adapter]")
+TEST_CASE(
+    "LeastSquaresLMAdapter keeps the first typed error across repeated failing calls", "[least-squares][lm-adapter]")
 {
     SequencedFailureCost cost;
     Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost };
@@ -966,8 +1021,12 @@ TEST_CASE("LeastSquaresLMAdapter keeps the first typed error across repeated fai
         std::vector<Operon::Scalar> jacobian(6, Operon::Scalar { 1 });
         CHECK_FALSE(adapter.Evaluate(params.data(), residuals.data(), jacobian.data()));
         // Outputs are poisoned on every failing call, not only the first.
-        for (auto r : residuals) { CHECK(std::isnan(static_cast<double>(r))); }
-        for (auto j : jacobian) { CHECK(std::isnan(static_cast<double>(j))); }
+        for (auto r : residuals) {
+            CHECK(std::isnan(static_cast<double>(r)));
+        }
+        for (auto j : jacobian) {
+            CHECK(std::isnan(static_cast<double>(j)));
+        }
 
         REQUIRE(adapter.Error().has_value());
         auto const& error = *adapter.Error();
@@ -983,7 +1042,9 @@ TEST_CASE("LeastSquaresLMAdapter keeps the first typed error across repeated fai
     CHECK(cost.calls == 3); // later calls still reach the cost; only the stored error is frozen
 }
 
-TEST_CASE("LeastSquaresLMAdapter: a detected non-finite output is not replaced by a later cost error or a later success", "[least-squares][lm-adapter]")
+TEST_CASE(
+    "LeastSquaresLMAdapter: a detected non-finite output is not replaced by a later cost error or a later success",
+    "[least-squares][lm-adapter]")
 {
     ScriptedCost cost;
     Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost };
@@ -1011,7 +1072,9 @@ TEST_CASE("LeastSquaresLMAdapter: a detected non-finite output is not replaced b
     CHECK(adapter.Error()->Row == 1);
 }
 
-TEST_CASE("LeastSquaresLMAdapter: invalid stored configuration fails every call without evaluating, counting, or replacing the error", "[least-squares][lm-adapter]")
+TEST_CASE("LeastSquaresLMAdapter: invalid stored configuration fails every call without evaluating, counting, or "
+          "replacing the error",
+    "[least-squares][lm-adapter]")
 {
     ScriptedCost cost; // would succeed if it were ever called
     std::vector<Operon::Scalar> const weights { 1, -2, 1 };
@@ -1032,16 +1095,24 @@ TEST_CASE("LeastSquaresLMAdapter: invalid stored configuration fails every call 
         std::vector<Operon::Scalar> residuals(3, Operon::Scalar { 1 });
         std::vector<Operon::Scalar> jacobian(6, Operon::Scalar { 1 });
         CHECK_FALSE(adapter.Evaluate(params.data(), residuals.data(), jacobian.data()));
-        for (auto r : residuals) { CHECK(std::isnan(static_cast<double>(r))); }
-        for (auto j : jacobian) { CHECK(std::isnan(static_cast<double>(j))); }
+        for (auto r : residuals) {
+            CHECK(std::isnan(static_cast<double>(r)));
+        }
+        for (auto j : jacobian) {
+            CHECK(std::isnan(static_cast<double>(j)));
+        }
 
         std::ranges::fill(residuals, Operon::Scalar { 1 });
         CHECK_FALSE(adapter.Evaluate(params.data(), residuals.data(), nullptr));
-        for (auto r : residuals) { CHECK(std::isnan(static_cast<double>(r))); }
+        for (auto r : residuals) {
+            CHECK(std::isnan(static_cast<double>(r)));
+        }
 
         std::ranges::fill(jacobian, Operon::Scalar { 1 });
         CHECK_FALSE(adapter.Evaluate(params.data(), nullptr, jacobian.data()));
-        for (auto j : jacobian) { CHECK(std::isnan(static_cast<double>(j))); }
+        for (auto j : jacobian) {
+            CHECK(std::isnan(static_cast<double>(j)));
+        }
 
         checkStoredError();
     }
@@ -1050,7 +1121,8 @@ TEST_CASE("LeastSquaresLMAdapter: invalid stored configuration fails every call 
     CHECK(adapter.JacobianCalls() == 0);
 }
 
-TEST_CASE("LeastSquaresLMAdapter counters count calls that reached the cost, per requested output", "[least-squares][lm-adapter]")
+TEST_CASE("LeastSquaresLMAdapter counters count calls that reached the cost, per requested output",
+    "[least-squares][lm-adapter]")
 {
     auto cost = MakeLinearFixture(4, Operon::Scalar { 1 }, Operon::Scalar { 2 });
     Operon::LeastSquaresLMAdapter<Eigen::ColMajor> adapter { &cost };
@@ -1088,7 +1160,9 @@ TEST_CASE("LeastSquaresLMAdapter counters count calls that reached the cost, per
     CHECK(adapter.JacobianCalls() == 2);
 }
 
-TEST_CASE("LeastSquaresLMAdapter with recoverNonFinite returns weighted non-finite outputs and still records cost errors", "[least-squares][lm-adapter]")
+TEST_CASE(
+    "LeastSquaresLMAdapter with recoverNonFinite returns weighted non-finite outputs and still records cost errors",
+    "[least-squares][lm-adapter]")
 {
     ScriptedCost cost;
     cost.nanResidual = 0;
@@ -1118,6 +1192,10 @@ TEST_CASE("LeastSquaresLMAdapter with recoverNonFinite returns weighted non-fini
     REQUIRE(adapter.Error().has_value());
     CHECK(adapter.Error()->Code == Operon::LeastSquaresErrorCode::EvaluationFailure);
     CHECK(adapter.Error()->Row == 99);
-    for (auto r : residuals) { CHECK(std::isnan(static_cast<double>(r))); }
-    for (auto j : jacobian) { CHECK(std::isnan(static_cast<double>(j))); }
+    for (auto r : residuals) {
+        CHECK(std::isnan(static_cast<double>(r)));
+    }
+    for (auto j : jacobian) {
+        CHECK(std::isnan(static_cast<double>(j)));
+    }
 }

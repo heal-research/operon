@@ -57,7 +57,7 @@ inline auto StructureDescriptionLength(Tree const& tree) -> double
 // likelihood model produces (see GaussianLikelihood/PoissonLikelihood::ComputeFisherDiagonal).
 // Returns NaN if the Fisher diagonal violates its PSD invariant (see the noise-floor
 // comment below) - propagate, don't silently charge zero cost.
-template<typename FisherDiag>
+template <typename FisherDiag>
 auto ParameterDescriptionLength(Operon::Span<Operon::Scalar const> coeffs, FisherDiag const& fisherDiag) -> double
 {
     constexpr auto uniformPriorScale = 12.0; // di = sqrt(12 / fi) comes from Var(Uniform[-c,c]) = (2c)²/12.
@@ -67,7 +67,7 @@ auto ParameterDescriptionLength(Operon::Span<Operon::Scalar const> coeffs, Fishe
     // rounding. Not a statistical/physical bound — just noise tolerance,
     // chosen well below any Fisher magnitude that would plausibly arise
     // from real (non-degenerate) coefficients/data.
-    constexpr auto fisherNoiseFloor  = -1e-8;
+    constexpr auto fisherNoiseFloor = -1e-8;
 
     auto const p = static_cast<double>(coeffs.size());
     auto cParameters = 0.0;
@@ -82,7 +82,9 @@ auto ParameterDescriptionLength(Operon::Span<Operon::Scalar const> coeffs, Fishe
         // rather than silently charging zero cost. A tiny negative value
         // within the noise floor is clamped to 0 and falls through to the
         // same legitimate-zero-info handling.
-        if (!std::isfinite(fi) || fi < fisherNoiseFloor) { return std::numeric_limits<double>::quiet_NaN(); }
+        if (!std::isfinite(fi) || fi < fisherNoiseFloor) {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
         fi = std::max(fi, 0.0);
         auto const di = std::sqrt(uniformPriorScale / fi);
         auto const ci = std::abs(static_cast<double>(coeffs[pi]));
@@ -100,9 +102,9 @@ auto ParameterDescriptionLength(Operon::Span<Operon::Scalar const> coeffs, Fishe
 // a,b) - if the caller applies such a scaling, the Jacobian/Fisher matrix used to
 // derive `fisherDiag` must reflect it (d(a*tree)/d(coeffs) = a * d(tree)/d(coeffs)),
 // or the parameter cost will be biased by the missing scale factor.
-template<typename FisherDiag>
-auto MinimumDescriptionLength(Tree const& tree, Operon::Span<Operon::Scalar const> coeffs,
-                              FisherDiag const& fisherDiag, double nll) -> double
+template <typename FisherDiag>
+auto MinimumDescriptionLength(
+    Tree const& tree, Operon::Span<Operon::Scalar const> coeffs, FisherDiag const& fisherDiag, double nll) -> double
 {
     auto const cComplexity = StructureDescriptionLength(tree);
     auto const cParameters = ParameterDescriptionLength(coeffs, fisherDiag);

@@ -17,16 +17,14 @@ namespace Concepts {
     // Statistical-only contract. MDL callers supply arbitrary-stride Jacobian
     // storage and receive only the Fisher diagonal they consume.
     template <typename T>
-    concept HasFisherDiagonal = requires(
-        Operon::Span<Operon::Scalar const> prediction,
-        Operon::ConstScalarMatrixView jacobian,
-        Operon::Span<Operon::Scalar const> auxiliary,
-        Operon::ScalarSpan diagonal) {
-        { T::ComputeFisherDiagonal(prediction, jacobian, auxiliary, diagonal) }
-            -> std::same_as<tl::expected<void, Operon::FisherError>>;
-    };
+    concept HasFisherDiagonal
+        = requires(Operon::Span<Operon::Scalar const> prediction, Operon::ConstScalarMatrixView jacobian,
+            Operon::Span<Operon::Scalar const> auxiliary, Operon::ScalarSpan diagonal) {
+              {
+                  T::ComputeFisherDiagonal(prediction, jacobian, auxiliary, diagonal)
+              } -> std::same_as<tl::expected<void, Operon::FisherError>>;
+          };
 } // namespace Concepts
-
 
 } // namespace Operon
 

@@ -9,9 +9,9 @@
 #include "operon/hash/zobrist.hpp"
 #include "operon/operators/crossover.hpp"
 #include "operon/operators/evaluator.hpp"
+#include "operon/operators/local_search.hpp"
 #include "operon/operators/mutation.hpp"
 #include "operon/operators/selector.hpp"
-#include "operon/operators/local_search.hpp"
 #include "operon/operon_export.hpp"
 
 namespace Operon {
@@ -24,15 +24,18 @@ struct RecombinationResult {
     explicit operator bool() const { return Child.has_value(); }
 };
 
-class OffspringGeneratorBase : public OperatorBase<std::optional<Individual>, /* crossover prob. */ double, /* mutation prob. */ double, /* local search prob. */ double, /* lamarckian prob */ double, /* memory buffer */ Operon::Span<Operon::Scalar>> {
+class OffspringGeneratorBase : public OperatorBase<std::optional<Individual>, /* crossover prob. */ double,
+                                   /* mutation prob. */ double, /* local search prob. */ double,
+                                   /* lamarckian prob */ double, /* memory buffer */ Operon::Span<Operon::Scalar>> {
 public:
-    OffspringGeneratorBase(EvaluatorBase const* eval, CrossoverBase const* cx, MutatorBase const* mut, SelectorBase const* femSel, SelectorBase const* maleSel, CoefficientOptimizer const* coeffOptimizer = nullptr)
+    OffspringGeneratorBase(EvaluatorBase const* eval, CrossoverBase const* cx, MutatorBase const* mut,
+        SelectorBase const* femSel, SelectorBase const* maleSel, CoefficientOptimizer const* coeffOptimizer = nullptr)
         : evaluator_(eval)
         , crossover_(cx)
         , mutator_(mut)
         , femaleSelector_(femSel)
         , maleSelector_(maleSel)
-        , coeffOptimizer_{coeffOptimizer}
+        , coeffOptimizer_ { coeffOptimizer }
     {
     }
 
@@ -55,25 +58,30 @@ public:
     auto SetCache(Zobrist* cache) const { cache_ = cache; }
     [[nodiscard]] auto Cache() const -> Zobrist* { return cache_; }
 
-    auto Generate(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf, RecombinationResult& res) const -> void {
+    auto Generate(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal, double pLamarck,
+        Operon::Span<Operon::Scalar> buf, RecombinationResult& res) const -> void
+    {
         auto pop = FemaleSelector()->Population();
-        if (!res.Parent1) { res.Parent1 = pop[ (*FemaleSelector())(random) ]; }
-        if (!res.Parent2) { res.Parent2 = pop[ (*MaleSelector())(random) ]; }
+        if (!res.Parent1) {
+            res.Parent1 = pop[(*FemaleSelector())(random)];
+        }
+        if (!res.Parent2) {
+            res.Parent2 = pop[(*MaleSelector())(random)];
+        }
 
-        res.Child = Individual{Evaluator()->ObjectiveCount()};
+        res.Child = Individual { Evaluator()->ObjectiveCount() };
         using BernoulliTrial = std::bernoulli_distribution;
 
-        res.Child->Genotype = BernoulliTrial{pCrossover}(random)
+        res.Child->Genotype = BernoulliTrial { pCrossover }(random)
             ? (*Crossover())(random, res.Parent1->Genotype, res.Parent2->Genotype)
             : res.Parent1->Genotype;
 
-        if (BernoulliTrial{pMutation}(random)) {
+        if (BernoulliTrial { pMutation }(random)) {
             res.Child->Genotype = (*Mutator())(random, std::move(res.Child->Genotype));
         }
 
-        auto evaluate = [&]() {
-            ScoreIndividual(random, *res.Child, *Evaluator(), coeffOptimizer_, pLocal, pLamarck, buf);
-        };
+        auto evaluate
+            = [&]() { ScoreIndividual(random, *res.Child, *Evaluator(), coeffOptimizer_, pLocal, pLamarck, buf); };
 
         if (cache_ != nullptr) {
             auto const hash = cache_->ComputeHash(res.Child->Genotype);
@@ -89,7 +97,9 @@ public:
         }
     }
 
-    auto Generate(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf) const -> RecombinationResult {
+    auto Generate(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal, double pLamarck,
+        Operon::Span<Operon::Scalar> buf) const -> RecombinationResult
+    {
         RecombinationResult res;
         Generate(random, pCrossover, pMutation, pLocal, pLamarck, buf, res);
         return res;
@@ -98,32 +108,36 @@ public:
 private:
     gsl::not_null<EvaluatorBase const*> evaluator_;
     gsl::not_null<CrossoverBase const*> crossover_;
-    gsl::not_null<MutatorBase const*>   mutator_;
-    gsl::not_null<SelectorBase const*>  femaleSelector_;
-    gsl::not_null<SelectorBase const*>  maleSelector_;
-    CoefficientOptimizer const*         coeffOptimizer_;
-    mutable Zobrist*                    cache_{nullptr};
+    gsl::not_null<MutatorBase const*> mutator_;
+    gsl::not_null<SelectorBase const*> femaleSelector_;
+    gsl::not_null<SelectorBase const*> maleSelector_;
+    CoefficientOptimizer const* coeffOptimizer_;
+    mutable Zobrist* cache_ { nullptr };
 };
 
 class OPERON_EXPORT BasicOffspringGenerator final : public OffspringGeneratorBase {
 public:
-    explicit BasicOffspringGenerator(EvaluatorBase const* eval, CrossoverBase const* cx, MutatorBase const* mut, SelectorBase const* femSel, SelectorBase const* maleSel, CoefficientOptimizer const* coeffOptimizer = nullptr)
+    explicit BasicOffspringGenerator(EvaluatorBase const* eval, CrossoverBase const* cx, MutatorBase const* mut,
+        SelectorBase const* femSel, SelectorBase const* maleSel, CoefficientOptimizer const* coeffOptimizer = nullptr)
         : OffspringGeneratorBase(eval, cx, mut, femSel, maleSel, coeffOptimizer)
     {
     }
 
-    auto operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual> final;
+    auto operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal,
+        double pLamarck, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual> final;
 };
 
 class OPERON_EXPORT BroodOffspringGenerator : public OffspringGeneratorBase {
 public:
-    explicit BroodOffspringGenerator(EvaluatorBase const* eval, CrossoverBase const* cx, MutatorBase const* mut, SelectorBase const* femSel, SelectorBase const* maleSel, CoefficientOptimizer const* coeffOptimizer = nullptr)
+    explicit BroodOffspringGenerator(EvaluatorBase const* eval, CrossoverBase const* cx, MutatorBase const* mut,
+        SelectorBase const* femSel, SelectorBase const* maleSel, CoefficientOptimizer const* coeffOptimizer = nullptr)
         : OffspringGeneratorBase(eval, cx, mut, femSel, maleSel, coeffOptimizer)
         , broodSize_(DefaultBroodSize)
     {
     }
 
-    auto operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual> final;
+    auto operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal,
+        double pLamarck, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual> final;
 
     void BroodSize(size_t value) { broodSize_ = value; }
     [[nodiscard]] auto BroodSize() const -> size_t { return broodSize_; }
@@ -136,13 +150,15 @@ private:
 
 class OPERON_EXPORT PolygenicOffspringGenerator : public OffspringGeneratorBase {
 public:
-    explicit PolygenicOffspringGenerator(EvaluatorBase const* eval, CrossoverBase const* cx, MutatorBase const* mut, SelectorBase const* femSel, SelectorBase const* maleSel, CoefficientOptimizer const* coeffOptimizer = nullptr)
+    explicit PolygenicOffspringGenerator(EvaluatorBase const* eval, CrossoverBase const* cx, MutatorBase const* mut,
+        SelectorBase const* femSel, SelectorBase const* maleSel, CoefficientOptimizer const* coeffOptimizer = nullptr)
         : OffspringGeneratorBase(eval, cx, mut, femSel, maleSel, coeffOptimizer)
         , broodSize_(DefaultBroodSize)
     {
     }
 
-    auto operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual> final;
+    auto operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal,
+        double pLamarck, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual> final;
 
     void PolygenicSize(size_t value) { broodSize_ = value; }
     [[nodiscard]] auto PolygenicSize() const -> size_t { return broodSize_; }
@@ -155,12 +171,14 @@ private:
 
 class OPERON_EXPORT OffspringSelectionGenerator : public OffspringGeneratorBase {
 public:
-    explicit OffspringSelectionGenerator(EvaluatorBase const* eval, CrossoverBase const* cx, MutatorBase const* mut, SelectorBase const* femSel, SelectorBase const* maleSel, CoefficientOptimizer const* coeffOptimizer = nullptr)
+    explicit OffspringSelectionGenerator(EvaluatorBase const* eval, CrossoverBase const* cx, MutatorBase const* mut,
+        SelectorBase const* femSel, SelectorBase const* maleSel, CoefficientOptimizer const* coeffOptimizer = nullptr)
         : OffspringGeneratorBase(eval, cx, mut, femSel, maleSel, coeffOptimizer)
     {
     }
 
-    auto operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual> final;
+    auto operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal,
+        double pLamarck, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual> final;
 
     void MaxSelectionPressure(size_t value) { maxSelectionPressure_ = value; }
     auto MaxSelectionPressure() const -> size_t { return maxSelectionPressure_; }
@@ -200,9 +218,9 @@ public:
     static constexpr double DefaultComparisonFactor { 1.0 };
 
 private:
-    mutable size_t lastEvaluations_{0};
-    size_t maxSelectionPressure_{DefaultMaxSelectionPressure};
-    double comparisonFactor_{0};
+    mutable size_t lastEvaluations_ { 0 };
+    size_t maxSelectionPressure_ { DefaultMaxSelectionPressure };
+    double comparisonFactor_ { 0 };
 };
 
 } // namespace Operon

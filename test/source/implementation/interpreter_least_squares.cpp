@@ -47,7 +47,9 @@ struct InterpreterFixture {
         , tree([&]() -> Operon::Tree {
             auto t = Operon::InfixParser::ParseOrThrow("X1 + X2 + X3", ds);
             for (auto& node : t.Nodes()) {
-                if (node.IsVariable()) { node.Value = Operon::Scalar { 0.1 }; }
+                if (node.IsVariable()) {
+                    node.Value = Operon::Scalar { 0.1 };
+                }
             }
             return t;
         }())
@@ -62,13 +64,15 @@ TEST_CASE("InterpreterLeastSquaresCostFunction: dimensions match the tree and ra
     InterpreterFixture fix;
     Operon::Interpreter<Operon::Scalar, InterpreterFixture::DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
     std::vector<Operon::Scalar> target(fix.ds.Rows(), 0);
-    Operon::InterpreterLeastSquaresCostFunction cost { &interpreter, target, Operon::Range { 0, InterpreterFixture::Nrow } };
+    Operon::InterpreterLeastSquaresCostFunction cost { &interpreter, target,
+        Operon::Range { 0, InterpreterFixture::Nrow } };
 
     CHECK(cost.NumParameters() == static_cast<std::size_t>(fix.tree.CoefficientsCount()));
     CHECK(cost.NumResiduals() == InterpreterFixture::Nrow);
 }
 
-TEST_CASE("InterpreterLeastSquaresCostFunction: residuals and Jacobian match a direct interpreter evaluation", "[interpreter-least-squares]")
+TEST_CASE("InterpreterLeastSquaresCostFunction: residuals and Jacobian match a direct interpreter evaluation",
+    "[interpreter-least-squares]")
 {
     InterpreterFixture fix;
     Operon::Interpreter<Operon::Scalar, InterpreterFixture::DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
@@ -89,22 +93,26 @@ TEST_CASE("InterpreterLeastSquaresCostFunction: residuals and Jacobian match a d
     Operon::InterpreterLeastSquaresCostFunction cost { &interpreter, target, range };
     std::vector<Operon::Scalar> residuals(n);
     std::vector<Operon::Scalar> jacBuffer(n * p);
-    Operon::ScalarMatrixView jac { jacBuffer.data(), Mapping { Extents { n, p }, std::array<std::size_t, 2> { p, 1 } } };
+    Operon::ScalarMatrixView jac { jacBuffer.data(),
+        Mapping { Extents { n, p }, std::array<std::size_t, 2> { p, 1 } } };
     auto result = cost.Evaluate(params, residuals, jac);
     REQUIRE(result.has_value());
 
     for (std::size_t i = 0; i < n; ++i) {
-        CHECK_THAT(static_cast<double>(residuals[i]), Catch::Matchers::WithinAbs(static_cast<double>(refResiduals[i]), 1e-5));
+        CHECK_THAT(
+            static_cast<double>(residuals[i]), Catch::Matchers::WithinAbs(static_cast<double>(refResiduals[i]), 1e-5));
     }
     // interpreter JacRev output is column-major flat (stride {1, n})
     for (std::size_t i = 0; i < n; ++i) {
         for (std::size_t j = 0; j < p; ++j) {
-            CHECK_THAT(static_cast<double>(Operon::At(jac, i, j)), Catch::Matchers::WithinAbs(static_cast<double>(refJacobian[(j * n) + i]), 1e-5));
+            CHECK_THAT(static_cast<double>(Operon::At(jac, i, j)),
+                Catch::Matchers::WithinAbs(static_cast<double>(refJacobian[(j * n) + i]), 1e-5));
         }
     }
 }
 
-TEST_CASE("InterpreterLeastSquaresCostFunction: row-major, column-major, and padded Jacobian views agree", "[interpreter-least-squares]")
+TEST_CASE("InterpreterLeastSquaresCostFunction: row-major, column-major, and padded Jacobian views agree",
+    "[interpreter-least-squares]")
 {
     InterpreterFixture fix;
     Operon::Interpreter<Operon::Scalar, InterpreterFixture::DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
@@ -118,16 +126,19 @@ TEST_CASE("InterpreterLeastSquaresCostFunction: row-major, column-major, and pad
 
     std::vector<Operon::Scalar> residuals(n);
     std::vector<Operon::Scalar> rowMajorBuffer(n * p);
-    Operon::ScalarMatrixView rowMajorJac { rowMajorBuffer.data(), Mapping { Extents { n, p }, std::array<std::size_t, 2> { p, 1 } } };
+    Operon::ScalarMatrixView rowMajorJac { rowMajorBuffer.data(),
+        Mapping { Extents { n, p }, std::array<std::size_t, 2> { p, 1 } } };
     REQUIRE(cost.Evaluate(params, residuals, rowMajorJac).has_value());
 
     std::vector<Operon::Scalar> colMajorBuffer(n * p);
-    Operon::ScalarMatrixView colMajorJac { colMajorBuffer.data(), Mapping { Extents { n, p }, std::array<std::size_t, 2> { 1, n } } };
+    Operon::ScalarMatrixView colMajorJac { colMajorBuffer.data(),
+        Mapping { Extents { n, p }, std::array<std::size_t, 2> { 1, n } } };
     REQUIRE(cost.Evaluate(params, residuals, colMajorJac).has_value());
 
     constexpr std::size_t padding = 2;
     std::vector<Operon::Scalar> paddedBuffer(n * (p + padding));
-    Operon::ScalarMatrixView paddedJac { paddedBuffer.data(), Mapping { Extents { n, p }, std::array<std::size_t, 2> { p + padding, 1 } } };
+    Operon::ScalarMatrixView paddedJac { paddedBuffer.data(),
+        Mapping { Extents { n, p }, std::array<std::size_t, 2> { p + padding, 1 } } };
     REQUIRE(cost.Evaluate(params, residuals, paddedJac).has_value());
 
     for (std::size_t i = 0; i < n; ++i) {
@@ -139,7 +150,8 @@ TEST_CASE("InterpreterLeastSquaresCostFunction: row-major, column-major, and pad
     }
 }
 
-TEST_CASE("InterpreterLeastSquaresCostFunction: column-major views with padded columns are not filled in place", "[interpreter-least-squares]")
+TEST_CASE("InterpreterLeastSquaresCostFunction: column-major views with padded columns are not filled in place",
+    "[interpreter-least-squares]")
 {
     InterpreterFixture fix;
     Operon::Interpreter<Operon::Scalar, InterpreterFixture::DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
@@ -152,7 +164,8 @@ TEST_CASE("InterpreterLeastSquaresCostFunction: column-major views with padded c
     std::vector<Operon::Scalar> residuals(n);
 
     std::vector<Operon::Scalar> contiguous(n * p);
-    Operon::ScalarMatrixView contiguousJac { contiguous.data(), Mapping { Extents { n, p }, std::array<std::size_t, 2> { 1, n } } };
+    Operon::ScalarMatrixView contiguousJac { contiguous.data(),
+        Mapping { Extents { n, p }, std::array<std::size_t, 2> { 1, n } } };
     REQUIRE(cost.Evaluate(params, residuals, contiguousJac).has_value());
 
     // Column stride wider than n: a column-major view whose columns are separated by gaps that
@@ -160,7 +173,8 @@ TEST_CASE("InterpreterLeastSquaresCostFunction: column-major views with padded c
     constexpr std::size_t gap = 3;
     constexpr auto sentinel = Operon::Scalar { -12345 };
     std::vector<Operon::Scalar> padded(((p - 1) * (n + gap)) + n, sentinel);
-    Operon::ScalarMatrixView paddedJac { padded.data(), Mapping { Extents { n, p }, std::array<std::size_t, 2> { 1, n + gap } } };
+    Operon::ScalarMatrixView paddedJac { padded.data(),
+        Mapping { Extents { n, p }, std::array<std::size_t, 2> { 1, n + gap } } };
     REQUIRE(cost.Evaluate(params, residuals, paddedJac).has_value());
 
     for (std::size_t j = 0; j < p; ++j) {
@@ -175,7 +189,8 @@ TEST_CASE("InterpreterLeastSquaresCostFunction: column-major views with padded c
     }
 }
 
-TEST_CASE("InterpreterLeastSquaresCostFunction: residual-only evaluation skips the Jacobian", "[interpreter-least-squares]")
+TEST_CASE(
+    "InterpreterLeastSquaresCostFunction: residual-only evaluation skips the Jacobian", "[interpreter-least-squares]")
 {
     InterpreterFixture fix;
     Operon::Interpreter<Operon::Scalar, InterpreterFixture::DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
@@ -190,7 +205,8 @@ TEST_CASE("InterpreterLeastSquaresCostFunction: residual-only evaluation skips t
     CHECK(std::any_of(residuals.begin(), residuals.end(), [](auto r) -> bool { return r != Operon::Scalar { 0 }; }));
 }
 
-TEST_CASE("InterpreterLeastSquaresCostFunction: invalid parameter/residual/Jacobian shapes are rejected", "[interpreter-least-squares]")
+TEST_CASE("InterpreterLeastSquaresCostFunction: invalid parameter/residual/Jacobian shapes are rejected",
+    "[interpreter-least-squares]")
 {
     InterpreterFixture fix;
     Operon::Interpreter<Operon::Scalar, InterpreterFixture::DTable> interpreter { &fix.dtable, &fix.ds, &fix.tree };
@@ -198,7 +214,8 @@ TEST_CASE("InterpreterLeastSquaresCostFunction: invalid parameter/residual/Jacob
     Operon::Range range { 0, InterpreterFixture::Nrow };
     Operon::InterpreterLeastSquaresCostFunction cost { &interpreter, target, range };
 
-    SECTION("wrong parameter count") {
+    SECTION("wrong parameter count")
+    {
         std::vector<Operon::Scalar> params { 0.1F };
         std::vector<Operon::Scalar> residuals(range.Size());
         auto result = cost.Evaluate(params, residuals, std::nullopt);
@@ -206,7 +223,8 @@ TEST_CASE("InterpreterLeastSquaresCostFunction: invalid parameter/residual/Jacob
         CHECK(result.error().Code == Operon::LeastSquaresErrorCode::InvalidShape);
     }
 
-    SECTION("wrong residual count") {
+    SECTION("wrong residual count")
+    {
         std::vector<Operon::Scalar> params { 0.1F, 0.2F, 0.3F };
         std::vector<Operon::Scalar> residuals(range.Size() + 1);
         auto result = cost.Evaluate(params, residuals, std::nullopt);
@@ -215,7 +233,8 @@ TEST_CASE("InterpreterLeastSquaresCostFunction: invalid parameter/residual/Jacob
     }
 }
 
-TEST_CASE("InterpreterLeastSquaresCostFunction: interpreter failures are typed with the original cause", "[interpreter-least-squares]")
+TEST_CASE("InterpreterLeastSquaresCostFunction: interpreter failures are typed with the original cause",
+    "[interpreter-least-squares]")
 {
     InterpreterFixture fix;
     constexpr auto missingVariable = Operon::Hash { 0xBADF00D };

@@ -18,8 +18,8 @@
 #include <gsl/pointers>
 #include <gtl/phmap.hpp>
 
-#include "operon/algorithms/enumeration_canonicalizer.hpp" // for CanonicalizeEnumerationTree
 #include "operon/algorithms/domain_pruning.hpp"
+#include "operon/algorithms/enumeration_canonicalizer.hpp" // for CanonicalizeEnumerationTree
 #include "operon/algorithms/stoppable.hpp" // for Operon::ReportCallback, StoppableAlgorithm
 #include "operon/core/grammar.hpp"
 #include "operon/core/tree.hpp"
@@ -114,8 +114,7 @@ auto MakeMdlScorer(gsl::not_null<Operon::Problem const*> problem, gsl::not_null<
 {
     for (std::size_t i = 0; i < sigma.size(); ++i) {
         if (!std::isfinite(static_cast<double>(sigma[i])) || sigma[i] <= Operon::Scalar { 0 }) {
-            throw std::invalid_argument(
-                "MakeMdlScorer: sigma[" + std::to_string(i) + "] must be finite and positive");
+            throw std::invalid_argument("MakeMdlScorer: sigma[" + std::to_string(i) + "] must be finite and positive");
         }
     }
     return [problem, dtable, sigma = std::move(sigma)](Operon::RandomGenerator& /*rng*/, Operon::Tree const& tree,
@@ -128,7 +127,9 @@ auto MakeMdlScorer(gsl::not_null<Operon::Problem const*> problem, gsl::not_null<
         auto yPred = buf.subspan(0, trainingRange.Size());
         Operon::Interpreter<Operon::Scalar, DTable> const interpreter { dtable.get(), dataset, &tree };
         auto evaluated = interpreter.Evaluate(parameters, trainingRange, yPred);
-        if (!evaluated) { throw std::runtime_error(FormatInterpreterError(evaluated.error())); }
+        if (!evaluated) {
+            throw std::runtime_error(FormatInterpreterError(evaluated.error()));
+        }
 
         auto yTrue = problem->TargetValues(trainingRange);
         auto const weights = problem->Weights(trainingRange).value_or(Operon::Span<Operon::Scalar const> {});
@@ -152,9 +153,9 @@ auto MakeMdlScorer(gsl::not_null<Operon::Problem const*> problem, gsl::not_null<
         using Mapping = std::layout_stride::mapping<Extents>;
         // Column stride must stay nonzero for an empty training range (extent 0
         // addresses no element, but a zero stride violates layout_stride preconditions).
-        auto const columnStride = std::max<MemoryIndex>(trainingRange.Size(), MemoryIndex {1});
-        auto jacobianView = ScalarMatrixView {jacobianStorage.data(),
-            Mapping {Extents {trainingRange.Size(), columns}, std::array<MemoryIndex, 2> {1, columnStride}}};
+        auto const columnStride = std::max<MemoryIndex>(trainingRange.Size(), MemoryIndex { 1 });
+        auto jacobianView = ScalarMatrixView { jacobianStorage.data(),
+            Mapping { Extents { trainingRange.Size(), columns }, std::array<MemoryIndex, 2> { 1, columnStride } } };
         if (auto result = interpreter.JacRev(parameters, trainingRange, jacobianStorage); !result) {
             throw std::runtime_error(FormatInterpreterError(result.error()));
         }

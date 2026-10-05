@@ -9,15 +9,16 @@
 #include <utility>
 #include <vector>
 
-#include "operon/operators/creator.hpp"
+#include "operon/core/node.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/tree.hpp"
-#include "operon/core/node.hpp"
 #include "operon/core/types.hpp"
+#include "operon/operators/creator.hpp"
 #include "operon/random/random.hpp"
 
 namespace {
-auto InitNode(Operon::Node& node, Operon::Span<Operon::Hash const> variables, Operon::RandomGenerator& random) -> void {
+auto InitNode(Operon::Node& node, Operon::Span<Operon::Hash const> variables, Operon::RandomGenerator& random) -> void
+{
     if (node.IsLeaf()) {
         if (node.IsVariable()) {
             node.HashValue = *Operon::Random::Sample(random, variables.begin(), variables.end());
@@ -29,7 +30,8 @@ auto InitNode(Operon::Node& node, Operon::Span<Operon::Hash const> variables, Op
 } // anonymous namespace
 
 namespace Operon {
-auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t targetLen, size_t /*args*/, size_t /*args*/) const -> Tree
+auto BalancedTreeCreator::operator()(
+    Operon::RandomGenerator& random, size_t targetLen, size_t /*args*/, size_t /*args*/) const -> Tree
 {
     EXPECT(targetLen > 0);
     auto const& pset = GetPrimitiveSet();
@@ -51,7 +53,9 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
         auto total = 0.0;
         for (auto const& [_, primitive] : pset->Primitives()) {
             auto const& [node, frequency, minArity, maxArity] = primitive;
-            if (node.IsLeaf() || !node.IsEnabled || frequency == 0 || minArity > max) { continue; }
+            if (node.IsLeaf() || !node.IsEnabled || frequency == 0 || minArity > max) {
+                continue;
+            }
             auto const upper = std::min(maxArity, max);
             auto const count = upper - minArity + 1;
             for (size_t arity = minArity; arity <= std::min(upper, remaining); ++arity) {
@@ -65,11 +69,15 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
         auto selected = std::uniform_real_distribution<double>(0.0, total)(random);
         for (auto const& [_, primitive] : pset->Primitives()) {
             auto const& [node, frequency, minArity, maxArity] = primitive;
-            if (node.IsLeaf() || !node.IsEnabled || frequency == 0 || minArity > max) { continue; }
+            if (node.IsLeaf() || !node.IsEnabled || frequency == 0 || minArity > max) {
+                continue;
+            }
             auto const upper = std::min(maxArity, max);
             auto const weight = static_cast<double>(frequency) / static_cast<double>(upper - minArity + 1);
             for (size_t arity = minArity; arity <= std::min(upper, remaining); ++arity) {
-                if (!(*completable)[remaining - arity]) { continue; }
+                if (!(*completable)[remaining - arity]) {
+                    continue;
+                }
                 if (selected < weight) {
                     auto result = node;
                     result.Arity = static_cast<uint16_t>(arity);
@@ -112,7 +120,7 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
         auto [node, nodeDepth, childIndex] = tuples[i];
         auto childDepth = nodeDepth + 1;
         std::get<2>(tuples[i]) = tuples.size();
-        for (int j = 0; std::cmp_less(j , node.Arity); ++j) {
+        for (int j = 0; std::cmp_less(j, node.Arity); ++j) {
             auto candidateMax = std::min(maxFunctionArity, targetLen - committed);
             auto const remaining = targetLen - committed;
             if (candidateMax < minFunctionArity || (openSlots > 1 && sampleIrregular(random))) {

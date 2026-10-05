@@ -53,10 +53,7 @@ namespace {
         return s;
     }
 
-    auto MakeView(Dataset::Storage const& s) -> Dataset::View
-    {
-        return s.to_mdspan();
-    }
+    auto MakeView(Dataset::Storage const& s) -> Dataset::View { return s.to_mdspan(); }
 } // namespace
 
 auto Dataset::ReadCsv(std::string const& path, bool hasHeader) -> std::pair<Dataset::Storage, int>
@@ -168,8 +165,7 @@ Dataset::Dataset(gsl::not_null<Scalar const*> data, int rows, int cols)
     storage_ = Storage(pr, cols);
     auto* dst = storage_.container().data();
     for (auto j = 0; j < cols; ++j) {
-        std::copy_n(data.get() + (static_cast<ptrdiff_t>(j) * rows), rows,
-            dst + (static_cast<ptrdiff_t>(j) * pr));
+        std::copy_n(data.get() + (static_cast<ptrdiff_t>(j) * rows), rows, dst + (static_cast<ptrdiff_t>(j) * pr));
     }
     view_ = MakeView(storage_);
     rows_ = rows;
@@ -243,8 +239,7 @@ void Dataset::SetVariableNames(std::vector<std::string> const& names)
 {
     if (std::ssize(names) != Cols()) {
         throw std::runtime_error(fmt::format(
-            "The number of columns ({}) does not match the number of column names ({}).",
-            Cols(), names.size()));
+            "The number of columns ({}) does not match the number of column names ({}).", Cols(), names.size()));
     }
     variables_ = VariablesFromNames(names);
 }
@@ -313,8 +308,10 @@ auto Dataset::GetVariable(Operon::Hash hash) const noexcept -> std::optional<Var
 auto Dataset::FindVariableName(Operon::Hash hash) const noexcept -> std::optional<std::string_view>
 {
     auto it = variables_.find(hash);
-    if (it == variables_.end()) { return std::nullopt; }
-    return std::string_view{it->second.Name};
+    if (it == variables_.end()) {
+        return std::nullopt;
+    }
+    return std::string_view { it->second.Name };
 }
 
 auto Dataset::GetVariables() const noexcept -> std::vector<Operon::Variable>
@@ -322,8 +319,8 @@ auto Dataset::GetVariables() const noexcept -> std::vector<Operon::Variable>
     std::vector<Operon::Variable> variables;
     variables.reserve(variables_.size());
     auto const& vals = variables_.values();
-    std::transform(vals.begin(), vals.end(), std::back_inserter(variables),
-        [](auto const& p) -> auto { return p.second; });
+    std::transform(
+        vals.begin(), vals.end(), std::back_inserter(variables), [](auto const& p) -> auto { return p.second; });
     return variables;
 }
 
@@ -371,7 +368,8 @@ void Dataset::Normalize(size_t i, Range range)
     }
     EXPECT(range.Start() + range.Size() <= static_cast<size_t>(Rows()));
     auto const stride = static_cast<ptrdiff_t>(view_.extent(0)); // paddedRows
-    auto* col = storage_.container().data() + (static_cast<ptrdiff_t>(i) * stride); // NOLINT(bugprone-implicit-widening-of-multiplication-result)
+    auto* col = storage_.container().data()
+        + (static_cast<ptrdiff_t>(i) * stride); // NOLINT(bugprone-implicit-widening-of-multiplication-result)
     auto* begin = col + range.Start();
     auto* end = begin + range.Size();
     auto [minIt, maxIt] = std::minmax_element(begin, end);
@@ -387,7 +385,8 @@ void Dataset::Standardize(size_t i, Range range)
     }
     EXPECT(range.Start() + range.Size() <= static_cast<size_t>(Rows()));
     auto const stride = static_cast<ptrdiff_t>(view_.extent(0)); // paddedRows
-    auto* col = storage_.container().data() + (static_cast<ptrdiff_t>(i) * stride); // NOLINT(bugprone-implicit-widening-of-multiplication-result)
+    auto* col = storage_.container().data()
+        + (static_cast<ptrdiff_t>(i) * stride); // NOLINT(bugprone-implicit-widening-of-multiplication-result)
     auto* begin = col + range.Start();
     auto const stats = vstat::univariate::accumulate<Scalar>(begin, begin + range.Size());
     auto const stddev = std::sqrt(stats.variance);
@@ -408,7 +407,9 @@ void Dataset::SetValues(Operon::Hash hash, Range range, Span<Scalar const> value
         std::abort();
     }
     auto const stride = static_cast<ptrdiff_t>(view_.extent(0)); // paddedRows
-    auto* col = storage_.container().data() + (static_cast<ptrdiff_t>(it->second.Index) * stride); // NOLINT(bugprone-implicit-widening-of-multiplication-result)
+    auto* col = storage_.container().data()
+        + (static_cast<ptrdiff_t>(it->second.Index)
+            * stride); // NOLINT(bugprone-implicit-widening-of-multiplication-result)
     std::copy(values.begin(), values.end(), col + range.Start());
 }
 

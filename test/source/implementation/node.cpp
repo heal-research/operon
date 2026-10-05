@@ -12,8 +12,8 @@ namespace {
     // Local equivalent of Util::MakeOp (operon_test.hpp) - this file is
     // deliberately self-contained (only includes node.hpp), so it doesn't
     // pull in the shared test harness header just for this one helper.
-    template<BuiltinOp Op>
-    auto MakeOp() -> Node {
+    template <BuiltinOp Op> auto MakeOp() -> Node
+    {
         constexpr uint16_t arity = Node::IsUnaryOp<Op> ? 1 : 2;
         return Node::Function(static_cast<Operon::Hash>(Op), arity);
     }
@@ -31,17 +31,22 @@ TEST_CASE("Node::IsOp<BuiltinOp...>() distinguishes built-in ops by HashValue", 
 TEST_CASE("IsNaryOp/IsBinaryOp/IsUnaryOp<BuiltinOp> classify every op consistently", "[core]")
 {
     auto check = [](BuiltinOp op, bool isNary, bool isBinary, bool isUnary) {
-        CHECK(!Node::Function(static_cast<Operon::Hash>(op), 1).IsLeaf()); // sanity: every BuiltinOp-backed node is non-leaf
-        CHECK(isNary == (op == BuiltinOp::Add || op == BuiltinOp::Mul || op == BuiltinOp::Sub
-            || op == BuiltinOp::Div || op == BuiltinOp::Fmin || op == BuiltinOp::Fmax));
+        CHECK(!Node::Function(static_cast<Operon::Hash>(op), 1)
+                .IsLeaf()); // sanity: every BuiltinOp-backed node is non-leaf
+        CHECK(isNary
+            == (op == BuiltinOp::Add || op == BuiltinOp::Mul || op == BuiltinOp::Sub || op == BuiltinOp::Div
+                || op == BuiltinOp::Fmin || op == BuiltinOp::Fmax));
         CHECK(isBinary == (op == BuiltinOp::Aq || op == BuiltinOp::Pow || op == BuiltinOp::Powabs));
         CHECK(isUnary == (!isNary && !isBinary));
         CHECK((isNary ? 1 : 0) + (isBinary ? 1 : 0) + (isUnary ? 1 : 0) == 1); // mutually exclusive, exhaustive
     };
 
-    check(BuiltinOp::Add, Node::IsNaryOp<BuiltinOp::Add>, Node::IsBinaryOp<BuiltinOp::Add>, Node::IsUnaryOp<BuiltinOp::Add>);
-    check(BuiltinOp::Aq, Node::IsNaryOp<BuiltinOp::Aq>, Node::IsBinaryOp<BuiltinOp::Aq>, Node::IsUnaryOp<BuiltinOp::Aq>);
-    check(BuiltinOp::Sin, Node::IsNaryOp<BuiltinOp::Sin>, Node::IsBinaryOp<BuiltinOp::Sin>, Node::IsUnaryOp<BuiltinOp::Sin>);
+    check(BuiltinOp::Add, Node::IsNaryOp<BuiltinOp::Add>, Node::IsBinaryOp<BuiltinOp::Add>,
+        Node::IsUnaryOp<BuiltinOp::Add>);
+    check(
+        BuiltinOp::Aq, Node::IsNaryOp<BuiltinOp::Aq>, Node::IsBinaryOp<BuiltinOp::Aq>, Node::IsUnaryOp<BuiltinOp::Aq>);
+    check(BuiltinOp::Sin, Node::IsNaryOp<BuiltinOp::Sin>, Node::IsBinaryOp<BuiltinOp::Sin>,
+        Node::IsUnaryOp<BuiltinOp::Sin>);
 
     // Boundary values specifically (most likely place for an off-by-one).
     static_assert(Node::IsNaryOp<BuiltinOp::Fmax>);
@@ -126,14 +131,11 @@ TEST_CASE("Node::Function() dispatches through the BuiltinOp-retargeted registry
     // sample, and checks derivatives too (Diff<>/DiffOp/MakeDiffCall are
     // retargeted by this PR just as much as Func<>/MakeFunctionCall are).
     DispatchTable<Operon::Scalar> dt;
-    for (auto op : { BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Sub, BuiltinOp::Div,
-                      BuiltinOp::Fmin, BuiltinOp::Fmax, BuiltinOp::Aq, BuiltinOp::Pow,
-                      BuiltinOp::Powabs, BuiltinOp::Abs, BuiltinOp::Acos, BuiltinOp::Asin,
-                      BuiltinOp::Atan, BuiltinOp::Cbrt, BuiltinOp::Ceil, BuiltinOp::Cos,
-                      BuiltinOp::Cosh, BuiltinOp::Exp, BuiltinOp::Floor, BuiltinOp::Log,
-                      BuiltinOp::Logabs, BuiltinOp::Log1p, BuiltinOp::Sin, BuiltinOp::Sinh,
-                      BuiltinOp::Sqrt, BuiltinOp::Sqrtabs, BuiltinOp::Tan, BuiltinOp::Tanh,
-                      BuiltinOp::Square }) {
+    for (auto op : { BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Sub, BuiltinOp::Div, BuiltinOp::Fmin, BuiltinOp::Fmax,
+             BuiltinOp::Aq, BuiltinOp::Pow, BuiltinOp::Powabs, BuiltinOp::Abs, BuiltinOp::Acos, BuiltinOp::Asin,
+             BuiltinOp::Atan, BuiltinOp::Cbrt, BuiltinOp::Ceil, BuiltinOp::Cos, BuiltinOp::Cosh, BuiltinOp::Exp,
+             BuiltinOp::Floor, BuiltinOp::Log, BuiltinOp::Logabs, BuiltinOp::Log1p, BuiltinOp::Sin, BuiltinOp::Sinh,
+             BuiltinOp::Sqrt, BuiltinOp::Sqrtabs, BuiltinOp::Tan, BuiltinOp::Tanh, BuiltinOp::Square }) {
         auto const hash = static_cast<Operon::Hash>(op);
         CHECK(dt.Contains(hash));
         CHECK(dt.TryGetFunction<Operon::Scalar>(hash).has_value());

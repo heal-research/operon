@@ -5,14 +5,14 @@
 #ifndef OPERON_VERSION_HPP
 #define OPERON_VERSION_HPP
 
-#include <chrono>
-#include <string>
-#include <fmt/format.h>
 #include "operon/operon_export.hpp"
+#include <chrono>
+#include <fmt/format.h>
+#include <string>
 
 namespace Operon {
 // NOLINTBEGIN
-    auto OPERON_EXPORT Version() -> std::string;
+auto OPERON_EXPORT Version() -> std::string;
 } // namespace Operon
 
 #endif

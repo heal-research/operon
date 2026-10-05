@@ -34,7 +34,9 @@ auto JsonlSink::operator=(JsonlSink&&) noexcept -> JsonlSink& = default;
 
 auto JsonlSink::Write(ResultRecord const& record) -> void
 {
-    if (!impl_->Out) { return; }
+    if (!impl_->Out) {
+        return;
+    }
     // No glz::meta needed: ResultRecord's map and ResultValue's variant are
     // both generically supported by glaze, unlike the proxies in
     // core/serialization.cpp.
@@ -48,25 +50,21 @@ auto JsonlSink::Write(ResultRecord const& record) -> void
 
 auto JsonlSink::Flush() -> void
 {
-    if (impl_->Out) { impl_->Out.flush(); }
+    if (impl_->Out) {
+        impl_->Out.flush();
+    }
 }
 
-auto JsonlSink::IsOpen() const -> bool
-{
-    return static_cast<bool>(impl_->Out);
-}
+auto JsonlSink::IsOpen() const -> bool { return static_cast<bool>(impl_->Out); }
 
 // ---- ProbeChain ----
 
 auto ProbeChain::Add(std::unique_ptr<GenerationProbe> probe, std::size_t every, std::size_t offset) -> void
 {
-    entries_.push_back(Entry{ .Probe = std::move(probe), .Every = every, .Offset = offset });
+    entries_.push_back(Entry { .Probe = std::move(probe), .Every = every, .Offset = offset });
 }
 
-auto ProbeChain::SetSink(std::unique_ptr<RecordSink> sink) -> void
-{
-    sink_ = std::move(sink);
-}
+auto ProbeChain::SetSink(std::unique_ptr<RecordSink> sink) -> void { sink_ = std::move(sink); }
 
 auto ProbeChain::operator()(GeneticAlgorithmBase const& algo) -> void
 {
@@ -75,24 +73,38 @@ auto ProbeChain::operator()(GeneticAlgorithmBase const& algo) -> void
     record.insert_or_assign("generation", static_cast<std::int64_t>(generation));
     record.insert_or_assign("elapsed", algo.Elapsed());
 
-    ProbeContext ctx{ algo, record };
+    ProbeContext ctx { algo, record };
     bool ran = false;
     for (auto& entry : entries_) {
-        if (entry.Every == 0) { continue; }
-        if (generation < entry.Offset) { continue; }
-        if ((generation - entry.Offset) % entry.Every != 0) { continue; }
+        if (entry.Every == 0) {
+            continue;
+        }
+        if (generation < entry.Offset) {
+            continue;
+        }
+        if ((generation - entry.Offset) % entry.Every != 0) {
+            continue;
+        }
         (*entry.Probe)(ctx);
         ran = true;
     }
-    if (ran && sink_) { sink_->Write(record); }
+    if (ran && sink_) {
+        sink_->Write(record);
+    }
 }
 
 auto ProbeChain::Finish() -> void
 {
-    if (finished_) { return; }
+    if (finished_) {
+        return;
+    }
     finished_ = true;
-    for (auto& entry : entries_) { entry.Probe->Finish(); }
-    if (sink_) { sink_->Flush(); }
+    for (auto& entry : entries_) {
+        entry.Probe->Finish();
+    }
+    if (sink_) {
+        sink_->Flush();
+    }
 }
 
 } // namespace Operon

@@ -4,10 +4,6 @@
 #ifndef OPERON_ANALYZERS_NODE_IMPACT_HPP
 #define OPERON_ANALYZERS_NODE_IMPACT_HPP
 
-#include <algorithm>
-#include <numeric>
-#include <stdexcept>
-#include <vector>
 #include "operon/core/contracts.hpp"
 #include "operon/core/dataset.hpp"
 #include "operon/core/node.hpp"
@@ -15,6 +11,10 @@
 #include "operon/core/tree.hpp"
 #include "operon/error_metrics/r2_score.hpp"
 #include "operon/interpreter/interpreter.hpp"
+#include <algorithm>
+#include <numeric>
+#include <stdexcept>
+#include <vector>
 
 namespace Operon {
 
@@ -34,7 +34,8 @@ namespace Operon {
 // backward index references (DAG structural sharing), and splicing part of
 // the tree out from under a Ref without also rewriting whichever RefTo
 // values point through the spliced range isn't safe to do here.
-inline auto NodeImpact(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Hash target, Operon::Range range) -> std::vector<double>
+inline auto NodeImpact(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Hash target,
+    Operon::Range range) -> std::vector<double>
 {
     using Interp = Operon::Interpreter<>;
 
@@ -50,9 +51,11 @@ inline auto NodeImpact(Operon::Tree const& tree, Operon::Dataset const& dataset,
     // whenever range.Start() != 0.
     auto const actual = dataset.GetValues(target).subspan(range.Start(), range.Size());
     auto predictedResult = Interp::Evaluate(tree, dataset, range);
-    if (!predictedResult) { throw std::runtime_error(Operon::FormatInterpreterError(predictedResult.error())); }
+    if (!predictedResult) {
+        throw std::runtime_error(Operon::FormatInterpreterError(predictedResult.error()));
+    }
     auto predicted = std::move(*predictedResult);
-    Operon::Span<Operon::Scalar const> const predictedSpan{ predicted.data(), predicted.size() };
+    Operon::Span<Operon::Scalar const> const predictedSpan { predicted.data(), predicted.size() };
     auto const baseline = Operon::R2Score(predictedSpan, actual);
 
     auto const& nodes = tree.Nodes();
@@ -61,22 +64,28 @@ inline auto NodeImpact(Operon::Tree const& tree, Operon::Dataset const& dataset,
     for (size_t i = 0; i < nodes.size(); ++i) {
         auto const subtree = tree.Splice(i);
         auto subtreeResult = Interp::Evaluate(subtree, dataset, range);
-        if (!subtreeResult) { throw std::runtime_error(Operon::FormatInterpreterError(subtreeResult.error())); }
+        if (!subtreeResult) {
+            throw std::runtime_error(Operon::FormatInterpreterError(subtreeResult.error()));
+        }
         auto subtreeValues = std::move(*subtreeResult);
         EXPECT(!subtreeValues.empty());
-        auto const mean = std::reduce(subtreeValues.begin(), subtreeValues.end(), Operon::Scalar{0}) / static_cast<Operon::Scalar>(subtreeValues.size());
+        auto const mean = std::reduce(subtreeValues.begin(), subtreeValues.end(), Operon::Scalar { 0 })
+            / static_cast<Operon::Scalar>(subtreeValues.size());
 
         auto replacedNodes = nodes;
         auto const first = replacedNodes.begin() + static_cast<std::ptrdiff_t>(i - nodes[i].Length);
         auto const last = replacedNodes.begin() + static_cast<std::ptrdiff_t>(i) + 1;
         replacedNodes.erase(first, last);
-        replacedNodes.insert(replacedNodes.begin() + static_cast<std::ptrdiff_t>(i - nodes[i].Length), Operon::Node::Constant(mean));
+        replacedNodes.insert(
+            replacedNodes.begin() + static_cast<std::ptrdiff_t>(i - nodes[i].Length), Operon::Node::Constant(mean));
 
         auto replacedTree = Operon::Tree(std::move(replacedNodes)).UpdateNodes();
         auto replacedResult = Interp::Evaluate(replacedTree, dataset, range);
-        if (!replacedResult) { throw std::runtime_error(Operon::FormatInterpreterError(replacedResult.error())); }
+        if (!replacedResult) {
+            throw std::runtime_error(Operon::FormatInterpreterError(replacedResult.error()));
+        }
         auto replacedPredicted = std::move(*replacedResult);
-        Operon::Span<Operon::Scalar const> const replacedSpan{ replacedPredicted.data(), replacedPredicted.size() };
+        Operon::Span<Operon::Scalar const> const replacedSpan { replacedPredicted.data(), replacedPredicted.size() };
         auto const replacedR2 = Operon::R2Score(replacedSpan, actual);
 
         impact[i] = baseline - replacedR2;
@@ -91,7 +100,8 @@ inline auto NodeImpact(Operon::Tree const& tree, Operon::Dataset const& dataset,
 // than restricting to a training-only range. Pass an explicit range only if
 // there's a specific reason to isolate a subset (e.g. comparing train vs.
 // test impact).
-inline auto NodeImpact(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Hash target) -> std::vector<double>
+inline auto NodeImpact(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Hash target)
+    -> std::vector<double>
 {
     return NodeImpact(tree, dataset, target, Operon::Range(0, dataset.Rows<std::size_t>()));
 }

@@ -22,7 +22,7 @@ namespace Operon::detail {
  * LeastSquaresGradientAdapter never see an Eigen type.
  */
 template <typename Cost>
-requires Concepts::GradientCost<Cost>
+    requires Concepts::GradientCost<Cost>
 class GradientSolverAdapter {
 public:
     using Scalar = Operon::Scalar;

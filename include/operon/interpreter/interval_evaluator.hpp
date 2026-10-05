@@ -16,9 +16,9 @@
 #include "operon/core/contracts.hpp"
 #include "operon/core/hash_registry.hpp"
 #include "operon/core/node.hpp"
+#include "operon/core/postorder_evaluator.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
-#include "operon/core/postorder_evaluator.hpp"
 #include "operon/operon_export.hpp"
 
 #include <pappus/pappus.hpp>
@@ -29,39 +29,42 @@ namespace Operon {
 // functions, keyed by Node::HashValue. Definitions live in
 // interval_evaluator.cpp, explicitly instantiated per T, so all shared
 // libraries share one registry instance.
-template<typename T> using IntervalUnaryFn  = std::function<tl::expected<pappus::interval<T>, std::string>(pappus::interval<T> const&)>;
-template<typename T> using IntervalBinaryFn = std::function<tl::expected<pappus::interval<T>, std::string>(pappus::interval<T> const&, pappus::interval<T> const&)>;
+template <typename T>
+using IntervalUnaryFn = std::function<tl::expected<pappus::interval<T>, std::string>(pappus::interval<T> const&)>;
+template <typename T>
+using IntervalBinaryFn = std::function<tl::expected<pappus::interval<T>, std::string>(
+    pappus::interval<T> const&, pappus::interval<T> const&)>;
 
-template<typename T> using IntervalUnaryRegistry  = HashRegistry<IntervalUnaryFn<T>>;
-template<typename T> using IntervalBinaryRegistry = HashRegistry<IntervalBinaryFn<T>>;
+template <typename T> using IntervalUnaryRegistry = HashRegistry<IntervalUnaryFn<T>>;
+template <typename T> using IntervalBinaryRegistry = HashRegistry<IntervalBinaryFn<T>>;
 
 // Direct registry access, mainly for tests. Prefer
 // RegisterUnaryInterval/RegisterBinaryInterval to register a rule -- calling
 // .Register() here skips built-in lazy-init, so a colliding hash is
 // silently accepted instead of throwing. Explicitly instantiated per T in
 // interval_evaluator.cpp so all shared libraries share one registry.
-template<typename T> auto IntervalUnaryRules() -> IntervalUnaryRegistry<T>&;
-template<typename T> auto IntervalBinaryRules() -> IntervalBinaryRegistry<T>&;
+template <typename T> auto IntervalUnaryRules() -> IntervalUnaryRegistry<T>&;
+template <typename T> auto IntervalBinaryRules() -> IntervalBinaryRegistry<T>&;
 
 // Registers the built-in interval rules exactly once. Free function (not a
 // member) so RegisterUnaryInterval/RegisterBinaryInterval can call it
 // before writing, so a hash colliding with a built-in throws at the
 // caller's own registration site instead of later inside Evaluate().
-template<typename T> void RegisterIntervalBuiltins();
+template <typename T> void RegisterIntervalBuiltins();
 
 // Registers an interval callback for a unary function (built-in or
 // user-defined). Throws if `hash` is already registered, including a
 // collision with a built-in.
-template<typename T> void RegisterUnaryInterval(Operon::Hash hash, IntervalUnaryFn<T> fn);
+template <typename T> void RegisterUnaryInterval(Operon::Hash hash, IntervalUnaryFn<T> fn);
 
 // Registers an interval callback for a binary function. See
 // RegisterUnaryInterval.
-template<typename T> void RegisterBinaryInterval(Operon::Hash hash, IntervalBinaryFn<T> fn);
+template <typename T> void RegisterBinaryInterval(Operon::Hash hash, IntervalBinaryFn<T> fn);
 
 // Whether an interval callback is registered for `hash`, forcing built-in
 // registration first.
-template<typename T> auto HasUnaryInterval(Operon::Hash hash) -> bool;
-template<typename T> auto HasBinaryInterval(Operon::Hash hash) -> bool;
+template <typename T> auto HasUnaryInterval(Operon::Hash hash) -> bool;
+template <typename T> auto HasBinaryInterval(Operon::Hash hash) -> bool;
 
 extern template auto IntervalUnaryRules<Operon::Scalar>() -> IntervalUnaryRegistry<Operon::Scalar>&;
 extern template auto IntervalBinaryRules<Operon::Scalar>() -> IntervalBinaryRegistry<Operon::Scalar>&;
@@ -71,36 +74,66 @@ extern template void RegisterBinaryInterval<Operon::Scalar>(Operon::Hash, Interv
 extern template auto HasUnaryInterval<Operon::Scalar>(Operon::Hash) -> bool;
 extern template auto HasBinaryInterval<Operon::Scalar>(Operon::Hash) -> bool;
 
-extern template auto IntervalUnaryRules<eve::wide<Operon::Scalar>>() -> IntervalUnaryRegistry<eve::wide<Operon::Scalar>>&;
-extern template auto IntervalBinaryRules<eve::wide<Operon::Scalar>>() -> IntervalBinaryRegistry<eve::wide<Operon::Scalar>>&;
+extern template auto IntervalUnaryRules<eve::wide<Operon::Scalar>>()
+    -> IntervalUnaryRegistry<eve::wide<Operon::Scalar>>&;
+extern template auto IntervalBinaryRules<eve::wide<Operon::Scalar>>()
+    -> IntervalBinaryRegistry<eve::wide<Operon::Scalar>>&;
 extern template void RegisterIntervalBuiltins<eve::wide<Operon::Scalar>>();
 
 namespace detail {
-template<typename T>
-struct IntervalPostOrderPolicy {
-    using Scalar = T;
-    using Value = pappus::interval<Scalar>;
-    struct Context {};
+    template <typename T> struct IntervalPostOrderPolicy {
+        using Scalar = T;
+        using Value = pappus::interval<Scalar>;
+        struct Context {};
 
-    static void RegisterBuiltins() { RegisterIntervalBuiltins<Scalar>(); }
-    static auto UnaryRules() -> IntervalUnaryRegistry<Scalar> const& { return IntervalUnaryRules<Scalar>(); }
-    static auto BinaryRules() -> IntervalBinaryRegistry<Scalar> const& { return IntervalBinaryRules<Scalar>(); }
-    static auto EmptyTree() -> std::string { return "IntervalEvaluator: empty tree"; }
-    static auto MissingNode(Node const& node) -> std::string { return fmt::format("IntervalEvaluator: node kind `{}` not yet mapped", node.Name()); }
+        static void RegisterBuiltins() { RegisterIntervalBuiltins<Scalar>(); }
+        static auto UnaryRules() -> IntervalUnaryRegistry<Scalar> const& { return IntervalUnaryRules<Scalar>(); }
+        static auto BinaryRules() -> IntervalBinaryRegistry<Scalar> const& { return IntervalBinaryRules<Scalar>(); }
+        static auto EmptyTree() -> std::string { return "IntervalEvaluator: empty tree"; }
+        static auto MissingNode(Node const& node) -> std::string
+        {
+            return fmt::format("IntervalEvaluator: node kind `{}` not yet mapped", node.Name());
+        }
 
-    static auto MakeConstant(Context const&, Scalar value) -> Value { return pappus::ops::constant<Scalar>(value); }
-    static auto Add(Context const&, Value const& lhs, Value const& rhs) -> Value { return pappus::ops::add<Scalar>(lhs, rhs); }
-    static auto Mul(Context const&, Value const& lhs, Value const& rhs) -> Value { return pappus::ops::mul<Scalar>(lhs, rhs); }
-    static auto Sub(Context const&, Value const& lhs, Value const& rhs) -> Value { return pappus::ops::sub<Scalar>(lhs, rhs); }
-    static auto Div(Context const&, Value const& lhs, Value const& rhs) -> Value { return pappus::ops::div<Scalar>(lhs, rhs); }
-    static auto Min(Context const&, Value const& lhs, Value const& rhs) -> Value { return pappus::ops::min<Scalar>(lhs, rhs); }
-    static auto Max(Context const&, Value const& lhs, Value const& rhs) -> Value { return pappus::ops::max<Scalar>(lhs, rhs); }
-    static auto Neg(Context const&, Value const& value) -> Value { return pappus::ops::neg<Scalar>(value); }
-    static auto Inv(Context const&, Value const& value) -> Value { return pappus::ops::inv<Scalar>(value); }
-    static auto CallUnary(Context const&, IntervalUnaryFn<Scalar> const& function, Value const& value) -> tl::expected<Value, std::string> { return function(value); }
-    static auto CallBinary(Context const&, IntervalBinaryFn<Scalar> const& function, Value const& lhs, Value const& rhs) -> tl::expected<Value, std::string> { return function(lhs, rhs); }
-    static auto Scale(Value value, Scalar scale) -> Value { return value * scale; }
-};
+        static auto MakeConstant(Context const&, Scalar value) -> Value { return pappus::ops::constant<Scalar>(value); }
+        static auto Add(Context const&, Value const& lhs, Value const& rhs) -> Value
+        {
+            return pappus::ops::add<Scalar>(lhs, rhs);
+        }
+        static auto Mul(Context const&, Value const& lhs, Value const& rhs) -> Value
+        {
+            return pappus::ops::mul<Scalar>(lhs, rhs);
+        }
+        static auto Sub(Context const&, Value const& lhs, Value const& rhs) -> Value
+        {
+            return pappus::ops::sub<Scalar>(lhs, rhs);
+        }
+        static auto Div(Context const&, Value const& lhs, Value const& rhs) -> Value
+        {
+            return pappus::ops::div<Scalar>(lhs, rhs);
+        }
+        static auto Min(Context const&, Value const& lhs, Value const& rhs) -> Value
+        {
+            return pappus::ops::min<Scalar>(lhs, rhs);
+        }
+        static auto Max(Context const&, Value const& lhs, Value const& rhs) -> Value
+        {
+            return pappus::ops::max<Scalar>(lhs, rhs);
+        }
+        static auto Neg(Context const&, Value const& value) -> Value { return pappus::ops::neg<Scalar>(value); }
+        static auto Inv(Context const&, Value const& value) -> Value { return pappus::ops::inv<Scalar>(value); }
+        static auto CallUnary(Context const&, IntervalUnaryFn<Scalar> const& function, Value const& value)
+            -> tl::expected<Value, std::string>
+        {
+            return function(value);
+        }
+        static auto CallBinary(Context const&, IntervalBinaryFn<Scalar> const& function, Value const& lhs,
+            Value const& rhs) -> tl::expected<Value, std::string>
+        {
+            return function(lhs, rhs);
+        }
+        static auto Scale(Value value, Scalar scale) -> Value { return value * scale; }
+    };
 } // namespace detail
 
 // Forward interval bounds for a tree over a single input domain. Walks the
@@ -113,8 +146,7 @@ struct IntervalPostOrderPolicy {
 //
 // Domain errors (e.g. log of a negative interval) return `interval::empty()`
 // rather than throwing; callers must check `result.is_empty()`.
-template<typename T = Operon::Scalar>
-class IntervalEvaluator {
+template <typename T = Operon::Scalar> class IntervalEvaluator {
 public:
     using Scalar = T;
     using Interval = pappus::interval<Scalar>;
@@ -161,38 +193,40 @@ public:
 
     // Non-throwing evaluation with caller-provided per-lane variable bounds. User-registered interval callbacks
     // return tl::expected directly (no exception path to catch here).
-    [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff, std::span<LaneOverride const> overrides) const
-        -> tl::expected<Interval, std::string>
+    [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff,
+        std::span<LaneOverride const> overrides) const -> tl::expected<Interval, std::string>
     {
         return TryEvaluateImpl(coeff, overrides);
     }
-    [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff, Operon::Hash hash,
-                                   Scalar const& lo, Scalar const& hi) const
-        -> tl::expected<Interval, std::string>
+    [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff, Operon::Hash hash, Scalar const& lo,
+        Scalar const& hi) const -> tl::expected<Interval, std::string>
     {
-        LaneOverride const override { hash, reinterpret_cast<Operon::Scalar const*>(&lo), reinterpret_cast<Operon::Scalar const*>(&hi) };
+        LaneOverride const override { hash, reinterpret_cast<Operon::Scalar const*>(&lo),
+            reinterpret_cast<Operon::Scalar const*>(&hi) };
         return TryEvaluate(coeff, std::span { &override, 1 });
     }
-
 
     // Evaluates the tree. `coeff` has one entry per node with
     // `Node::Optimize == true`, in node order, always Operon::Scalar-typed.
     [[nodiscard]] auto Evaluate(Operon::Span<Operon::Scalar const> coeff) const -> Interval
     {
         auto result = TryEvaluate(coeff);
-        if (!result) { throw std::runtime_error(result.error()); }
+        if (!result) {
+            throw std::runtime_error(result.error());
+        }
         return std::move(*result);
     }
     // Non-throwing evaluation, including from user-registered callbacks, which signal failure via tl::expected
     // rather than throwing. Callers should never need their own try/catch around this.
-    [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff) const -> tl::expected<Interval, std::string>
+    [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff) const
+        -> tl::expected<Interval, std::string>
     {
         return TryEvaluateImpl(coeff, {});
     }
 
 private:
-    [[nodiscard]] auto TryEvaluateImpl(Operon::Span<Operon::Scalar const> coeff, std::span<LaneOverride const> overrides) const
-        -> tl::expected<Interval, std::string>
+    [[nodiscard]] auto TryEvaluateImpl(Operon::Span<Operon::Scalar const> coeff,
+        std::span<LaneOverride const> overrides) const -> tl::expected<Interval, std::string>
     {
         std::size_t coefficientIndex = 0;
         auto const weight = [&](Node const& node) {
@@ -202,7 +236,8 @@ private:
             }
             return static_cast<Scalar>(node.Value);
         };
-        auto const bindLeaf = [&](Node const& node, std::size_t index, Scalar scale) -> tl::expected<Interval, std::string> {
+        auto const bindLeaf
+            = [&](Node const& node, std::size_t index, Scalar scale) -> tl::expected<Interval, std::string> {
             if (node.IsConstant()) {
                 return pappus::ops::constant<Scalar>(scale);
             }
@@ -214,9 +249,12 @@ private:
 
             auto const& slot = domainSlots_[index];
             if (!slot.Present) {
-                return tl::unexpected(fmt::format("IntervalEvaluator: no domain bound for variable hash {}", node.HashValue));
+                return tl::unexpected(
+                    fmt::format("IntervalEvaluator: no domain bound for variable hash {}", node.HashValue));
             }
-            return pappus::ops::variable<Scalar>(static_cast<Scalar>(slot.Bounds.first), static_cast<Scalar>(slot.Bounds.second)) * scale;
+            return pappus::ops::variable<Scalar>(
+                       static_cast<Scalar>(slot.Bounds.first), static_cast<Scalar>(slot.Bounds.second))
+                * scale;
         };
 
         return detail::EvaluatePostOrder<detail::IntervalPostOrderPolicy<Scalar>>(
@@ -239,13 +277,13 @@ private:
         domainSlots_.reserve(nodes.size());
         for (auto const& node : nodes) {
             auto const it = node.Type == NodeType::Variable ? domains_.find(node.HashValue) : domains_.end();
-            domainSlots_.push_back(it == domains_.end() ? DomainSlot{} : DomainSlot{ it->second, true });
+            domainSlots_.push_back(it == domains_.end() ? DomainSlot {} : DomainSlot { it->second, true });
         }
     }
 
     struct DomainSlot {
-        Domain Bounds{};
-        bool Present{false};
+        Domain Bounds {};
+        bool Present { false };
     };
 
     gsl::not_null<Operon::Tree const*> tree_;
@@ -253,7 +291,6 @@ private:
     std::vector<DomainSlot> domainSlots_;
     mutable std::vector<Interval> primal_; // reused across Evaluate calls
 };
-
 
 } // namespace Operon
 

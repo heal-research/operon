@@ -12,8 +12,8 @@
 #include "operon/core/node.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/tree_diff.hpp"
-#include "operon/interpreter/interval_evaluator.hpp"
 #include "operon/interpreter/affine_evaluator.hpp"
+#include "operon/interpreter/interval_evaluator.hpp"
 
 #ifdef HAVE_ASMJIT
 #include "operon/interpreter/backend/jit/jit_compiler.hpp"
@@ -36,23 +36,24 @@ namespace Operon::Test {
 
 namespace {
 
-auto OpName(BuiltinOp op) -> std::string
-{
-    return Node::Function(static_cast<Operon::Hash>(op), 1).Name();
-}
+    auto OpName(BuiltinOp op) -> std::string { return Node::Function(static_cast<Operon::Hash>(op), 1).Name(); }
 
-// n-ary reductions (Add/Mul/Sub/Div/Fmin/Fmax) are handled directly as
-// structural cases in each consumer (Deriv(), Evaluate(), EmitNodesAvx2) —
-// never through a single-hash unary/binary registry entry. Shared by the
-// interval/affine/JIT checks below (all three have the identical boundary).
-auto NaryFolds() -> std::vector<BuiltinOp> const&
-{
-    static std::vector<BuiltinOp> const ops {
-        BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Sub, BuiltinOp::Div,
-        BuiltinOp::Fmin, BuiltinOp::Fmax,
-    };
-    return ops;
-}
+    // n-ary reductions (Add/Mul/Sub/Div/Fmin/Fmax) are handled directly as
+    // structural cases in each consumer (Deriv(), Evaluate(), EmitNodesAvx2) —
+    // never through a single-hash unary/binary registry entry. Shared by the
+    // interval/affine/JIT checks below (all three have the identical boundary).
+    auto NaryFolds() -> std::vector<BuiltinOp> const&
+    {
+        static std::vector<BuiltinOp> const ops {
+            BuiltinOp::Add,
+            BuiltinOp::Mul,
+            BuiltinOp::Sub,
+            BuiltinOp::Div,
+            BuiltinOp::Fmin,
+            BuiltinOp::Fmax,
+        };
+        return ops;
+    }
 
 } // namespace
 
@@ -63,10 +64,16 @@ TEST_CASE("Cross-registry coverage: symbolic-diff registry", "[registry][coverag
     // implemented — see tree_diff.cpp's Deriv() and
     // RegisterBuiltinSymbolicDerivs().
     std::vector<BuiltinOp> deliberatelyAbsent = NaryFolds();
-    deliberatelyAbsent.insert(deliberatelyAbsent.end(), {
-        BuiltinOp::Aq, BuiltinOp::Pow, BuiltinOp::Powabs, // Pow: structural (two terms); Aq/Powabs: not yet differentiated
-        BuiltinOp::Abs, BuiltinOp::Sqrtabs, BuiltinOp::Floor, BuiltinOp::Ceil, // non-smooth
-    });
+    deliberatelyAbsent.insert(deliberatelyAbsent.end(),
+        {
+            BuiltinOp::Aq,
+            BuiltinOp::Pow,
+            BuiltinOp::Powabs, // Pow: structural (two terms); Aq/Powabs: not yet differentiated
+            BuiltinOp::Abs,
+            BuiltinOp::Sqrtabs,
+            BuiltinOp::Floor,
+            BuiltinOp::Ceil, // non-smooth
+        });
 
     for (std::size_t i = 0; i < Operon::BuiltinOpCount; ++i) {
         auto const op = static_cast<BuiltinOp>(i);
@@ -87,10 +94,10 @@ TEST_CASE("Cross-registry coverage: interval/affine registries", "[registry][cov
         auto const hash = static_cast<Operon::Hash>(op);
         bool const expectAbsent = std::ranges::find(deliberatelyAbsent, op) != deliberatelyAbsent.end();
 
-        bool const inInterval = Operon::HasUnaryInterval<Operon::Scalar>(hash)
-            || Operon::HasBinaryInterval<Operon::Scalar>(hash);
-        bool const inAffine = Operon::HasUnaryAffine<Operon::Scalar>(hash)
-            || Operon::HasBinaryAffine<Operon::Scalar>(hash);
+        bool const inInterval
+            = Operon::HasUnaryInterval<Operon::Scalar>(hash) || Operon::HasBinaryInterval<Operon::Scalar>(hash);
+        bool const inAffine
+            = Operon::HasUnaryAffine<Operon::Scalar>(hash) || Operon::HasBinaryAffine<Operon::Scalar>(hash);
 
         INFO("op: " << OpName(op));
         CHECK(inInterval == !expectAbsent);
@@ -108,8 +115,7 @@ TEST_CASE("Cross-registry coverage: JIT codegen registry", "[registry][coverage]
         auto const hash = static_cast<Operon::Hash>(op);
         bool const expectAbsent = std::ranges::find(deliberatelyAbsent, op) != deliberatelyAbsent.end();
 
-        bool const inJit = Operon::JIT::HasUnaryJitCodegen(hash)
-            || Operon::JIT::HasBinaryJitCodegen(hash);
+        bool const inJit = Operon::JIT::HasUnaryJitCodegen(hash) || Operon::JIT::HasBinaryJitCodegen(hash);
 
         INFO("op: " << OpName(op));
         CHECK(inJit == !expectAbsent);
@@ -123,7 +129,7 @@ TEST_CASE("Cross-registry coverage: JIT codegen registry", "[registry][coverage]
 TEST_CASE("HashRegistry: round-trip and write-once contract", "[registry][hash_registry]")
 {
     Operon::HashRegistry<int> reg;
-    constexpr Operon::Hash hash{0x1111111111111111ULL};
+    constexpr Operon::Hash hash { 0x1111111111111111ULL };
 
     CHECK_FALSE(reg.Contains(hash));
     CHECK(reg.TryGet(hash) == nullptr);
@@ -151,10 +157,9 @@ TEST_CASE("HashRegistry: round-trip and write-once contract", "[registry][hash_r
 // carries its own regression coverage independently.
 TEST_CASE("RegisterUnarySymbolicDeriv: colliding with a built-in hash always throws", "[registry][toctou]")
 {
-    CHECK_THROWS_AS(
-        Operon::RegisterUnarySymbolicDeriv(Operon::Hash(BuiltinOp::Log),
-            [](Operon::Vector<Operon::Node>&, Operon::Map<Operon::Hash, std::size_t>&,
-               Operon::Vector<Operon::Hash>&, std::size_t, std::size_t) -> std::size_t { return 0; }),
+    CHECK_THROWS_AS(Operon::RegisterUnarySymbolicDeriv(Operon::Hash(BuiltinOp::Log),
+                        [](Operon::Vector<Operon::Node>&, Operon::Map<Operon::Hash, std::size_t>&,
+                            Operon::Vector<Operon::Hash>&, std::size_t, std::size_t) -> std::size_t { return 0; }),
         std::invalid_argument);
 }
 
@@ -165,38 +170,39 @@ TEST_CASE("RegisterUnarySymbolicDeriv: colliding with a built-in hash always thr
 // those would otherwise be silently accepted here but the rule would never
 // fire (Deriv() never reaches the registry consult for that hash) -- reject
 // it explicitly rather than let it silently no-op.
-TEST_CASE("RegisterBinarySymbolicDeriv: colliding with a hardcoded/excluded built-in hash always throws", "[registry][toctou]")
+TEST_CASE("RegisterBinarySymbolicDeriv: colliding with a hardcoded/excluded built-in hash always throws",
+    "[registry][toctou]")
 {
-    auto const noop = [](Operon::Vector<Operon::Node>&, Operon::Map<Operon::Hash, std::size_t>&,
-                          Operon::Vector<Operon::Hash>&, std::size_t, std::size_t, std::size_t)
-        -> std::pair<std::size_t, std::size_t> { return {0, 0}; };
+    auto const noop
+        = [](Operon::Vector<Operon::Node>&, Operon::Map<Operon::Hash, std::size_t>&, Operon::Vector<Operon::Hash>&,
+              std::size_t, std::size_t, std::size_t) -> std::pair<std::size_t, std::size_t> { return { 0, 0 }; };
 
-    for (auto op : {BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Sub, BuiltinOp::Div, BuiltinOp::Pow,
-                    BuiltinOp::Aq, BuiltinOp::Powabs, BuiltinOp::Fmin, BuiltinOp::Fmax}) {
+    for (auto op : { BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Sub, BuiltinOp::Div, BuiltinOp::Pow, BuiltinOp::Aq,
+             BuiltinOp::Powabs, BuiltinOp::Fmin, BuiltinOp::Fmax }) {
         INFO("op: " << OpName(op));
         CHECK_THROWS_AS(Operon::RegisterBinarySymbolicDeriv(Operon::Hash(op), noop), std::invalid_argument);
     }
 }
 
-TEST_CASE("RegisterUnaryInterval/RegisterUnaryAffine: colliding with a built-in hash always throws", "[registry][toctou]")
+TEST_CASE(
+    "RegisterUnaryInterval/RegisterUnaryAffine: colliding with a built-in hash always throws", "[registry][toctou]")
 {
     auto const logHash = Operon::Hash(BuiltinOp::Log);
 
-    CHECK_THROWS_AS(
-        Operon::RegisterUnaryInterval<Operon::Scalar>(logHash, [](Operon::IntervalEvaluator<Operon::Scalar>::Interval const& v) { return v; }),
+    CHECK_THROWS_AS(Operon::RegisterUnaryInterval<Operon::Scalar>(
+                        logHash, [](Operon::IntervalEvaluator<Operon::Scalar>::Interval const& v) { return v; }),
         std::invalid_argument);
-    CHECK_THROWS_AS(
-        Operon::RegisterUnaryAffine<Operon::Scalar>(logHash,
-            [](Operon::AffineEvaluator<Operon::Scalar>::Context const&, Operon::AffineEvaluator<Operon::Scalar>::Affine const& v) { return v; }),
+    CHECK_THROWS_AS(Operon::RegisterUnaryAffine<Operon::Scalar>(logHash,
+                        [](Operon::AffineEvaluator<Operon::Scalar>::Context const&,
+                            Operon::AffineEvaluator<Operon::Scalar>::Affine const& v) { return v; }),
         std::invalid_argument);
 }
 
 #ifdef HAVE_ASMJIT
 TEST_CASE("RegisterUnaryJitCodegen: colliding with a built-in hash always throws", "[registry][toctou][jit]")
 {
-    CHECK_THROWS_AS(
-        Operon::JIT::RegisterUnaryJitCodegen(Operon::Hash(BuiltinOp::Log),
-            [](asmjit::x86::Compiler&, asmjit::x86::Vec const& a) { return a; }),
+    CHECK_THROWS_AS(Operon::JIT::RegisterUnaryJitCodegen(Operon::Hash(BuiltinOp::Log),
+                        [](asmjit::x86::Compiler&, asmjit::x86::Vec const& a) { return a; }),
         std::invalid_argument);
 }
 #endif
@@ -206,27 +212,28 @@ TEST_CASE("RegisterUnaryJitCodegen: colliding with a built-in hash always throws
 // hash throws.
 TEST_CASE("IntervalEvaluator: user-registered unary op round-trips and rejects duplicates", "[registry][interval]")
 {
-    constexpr Operon::Hash customHash{0x2222222222222222ULL};
+    constexpr Operon::Hash customHash { 0x2222222222222222ULL };
     // static: the lambda is stored permanently in the global IntervalUnaryRules()
     // registry (there's no way to unregister it), so it must not capture a
     // reference to something with the TEST_CASE's own (shorter) lifetime.
     static bool invoked = false;
     invoked = false;
-    Operon::RegisterUnaryInterval<Operon::Scalar>(customHash, [](Operon::IntervalEvaluator<Operon::Scalar>::Interval const& v) {
-        invoked = true;
-        return v;
-    });
+    Operon::RegisterUnaryInterval<Operon::Scalar>(
+        customHash, [](Operon::IntervalEvaluator<Operon::Scalar>::Interval const& v) {
+            invoked = true;
+            return v;
+        });
     REQUIRE(Operon::IntervalUnaryRules<Operon::Scalar>().Contains(customHash));
 
-    CHECK_THROWS_AS(
-        Operon::RegisterUnaryInterval<Operon::Scalar>(customHash, [](Operon::IntervalEvaluator<Operon::Scalar>::Interval const& v) { return v; }),
+    CHECK_THROWS_AS(Operon::RegisterUnaryInterval<Operon::Scalar>(
+                        customHash, [](Operon::IntervalEvaluator<Operon::Scalar>::Interval const& v) { return v; }),
         std::invalid_argument);
 
     auto constNode = Node::Constant(1.0F);
     constNode.Optimize = false;
     Tree const tree = Tree({ constNode, Node::Function(customHash, 1) }).UpdateNodes();
     Operon::IntervalEvaluator<Operon::Scalar>::DomainMap noDomains;
-    static_cast<void>(IntervalEvaluator<Operon::Scalar>{&tree, noDomains}.Evaluate({}));
+    static_cast<void>(IntervalEvaluator<Operon::Scalar> { &tree, noDomains }.Evaluate({}));
     CHECK(invoked);
 }
 
@@ -235,7 +242,7 @@ TEST_CASE("IntervalEvaluator: user-registered unary op round-trips and rejects d
 // contract documented on Register{Unary,Binary}{Interval,Affine}.
 TEST_CASE("IntervalEvaluator/AffineEvaluator: unmapped op throws at Evaluate()", "[registry][miss]")
 {
-    constexpr Operon::Hash unmappedHash{0x3333333333333333ULL};
+    constexpr Operon::Hash unmappedHash { 0x3333333333333333ULL };
     auto constNode = Node::Constant(1.0F);
     constNode.Optimize = false;
     Tree const tree = Tree({ constNode, Node::Function(unmappedHash, 1) }).UpdateNodes();
@@ -253,9 +260,11 @@ TEST_CASE("IntervalEvaluator/AffineEvaluator: unmapped op throws at Evaluate()",
 // (of an all-built-in tree) still succeeds afterward.
 TEST_CASE("JIT CompileAVX2: unmapped op degrades to nullptr, doesn't brick later compiles", "[registry][jit][miss]")
 {
-    constexpr Operon::Hash unmappedHash{0x4444444444444444ULL};
+    constexpr Operon::Hash unmappedHash { 0x4444444444444444ULL };
     JIT::JitRuntimePool pool;
-    if (!pool.HasAVX2()) { return; } // matches CompileAVX2's own guard
+    if (!pool.HasAVX2()) {
+        return;
+    } // matches CompileAVX2's own guard
 
     auto constNode = Node::Constant(1.0F);
     constNode.Optimize = false;

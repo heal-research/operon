@@ -33,80 +33,82 @@
 namespace Operon::Test {
 namespace {
 
-using DTable = DispatchTable<Operon::Scalar>;
+    using DTable = DispatchTable<Operon::Scalar>;
 
-auto MakeDataset() -> Operon::Dataset
-{
-    std::vector<std::vector<Operon::Scalar>> data(2, std::vector<Operon::Scalar>(10));
-    std::iota(data[0].begin(), data[0].end(), Operon::Scalar{1});
-    for (std::size_t i = 0; i < 10; ++i) { data[1][i] = data[0][i] * Operon::Scalar{2}; }
-    return Operon::Dataset({"X1", "Y"}, data);
-}
-
-auto MakePset() -> Operon::PrimitiveSet
-{
-    Operon::PrimitiveSet p;
-    p.SetConfig(PrimitiveSet::Arithmetic);
-    return p;
-}
-
-auto MakeConfig(std::size_t popSize, std::size_t poolSize) -> Operon::GeneticAlgorithmConfig
-{
-    Operon::GeneticAlgorithmConfig c;
-    c.PopulationSize = popSize;
-    c.PoolSize       = poolSize;
-    c.Generations    = 1;
-    return c;
-}
-
-struct GaBaseFixture {
-    static constexpr std::size_t PopSize  = 6;
-    static constexpr std::size_t PoolSize = 4;
-
-    Operon::Dataset Ds{ MakeDataset() };
-    Operon::Problem Problem{ gsl::not_null<Operon::Dataset*>(&Ds) };
-    Operon::PrimitiveSet Pset{ MakePset() };
-    std::vector<Operon::Hash> Vars{ Ds.GetVariable("X1")->Hash };
-
-    DTable Dtable;
-    Operon::Evaluator<DTable>             Evaluator{ &Problem, &Dtable };
-    Operon::SubtreeCrossover              Crossover{ 0.9, /*maxDepth=*/6, /*maxLength=*/20 };
-    Operon::OnePointMutation<std::normal_distribution<Operon::Scalar>> OnePoint;
-    Operon::MultiMutation                 Mutator;
-    Operon::TournamentSelector            FemSel{ Operon::SingleObjectiveComparison{0} };
-    Operon::TournamentSelector            MaleSel{ Operon::SingleObjectiveComparison{0} };
-    Operon::BasicOffspringGenerator       Generator{ &Evaluator, &Crossover, &Mutator, &FemSel, &MaleSel };
-    Operon::KeepBestReinserter            Reinserter{ Operon::SingleObjectiveComparison{0} };
-    Operon::BalancedTreeCreator           Creator{ &Pset, Vars, 0.0, 10 };
-    Operon::UniformTreeInitializer        TreeInit{ &Creator };
-    Operon::UniformCoefficientInitializer CoeffInit;
-    Operon::GeneticAlgorithmConfig        Config{ MakeConfig(PopSize, PoolSize) };
-    Operon::GeneticProgrammingAlgorithm   Gp{ Config, &Problem, &TreeInit, &CoeffInit, &Generator, &Reinserter };
-    Operon::DeductiveSorter               Sorter;
-    Operon::NSGA2                         Nsga{ Config, &Problem, &TreeInit, &CoeffInit, &Generator, &Reinserter, &Sorter };
-
-    GaBaseFixture()
+    auto MakeDataset() -> Operon::Dataset
     {
-        Problem.SetTrainingRange({0, 10});
-        Problem.SetTestRange({0, 10});
-        Problem.SetTarget("Y");
-        // Unparameterized, TreeInit's distribution defaults to an unbounded
-        // param_type, so it can request an arbitrarily large tree length.
-        TreeInit.ParameterizeDistribution(std::size_t{1}, std::size_t{10});
-        OnePoint.ParameterizeDistribution(Operon::Scalar{0}, Operon::Scalar{1});
-        // MultiMutation needs at least one operator or it indexes an empty vector.
-        Mutator.Add(&OnePoint, 1.0);
+        std::vector<std::vector<Operon::Scalar>> data(2, std::vector<Operon::Scalar>(10));
+        std::iota(data[0].begin(), data[0].end(), Operon::Scalar { 1 });
+        for (std::size_t i = 0; i < 10; ++i) {
+            data[1][i] = data[0][i] * Operon::Scalar { 2 };
+        }
+        return Operon::Dataset({ "X1", "Y" }, data);
     }
-};
+
+    auto MakePset() -> Operon::PrimitiveSet
+    {
+        Operon::PrimitiveSet p;
+        p.SetConfig(PrimitiveSet::Arithmetic);
+        return p;
+    }
+
+    auto MakeConfig(std::size_t popSize, std::size_t poolSize) -> Operon::GeneticAlgorithmConfig
+    {
+        Operon::GeneticAlgorithmConfig c;
+        c.PopulationSize = popSize;
+        c.PoolSize = poolSize;
+        c.Generations = 1;
+        return c;
+    }
+
+    struct GaBaseFixture {
+        static constexpr std::size_t PopSize = 6;
+        static constexpr std::size_t PoolSize = 4;
+
+        Operon::Dataset Ds { MakeDataset() };
+        Operon::Problem Problem { gsl::not_null<Operon::Dataset*>(&Ds) };
+        Operon::PrimitiveSet Pset { MakePset() };
+        std::vector<Operon::Hash> Vars { Ds.GetVariable("X1")->Hash };
+
+        DTable Dtable;
+        Operon::Evaluator<DTable> Evaluator { &Problem, &Dtable };
+        Operon::SubtreeCrossover Crossover { 0.9, /*maxDepth=*/6, /*maxLength=*/20 };
+        Operon::OnePointMutation<std::normal_distribution<Operon::Scalar>> OnePoint;
+        Operon::MultiMutation Mutator;
+        Operon::TournamentSelector FemSel { Operon::SingleObjectiveComparison { 0 } };
+        Operon::TournamentSelector MaleSel { Operon::SingleObjectiveComparison { 0 } };
+        Operon::BasicOffspringGenerator Generator { &Evaluator, &Crossover, &Mutator, &FemSel, &MaleSel };
+        Operon::KeepBestReinserter Reinserter { Operon::SingleObjectiveComparison { 0 } };
+        Operon::BalancedTreeCreator Creator { &Pset, Vars, 0.0, 10 };
+        Operon::UniformTreeInitializer TreeInit { &Creator };
+        Operon::UniformCoefficientInitializer CoeffInit;
+        Operon::GeneticAlgorithmConfig Config { MakeConfig(PopSize, PoolSize) };
+        Operon::GeneticProgrammingAlgorithm Gp { Config, &Problem, &TreeInit, &CoeffInit, &Generator, &Reinserter };
+        Operon::DeductiveSorter Sorter;
+        Operon::NSGA2 Nsga { Config, &Problem, &TreeInit, &CoeffInit, &Generator, &Reinserter, &Sorter };
+
+        GaBaseFixture()
+        {
+            Problem.SetTrainingRange({ 0, 10 });
+            Problem.SetTestRange({ 0, 10 });
+            Problem.SetTarget("Y");
+            // Unparameterized, TreeInit's distribution defaults to an unbounded
+            // param_type, so it can request an arbitrarily large tree length.
+            TreeInit.ParameterizeDistribution(std::size_t { 1 }, std::size_t { 10 });
+            OnePoint.ParameterizeDistribution(Operon::Scalar { 0 }, Operon::Scalar { 1 });
+            // MultiMutation needs at least one operator or it indexes an empty vector.
+            Mutator.Add(&OnePoint, 1.0);
+        }
+    };
 
 } // namespace
 
 TEST_CASE("RestoreIndividuals maps parents and offspring spans correctly", "[algorithms]")
 {
     GaBaseFixture f;
-    constexpr auto popSize  = GaBaseFixture::PopSize;
+    constexpr auto popSize = GaBaseFixture::PopSize;
     constexpr auto poolSize = GaBaseFixture::PoolSize;
-    constexpr auto total    = popSize + poolSize;
+    constexpr auto total = popSize + poolSize;
 
     // Give each individual a distinct fitness so we can verify which span they land in.
     std::vector<Operon::Individual> inds(total);
@@ -117,10 +119,10 @@ TEST_CASE("RestoreIndividuals maps parents and offspring spans correctly", "[alg
 
     f.Gp.RestoreIndividuals(inds);
 
-    auto parents   = f.Gp.Parents();
+    auto parents = f.Gp.Parents();
     auto offspring = f.Gp.Offspring();
 
-    REQUIRE(parents.size()   == popSize);
+    REQUIRE(parents.size() == popSize);
     REQUIRE(offspring.size() == poolSize);
 
     for (std::size_t i = 0; i < popSize; ++i) {
@@ -131,12 +133,13 @@ TEST_CASE("RestoreIndividuals maps parents and offspring spans correctly", "[alg
     }
 }
 
-TEST_CASE("Copying a GeneticAlgorithmBase-derived object rebinds Parents()/Offspring() to its own storage", "[algorithms]")
+TEST_CASE(
+    "Copying a GeneticAlgorithmBase-derived object rebinds Parents()/Offspring() to its own storage", "[algorithms]")
 {
     GaBaseFixture f;
-    constexpr auto popSize  = GaBaseFixture::PopSize;
+    constexpr auto popSize = GaBaseFixture::PopSize;
     constexpr auto poolSize = GaBaseFixture::PoolSize;
-    constexpr auto total    = popSize + poolSize;
+    constexpr auto total = popSize + poolSize;
 
     std::vector<Operon::Individual> inds(total);
     for (std::size_t i = 0; i < total; ++i) {
@@ -146,7 +149,7 @@ TEST_CASE("Copying a GeneticAlgorithmBase-derived object rebinds Parents()/Offsp
     f.Gp.RestoreIndividuals(inds);
     f.Gp.RequestStop(); // exercise StopRequested() being copied too
 
-    Operon::GeneticProgrammingAlgorithm copy{f.Gp}; // NOLINT(performance-unnecessary-copy-initialization)
+    Operon::GeneticProgrammingAlgorithm copy { f.Gp }; // NOLINT(performance-unnecessary-copy-initialization)
 
     // Parents()/Offspring() must point into the *copy*'s own Individuals(),
     // not the original's - otherwise they dangle once the original that
@@ -158,7 +161,7 @@ TEST_CASE("Copying a GeneticAlgorithmBase-derived object rebinds Parents()/Offsp
     CHECK(std::addressof(copy.Parents()[0]) != std::addressof(f.Gp.Parents()[0]));
 
     // Content and stop-flag state are still copied correctly.
-    REQUIRE(copy.Parents().size()   == popSize);
+    REQUIRE(copy.Parents().size() == popSize);
     REQUIRE(copy.Offspring().size() == poolSize);
     for (std::size_t i = 0; i < popSize; ++i) {
         CHECK(copy.Parents()[i].Fitness[0] == static_cast<Operon::Scalar>(i));
@@ -172,10 +175,16 @@ TEST_CASE("Copying a GeneticAlgorithmBase-derived object rebinds Parents()/Offsp
 TEST_CASE("ReportCallback returning true stops the run before the next generation", "[algorithms]")
 {
     GaBaseFixture f; // Config.Generations == 1
-    Operon::RandomGenerator rng{42};
+    Operon::RandomGenerator rng { 42 };
 
     std::size_t calls = 0;
-    f.Gp.Run(rng, [&]() -> bool { ++calls; return true; }, /*threads=*/1);
+    f.Gp.Run(
+        rng,
+        [&]() -> bool {
+            ++calls;
+            return true;
+        },
+        /*threads=*/1);
 
     // The report fired during init, before the loop body ever ran, so the
     // generation counter (only incremented inside the body) never advanced.
@@ -191,7 +200,7 @@ TEST_CASE("ReportCallback returning true stops the run before the next generatio
 TEST_CASE("ReportCallback accepts a move-only capture (unique_ptr progress sink)", "[algorithms]")
 {
     GaBaseFixture f; // Config.Generations == 1
-    Operon::RandomGenerator rng{42};
+    Operon::RandomGenerator rng { 42 };
 
     // `calls` is a plain local counter, alive on this TEST_CASE's own stack
     // frame independent of the callback's lifetime, so reading it after
@@ -215,10 +224,16 @@ TEST_CASE("ReportCallback accepts a move-only capture (unique_ptr progress sink)
 TEST_CASE("ReportCallback returning false lets the run reach the configured generations", "[algorithms]")
 {
     GaBaseFixture f; // Config.Generations == 1
-    Operon::RandomGenerator rng{42};
+    Operon::RandomGenerator rng { 42 };
 
     std::size_t calls = 0;
-    f.Gp.Run(rng, [&]() -> bool { ++calls; return false; }, /*threads=*/1);
+    f.Gp.Run(
+        rng,
+        [&]() -> bool {
+            ++calls;
+            return false;
+        },
+        /*threads=*/1);
 
     CHECK(f.Gp.Generation() == f.Config.Generations);
     CHECK(calls == 2); // one report from init, one from the single generation's body
@@ -227,10 +242,16 @@ TEST_CASE("ReportCallback returning false lets the run reach the configured gene
 TEST_CASE("NSGA2: ReportCallback returning true stops the run before the next generation", "[algorithms]")
 {
     GaBaseFixture f; // Config.Generations == 1
-    Operon::RandomGenerator rng{42};
+    Operon::RandomGenerator rng { 42 };
 
     std::size_t calls = 0;
-    f.Nsga.Run(rng, [&]() -> bool { ++calls; return true; }, /*threads=*/1);
+    f.Nsga.Run(
+        rng,
+        [&]() -> bool {
+            ++calls;
+            return true;
+        },
+        /*threads=*/1);
 
     CHECK(calls == 1);
     CHECK(f.Nsga.Generation() == 0);
@@ -239,10 +260,16 @@ TEST_CASE("NSGA2: ReportCallback returning true stops the run before the next ge
 TEST_CASE("NSGA2: ReportCallback returning false lets the run reach the configured generations", "[algorithms]")
 {
     GaBaseFixture f; // Config.Generations == 1
-    Operon::RandomGenerator rng{42};
+    Operon::RandomGenerator rng { 42 };
 
     std::size_t calls = 0;
-    f.Nsga.Run(rng, [&]() -> bool { ++calls; return false; }, /*threads=*/1);
+    f.Nsga.Run(
+        rng,
+        [&]() -> bool {
+            ++calls;
+            return false;
+        },
+        /*threads=*/1);
 
     CHECK(f.Nsga.Generation() == f.Config.Generations);
     CHECK(calls == 2); // one report from init, one from the single generation's body
@@ -255,58 +282,57 @@ TEST_CASE("NSGA2: keep-best and replace-worst reinserters produce different resu
     // operator()), so --reinserter keep-best vs replace-worst was silently
     // inert. This runs identical NSGA2 setups (same seed, same everything
     // except the reinserter) and asserts the final populations differ.
-    Operon::Dataset ds{ MakeDataset() };
-    Operon::Problem problem{ gsl::not_null<Operon::Dataset*>(&ds) };
-    problem.SetTrainingRange({0, 10});
-    problem.SetTestRange({0, 10});
+    Operon::Dataset ds { MakeDataset() };
+    Operon::Problem problem { gsl::not_null<Operon::Dataset*>(&ds) };
+    problem.SetTrainingRange({ 0, 10 });
+    problem.SetTestRange({ 0, 10 });
     problem.SetTarget("Y");
-    Operon::PrimitiveSet pset{ MakePset() };
-    std::vector<Operon::Hash> vars{ ds.GetVariable("X1")->Hash };
+    Operon::PrimitiveSet pset { MakePset() };
+    std::vector<Operon::Hash> vars { ds.GetVariable("X1")->Hash };
 
     DTable dtable;
-    Operon::Evaluator<DTable> rmseEval{ &problem, &dtable };
-    Operon::TreePropertyEvaluator lenEval{ &problem, [](Operon::Tree const& tree) {
-        return static_cast<Operon::Scalar>(tree.Length());
-    }, /*normalizer=*/20 };
-    Operon::MultiEvaluator multiEval{ &problem };
+    Operon::Evaluator<DTable> rmseEval { &problem, &dtable };
+    Operon::TreePropertyEvaluator lenEval { &problem,
+        [](Operon::Tree const& tree) { return static_cast<Operon::Scalar>(tree.Length()); }, /*normalizer=*/20 };
+    Operon::MultiEvaluator multiEval { &problem };
     multiEval.Add(&rmseEval);
     multiEval.Add(&lenEval);
 
-    Operon::SubtreeCrossover crossover{ 0.9, /*maxDepth=*/6, /*maxLength=*/20 };
+    Operon::SubtreeCrossover crossover { 0.9, /*maxDepth=*/6, /*maxLength=*/20 };
     Operon::OnePointMutation<std::normal_distribution<Operon::Scalar>> onePoint;
-    onePoint.ParameterizeDistribution(Operon::Scalar{0}, Operon::Scalar{1});
+    onePoint.ParameterizeDistribution(Operon::Scalar { 0 }, Operon::Scalar { 1 });
     Operon::MultiMutation mutator;
     mutator.Add(&onePoint, 1.0);
 
     Operon::CrowdedComparison comp;
-    Operon::TournamentSelector femSel{ comp };
-    Operon::TournamentSelector maleSel{ comp };
-    Operon::BasicOffspringGenerator generator{ &multiEval, &crossover, &mutator, &femSel, &maleSel };
+    Operon::TournamentSelector femSel { comp };
+    Operon::TournamentSelector maleSel { comp };
+    Operon::BasicOffspringGenerator generator { &multiEval, &crossover, &mutator, &femSel, &maleSel };
 
-    Operon::BalancedTreeCreator creator{ &pset, vars, 0.0, 10 };
-    Operon::UniformTreeInitializer treeInit{ &creator };
-    treeInit.ParameterizeDistribution(std::size_t{1}, std::size_t{10});
+    Operon::BalancedTreeCreator creator { &pset, vars, 0.0, 10 };
+    Operon::UniformTreeInitializer treeInit { &creator };
+    treeInit.ParameterizeDistribution(std::size_t { 1 }, std::size_t { 10 });
     Operon::UniformCoefficientInitializer coeffInit;
     Operon::DeductiveSorter sorter;
 
     auto config = MakeConfig(/*popSize=*/20, /*poolSize=*/20);
     config.Generations = 3;
 
-    Operon::KeepBestReinserter keepBest{ comp };
-    Operon::NSGA2 nsgaKeepBest{ config, &problem, &treeInit, &coeffInit, &generator, &keepBest, &sorter };
-    Operon::RandomGenerator rngKeepBest{42};
+    Operon::KeepBestReinserter keepBest { comp };
+    Operon::NSGA2 nsgaKeepBest { config, &problem, &treeInit, &coeffInit, &generator, &keepBest, &sorter };
+    Operon::RandomGenerator rngKeepBest { 42 };
     nsgaKeepBest.Run(rngKeepBest, nullptr, /*threads=*/1);
 
-    Operon::ReplaceWorstReinserter replaceWorst{ comp };
-    Operon::NSGA2 nsgaReplaceWorst{ config, &problem, &treeInit, &coeffInit, &generator, &replaceWorst, &sorter };
-    Operon::RandomGenerator rngReplaceWorst{42};
+    Operon::ReplaceWorstReinserter replaceWorst { comp };
+    Operon::NSGA2 nsgaReplaceWorst { config, &problem, &treeInit, &coeffInit, &generator, &replaceWorst, &sorter };
+    Operon::RandomGenerator rngReplaceWorst { 42 };
     nsgaReplaceWorst.Run(rngReplaceWorst, nullptr, /*threads=*/1);
 
-    auto keepBestFitness = std::vector<Operon::Scalar>{};
+    auto keepBestFitness = std::vector<Operon::Scalar> {};
     for (auto const& ind : nsgaKeepBest.Individuals()) {
         keepBestFitness.insert(keepBestFitness.end(), ind.Fitness.begin(), ind.Fitness.end());
     }
-    auto replaceWorstFitness = std::vector<Operon::Scalar>{};
+    auto replaceWorstFitness = std::vector<Operon::Scalar> {};
     for (auto const& ind : nsgaReplaceWorst.Individuals()) {
         replaceWorstFitness.insert(replaceWorstFitness.end(), ind.Fitness.begin(), ind.Fitness.end());
     }
@@ -315,7 +341,9 @@ TEST_CASE("NSGA2: keep-best and replace-worst reinserters produce different resu
     CHECK(keepBestFitness != replaceWorstFitness);
 }
 
-TEST_CASE("Generation/Elapsed/IsFitted return by value for const objects, by reference for mutable, regardless of value category", "[algorithms]")
+TEST_CASE("Generation/Elapsed/IsFitted return by value for const objects, by reference for mutable, regardless of "
+          "value category",
+    "[algorithms]")
 {
     // The pre-deducing-this overloads were never ref-qualified, so the const
     // overload returned by value for both lvalues and rvalues, and the

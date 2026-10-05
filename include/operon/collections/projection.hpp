@@ -11,63 +11,48 @@
 
 namespace Operon {
 
-
-template<typename InputIt, typename Func = std::identity>
-struct ProjectionIterator {
+template <typename InputIt, typename Func = std::identity> struct ProjectionIterator {
     using T = typename std::iterator_traits<InputIt>::value_type;
     using R = std::invoke_result_t<Func, T>;
 
     // projection iterator traits
     using value_type = std::remove_reference_t<R>; // NOLINT
-    using pointer = void; //NOLINT
+    using pointer = void; // NOLINT
     using reference = value_type&; // NOLINT
     using difference_type = typename std::iterator_traits<InputIt>::difference_type; // NOLINT
     using iterator_category = typename std::iterator_traits<InputIt>::iterator_category; // NOLINT
 
-    explicit ProjectionIterator(InputIt it, Func const& f) : it_(it), pr_(f) { }
-    explicit ProjectionIterator(InputIt it, Func&& f) : it_(it), pr_(std::move(f)) { }
-
-    inline auto operator*() const noexcept -> value_type { return std::invoke(pr_, std::forward<typename std::iterator_traits<InputIt>::reference>(*it_)); }
-
-    inline auto operator==(ProjectionIterator const& rhs) const noexcept -> bool
+    explicit ProjectionIterator(InputIt it, Func const& f)
+        : it_(it)
+        , pr_(f)
     {
-        return it_ == rhs.it_;
+    }
+    explicit ProjectionIterator(InputIt it, Func&& f)
+        : it_(it)
+        , pr_(std::move(f))
+    {
     }
 
-    inline auto operator!=(ProjectionIterator const& rhs) const noexcept -> bool
+    inline auto operator*() const noexcept -> value_type
     {
-        return !(*this == rhs);
+        return std::invoke(pr_, std::forward<typename std::iterator_traits<InputIt>::reference>(*it_));
     }
 
-    inline auto operator<(ProjectionIterator const& rhs) const noexcept -> bool
-    {
-        return it_ < rhs.it_;
-    }
+    inline auto operator==(ProjectionIterator const& rhs) const noexcept -> bool { return it_ == rhs.it_; }
 
-    inline auto operator>(ProjectionIterator const& rhs) const noexcept -> bool
-    {
-        return rhs < *this;
-    }
+    inline auto operator!=(ProjectionIterator const& rhs) const noexcept -> bool { return !(*this == rhs); }
 
-    inline auto operator<=(ProjectionIterator const& rhs) const noexcept -> bool
-    {
-        return !(*this > rhs);
-    }
+    inline auto operator<(ProjectionIterator const& rhs) const noexcept -> bool { return it_ < rhs.it_; }
 
-    inline auto operator>=(ProjectionIterator const& rhs) const noexcept -> bool
-    {
-        return !(rhs < *this);
-    }
+    inline auto operator>(ProjectionIterator const& rhs) const noexcept -> bool { return rhs < *this; }
 
-    inline auto operator+(ProjectionIterator const& rhs) const noexcept -> difference_type
-    {
-        return it_ + rhs.it_;
-    }
+    inline auto operator<=(ProjectionIterator const& rhs) const noexcept -> bool { return !(*this > rhs); }
 
-    inline auto operator-(ProjectionIterator const& rhs) const noexcept -> difference_type
-    {
-        return it_ - rhs.it_;
-    }
+    inline auto operator>=(ProjectionIterator const& rhs) const noexcept -> bool { return !(rhs < *this); }
+
+    inline auto operator+(ProjectionIterator const& rhs) const noexcept -> difference_type { return it_ + rhs.it_; }
+
+    inline auto operator-(ProjectionIterator const& rhs) const noexcept -> difference_type { return it_ - rhs.it_; }
 
     inline auto operator++() noexcept -> ProjectionIterator&
     {
@@ -121,17 +106,17 @@ struct ProjectionIterator {
         return ret;
     }
 
-    private:
+private:
     InputIt it_;
     Func pr_;
 };
 
-template<typename Container, typename Func = std::identity>
-struct Projection {
+template <typename Container, typename Func = std::identity> struct Projection {
     using InputIt = ProjectionIterator<typename Container::const_iterator, Func>;
 
     explicit Projection(Container const& c, Func const& f)
-        : beg_(c.begin(), f), end_(c.end(), f)
+        : beg_(c.begin(), f)
+        , end_(c.end(), f)
     {
     }
 
@@ -139,9 +124,9 @@ struct Projection {
     auto end() const -> InputIt { return end_; } // NOLINT
     bool empty() const noexcept { return beg_ == end_; } // NOLINT
 
-    private:
-        InputIt beg_;
-        InputIt end_;
+private:
+    InputIt beg_;
+    InputIt end_;
 };
 
 } // namespace Operon

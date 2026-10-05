@@ -18,10 +18,9 @@ namespace Operon::detail {
 // Policy-driven structural executor for postfix trees. Policies bind leaves,
 // weights, primitive registries, and value algebra; this owns the common
 // subtree traversal, n-ary reduction, and builtin dispatch.
-template<typename Policy, typename Nodes, typename Primal, typename Weight, typename BindLeaf>
-auto EvaluatePostOrder(Nodes const& nodes, Primal& primal, typename Policy::Context const& context,
-                       Weight&& weight, BindLeaf&& bindLeaf)
-    -> tl::expected<typename Policy::Value, std::string>
+template <typename Policy, typename Nodes, typename Primal, typename Weight, typename BindLeaf>
+auto EvaluatePostOrder(Nodes const& nodes, Primal& primal, typename Policy::Context const& context, Weight&& weight,
+    BindLeaf&& bindLeaf) -> tl::expected<typename Policy::Value, std::string>
 {
     using Value = typename Policy::Value;
 
@@ -68,24 +67,26 @@ auto EvaluatePostOrder(Nodes const& nodes, Primal& primal, typename Policy::Cont
             switch (node.HashValue) {
             case Operon::Hash(BuiltinOp::Add):
                 return fold(index, Policy::MakeConstant(context, typename Policy::Scalar { 0 }),
-                            [&](Value const& lhs, Value const& rhs) { return Policy::Add(context, lhs, rhs); });
+                    [&](Value const& lhs, Value const& rhs) { return Policy::Add(context, lhs, rhs); });
             case Operon::Hash(BuiltinOp::Mul):
                 return fold(index, Policy::MakeConstant(context, typename Policy::Scalar { 1 }),
-                            [&](Value const& lhs, Value const& rhs) { return Policy::Mul(context, lhs, rhs); });
+                    [&](Value const& lhs, Value const& rhs) { return Policy::Mul(context, lhs, rhs); });
             case Operon::Hash(BuiltinOp::Sub):
                 return node.Arity == 1 ? Policy::Neg(context, primal[index - 1])
-                                       : fold(index, std::optional<Value> {},
-                                              [&](Value const& lhs, Value const& rhs) { return Policy::Sub(context, lhs, rhs); });
+                                       : fold(index, std::optional<Value> {}, [&](Value const& lhs, Value const& rhs) {
+                                             return Policy::Sub(context, lhs, rhs);
+                                         });
             case Operon::Hash(BuiltinOp::Div):
                 return node.Arity == 1 ? Policy::Inv(context, primal[index - 1])
-                                       : fold(index, std::optional<Value> {},
-                                              [&](Value const& lhs, Value const& rhs) { return Policy::Div(context, lhs, rhs); });
+                                       : fold(index, std::optional<Value> {}, [&](Value const& lhs, Value const& rhs) {
+                                             return Policy::Div(context, lhs, rhs);
+                                         });
             case Operon::Hash(BuiltinOp::Fmin):
                 return fold(index, std::optional<Value> {},
-                            [&](Value const& lhs, Value const& rhs) { return Policy::Min(context, lhs, rhs); });
+                    [&](Value const& lhs, Value const& rhs) { return Policy::Min(context, lhs, rhs); });
             case Operon::Hash(BuiltinOp::Fmax):
                 return fold(index, std::optional<Value> {},
-                            [&](Value const& lhs, Value const& rhs) { return Policy::Max(context, lhs, rhs); });
+                    [&](Value const& lhs, Value const& rhs) { return Policy::Max(context, lhs, rhs); });
             default:
                 if (node.Arity == 1) {
                     if (auto const* unary = Policy::UnaryRules().TryGet(node.HashValue)) {

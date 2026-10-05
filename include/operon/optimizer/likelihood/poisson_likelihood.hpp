@@ -21,28 +21,24 @@ namespace Operon {
 
 namespace detail {
     struct Poisson {
-        template <Operon::Concepts::Arithmetic T>
-        auto operator()(T const x, T const y) const -> T
+        template <Operon::Concepts::Arithmetic T> auto operator()(T const x, T const y) const -> T
         {
             return x - y * std::log(x) + std::lgamma(y + 1);
         }
 
-        template <Operon::Concepts::Arithmetic T>
-        auto operator()(T const x, T const y, T const w) const -> T
+        template <Operon::Concepts::Arithmetic T> auto operator()(T const x, T const y, T const w) const -> T
         {
             return (*this)(w * x, y);
         }
     };
 
     struct PoissonLog {
-        template <Operon::Concepts::Arithmetic T>
-        auto operator()(T const x, T const y) const -> T
+        template <Operon::Concepts::Arithmetic T> auto operator()(T const x, T const y) const -> T
         {
             return std::exp(x) - x * y + std::lgamma(y + 1);
         }
 
-        template <Operon::Concepts::Arithmetic T>
-        auto operator()(T const x, T const y, T const w) const -> T
+        template <Operon::Concepts::Arithmetic T> auto operator()(T const x, T const y, T const w) const -> T
         {
             return (*this)(x * w, y);
         }
@@ -52,8 +48,7 @@ namespace detail {
 // Pure static struct satisfying Concepts::Likelihood.
 // Use this type anywhere only the statistical computation is needed
 // (e.g. MinimumDescriptionLengthEvaluator).
-template <typename T = Operon::Scalar, bool LogInput = true>
-struct PoissonLikelihood {
+template <typename T = Operon::Scalar, bool LogInput = true> struct PoissonLikelihood {
     using Scalar = T;
 
     static constexpr bool UsesSigma = false; // w is an optional weight, not sigma; empty = unweighted
@@ -96,17 +91,19 @@ struct PoissonLikelihood {
         auto const rows = prediction.size();
         auto const columns = jacobian.extent(1);
         if (jacobian.extent(0) != rows) {
-            return tl::unexpected(FisherError { .Code = FisherErrorCode::InvalidShape, .Expected = rows, .Actual = jacobian.extent(0) });
+            return tl::unexpected(
+                FisherError { .Code = FisherErrorCode::InvalidShape, .Expected = rows, .Actual = jacobian.extent(0) });
         }
         if (diagonal.size() != columns) {
-            return tl::unexpected(FisherError { .Code = FisherErrorCode::InvalidShape, .Expected = columns, .Actual = diagonal.size() });
+            return tl::unexpected(
+                FisherError { .Code = FisherErrorCode::InvalidShape, .Expected = columns, .Actual = diagonal.size() });
         }
         for (std::size_t column = 0; column < columns; ++column) {
             AccumulationScalar sum {};
             for (std::size_t row = 0; row < rows; ++row) {
                 auto const value = static_cast<AccumulationScalar>(At(jacobian, row, column));
                 auto const predictionAt = static_cast<AccumulationScalar>(prediction[row]);
-                auto const weight = LogInput ? std::exp(predictionAt) : AccumulationScalar {1} / predictionAt;
+                auto const weight = LogInput ? std::exp(predictionAt) : AccumulationScalar { 1 } / predictionAt;
                 sum += weight * value * value;
             }
             auto const result = static_cast<Scalar>(sum);

@@ -26,115 +26,95 @@ namespace Operon::Test {
 
 namespace {
 
-constexpr std::size_t NoGrad = std::numeric_limits<std::size_t>::max();
+    constexpr std::size_t NoGrad = std::numeric_limits<std::size_t>::max();
 
-using DTable = DispatchTable<Operon::Scalar>;
-using Interp = Interpreter<Operon::Scalar, DTable>;
+    using DTable = DispatchTable<Operon::Scalar>;
+    using Interp = Interpreter<Operon::Scalar, DTable>;
 
-// Evaluate all symbolic derivative columns in `dag` via the interpreter.
-//
-// For each root r = dag.Roots[k], builds a sub-tree covering dag.Nodes[0..r]
-// (which always includes all original nodes plus derivative nodes up to r) and
-// calls Interpreter::Evaluate. This is the naive single-column path; correctness
-// takes priority over speed here. A NoGrad root produces a zero column.
-auto EvalDagJacobian(
-    JacobianDag const& dag,
-    Operon::Span<Operon::Scalar const> coeff,
-    Dataset const& ds,
-    Range range,
-    DTable const& dtable
-) -> Eigen::Array<Operon::Scalar, -1, -1>
-{
-    auto const nRows  = static_cast<Eigen::Index>(range.Size());
-    auto const nConst = static_cast<Eigen::Index>(dag.Roots.size());
-    Eigen::Array<Operon::Scalar, -1, -1> jac(nRows, nConst);
+    // Evaluate all symbolic derivative columns in `dag` via the interpreter.
+    //
+    // For each root r = dag.Roots[k], builds a sub-tree covering dag.Nodes[0..r]
+    // (which always includes all original nodes plus derivative nodes up to r) and
+    // calls Interpreter::Evaluate. This is the naive single-column path; correctness
+    // takes priority over speed here. A NoGrad root produces a zero column.
+    auto EvalDagJacobian(JacobianDag const& dag, Operon::Span<Operon::Scalar const> coeff, Dataset const& ds,
+        Range range, DTable const& dtable) -> Eigen::Array<Operon::Scalar, -1, -1>
+    {
+        auto const nRows = static_cast<Eigen::Index>(range.Size());
+        auto const nConst = static_cast<Eigen::Index>(dag.Roots.size());
+        Eigen::Array<Operon::Scalar, -1, -1> jac(nRows, nConst);
 
-    for (Eigen::Index k = 0; k < nConst; ++k) {
-        auto const r = dag.Roots[static_cast<std::size_t>(k)];
-        if (r == NoGrad) {
-            jac.col(k).setZero();
-            continue;
+        for (Eigen::Index k = 0; k < nConst; ++k) {
+            auto const r = dag.Roots[static_cast<std::size_t>(k)];
+            if (r == NoGrad) {
+                jac.col(k).setZero();
+                continue;
+            }
+            // Sub-tree covers dag.Nodes[0..r]; last node IS the derivative root.
+            Operon::Vector<Node> subnodes(dag.Nodes.cbegin(), dag.Nodes.cbegin() + static_cast<std::ptrdiff_t>(r) + 1);
+            Tree t { std::move(subnodes) };
+            Interp const interp { &dtable, &ds, &t };
+            auto col = interp.Evaluate(coeff, range).value();
+            jac.col(k) = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>>(col.data(), nRows);
         }
-        // Sub-tree covers dag.Nodes[0..r]; last node IS the derivative root.
-        Operon::Vector<Node> subnodes(
-            dag.Nodes.cbegin(),
-            dag.Nodes.cbegin() + static_cast<std::ptrdiff_t>(r) + 1
-        );
-        Tree t{std::move(subnodes)};
-        Interp const interp{&dtable, &ds, &t};
-        auto col = interp.Evaluate(coeff, range).value();
-        jac.col(k) = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>>(col.data(), nRows);
+        return jac;
     }
-    return jac;
-}
 
-// Make a primitive set containing only ops our differentiator handles correctly.
-// Aq / Powabs / Fmin / Fmax / Abs / Floor / Ceil / Sqrtabs are excluded
-// (they return zero gradient from BuildJacobianDag).
-auto MakeSupportedPset() -> PrimitiveSet {
-    PrimitiveSet ps;
-    ps.SetConfig(
-        BuiltinOp::Add | BuiltinOp::Mul | BuiltinOp::Sub | BuiltinOp::Div |
-        BuiltinOp::Exp | BuiltinOp::Log | BuiltinOp::Logabs | BuiltinOp::Log1p |
-        BuiltinOp::Sin | BuiltinOp::Cos | BuiltinOp::Tan  |
-        BuiltinOp::Asin | BuiltinOp::Acos | BuiltinOp::Atan |
-        BuiltinOp::Sinh | BuiltinOp::Cosh | BuiltinOp::Tanh |
-        BuiltinOp::Sqrt | BuiltinOp::Cbrt | BuiltinOp::Square |
-        BuiltinOp::Pow  |
-        NodeType::Constant | NodeType::Variable
-    );
-    return ps;
-}
+    // Make a primitive set containing only ops our differentiator handles correctly.
+    // Aq / Powabs / Fmin / Fmax / Abs / Floor / Ceil / Sqrtabs are excluded
+    // (they return zero gradient from BuildJacobianDag).
+    auto MakeSupportedPset() -> PrimitiveSet
+    {
+        PrimitiveSet ps;
+        ps.SetConfig(BuiltinOp::Add | BuiltinOp::Mul | BuiltinOp::Sub | BuiltinOp::Div | BuiltinOp::Exp | BuiltinOp::Log
+            | BuiltinOp::Logabs | BuiltinOp::Log1p | BuiltinOp::Sin | BuiltinOp::Cos | BuiltinOp::Tan | BuiltinOp::Asin
+            | BuiltinOp::Acos | BuiltinOp::Atan | BuiltinOp::Sinh | BuiltinOp::Cosh | BuiltinOp::Tanh | BuiltinOp::Sqrt
+            | BuiltinOp::Cbrt | BuiltinOp::Square | BuiltinOp::Pow | NodeType::Constant | NodeType::Variable);
+        return ps;
+    }
 
-// Generate `n` random trees using `pset`, lengths in [1, maxLen], with only
-// Constant nodes marked Optimize=true and random leaf values in [-2, +2].
-auto GenerateTrees(
-    RandomGenerator& rng,
-    PrimitiveSet& pset,
-    Dataset const& ds,
-    int n,
-    std::size_t maxLen
-) -> std::vector<Tree>
-{
-    std::uniform_real_distribution<Operon::Scalar> valDist(-2.F, +2.F);
-    std::uniform_int_distribution<std::size_t> lenDist(1, maxLen);
-    BalancedTreeCreator const btc{&pset, ds.VariableHashes(), /*bias=*/0.0, maxLen};
+    // Generate `n` random trees using `pset`, lengths in [1, maxLen], with only
+    // Constant nodes marked Optimize=true and random leaf values in [-2, +2].
+    auto GenerateTrees(RandomGenerator& rng, PrimitiveSet& pset, Dataset const& ds, int n, std::size_t maxLen)
+        -> std::vector<Tree>
+    {
+        std::uniform_real_distribution<Operon::Scalar> valDist(-2.F, +2.F);
+        std::uniform_int_distribution<std::size_t> lenDist(1, maxLen);
+        BalancedTreeCreator const btc { &pset, ds.VariableHashes(), /*bias=*/0.0, maxLen };
 
-    std::vector<Tree> trees;
-    trees.reserve(n);
-    for (int i = 0; i < n; ++i) {
-        auto tree = btc(rng, lenDist(rng), 1, 1000);
-        for (auto& nd : tree.Nodes()) {
-            nd.Optimize = nd.IsLeaf(); // both constants and variable weights are coefficients
-            if (nd.IsLeaf()) { nd.Value = valDist(rng); }
+        std::vector<Tree> trees;
+        trees.reserve(n);
+        for (int i = 0; i < n; ++i) {
+            auto tree = btc(rng, lenDist(rng), 1, 1000);
+            for (auto& nd : tree.Nodes()) {
+                nd.Optimize = nd.IsLeaf(); // both constants and variable weights are coefficients
+                if (nd.IsLeaf()) {
+                    nd.Value = valDist(rng);
+                }
+            }
+            trees.push_back(std::move(tree));
         }
-        trees.push_back(std::move(tree));
+        return trees;
     }
-    return trees;
-}
 
-// Same as GenerateTrees, but assigns a random non-unit weight to every
-// Function node. GenerateTrees leaves them at 1.0, so this exercises the
-// weight factor in each node's derivative.
-auto GenerateWeightedTrees(
-    RandomGenerator& rng,
-    PrimitiveSet& pset,
-    Dataset const& ds,
-    int n,
-    std::size_t maxLen
-) -> std::vector<Tree>
-{
-    std::uniform_real_distribution<Operon::Scalar> weightDist(0.5F, 2.F);
-    auto trees = GenerateTrees(rng, pset, ds, n, maxLen);
-    for (auto& tree : trees) {
-        for (auto& nd : tree.Nodes()) {
-            if (!nd.IsLeaf() && !nd.IsRef()) {
-                nd.Value = weightDist(rng) * (std::bernoulli_distribution{0.5}(rng) ? Operon::Scalar{1} : Operon::Scalar{-1});
+    // Same as GenerateTrees, but assigns a random non-unit weight to every
+    // Function node. GenerateTrees leaves them at 1.0, so this exercises the
+    // weight factor in each node's derivative.
+    auto GenerateWeightedTrees(RandomGenerator& rng, PrimitiveSet& pset, Dataset const& ds, int n, std::size_t maxLen)
+        -> std::vector<Tree>
+    {
+        std::uniform_real_distribution<Operon::Scalar> weightDist(0.5F, 2.F);
+        auto trees = GenerateTrees(rng, pset, ds, n, maxLen);
+        for (auto& tree : trees) {
+            for (auto& nd : tree.Nodes()) {
+                if (!nd.IsLeaf() && !nd.IsRef()) {
+                    nd.Value = weightDist(rng)
+                        * (std::bernoulli_distribution { 0.5 }(rng) ? Operon::Scalar { 1 } : Operon::Scalar { -1 });
+                }
             }
         }
+        return trees;
     }
-    return trees;
-}
 
 } // namespace
 
@@ -145,9 +125,10 @@ auto GenerateWeightedTrees(
 TEST_CASE("BuildJacobianDag - single constant", "[tree_diff]")
 {
     Operon::Vector<Node> nodes;
-    auto c = Node::Constant(3.14F); c.Optimize = true;
+    auto c = Node::Constant(3.14F);
+    c.Optimize = true;
     nodes.push_back(c);
-    Tree tree{nodes};
+    Tree tree { nodes };
 
     auto dag = BuildJacobianDag(tree);
 
@@ -163,9 +144,10 @@ TEST_CASE("BuildJacobianDag - single constant", "[tree_diff]")
 TEST_CASE("BuildJacobianDag - non-optimizable variable leaf yields zero gradient", "[tree_diff]")
 {
     Operon::Vector<Node> nodes;
-    auto v = Node{NodeType::Variable}; v.Optimize = false;
+    auto v = Node { NodeType::Variable };
+    v.Optimize = false;
     nodes.push_back(v);
-    Tree tree{nodes};
+    Tree tree { nodes };
     auto dag = BuildJacobianDag(tree);
     CHECK(dag.Roots.empty()); // no optimizable coefficients → no columns
 }
@@ -173,9 +155,11 @@ TEST_CASE("BuildJacobianDag - non-optimizable variable leaf yields zero gradient
 TEST_CASE("BuildJacobianDag - optimizable variable leaf yields unweighted variable", "[tree_diff]")
 {
     Operon::Vector<Node> nodes;
-    auto v = Node{NodeType::Variable}; v.Optimize = true; v.Value = 2.5F;
+    auto v = Node { NodeType::Variable };
+    v.Optimize = true;
+    v.Value = 2.5F;
     nodes.push_back(v);
-    Tree tree{nodes};
+    Tree tree { nodes };
     auto dag = BuildJacobianDag(tree);
     REQUIRE(dag.Roots.size() == 1); // one coefficient
     REQUIRE(dag.Roots[0] != NoGrad);
@@ -189,9 +173,10 @@ TEST_CASE("BuildJacobianDag - optimizable variable leaf yields unweighted variab
 TEST_CASE("BuildJacobianDag - no optimizable nodes means no roots", "[tree_diff]")
 {
     Operon::Vector<Node> nodes;
-    auto c = Node::Constant(1.0F); c.Optimize = false;
+    auto c = Node::Constant(1.0F);
+    c.Optimize = false;
     nodes.push_back(c);
-    Tree tree{nodes};
+    Tree tree { nodes };
     auto dag = BuildJacobianDag(tree);
     CHECK(dag.Roots.empty());
 }
@@ -199,11 +184,15 @@ TEST_CASE("BuildJacobianDag - no optimizable nodes means no roots", "[tree_diff]
 TEST_CASE("BuildJacobianDag - Add(c1,c2) both partials are 1", "[tree_diff]")
 {
     Operon::Vector<Node> nodes;
-    auto c1 = Node::Constant(2.0F); c1.Optimize = true;
-    auto c2 = Node::Constant(3.0F); c2.Optimize = true;
+    auto c1 = Node::Constant(2.0F);
+    c1.Optimize = true;
+    auto c2 = Node::Constant(3.0F);
+    c2.Optimize = true;
     auto add = Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 2);
-    nodes.push_back(c1); nodes.push_back(c2); nodes.push_back(add);
-    Tree tree{nodes};
+    nodes.push_back(c1);
+    nodes.push_back(c2);
+    nodes.push_back(add);
+    Tree tree { nodes };
 
     auto dag = BuildJacobianDag(tree);
     REQUIRE(dag.Roots.size() == 2);
@@ -218,11 +207,15 @@ TEST_CASE("BuildJacobianDag - Add(c1,c2) both partials are 1", "[tree_diff]")
 TEST_CASE("BuildJacobianDag - Mul(c1,c2) product rule", "[tree_diff]")
 {
     Operon::Vector<Node> nodes;
-    auto c1 = Node::Constant(2.0F); c1.Optimize = true;
-    auto c2 = Node::Constant(3.0F); c2.Optimize = true;
+    auto c1 = Node::Constant(2.0F);
+    c1.Optimize = true;
+    auto c2 = Node::Constant(3.0F);
+    c2.Optimize = true;
     auto mul = Node::Function(static_cast<Operon::Hash>(BuiltinOp::Mul), 2);
-    nodes.push_back(c1); nodes.push_back(c2); nodes.push_back(mul);
-    Tree tree{nodes};
+    nodes.push_back(c1);
+    nodes.push_back(c2);
+    nodes.push_back(mul);
+    Tree tree { nodes };
 
     auto dag = BuildJacobianDag(tree);
     REQUIRE(dag.Roots.size() == 2);
@@ -243,13 +236,15 @@ TEST_CASE("BuildJacobianDag - zero-weight Function node yields exact zero gradie
     // c == 0 (sqrt(0) == 0). applyWeight's w == 0 short-circuit must catch
     // this before Mul(Const(0), Inf) can propagate as NaN (IEEE-754: 0*Inf
     // is NaN, not 0).
-    for (auto op : {BuiltinOp::Exp, BuiltinOp::Sqrt, BuiltinOp::Cbrt, BuiltinOp::Tan, BuiltinOp::Tanh}) {
+    for (auto op : { BuiltinOp::Exp, BuiltinOp::Sqrt, BuiltinOp::Cbrt, BuiltinOp::Tan, BuiltinOp::Tanh }) {
         Operon::Vector<Node> nodes;
-        auto c = Node::Constant(2.0F); c.Optimize = true;
+        auto c = Node::Constant(2.0F);
+        c.Optimize = true;
         auto fn = Node::Function(static_cast<Operon::Hash>(op), 1);
         fn.Value = 0.0F;
-        nodes.push_back(c); nodes.push_back(fn);
-        Tree tree{nodes};
+        nodes.push_back(c);
+        nodes.push_back(fn);
+        Tree tree { nodes };
 
         auto dag = BuildJacobianDag(tree);
         REQUIRE(dag.Roots.size() == 1);
@@ -259,12 +254,16 @@ TEST_CASE("BuildJacobianDag - zero-weight Function node yields exact zero gradie
     // Pow(base, exponent) is a hardcoded binary case with the same w == 0 risk.
     {
         Operon::Vector<Node> nodes;
-        auto base = Node::Constant(2.0F); base.Optimize = true;
-        auto exp  = Node::Constant(3.0F); exp.Optimize = true;
-        auto pow  = Node::Function(static_cast<Operon::Hash>(BuiltinOp::Pow), 2);
+        auto base = Node::Constant(2.0F);
+        base.Optimize = true;
+        auto exp = Node::Constant(3.0F);
+        exp.Optimize = true;
+        auto pow = Node::Function(static_cast<Operon::Hash>(BuiltinOp::Pow), 2);
         pow.Value = 0.0F;
-        nodes.push_back(exp); nodes.push_back(base); nodes.push_back(pow);
-        Tree tree{nodes};
+        nodes.push_back(exp);
+        nodes.push_back(base);
+        nodes.push_back(pow);
+        Tree tree { nodes };
 
         auto dag = BuildJacobianDag(tree);
         REQUIRE(dag.Roots.size() == 2);
@@ -276,10 +275,11 @@ TEST_CASE("BuildJacobianDag - zero-weight Function node yields exact zero gradie
 TEST_CASE("BuildJacobianDag - Sin(c) root is Mul", "[tree_diff]")
 {
     Operon::Vector<Node> nodes;
-    auto c = Node::Constant(1.0F); c.Optimize = true;
+    auto c = Node::Constant(1.0F);
+    c.Optimize = true;
     nodes.push_back(c);
     nodes.push_back(Util::MakeOp<BuiltinOp::Sin>());
-    Tree tree{nodes};
+    Tree tree { nodes };
     auto dag = BuildJacobianDag(tree);
     REQUIRE(dag.Roots.size() == 1);
     REQUIRE(dag.Roots[0] != NoGrad);
@@ -289,14 +289,15 @@ TEST_CASE("BuildJacobianDag - Sin(c) root is Mul", "[tree_diff]")
 TEST_CASE("BuildJacobianDag - original nodes are preserved exactly", "[tree_diff]")
 {
     Operon::Vector<Node> nodes;
-    auto c = Node::Constant(7.0F); c.Optimize = true;
+    auto c = Node::Constant(7.0F);
+    c.Optimize = true;
     nodes.push_back(c);
     nodes.push_back(Util::MakeOp<BuiltinOp::Exp>());
-    Tree tree{nodes};
+    Tree tree { nodes };
     auto dag = BuildJacobianDag(tree);
     REQUIRE(dag.OriginalSize == tree.Length());
     for (std::size_t i = 0; i < dag.OriginalSize; ++i) {
-        CHECK(dag.Nodes[i].Type  == tree.Nodes()[i].Type);
+        CHECK(dag.Nodes[i].Type == tree.Nodes()[i].Type);
         CHECK(dag.Nodes[i].Value == tree.Nodes()[i].Value);
     }
 }
@@ -305,12 +306,13 @@ TEST_CASE("BuildJacobianDag - Add4 hash-cons collapses all partials", "[tree_dif
 {
     Operon::Vector<Node> nodes;
     for (int k = 0; k < 4; ++k) {
-        auto c = Node::Constant(static_cast<float>(k + 1)); c.Optimize = true;
+        auto c = Node::Constant(static_cast<float>(k + 1));
+        c.Optimize = true;
         nodes.push_back(c);
     }
     auto add = Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 4);
     nodes.push_back(add);
-    Tree tree{nodes};
+    Tree tree { nodes };
     auto dag = BuildJacobianDag(tree);
     REQUIRE(dag.Roots.size() == 4);
     for (auto r : dag.Roots) {
@@ -326,33 +328,35 @@ TEST_CASE("BuildJacobianDag - Add4 hash-cons collapses all partials", "[tree_dif
 
 TEST_CASE("BuildJacobianDag correctness vs JacRev - random trees", "[tree_diff]")
 {
-    constexpr auto nRows  = 100;
-    constexpr auto nCols  = 5;
+    constexpr auto nRows = 100;
+    constexpr auto nCols = 5;
     constexpr auto nTrees = 1000;
     constexpr auto maxLen = 30;
-    constexpr auto eps    = 1e-3F; // relaxed for potential numerical differences
+    constexpr auto eps = 1e-3F; // relaxed for potential numerical differences
     constexpr auto maxDivergeRate = 0.02; // allow 2% divergence due to numerics
 
     Operon::RandomGenerator rng(42UL);
     auto ds = Operon::Test::Util::RandomDataset(rng, nRows, nCols);
     DTable dtable;
-    Range const range{0, ds.Rows<std::size_t>()};
+    Range const range { 0, ds.Rows<std::size_t>() };
 
     auto pset = MakeSupportedPset();
     auto const trees = GenerateTrees(rng, pset, ds, nTrees, maxLen);
 
     std::size_t finiteMismatch = 0; // jrev finite, dag not
-    std::size_t finiteDiverge  = 0; // both finite but differ > eps
-    std::size_t totalCols      = 0;
+    std::size_t finiteDiverge = 0; // both finite but differ > eps
+    std::size_t totalCols = 0;
 
     for (auto const& tree : trees) {
         auto const coeff = tree.GetCoefficients();
-        if (coeff.empty()) { continue; } // tree has no constants
+        if (coeff.empty()) {
+            continue;
+        } // tree has no constants
 
-        Interp const interp{&dtable, &ds, &tree};
+        Interp const interp { &dtable, &ds, &tree };
         auto const jrev = interp.JacRev(coeff, range).value();
 
-        auto const dag  = BuildJacobianDag(tree);
+        auto const dag = BuildJacobianDag(tree);
         auto const jdag = EvalDagJacobian(dag, coeff, ds, range, dtable);
 
         auto const nk = jrev.cols();
@@ -372,40 +376,43 @@ TEST_CASE("BuildJacobianDag correctness vs JacRev - random trees", "[tree_diff]"
     }
 
     INFO("finite mismatch: " << finiteMismatch << " / " << totalCols);
-    INFO("finite diverge:  " << finiteDiverge  << " / " << totalCols);
+    INFO("finite diverge:  " << finiteDiverge << " / " << totalCols);
     CHECK(finiteMismatch == 0);
-    CHECK(static_cast<double>(finiteDiverge) / static_cast<double>(std::max(totalCols, std::size_t{1})) < maxDivergeRate);
+    CHECK(static_cast<double>(finiteDiverge) / static_cast<double>(std::max(totalCols, std::size_t { 1 }))
+        < maxDivergeRate);
 }
 
 TEST_CASE("BuildJacobianDag correctness vs JacRev - weighted Function nodes", "[tree_diff]")
 {
-    constexpr auto nRows  = 100;
-    constexpr auto nCols  = 5;
+    constexpr auto nRows = 100;
+    constexpr auto nCols = 5;
     constexpr auto nTrees = 1000;
     constexpr auto maxLen = 30;
-    constexpr auto eps    = 1e-3F; // relaxed for potential numerical differences
+    constexpr auto eps = 1e-3F; // relaxed for potential numerical differences
     constexpr auto maxDivergeRate = 0.02; // allow 2% divergence due to numerics
 
     Operon::RandomGenerator rng(43UL);
     auto ds = Operon::Test::Util::RandomDataset(rng, nRows, nCols);
     DTable dtable;
-    Range const range{0, ds.Rows<std::size_t>()};
+    Range const range { 0, ds.Rows<std::size_t>() };
 
     auto pset = MakeSupportedPset();
     auto const trees = GenerateWeightedTrees(rng, pset, ds, nTrees, maxLen);
 
     std::size_t finiteMismatch = 0;
-    std::size_t finiteDiverge  = 0;
-    std::size_t totalCols      = 0;
+    std::size_t finiteDiverge = 0;
+    std::size_t totalCols = 0;
 
     for (auto const& tree : trees) {
         auto const coeff = tree.GetCoefficients();
-        if (coeff.empty()) { continue; }
+        if (coeff.empty()) {
+            continue;
+        }
 
-        Interp const interp{&dtable, &ds, &tree};
+        Interp const interp { &dtable, &ds, &tree };
         auto const jrev = interp.JacRev(coeff, range).value();
 
-        auto const dag  = BuildJacobianDag(tree);
+        auto const dag = BuildJacobianDag(tree);
         auto const jdag = EvalDagJacobian(dag, coeff, ds, range, dtable);
 
         auto const nk = jrev.cols();
@@ -425,9 +432,10 @@ TEST_CASE("BuildJacobianDag correctness vs JacRev - weighted Function nodes", "[
     }
 
     INFO("finite mismatch: " << finiteMismatch << " / " << totalCols);
-    INFO("finite diverge:  " << finiteDiverge  << " / " << totalCols);
+    INFO("finite diverge:  " << finiteDiverge << " / " << totalCols);
     CHECK(finiteMismatch == 0);
-    CHECK(static_cast<double>(finiteDiverge) / static_cast<double>(std::max(totalCols, std::size_t{1})) < maxDivergeRate);
+    CHECK(static_cast<double>(finiteDiverge) / static_cast<double>(std::max(totalCols, std::size_t { 1 }))
+        < maxDivergeRate);
 }
 
 // ============================================================
@@ -444,7 +452,7 @@ TEST_CASE("BuildJacobianDag performance vs JacRev", "[tree_diff][performance]")
     Operon::RandomGenerator rng(0UL);
     auto ds = Operon::Test::Util::RandomDataset(rng, nRows, nCols);
     DTable dtable;
-    Range const range{0, ds.Rows<std::size_t>()};
+    Range const range { 0, ds.Rows<std::size_t>() };
 
     auto pset = MakeSupportedPset();
     auto const trees = GenerateTrees(rng, pset, ds, nTrees, maxLen);
@@ -452,12 +460,16 @@ TEST_CASE("BuildJacobianDag performance vs JacRev", "[tree_diff][performance]")
     // Pre-build all dags outside the benchmark loops.
     std::vector<JacobianDag> dags;
     dags.reserve(trees.size());
-    for (auto const& tree : trees) { dags.push_back(BuildJacobianDag(tree)); }
+    for (auto const& tree : trees) {
+        dags.push_back(BuildJacobianDag(tree));
+    }
 
     // Pre-collect coefficients.
     std::vector<std::vector<Operon::Scalar>> coeffs;
     coeffs.reserve(trees.size());
-    for (auto const& tree : trees) { coeffs.push_back(tree.GetCoefficients()); }
+    for (auto const& tree : trees) {
+        coeffs.push_back(tree.GetCoefficients());
+    }
 
     nb::Bench bench;
     bench.timeUnit(std::chrono::milliseconds(1), "ms");
@@ -466,10 +478,12 @@ TEST_CASE("BuildJacobianDag performance vs JacRev", "[tree_diff][performance]")
     // ---- JacRev (baseline) ----
     bench.run("JacRev", [&]() {
         for (std::size_t i = 0; i < trees.size(); ++i) {
-            auto const& tree  = trees[i];
+            auto const& tree = trees[i];
             auto const& coeff = coeffs[i];
-            if (coeff.empty()) { continue; }
-            nb::doNotOptimizeAway(Interp{&dtable, &ds, &tree}.JacRev(coeff, range));
+            if (coeff.empty()) {
+                continue;
+            }
+            nb::doNotOptimizeAway(Interp { &dtable, &ds, &tree }.JacRev(coeff, range));
         }
     });
 
@@ -484,7 +498,9 @@ TEST_CASE("BuildJacobianDag performance vs JacRev", "[tree_diff][performance]")
     bench.run("BuildDag+EvalColumn", [&]() {
         for (std::size_t i = 0; i < trees.size(); ++i) {
             auto const& coeff = coeffs[i];
-            if (coeff.empty()) { continue; }
+            if (coeff.empty()) {
+                continue;
+            }
             auto dag = BuildJacobianDag(trees[i]);
             nb::doNotOptimizeAway(EvalDagJacobian(dag, coeff, ds, range, dtable));
         }
@@ -494,7 +510,9 @@ TEST_CASE("BuildJacobianDag performance vs JacRev", "[tree_diff][performance]")
     bench.run("EvalColumn (prebuilt)", [&]() {
         for (std::size_t i = 0; i < dags.size(); ++i) {
             auto const& coeff = coeffs[i];
-            if (coeff.empty()) { continue; }
+            if (coeff.empty()) {
+                continue;
+            }
             nb::doNotOptimizeAway(EvalDagJacobian(dags[i], coeff, ds, range, dtable));
         }
     });
@@ -503,10 +521,12 @@ TEST_CASE("BuildJacobianDag performance vs JacRev", "[tree_diff][performance]")
     bench.run("BuildDag+EvalRoots", [&]() {
         for (std::size_t i = 0; i < trees.size(); ++i) {
             auto const& coeff = coeffs[i];
-            if (coeff.empty()) { continue; }
+            if (coeff.empty()) {
+                continue;
+            }
             auto dag = BuildJacobianDag(trees[i]);
-            Tree t{dag.Nodes};
-            Interp const interp{&dtable, &ds, &t};
+            Tree t { dag.Nodes };
+            Interp const interp { &dtable, &ds, &t };
             nb::doNotOptimizeAway(interp.EvaluateRoots(coeff, range, dag.Roots).value());
         }
     });
@@ -515,9 +535,11 @@ TEST_CASE("BuildJacobianDag performance vs JacRev", "[tree_diff][performance]")
     bench.run("EvalRoots (prebuilt)", [&]() {
         for (std::size_t i = 0; i < dags.size(); ++i) {
             auto const& coeff = coeffs[i];
-            if (coeff.empty()) { continue; }
-            Tree t{dags[i].Nodes};
-            Interp const interp{&dtable, &ds, &t};
+            if (coeff.empty()) {
+                continue;
+            }
+            Tree t { dags[i].Nodes };
+            Interp const interp { &dtable, &ds, &t };
             nb::doNotOptimizeAway(interp.EvaluateRoots(coeff, range, dags[i].Roots).value());
         }
     });
@@ -532,13 +554,8 @@ TEST_CASE("BuildJacobianDag performance vs JacRev", "[tree_diff][performance]")
 // Evaluate all gradient columns in `dag` via the interpreter. Mirrors
 // EvalDagJacobian's slicing trick exactly, keyed by dag.Variables (identity
 // hash) rather than a positional coefficient index.
-auto EvalDagVariableGradient(
-    VariableGradientDag const& dag,
-    Operon::Span<Operon::Scalar const> coeff,
-    Dataset const& ds,
-    Range range,
-    DTable const& dtable
-) -> Eigen::Array<Operon::Scalar, -1, -1>
+auto EvalDagVariableGradient(VariableGradientDag const& dag, Operon::Span<Operon::Scalar const> coeff,
+    Dataset const& ds, Range range, DTable const& dtable) -> Eigen::Array<Operon::Scalar, -1, -1>
 {
     auto const nRows = static_cast<Eigen::Index>(range.Size());
     auto const nVars = static_cast<Eigen::Index>(dag.Roots.size());
@@ -550,10 +567,9 @@ auto EvalDagVariableGradient(
             grad.col(k).setZero();
             continue;
         }
-        Operon::Vector<Node> subnodes(
-            dag.Nodes.cbegin(), dag.Nodes.cbegin() + static_cast<std::ptrdiff_t>(r) + 1);
-        Tree t{std::move(subnodes)};
-        Interp const interp{&dtable, &ds, &t};
+        Operon::Vector<Node> subnodes(dag.Nodes.cbegin(), dag.Nodes.cbegin() + static_cast<std::ptrdiff_t>(r) + 1);
+        Tree t { std::move(subnodes) };
+        Interp const interp { &dtable, &ds, &t };
         auto col = interp.Evaluate(coeff, range).value();
         grad.col(k) = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>>(col.data(), nRows);
     }
@@ -564,7 +580,7 @@ TEST_CASE("BuildVariableGradientDag - constant-only tree yields no variables", "
 {
     Operon::Vector<Node> nodes;
     nodes.push_back(Node::Constant(1.0F));
-    Tree tree{nodes};
+    Tree tree { nodes };
     auto dag = BuildVariableGradientDag(tree);
     CHECK(dag.Variables.empty());
     CHECK(dag.Roots.empty());
@@ -573,9 +589,10 @@ TEST_CASE("BuildVariableGradientDag - constant-only tree yields no variables", "
 TEST_CASE("BuildVariableGradientDag - single variable leaf: d(w*x)/dx = w", "[tree_diff]")
 {
     Operon::Vector<Node> nodes;
-    auto v = Node{NodeType::Variable}; v.Value = 2.5F;
+    auto v = Node { NodeType::Variable };
+    v.Value = 2.5F;
     nodes.push_back(v);
-    Tree tree{nodes};
+    Tree tree { nodes };
 
     auto dag = BuildVariableGradientDag(tree);
     REQUIRE(dag.Variables.size() == 1);
@@ -590,25 +607,29 @@ TEST_CASE("BuildVariableGradientDag - single variable leaf: d(w*x)/dx = w", "[tr
 
 TEST_CASE("BuildVariableGradientDag - Add(x,x): two occurrences of the same variable sum into one root", "[tree_diff]")
 {
-    std::vector<std::string> const names{"X1"};
-    auto const xHash = Hasher{}(names[0]);
+    std::vector<std::string> const names { "X1" };
+    auto const xHash = Hasher {}(names[0]);
 
     Operon::Vector<Node> nodes;
-    auto x1 = Node{NodeType::Variable, xHash}; x1.Value = 1.5F;
-    auto x2 = Node{NodeType::Variable, xHash}; x2.Value = 1.5F; // same hash: same variable
+    auto x1 = Node { NodeType::Variable, xHash };
+    x1.Value = 1.5F;
+    auto x2 = Node { NodeType::Variable, xHash };
+    x2.Value = 1.5F; // same hash: same variable
     auto add = Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 2);
-    nodes.push_back(x1); nodes.push_back(x2); nodes.push_back(add);
-    Tree tree{nodes};
+    nodes.push_back(x1);
+    nodes.push_back(x2);
+    nodes.push_back(add);
+    Tree tree { nodes };
 
     auto dag = BuildVariableGradientDag(tree);
     REQUIRE(dag.Variables.size() == 1); // one distinct variable despite two occurrences
     REQUIRE(dag.Roots.size() == 1);
     REQUIRE(dag.Roots[0] != NoGrad);
 
-    std::vector<std::vector<Operon::Scalar>> const data{{0.0F}}; // value is irrelevant: root doesn't reference X1
+    std::vector<std::vector<Operon::Scalar>> const data { { 0.0F } }; // value is irrelevant: root doesn't reference X1
     Dataset const ds(names, data);
     DTable const dtable;
-    Range const range{0, 1};
+    Range const range { 0, 1 };
     auto const coeff = tree.GetCoefficients(); // x1, x2 are both Optimize==true leaves
     auto const grad = EvalDagVariableGradient(dag, coeff, ds, range, dtable);
     CHECK(grad(0, 0) == Catch::Approx(3.0F)); // w1 + w2, both partials summed
@@ -617,16 +638,20 @@ TEST_CASE("BuildVariableGradientDag - Add(x,x): two occurrences of the same vari
 TEST_CASE("BuildVariableGradientDag - distinct variable hashes yield distinct roots", "[tree_diff]")
 {
     Operon::Vector<Node> nodes;
-    auto x = Node{NodeType::Variable, Operon::Hash{111}}; x.Value = 2.0F;
-    auto y = Node{NodeType::Variable, Operon::Hash{222}}; y.Value = 3.0F;
+    auto x = Node { NodeType::Variable, Operon::Hash { 111 } };
+    x.Value = 2.0F;
+    auto y = Node { NodeType::Variable, Operon::Hash { 222 } };
+    y.Value = 3.0F;
     auto add = Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 2);
-    nodes.push_back(x); nodes.push_back(y); nodes.push_back(add);
-    Tree tree{nodes};
+    nodes.push_back(x);
+    nodes.push_back(y);
+    nodes.push_back(add);
+    Tree tree { nodes };
 
     auto dag = BuildVariableGradientDag(tree);
     REQUIRE(dag.Variables.size() == 2);
-    CHECK(dag.Variables[0] == Operon::Hash{111});
-    CHECK(dag.Variables[1] == Operon::Hash{222});
+    CHECK(dag.Variables[0] == Operon::Hash { 111 });
+    CHECK(dag.Variables[1] == Operon::Hash { 222 });
     REQUIRE(dag.Roots[0] != NoGrad);
     REQUIRE(dag.Roots[1] != NoGrad);
     CHECK(dag.Nodes[dag.Roots[0]].Value == Catch::Approx(2.0F)); // dF/dx = w_x
@@ -639,21 +664,26 @@ TEST_CASE("BuildVariableGradientDag - non-variable-only tree (Add of two constan
     auto c1 = Node::Constant(2.0F);
     auto c2 = Node::Constant(3.0F);
     auto add = Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 2);
-    nodes.push_back(c1); nodes.push_back(c2); nodes.push_back(add);
-    Tree tree{nodes};
+    nodes.push_back(c1);
+    nodes.push_back(c2);
+    nodes.push_back(add);
+    Tree tree { nodes };
 
     auto dag = BuildVariableGradientDag(tree);
     CHECK(dag.Variables.empty());
     CHECK(dag.Roots.empty());
 }
 
-TEST_CASE("BuildVariableGradientDag - a variable behind an undifferentiated op yields NoGrad, not a wrong nonzero value", "[tree_diff]")
+TEST_CASE(
+    "BuildVariableGradientDag - a variable behind an undifferentiated op yields NoGrad, not a wrong nonzero value",
+    "[tree_diff]")
 {
-    SECTION("abs(X) alone: the only occurrence is undifferentiated") {
+    SECTION("abs(X) alone: the only occurrence is undifferentiated")
+    {
         Operon::Vector<Node> nodes;
-        nodes.push_back(Node{NodeType::Variable});
+        nodes.push_back(Node { NodeType::Variable });
         nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Abs), 1));
-        Tree tree{nodes};
+        Tree tree { nodes };
 
         auto dag = BuildVariableGradientDag(tree);
         REQUIRE(dag.Variables.size() == 1);
@@ -661,13 +691,14 @@ TEST_CASE("BuildVariableGradientDag - a variable behind an undifferentiated op y
         CHECK(dag.Roots[0] == NoGrad);
     }
 
-    SECTION("Add(X, abs(X)): one differentiated occurrence, one not") {
+    SECTION("Add(X, abs(X)): one differentiated occurrence, one not")
+    {
         Operon::Vector<Node> nodes;
-        nodes.push_back(Node{NodeType::Variable});
-        nodes.push_back(Node{NodeType::Variable});
+        nodes.push_back(Node { NodeType::Variable });
+        nodes.push_back(Node { NodeType::Variable });
         nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Abs), 1));
         nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 2));
-        Tree tree{nodes};
+        Tree tree { nodes };
 
         auto dag = BuildVariableGradientDag(tree);
         REQUIRE(dag.Variables.size() == 1); // both leaves share the default hash: one variable
@@ -679,12 +710,12 @@ TEST_CASE("BuildVariableGradientDag - a variable behind an undifferentiated op y
 TEST_CASE("BuildVariableGradientDag correctness vs finite differences - random trees", "[tree_diff]")
 {
     // Row-wise comparison, mirroring BuildHessianDag's own FD test.
-    constexpr auto nRows  = 100;
-    constexpr auto nCols  = 5;
+    constexpr auto nRows = 100;
+    constexpr auto nCols = 5;
     constexpr auto nTrees = 500;
     constexpr auto maxLen = 30;
     constexpr auto fdStep = 1e-3F;
-    constexpr auto tol    = 5e-2F;
+    constexpr auto tol = 5e-2F;
     // This is a finite-difference-vs-symbolic-gradient smoke test in a
     // single-precision build, over a fixed but still finite sample of random
     // nonlinear trees. The exact failure rate is sensitive to platform libm
@@ -698,57 +729,74 @@ TEST_CASE("BuildVariableGradientDag correctness vs finite differences - random t
     Operon::RandomGenerator rng(45UL);
 
     std::vector<std::string> names(nCols);
-    for (int i = 0; i < nCols; ++i) { names[static_cast<std::size_t>(i)] = fmt::format("X{}", i + 1); }
+    for (int i = 0; i < nCols; ++i) {
+        names[static_cast<std::size_t>(i)] = fmt::format("X{}", i + 1);
+    }
     std::uniform_real_distribution<Operon::Scalar> valDist(-1.F, +1.F);
     std::vector<std::vector<Operon::Scalar>> data(nCols, std::vector<Operon::Scalar>(nRows));
     for (auto& col : data) {
-        for (auto& v : col) { v = valDist(rng); }
+        for (auto& v : col) {
+            v = valDist(rng);
+        }
     }
     Dataset const ds(names, data);
     DTable dtable;
-    Range const range{0, ds.Rows<std::size_t>()};
+    Range const range { 0, ds.Rows<std::size_t>() };
 
     Operon::Map<Operon::Hash, std::size_t> hashToCol;
     for (std::size_t c = 0; c < names.size(); ++c) {
-        hashToCol.insert_or_assign(Hasher{}(names[c]), c);
+        hashToCol.insert_or_assign(Hasher {}(names[c]), c);
     }
 
     auto pset = MakeSupportedPset();
     auto const trees = GenerateTrees(rng, pset, ds, nTrees, maxLen);
 
-    std::size_t totalCols  = 0;
+    std::size_t totalCols = 0;
     std::size_t failedCols = 0;
 
     for (auto const& tree : trees) {
         auto const coeff = tree.GetCoefficients();
 
         auto const dag = BuildVariableGradientDag(tree);
-        if (dag.Variables.empty()) { continue; } // no input variables in this tree
+        if (dag.Variables.empty()) {
+            continue;
+        } // no input variables in this tree
         auto const gdag = EvalDagVariableGradient(dag, coeff, ds, range, dtable);
 
         for (std::size_t k = 0; k < dag.Variables.size(); ++k) {
             auto it = hashToCol.find(dag.Variables[k]);
-            if (it == hashToCol.end()) { continue; } // not one of our named columns
+            if (it == hashToCol.end()) {
+                continue;
+            } // not one of our named columns
             auto const col = it->second;
 
-            auto dataPlus  = data;
+            auto dataPlus = data;
             auto dataMinus = data;
-            for (auto& v : dataPlus[col])  { v += fdStep; }
-            for (auto& v : dataMinus[col]) { v -= fdStep; }
+            for (auto& v : dataPlus[col]) {
+                v += fdStep;
+            }
+            for (auto& v : dataMinus[col]) {
+                v -= fdStep;
+            }
             Dataset const dsPlus(names, dataPlus);
             Dataset const dsMinus(names, dataMinus);
 
-            auto const yPlus  = Interp::Evaluate(tree, dsPlus, range, Operon::Span<Operon::Scalar const>(coeff)).value();
-            auto const yMinus = Interp::Evaluate(tree, dsMinus, range, Operon::Span<Operon::Scalar const>(coeff)).value();
+            auto const yPlus = Interp::Evaluate(tree, dsPlus, range, Operon::Span<Operon::Scalar const>(coeff)).value();
+            auto const yMinus
+                = Interp::Evaluate(tree, dsMinus, range, Operon::Span<Operon::Scalar const>(coeff)).value();
 
-            Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> yp(yPlus.data(), static_cast<Eigen::Index>(yPlus.size()));
-            Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> ym(yMinus.data(), static_cast<Eigen::Index>(yMinus.size()));
+            Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> yp(
+                yPlus.data(), static_cast<Eigen::Index>(yPlus.size()));
+            Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> ym(
+                yMinus.data(), static_cast<Eigen::Index>(yMinus.size()));
             Eigen::Array<Operon::Scalar, -1, 1> const fd = (yp - ym) / (2 * fdStep);
 
             auto const colDag = gdag.col(static_cast<Eigen::Index>(k));
             ++totalCols;
             for (Eigen::Index r = 0; r < fd.size(); ++r) {
-                if (!std::isfinite(fd(r)) || !std::isfinite(colDag(r))) { continue; }
+                if (!std::isfinite(fd(r)) || !std::isfinite(colDag(r))) {
+                    continue;
+                }
                 if (std::abs(colDag(r) - fd(r)) > tol * (1.0F + std::abs(fd(r)))) {
                     ++failedCols;
                     break; // one failing row is enough to flag this column
@@ -757,7 +805,7 @@ TEST_CASE("BuildVariableGradientDag correctness vs finite differences - random t
         }
     }
 
-    auto const rate = static_cast<double>(failedCols) / static_cast<double>(std::max(totalCols, std::size_t{1}));
+    auto const rate = static_cast<double>(failedCols) / static_cast<double>(std::max(totalCols, std::size_t { 1 }));
     INFO("FD variable-gradient: " << failedCols << " / " << totalCols << " columns failed (" << rate * 100.0 << "%)");
     CHECK(rate < maxFailRate);
 }
@@ -769,9 +817,10 @@ TEST_CASE("BuildVariableGradientDag correctness vs finite differences - random t
 TEST_CASE("BuildHessianDag - single constant", "[tree_diff][hessian]")
 {
     Operon::Vector<Node> nodes;
-    auto c = Node::Constant(3.14F); c.Optimize = true;
+    auto c = Node::Constant(3.14F);
+    c.Optimize = true;
     nodes.push_back(c);
-    Tree tree{nodes};
+    Tree tree { nodes };
 
     auto dag = BuildHessianDag(tree);
     REQUIRE(dag.NumParams == 1);
@@ -785,10 +834,11 @@ TEST_CASE("BuildHessianDag - square(c) Hessian is 2", "[tree_diff][hessian]")
 {
     // f = c^2, df/dc = 2c, d²f/dc² = 2
     Operon::Vector<Node> nodes;
-    auto c = Node::Constant(5.0F); c.Optimize = true;
+    auto c = Node::Constant(5.0F);
+    c.Optimize = true;
     nodes.push_back(c);
     nodes.push_back(Util::MakeOp<BuiltinOp::Square>());
-    Tree tree{nodes};
+    Tree tree { nodes };
 
     auto dag = BuildHessianDag(tree);
     REQUIRE(dag.NumParams == 1);
@@ -797,16 +847,14 @@ TEST_CASE("BuildHessianDag - square(c) Hessian is 2", "[tree_diff][hessian]")
 
     // Evaluate d²f/dc² — should be 2
     DTable dtable;
-    auto ds = Dataset(std::vector<std::string>{"X"}, std::vector<std::vector<Operon::Scalar>>{{1.0F}});
-    Range range{0, 1};
+    auto ds = Dataset(std::vector<std::string> { "X" }, std::vector<std::vector<Operon::Scalar>> { { 1.0F } });
+    Range range { 0, 1 };
     auto coeff = tree.GetCoefficients();
 
     Operon::Vector<Node> subnodes(
-        dag.Nodes.cbegin(),
-        dag.Nodes.cbegin() + static_cast<std::ptrdiff_t>(dag.HessianRoots[0]) + 1
-    );
-    Tree ht{std::move(subnodes)};
-    Interp const interp{&dtable, &ds, &ht};
+        dag.Nodes.cbegin(), dag.Nodes.cbegin() + static_cast<std::ptrdiff_t>(dag.HessianRoots[0]) + 1);
+    Tree ht { std::move(subnodes) };
+    Interp const interp { &dtable, &ds, &ht };
     auto col = interp.Evaluate(coeff, range).value();
     CHECK(col[0] == Catch::Approx(2.0F).margin(1e-4F));
 }
@@ -814,11 +862,15 @@ TEST_CASE("BuildHessianDag - square(c) Hessian is 2", "[tree_diff][hessian]")
 TEST_CASE("BuildHessianDag - Add(c1,c2) all Hessian entries zero", "[tree_diff][hessian]")
 {
     Operon::Vector<Node> nodes;
-    auto c1 = Node::Constant(2.0F); c1.Optimize = true;
-    auto c2 = Node::Constant(3.0F); c2.Optimize = true;
+    auto c1 = Node::Constant(2.0F);
+    c1.Optimize = true;
+    auto c2 = Node::Constant(3.0F);
+    c2.Optimize = true;
     auto add = Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 2);
-    nodes.push_back(c1); nodes.push_back(c2); nodes.push_back(add);
-    Tree tree{nodes};
+    nodes.push_back(c1);
+    nodes.push_back(c2);
+    nodes.push_back(add);
+    Tree tree { nodes };
 
     auto dag = BuildHessianDag(tree);
     REQUIRE(dag.NumParams == 2);
@@ -832,11 +884,15 @@ TEST_CASE("BuildHessianDag - Mul(c1,c2) mixed partial is 1", "[tree_diff][hessia
 {
     // f = c1*c2, d²f/dc1² = 0, d²f/dc1dc2 = 1, d²f/dc2² = 0
     Operon::Vector<Node> nodes;
-    auto c1 = Node::Constant(2.0F); c1.Optimize = true;
-    auto c2 = Node::Constant(3.0F); c2.Optimize = true;
+    auto c1 = Node::Constant(2.0F);
+    c1.Optimize = true;
+    auto c2 = Node::Constant(3.0F);
+    c2.Optimize = true;
     auto mul = Node::Function(static_cast<Operon::Hash>(BuiltinOp::Mul), 2);
-    nodes.push_back(c1); nodes.push_back(c2); nodes.push_back(mul);
-    Tree tree{nodes};
+    nodes.push_back(c1);
+    nodes.push_back(c2);
+    nodes.push_back(mul);
+    Tree tree { nodes };
 
     auto dag = BuildHessianDag(tree);
     REQUIRE(dag.NumParams == 2);
@@ -847,16 +903,13 @@ TEST_CASE("BuildHessianDag - Mul(c1,c2) mixed partial is 1", "[tree_diff][hessia
     REQUIRE(mixedRoot != NoGrad);
 
     DTable dtable;
-    auto ds = Dataset(std::vector<std::string>{"X"}, std::vector<std::vector<Operon::Scalar>>{{1.0F}});
-    Range range{0, 1};
+    auto ds = Dataset(std::vector<std::string> { "X" }, std::vector<std::vector<Operon::Scalar>> { { 1.0F } });
+    Range range { 0, 1 };
     auto coeff = tree.GetCoefficients();
 
-    Operon::Vector<Node> subnodes(
-        dag.Nodes.cbegin(),
-        dag.Nodes.cbegin() + static_cast<std::ptrdiff_t>(mixedRoot) + 1
-    );
-    Tree ht{std::move(subnodes)};
-    Interp const interp{&dtable, &ds, &ht};
+    Operon::Vector<Node> subnodes(dag.Nodes.cbegin(), dag.Nodes.cbegin() + static_cast<std::ptrdiff_t>(mixedRoot) + 1);
+    Tree ht { std::move(subnodes) };
+    Interp const interp { &dtable, &ds, &ht };
     auto col = interp.Evaluate(coeff, range).value();
     CHECK(col[0] == Catch::Approx(1.0F).margin(1e-4F));
 }
@@ -867,129 +920,136 @@ TEST_CASE("BuildHessianDag - Mul(c1,c2) mixed partial is 1", "[tree_diff][hessia
 
 namespace {
 
-// Create an Interpreter over a DAG's full node array and evaluate multiple roots
-// in a single forward pass.
-auto EvalDagRoots(
-    Operon::Vector<Node> const& dagNodes,
-    Operon::Span<std::size_t const> roots,
-    Operon::Span<Operon::Scalar const> coeff,
-    Dataset const& ds,
-    Range range,
-    DTable const& dtable
-) -> Eigen::Array<Operon::Scalar, -1, -1>
-{
-    Tree t{dagNodes};
-    Interp const interp{&dtable, &ds, &t};
-    auto result = interp.EvaluateRoots(coeff, range, roots);
-    if (!result) { throw std::runtime_error(Operon::FormatInterpreterError(result.error())); }
-    return std::move(*result);
-}
+    // Create an Interpreter over a DAG's full node array and evaluate multiple roots
+    // in a single forward pass.
+    auto EvalDagRoots(Operon::Vector<Node> const& dagNodes, Operon::Span<std::size_t const> roots,
+        Operon::Span<Operon::Scalar const> coeff, Dataset const& ds, Range range, DTable const& dtable)
+        -> Eigen::Array<Operon::Scalar, -1, -1>
+    {
+        Tree t { dagNodes };
+        Interp const interp { &dtable, &ds, &t };
+        auto result = interp.EvaluateRoots(coeff, range, roots);
+        if (!result) {
+            throw std::runtime_error(Operon::FormatInterpreterError(result.error()));
+        }
+        return std::move(*result);
+    }
 
-// Evaluate a single DAG root via EvalDagRoots (convenience wrapper).
-auto EvalDagColumn(
-    Operon::Vector<Node> const& dagNodes,
-    std::size_t root,
-    Operon::Span<Operon::Scalar const> coeff,
-    Dataset const& ds,
-    Range range,
-    DTable const& dtable
-) -> Eigen::Array<Operon::Scalar, -1, 1>
-{
-    Operon::Span<std::size_t const> rootSpan{&root, 1};
-    return EvalDagRoots(dagNodes, rootSpan, coeff, ds, range, dtable).col(0);
-}
+    // Evaluate a single DAG root via EvalDagRoots (convenience wrapper).
+    auto EvalDagColumn(Operon::Vector<Node> const& dagNodes, std::size_t root, Operon::Span<Operon::Scalar const> coeff,
+        Dataset const& ds, Range range, DTable const& dtable) -> Eigen::Array<Operon::Scalar, -1, 1>
+    {
+        Operon::Span<std::size_t const> rootSpan { &root, 1 };
+        return EvalDagRoots(dagNodes, rootSpan, coeff, ds, range, dtable).col(0);
+    }
 
-// Find permutation mapping: for each Operon coefficient, which Python index matches.
-// Requires all coefficient values to be distinct (guaranteed by the Python generator).
-// Returns empty vector on failure.
-auto FindCoeffPermutation(
-    std::vector<Operon::Scalar> const& operonCoeffs,
-    std::vector<double> const& pythonCoeffs
-) -> std::vector<std::size_t>
-{
-    auto const p = operonCoeffs.size();
-    if (p != pythonCoeffs.size()) { return {}; }
+    // Find permutation mapping: for each Operon coefficient, which Python index matches.
+    // Requires all coefficient values to be distinct (guaranteed by the Python generator).
+    // Returns empty vector on failure.
+    auto FindCoeffPermutation(std::vector<Operon::Scalar> const& operonCoeffs, std::vector<double> const& pythonCoeffs)
+        -> std::vector<std::size_t>
+    {
+        auto const p = operonCoeffs.size();
+        if (p != pythonCoeffs.size()) {
+            return {};
+        }
 
-    std::vector<bool> used(p, false);
-    std::vector<std::size_t> perm(p);
+        std::vector<bool> used(p, false);
+        std::vector<std::size_t> perm(p);
 
-    for (std::size_t i = 0; i < p; ++i) {
-        bool found = false;
-        for (std::size_t j = 0; j < p; ++j) {
-            if (used[j]) { continue; }
-            if (std::abs(static_cast<double>(operonCoeffs[i]) - pythonCoeffs[j]) < 1e-4) {
-                perm[i] = j;
-                used[j] = true;
-                found = true;
-                break;
+        for (std::size_t i = 0; i < p; ++i) {
+            bool found = false;
+            for (std::size_t j = 0; j < p; ++j) {
+                if (used[j]) {
+                    continue;
+                }
+                if (std::abs(static_cast<double>(operonCoeffs[i]) - pythonCoeffs[j]) < 1e-4) {
+                    perm[i] = j;
+                    used[j] = true;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                return {};
             }
         }
-        if (!found) { return {}; }
+        return perm;
     }
-    return perm;
-}
 
-// Upper triangle index for the Python ordering
-auto PythonUpperIdx(std::size_t i, std::size_t j, std::size_t p) -> std::size_t {
-    if (i > j) { std::swap(i, j); }
-    return (i * p) - (i * (i - 1) / 2) + (j - i);
-}
-
-struct GroundTruthCase {
-    std::string Expr;
-    std::vector<double> Coeffs;
-    std::vector<double> Residuals;
-    std::vector<std::vector<double>> Jacobian;     // [nrows][ncoeffs]
-    std::vector<std::vector<double>> HessianTri;   // [nrows][nhess]
-};
-
-struct GroundTruth {
-    int Nrows{0};
-    int Nvars{0};
-    std::vector<std::vector<double>> Data; // [nrows][nvars]
-    std::vector<GroundTruthCase> Cases;
-};
-
-auto LoadGroundTruth(std::string const& path) -> GroundTruth {
-    GroundTruth gt;
-    std::ifstream ifs(path);
-    REQUIRE(ifs.good());
-
-    int ncases = 0;
-    ifs >> ncases >> gt.Nrows >> gt.Nvars;
-
-    gt.Data.resize(gt.Nrows, std::vector<double>(gt.Nvars));
-    for (int r = 0; r < gt.Nrows; ++r) {
-        for (int c = 0; c < gt.Nvars; ++c) {
-            ifs >> gt.Data[r][c];
+    // Upper triangle index for the Python ordering
+    auto PythonUpperIdx(std::size_t i, std::size_t j, std::size_t p) -> std::size_t
+    {
+        if (i > j) {
+            std::swap(i, j);
         }
+        return (i * p) - (i * (i - 1) / 2) + (j - i);
     }
 
-    gt.Cases.resize(ncases);
-    for (int ci = 0; ci < ncases; ++ci) {
-        auto& tc = gt.Cases[ci];
-        std::getline(ifs >> std::ws, tc.Expr);
-        int nc = 0;
-        ifs >> nc;
-        tc.Coeffs.resize(nc);
-        for (int k = 0; k < nc; ++k) { ifs >> tc.Coeffs[k]; }
+    struct GroundTruthCase {
+        std::string Expr;
+        std::vector<double> Coeffs;
+        std::vector<double> Residuals;
+        std::vector<std::vector<double>> Jacobian; // [nrows][ncoeffs]
+        std::vector<std::vector<double>> HessianTri; // [nrows][nhess]
+    };
 
-        tc.Residuals.resize(gt.Nrows);
-        for (int r = 0; r < gt.Nrows; ++r) { ifs >> tc.Residuals[r]; }
+    struct GroundTruth {
+        int Nrows { 0 };
+        int Nvars { 0 };
+        std::vector<std::vector<double>> Data; // [nrows][nvars]
+        std::vector<GroundTruthCase> Cases;
+    };
 
-        tc.Jacobian.resize(gt.Nrows, std::vector<double>(nc));
+    auto LoadGroundTruth(std::string const& path) -> GroundTruth
+    {
+        GroundTruth gt;
+        std::ifstream ifs(path);
+        REQUIRE(ifs.good());
+
+        int ncases = 0;
+        ifs >> ncases >> gt.Nrows >> gt.Nvars;
+
+        gt.Data.resize(gt.Nrows, std::vector<double>(gt.Nvars));
         for (int r = 0; r < gt.Nrows; ++r) {
-            for (int k = 0; k < nc; ++k) { ifs >> tc.Jacobian[r][k]; }
+            for (int c = 0; c < gt.Nvars; ++c) {
+                ifs >> gt.Data[r][c];
+            }
         }
 
-        int nhess = nc * (nc + 1) / 2;
-        tc.HessianTri.resize(gt.Nrows, std::vector<double>(nhess));
-        for (int r = 0; r < gt.Nrows; ++r) {
-            for (int k = 0; k < nhess; ++k) { ifs >> tc.HessianTri[r][k]; }
+        gt.Cases.resize(ncases);
+        for (int ci = 0; ci < ncases; ++ci) {
+            auto& tc = gt.Cases[ci];
+            std::getline(ifs >> std::ws, tc.Expr);
+            int nc = 0;
+            ifs >> nc;
+            tc.Coeffs.resize(nc);
+            for (int k = 0; k < nc; ++k) {
+                ifs >> tc.Coeffs[k];
+            }
+
+            tc.Residuals.resize(gt.Nrows);
+            for (int r = 0; r < gt.Nrows; ++r) {
+                ifs >> tc.Residuals[r];
+            }
+
+            tc.Jacobian.resize(gt.Nrows, std::vector<double>(nc));
+            for (int r = 0; r < gt.Nrows; ++r) {
+                for (int k = 0; k < nc; ++k) {
+                    ifs >> tc.Jacobian[r][k];
+                }
+            }
+
+            int nhess = nc * (nc + 1) / 2;
+            tc.HessianTri.resize(gt.Nrows, std::vector<double>(nhess));
+            for (int r = 0; r < gt.Nrows; ++r) {
+                for (int k = 0; k < nhess; ++k) {
+                    ifs >> tc.HessianTri[r][k];
+                }
+            }
         }
+        return gt;
     }
-    return gt;
-}
 
 } // namespace
 
@@ -998,7 +1058,9 @@ TEST_CASE("BuildHessianDag correctness vs JAX ground truth", "[tree_diff][hessia
     auto const gt = LoadGroundTruth("./data/hessian_ground_truth.txt");
 
     std::vector<std::string> varNames(gt.Nvars);
-    for (int i = 0; i < gt.Nvars; ++i) { varNames[i] = fmt::format("X{}", i + 1); }
+    for (int i = 0; i < gt.Nvars; ++i) {
+        varNames[i] = fmt::format("X{}", i + 1);
+    }
     std::vector<std::vector<Operon::Scalar>> varData(gt.Nvars, std::vector<Operon::Scalar>(gt.Nrows));
     for (int r = 0; r < gt.Nrows; ++r) {
         for (int c = 0; c < gt.Nvars; ++c) {
@@ -1007,7 +1069,7 @@ TEST_CASE("BuildHessianDag correctness vs JAX ground truth", "[tree_diff][hessia
     }
     Dataset ds(varNames, varData);
     DTable dtable;
-    Range const range{0, ds.Rows<std::size_t>()};
+    Range const range { 0, ds.Rows<std::size_t>() };
 
     constexpr auto eps = 1e-4F;
     std::size_t passed = 0;
@@ -1018,15 +1080,15 @@ TEST_CASE("BuildHessianDag correctness vs JAX ground truth", "[tree_diff][hessia
         INFO("Expression: " << tc.Expr);
         auto const p = tc.Coeffs.size();
 
-        auto tree = InfixParser::ParseOrThrow(tc.Expr, ds, Operon::InfixParseOptions{});
+        auto tree = InfixParser::ParseOrThrow(tc.Expr, ds, Operon::InfixParseOptions {});
         for (auto& n : tree.Nodes()) {
             n.Optimize = n.IsConstant();
         }
         auto const operonCoeffs = tree.GetCoefficients();
 
         if (operonCoeffs.size() != p) {
-            fmt::print(stderr, "  SKIP coeff count mismatch: {} (expected {}, got {})\n",
-                       tc.Expr, p, operonCoeffs.size());
+            fmt::print(
+                stderr, "  SKIP coeff count mismatch: {} (expected {}, got {})\n", tc.Expr, p, operonCoeffs.size());
             ++skipped;
             continue;
         }
@@ -1042,16 +1104,14 @@ TEST_CASE("BuildHessianDag correctness vs JAX ground truth", "[tree_diff][hessia
         REQUIRE(dag.NumParams == p);
 
         auto coeff = tree.GetCoefficients();
-        Operon::Span<Operon::Scalar const> coeffSpan{coeff.data(), coeff.size()};
+        Operon::Span<Operon::Scalar const> coeffSpan { coeff.data(), coeff.size() };
 
         // Check residuals
         {
             Operon::Vector<Node> subnodes(
-                dag.Nodes.cbegin(),
-                dag.Nodes.cbegin() + static_cast<std::ptrdiff_t>(dag.OriginalSize)
-            );
-            Tree ft{std::move(subnodes)};
-            Interp const interp{&dtable, &ds, &ft};
+                dag.Nodes.cbegin(), dag.Nodes.cbegin() + static_cast<std::ptrdiff_t>(dag.OriginalSize));
+            Tree ft { std::move(subnodes) };
+            Interp const interp { &dtable, &ds, &ft };
             auto fvals = interp.Evaluate(coeffSpan, range).value();
             bool resOk = true;
             for (int r = 0; r < gt.Nrows; ++r) {
@@ -1077,7 +1137,9 @@ TEST_CASE("BuildHessianDag correctness vs JAX ground truth", "[tree_diff][hessia
             auto pyK = perm[k];
             for (int r = 0; r < gt.Nrows; ++r) {
                 auto expected = static_cast<Operon::Scalar>(tc.Jacobian[r][pyK]);
-                if (!std::isfinite(expected) || !std::isfinite(col(r))) { continue; }
+                if (!std::isfinite(expected) || !std::isfinite(col(r))) {
+                    continue;
+                }
                 if (std::abs(col(r) - expected) > eps * (1.0F + std::abs(expected))) {
                     jacOk = false;
                     break;
@@ -1089,16 +1151,15 @@ TEST_CASE("BuildHessianDag correctness vs JAX ground truth", "[tree_diff][hessia
         bool hessOk = true;
         for (std::size_t i = 0; i < p && hessOk; ++i) {
             for (std::size_t j = i; j < p && hessOk; ++j) {
-                auto col = EvalDagColumn(
-                    dag.Nodes, dag.HessianRoots[dag.UpperIdx(i, j)],
-                    coeffSpan, ds, range, dtable);
+                auto col = EvalDagColumn(dag.Nodes, dag.HessianRoots[dag.UpperIdx(i, j)], coeffSpan, ds, range, dtable);
                 auto pyIdx = PythonUpperIdx(perm[i], perm[j], p);
                 for (int r = 0; r < gt.Nrows; ++r) {
                     auto expected = static_cast<Operon::Scalar>(tc.HessianTri[r][pyIdx]);
-                    if (!std::isfinite(expected) || !std::isfinite(col(r))) { continue; }
+                    if (!std::isfinite(expected) || !std::isfinite(col(r))) {
+                        continue;
+                    }
                     if (std::abs(col(r) - expected) > eps * (1.0F + std::abs(expected))) {
-                        fmt::print(stderr, "  FAIL H({},{}) row {}: got {}, expected {}\n",
-                                   i, j, r, col(r), expected);
+                        fmt::print(stderr, "  FAIL H({},{}) row {}: got {}, expected {}\n", i, j, r, col(r), expected);
                         hessOk = false;
                     }
                 }
@@ -1125,18 +1186,18 @@ TEST_CASE("BuildHessianDag correctness vs JAX ground truth", "[tree_diff][hessia
 
 TEST_CASE("BuildHessianDag correctness vs finite differences - random trees", "[tree_diff][hessian]")
 {
-    constexpr auto nRows  = 50;
-    constexpr auto nCols  = 5;
+    constexpr auto nRows = 50;
+    constexpr auto nCols = 5;
     constexpr auto nTrees = 500;
     constexpr auto maxLen = 20;
-    constexpr auto fdEps  = 1e-3F;
-    constexpr auto tol    = 5e-2F;
+    constexpr auto fdEps = 1e-3F;
+    constexpr auto tol = 5e-2F;
     constexpr auto maxFailRate = 0.15;
 
     Operon::RandomGenerator rng(99UL);
     auto ds = Operon::Test::Util::RandomDataset(rng, nRows, nCols);
     DTable dtable;
-    Range const range{0, ds.Rows<std::size_t>()};
+    Range const range { 0, ds.Rows<std::size_t>() };
 
     auto pset = MakeSupportedPset();
     auto const trees = GenerateTrees(rng, pset, ds, nTrees, maxLen);
@@ -1147,16 +1208,16 @@ TEST_CASE("BuildHessianDag correctness vs finite differences - random trees", "[
     for (auto const& tree : trees) {
         auto coeff = tree.GetCoefficients();
         auto const p = coeff.size();
-        if (p == 0) { continue; }
+        if (p == 0) {
+            continue;
+        }
 
         auto const dag = BuildHessianDag(tree);
-        Interp const interp{&dtable, &ds, &tree};
+        Interp const interp { &dtable, &ds, &tree };
 
         for (std::size_t i = 0; i < p; ++i) {
             for (std::size_t j = i; j < p; ++j) {
-                auto dagCol = EvalDagColumn(
-                    dag.Nodes, dag.HessianRoots[dag.UpperIdx(i, j)],
-                    coeff, ds, range, dtable);
+                auto dagCol = EvalDagColumn(dag.Nodes, dag.HessianRoots[dag.UpperIdx(i, j)], coeff, ds, range, dtable);
 
                 // Finite difference: perturb coeff[j], measure change in J column i
                 auto coeffPlus = coeff;
@@ -1167,19 +1228,20 @@ TEST_CASE("BuildHessianDag correctness vs finite differences - random trees", "[
                 // Create temporary trees with perturbed coefficients
                 auto treePlus = tree;
                 auto treeMinus = tree;
-                treePlus.SetCoefficients({coeffPlus.data(), coeffPlus.size()});
-                treeMinus.SetCoefficients({coeffMinus.data(), coeffMinus.size()});
+                treePlus.SetCoefficients({ coeffPlus.data(), coeffPlus.size() });
+                treeMinus.SetCoefficients({ coeffMinus.data(), coeffMinus.size() });
 
-                auto jacPlus = Interp{&dtable, &ds, &treePlus}.JacRev(coeffPlus, range).value();
-                auto jacMinus = Interp{&dtable, &ds, &treeMinus}.JacRev(coeffMinus, range).value();
+                auto jacPlus = Interp { &dtable, &ds, &treePlus }.JacRev(coeffPlus, range).value();
+                auto jacMinus = Interp { &dtable, &ds, &treeMinus }.JacRev(coeffMinus, range).value();
 
-                auto fdCol = (jacPlus.col(static_cast<Eigen::Index>(i))
-                            - jacMinus.col(static_cast<Eigen::Index>(i)))
-                           / (2.0F * fdEps);
+                auto fdCol = (jacPlus.col(static_cast<Eigen::Index>(i)) - jacMinus.col(static_cast<Eigen::Index>(i)))
+                    / (2.0F * fdEps);
 
                 ++totalEntries;
                 for (int r = 0; r < static_cast<int>(range.Size()); ++r) {
-                    if (!std::isfinite(fdCol(r)) || !std::isfinite(dagCol(r))) { continue; }
+                    if (!std::isfinite(fdCol(r)) || !std::isfinite(dagCol(r))) {
+                        continue;
+                    }
                     if (std::abs(dagCol(r) - fdCol(r)) > tol * (1.0F + std::abs(fdCol(r)))) {
                         ++failedEntries;
                         break; // one failure per (i,j) entry is enough
@@ -1189,25 +1251,25 @@ TEST_CASE("BuildHessianDag correctness vs finite differences - random trees", "[
         }
     }
 
-    auto rate = static_cast<double>(failedEntries) / static_cast<double>(std::max(totalEntries, std::size_t{1}));
+    auto rate = static_cast<double>(failedEntries) / static_cast<double>(std::max(totalEntries, std::size_t { 1 }));
     fmt::print("FD Hessian: {} / {} entries failed ({:.2f}%)\n", failedEntries, totalEntries, rate * 100.0);
     CHECK(rate < maxFailRate);
 }
 
 TEST_CASE("BuildHessianDag correctness vs finite differences - weighted Function nodes", "[tree_diff][hessian]")
 {
-    constexpr auto nRows  = 50;
-    constexpr auto nCols  = 5;
+    constexpr auto nRows = 50;
+    constexpr auto nCols = 5;
     constexpr auto nTrees = 500;
     constexpr auto maxLen = 20;
-    constexpr auto fdEps  = 1e-3F;
-    constexpr auto tol    = 5e-2F;
+    constexpr auto fdEps = 1e-3F;
+    constexpr auto tol = 5e-2F;
     constexpr auto maxFailRate = 0.15;
 
     Operon::RandomGenerator rng(100UL);
     auto ds = Operon::Test::Util::RandomDataset(rng, nRows, nCols);
     DTable dtable;
-    Range const range{0, ds.Rows<std::size_t>()};
+    Range const range { 0, ds.Rows<std::size_t>() };
 
     auto pset = MakeSupportedPset();
     auto const trees = GenerateWeightedTrees(rng, pset, ds, nTrees, maxLen);
@@ -1218,16 +1280,16 @@ TEST_CASE("BuildHessianDag correctness vs finite differences - weighted Function
     for (auto const& tree : trees) {
         auto coeff = tree.GetCoefficients();
         auto const p = coeff.size();
-        if (p == 0) { continue; }
+        if (p == 0) {
+            continue;
+        }
 
         auto const dag = BuildHessianDag(tree);
-        Interp const interp{&dtable, &ds, &tree};
+        Interp const interp { &dtable, &ds, &tree };
 
         for (std::size_t i = 0; i < p; ++i) {
             for (std::size_t j = i; j < p; ++j) {
-                auto dagCol = EvalDagColumn(
-                    dag.Nodes, dag.HessianRoots[dag.UpperIdx(i, j)],
-                    coeff, ds, range, dtable);
+                auto dagCol = EvalDagColumn(dag.Nodes, dag.HessianRoots[dag.UpperIdx(i, j)], coeff, ds, range, dtable);
 
                 // Finite difference: perturb coeff[j], measure change in J column i
                 auto coeffPlus = coeff;
@@ -1238,19 +1300,20 @@ TEST_CASE("BuildHessianDag correctness vs finite differences - weighted Function
                 // Create temporary trees with perturbed coefficients
                 auto treePlus = tree;
                 auto treeMinus = tree;
-                treePlus.SetCoefficients({coeffPlus.data(), coeffPlus.size()});
-                treeMinus.SetCoefficients({coeffMinus.data(), coeffMinus.size()});
+                treePlus.SetCoefficients({ coeffPlus.data(), coeffPlus.size() });
+                treeMinus.SetCoefficients({ coeffMinus.data(), coeffMinus.size() });
 
-                auto jacPlus = Interp{&dtable, &ds, &treePlus}.JacRev(coeffPlus, range).value();
-                auto jacMinus = Interp{&dtable, &ds, &treeMinus}.JacRev(coeffMinus, range).value();
+                auto jacPlus = Interp { &dtable, &ds, &treePlus }.JacRev(coeffPlus, range).value();
+                auto jacMinus = Interp { &dtable, &ds, &treeMinus }.JacRev(coeffMinus, range).value();
 
-                auto fdCol = (jacPlus.col(static_cast<Eigen::Index>(i))
-                            - jacMinus.col(static_cast<Eigen::Index>(i)))
-                           / (2.0F * fdEps);
+                auto fdCol = (jacPlus.col(static_cast<Eigen::Index>(i)) - jacMinus.col(static_cast<Eigen::Index>(i)))
+                    / (2.0F * fdEps);
 
                 ++totalEntries;
                 for (int r = 0; r < static_cast<int>(range.Size()); ++r) {
-                    if (!std::isfinite(fdCol(r)) || !std::isfinite(dagCol(r))) { continue; }
+                    if (!std::isfinite(fdCol(r)) || !std::isfinite(dagCol(r))) {
+                        continue;
+                    }
                     if (std::abs(dagCol(r) - fdCol(r)) > tol * (1.0F + std::abs(fdCol(r)))) {
                         ++failedEntries;
                         break; // one failure per (i,j) entry is enough
@@ -1260,7 +1323,7 @@ TEST_CASE("BuildHessianDag correctness vs finite differences - weighted Function
         }
     }
 
-    auto rate = static_cast<double>(failedEntries) / static_cast<double>(std::max(totalEntries, std::size_t{1}));
+    auto rate = static_cast<double>(failedEntries) / static_cast<double>(std::max(totalEntries, std::size_t { 1 }));
     fmt::print("FD Hessian (weighted): {} / {} entries failed ({:.2f}%)\n", failedEntries, totalEntries, rate * 100.0);
     CHECK(rate < maxFailRate);
 }
@@ -1271,26 +1334,30 @@ TEST_CASE("BuildHessianDag correctness vs finite differences - weighted Function
 
 TEST_CASE("BuildHessianDag performance vs JacRev FD", "[tree_diff][hessian][performance]")
 {
-    constexpr auto nRows  = 1000;
-    constexpr auto nCols  = 10;
+    constexpr auto nRows = 1000;
+    constexpr auto nCols = 10;
     constexpr auto nTrees = 500;
     constexpr auto maxLen = 50;
 
     Operon::RandomGenerator rng(0UL);
     auto ds = Operon::Test::Util::RandomDataset(rng, nRows, nCols);
     DTable dtable;
-    Range const range{0, ds.Rows<std::size_t>()};
+    Range const range { 0, ds.Rows<std::size_t>() };
 
     auto pset = MakeSupportedPset();
     auto const trees = GenerateTrees(rng, pset, ds, nTrees, maxLen);
 
     std::vector<std::vector<Operon::Scalar>> coeffs;
     coeffs.reserve(trees.size());
-    for (auto const& tree : trees) { coeffs.push_back(tree.GetCoefficients()); }
+    for (auto const& tree : trees) {
+        coeffs.push_back(tree.GetCoefficients());
+    }
 
     std::vector<HessianDag> dags;
     dags.reserve(trees.size());
-    for (auto const& tree : trees) { dags.emplace_back(BuildHessianDag(tree)); }
+    for (auto const& tree : trees) {
+        dags.emplace_back(BuildHessianDag(tree));
+    }
 
     nb::Bench bench;
     bench.timeUnit(std::chrono::milliseconds(1), "ms");
@@ -1302,7 +1369,9 @@ TEST_CASE("BuildHessianDag performance vs JacRev FD", "[tree_diff][hessian][perf
         for (std::size_t ti = 0; ti < trees.size(); ++ti) {
             auto const& coeff = coeffs[ti];
             auto const p = coeff.size();
-            if (p == 0) { continue; }
+            if (p == 0) {
+                continue;
+            }
             for (std::size_t j = 0; j < p; ++j) {
                 auto cPlus = coeff;
                 auto cMinus = coeff;
@@ -1310,10 +1379,10 @@ TEST_CASE("BuildHessianDag performance vs JacRev FD", "[tree_diff][hessian][perf
                 cMinus[j] -= fdEps;
                 auto tPlus = trees[ti];
                 auto tMinus = trees[ti];
-                tPlus.SetCoefficients({cPlus.data(), cPlus.size()});
-                tMinus.SetCoefficients({cMinus.data(), cMinus.size()});
-                auto jPlus = Interp{&dtable, &ds, &tPlus}.JacRev(cPlus, range).value();
-                auto jMinus = Interp{&dtable, &ds, &tMinus}.JacRev(cMinus, range).value();
+                tPlus.SetCoefficients({ cPlus.data(), cPlus.size() });
+                tMinus.SetCoefficients({ cMinus.data(), cMinus.size() });
+                auto jPlus = Interp { &dtable, &ds, &tPlus }.JacRev(cPlus, range).value();
+                auto jMinus = Interp { &dtable, &ds, &tMinus }.JacRev(cMinus, range).value();
                 nb::doNotOptimizeAway((jPlus - jMinus).eval());
             }
         }
@@ -1330,7 +1399,9 @@ TEST_CASE("BuildHessianDag performance vs JacRev FD", "[tree_diff][hessian][perf
     bench.run("BuildDag+EvalRoots", [&]() {
         for (std::size_t ti = 0; ti < trees.size(); ++ti) {
             auto const& coeff = coeffs[ti];
-            if (coeff.empty()) { continue; }
+            if (coeff.empty()) {
+                continue;
+            }
             auto dag = BuildHessianDag(trees[ti]);
             nb::doNotOptimizeAway(EvalDagRoots(dag.Nodes, dag.HessianRoots, coeff, ds, range, dtable));
         }
@@ -1340,7 +1411,9 @@ TEST_CASE("BuildHessianDag performance vs JacRev FD", "[tree_diff][hessian][perf
     bench.run("EvalRoots (prebuilt)", [&]() {
         for (std::size_t ti = 0; ti < dags.size(); ++ti) {
             auto const& coeff = coeffs[ti];
-            if (coeff.empty()) { continue; }
+            if (coeff.empty()) {
+                continue;
+            }
             auto const& dag = dags[ti];
             nb::doNotOptimizeAway(EvalDagRoots(dag.Nodes, dag.HessianRoots, coeff, ds, range, dtable));
         }
@@ -1352,12 +1425,13 @@ TEST_CASE("BuildHessianDag performance vs JacRev FD", "[tree_diff][hessian][perf
             auto const& coeff = coeffs[ti];
             auto const& dag = dags[ti];
             auto const p = dag.NumParams;
-            if (p == 0) { continue; }
+            if (p == 0) {
+                continue;
+            }
             for (std::size_t i = 0; i < p; ++i) {
                 for (std::size_t j = i; j < p; ++j) {
                     nb::doNotOptimizeAway(
-                        EvalDagColumn(dag.Nodes, dag.HessianRoots[dag.UpperIdx(i, j)],
-                                      coeff, ds, range, dtable));
+                        EvalDagColumn(dag.Nodes, dag.HessianRoots[dag.UpperIdx(i, j)], coeff, ds, range, dtable));
                 }
             }
         }
@@ -1372,33 +1446,34 @@ TEST_CASE("BuildHessianDag performance vs JacRev FD", "[tree_diff][hessian][perf
 
 namespace {
 
-auto VariableIndex(VariableGradientDag const& dag, Operon::Hash hash) -> std::size_t
-{
-    auto it = std::ranges::find(dag.Variables, hash);
-    REQUIRE(it != dag.Variables.end());
-    return static_cast<std::size_t>(std::distance(dag.Variables.begin(), it));
-}
+    auto VariableIndex(VariableGradientDag const& dag, Operon::Hash hash) -> std::size_t
+    {
+        auto it = std::ranges::find(dag.Variables, hash);
+        REQUIRE(it != dag.Variables.end());
+        return static_cast<std::size_t>(std::distance(dag.Variables.begin(), it));
+    }
 
-auto SliceDerivative(VariableGradientDag const& dag, std::size_t root) -> Tree
-{
-    REQUIRE(root != NoGrad);
-    Operon::Vector<Node> sliced(dag.Nodes.begin(), dag.Nodes.begin() + static_cast<std::ptrdiff_t>(root) + 1);
-    Tree tree(std::move(sliced));
-    tree.UpdateNodes();
-    return tree;
-}
+    auto SliceDerivative(VariableGradientDag const& dag, std::size_t root) -> Tree
+    {
+        REQUIRE(root != NoGrad);
+        Operon::Vector<Node> sliced(dag.Nodes.begin(), dag.Nodes.begin() + static_cast<std::ptrdiff_t>(root) + 1);
+        Tree tree(std::move(sliced));
+        tree.UpdateNodes();
+        return tree;
+    }
 
 } // namespace
 
 TEST_CASE("BuildVariableGradientDag - single weighted variable", "[tree_diff]")
 {
-    Dataset const ds(std::vector<std::string>{"X"}, std::vector<std::vector<Operon::Scalar>>{{2.0F}});
+    Dataset const ds(std::vector<std::string> { "X" }, std::vector<std::vector<Operon::Scalar>> { { 2.0F } });
     auto xHash = ds.GetVariable("X")->Hash;
 
     Operon::Vector<Node> nodes;
-    auto v = Node{NodeType::Variable, xHash}; v.Value = 3.0F; // f(x) = 3x
+    auto v = Node { NodeType::Variable, xHash };
+    v.Value = 3.0F; // f(x) = 3x
     nodes.push_back(v);
-    Tree tree{nodes};
+    Tree tree { nodes };
 
     auto dag = BuildVariableGradientDag(tree, tree.GetCoefficients());
     auto k = VariableIndex(dag, xHash);
@@ -1411,14 +1486,14 @@ TEST_CASE("BuildVariableGradientDag - single weighted variable", "[tree_diff]")
 
 TEST_CASE("BuildVariableGradientDag - unreferenced variables are omitted", "[tree_diff]")
 {
-    Dataset const ds(std::vector<std::string>{"X", "Y"},
-        std::vector<std::vector<Operon::Scalar>>{{2.0F}, {5.0F}});
+    Dataset const ds(
+        std::vector<std::string> { "X", "Y" }, std::vector<std::vector<Operon::Scalar>> { { 2.0F }, { 5.0F } });
     auto xHash = ds.GetVariable("X")->Hash;
     auto yHash = ds.GetVariable("Y")->Hash;
 
     Operon::Vector<Node> nodes;
-    nodes.push_back(Node{NodeType::Variable, xHash});
-    Tree tree{nodes};
+    nodes.push_back(Node { NodeType::Variable, xHash });
+    Tree tree { nodes };
 
     auto dag = BuildVariableGradientDag(tree);
     CHECK(VariableIndex(dag, xHash) == 0);
@@ -1427,14 +1502,14 @@ TEST_CASE("BuildVariableGradientDag - unreferenced variables are omitted", "[tre
 
 TEST_CASE("BuildVariableGradientDag - repeated occurrences sum via chain rule", "[tree_diff]")
 {
-    Dataset const ds(std::vector<std::string>{"X"}, std::vector<std::vector<Operon::Scalar>>{{7.0F}});
+    Dataset const ds(std::vector<std::string> { "X" }, std::vector<std::vector<Operon::Scalar>> { { 7.0F } });
     auto xHash = ds.GetVariable("X")->Hash;
 
     Operon::Vector<Node> nodes;
-    nodes.push_back(Node{NodeType::Variable, xHash});
-    nodes.push_back(Node{NodeType::Variable, xHash});
+    nodes.push_back(Node { NodeType::Variable, xHash });
+    nodes.push_back(Node { NodeType::Variable, xHash });
     nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 2));
-    Tree tree{nodes};
+    Tree tree { nodes };
     tree.UpdateNodes();
 
     auto dag = BuildVariableGradientDag(tree);
@@ -1444,20 +1519,20 @@ TEST_CASE("BuildVariableGradientDag - repeated occurrences sum via chain rule", 
 
     Operon::ScalarDispatch dtable;
     Interpreter<Operon::Scalar, Operon::ScalarDispatch> interp(&dtable, &ds, &derivTree);
-    auto result = interp.Evaluate(derivTree.GetCoefficients(), Range{0, 1}).value();
+    auto result = interp.Evaluate(derivTree.GetCoefficients(), Range { 0, 1 }).value();
     CHECK(result[0] == Catch::Approx(2.0));
 }
 
 TEST_CASE("BuildVariableGradientDag - Sin(Square(X)) correctness end-to-end", "[tree_diff]")
 {
-    Dataset const ds(std::vector<std::string>{"X"}, std::vector<std::vector<Operon::Scalar>>{{2.0F}});
+    Dataset const ds(std::vector<std::string> { "X" }, std::vector<std::vector<Operon::Scalar>> { { 2.0F } });
     auto xHash = ds.GetVariable("X")->Hash;
 
     Operon::Vector<Node> nodes;
-    nodes.push_back(Node{NodeType::Variable, xHash});
+    nodes.push_back(Node { NodeType::Variable, xHash });
     nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Square), 1));
     nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Sin), 1));
-    Tree tree{nodes};
+    Tree tree { nodes };
     tree.UpdateNodes();
 
     auto dag = BuildVariableGradientDag(tree);
@@ -1467,7 +1542,7 @@ TEST_CASE("BuildVariableGradientDag - Sin(Square(X)) correctness end-to-end", "[
 
     Operon::ScalarDispatch dtable;
     Interpreter<Operon::Scalar, Operon::ScalarDispatch> interp(&dtable, &ds, &derivTree);
-    auto result = interp.Evaluate(derivTree.GetCoefficients(), Range{0, 1}).value();
+    auto result = interp.Evaluate(derivTree.GetCoefficients(), Range { 0, 1 }).value();
 
     auto const expected = 2.0 * 2.0 * std::cos(2.0 * 2.0);
     CHECK(result[0] == Catch::Approx(expected).epsilon(1e-4));
@@ -1475,14 +1550,14 @@ TEST_CASE("BuildVariableGradientDag - Sin(Square(X)) correctness end-to-end", "[
 
 TEST_CASE("BuildVariableGradientDag - second order via re-differentiating the sliced result", "[tree_diff]")
 {
-    Dataset const ds(std::vector<std::string>{"X"}, std::vector<std::vector<Operon::Scalar>>{{2.0F}});
+    Dataset const ds(std::vector<std::string> { "X" }, std::vector<std::vector<Operon::Scalar>> { { 2.0F } });
     auto xHash = ds.GetVariable("X")->Hash;
 
     Operon::Vector<Node> nodes;
     nodes.push_back(Node::Constant(3.0F));
-    nodes.push_back(Node{NodeType::Variable, xHash});
+    nodes.push_back(Node { NodeType::Variable, xHash });
     nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Pow), 2));
-    Tree tree{nodes};
+    Tree tree { nodes };
     tree.UpdateNodes();
 
     auto dag1 = BuildVariableGradientDag(tree);
@@ -1497,20 +1572,20 @@ TEST_CASE("BuildVariableGradientDag - second order via re-differentiating the sl
 
     Operon::ScalarDispatch dtable;
     Interpreter<Operon::Scalar, Operon::ScalarDispatch> interp(&dtable, &ds, &derivTree2);
-    auto result = interp.Evaluate(derivTree2.GetCoefficients(), Range{0, 1}).value();
+    auto result = interp.Evaluate(derivTree2.GetCoefficients(), Range { 0, 1 }).value();
     CHECK(result[0] == Catch::Approx(12.0).epsilon(1e-3));
 }
 
 TEST_CASE("BuildVariableGradientDag - unary Sub/Div are not falsely reported as uncertain", "[tree_diff]")
 {
-    Dataset const ds(std::vector<std::string>{"X"}, std::vector<std::vector<Operon::Scalar>>{{2.0F}});
+    Dataset const ds(std::vector<std::string> { "X" }, std::vector<std::vector<Operon::Scalar>> { { 2.0F } });
     auto xHash = ds.GetVariable("X")->Hash;
 
-    for (auto op : {BuiltinOp::Sub, BuiltinOp::Div}) {
+    for (auto op : { BuiltinOp::Sub, BuiltinOp::Div }) {
         Operon::Vector<Node> nodes;
-        nodes.push_back(Node{NodeType::Variable, xHash});
+        nodes.push_back(Node { NodeType::Variable, xHash });
         nodes.push_back(Node::Function(static_cast<Operon::Hash>(op), 1));
-        Tree tree{nodes};
+        Tree tree { nodes };
         tree.UpdateNodes();
         auto dag = BuildVariableGradientDag(tree);
         auto k = VariableIndex(dag, xHash);
@@ -1521,19 +1596,19 @@ TEST_CASE("BuildVariableGradientDag - unary Sub/Div are not falsely reported as 
 
 TEST_CASE("BuildVariableGradientDag - unsupported op certainty is per dependent variable", "[tree_diff]")
 {
-    Dataset const ds(std::vector<std::string>{"X", "Y"},
-        std::vector<std::vector<Operon::Scalar>>{{2.0F}, {3.0F}});
+    Dataset const ds(
+        std::vector<std::string> { "X", "Y" }, std::vector<std::vector<Operon::Scalar>> { { 2.0F }, { 3.0F } });
     auto xHash = ds.GetVariable("X")->Hash;
     auto yHash = ds.GetVariable("Y")->Hash;
 
     // f(x,y) = abs(x) + y. d/dx is uncertain; d/dy is certain even though
     // the whole tree contains an unsupported op on the unrelated x branch.
     Operon::Vector<Node> nodes;
-    nodes.push_back(Node{NodeType::Variable, xHash});
+    nodes.push_back(Node { NodeType::Variable, xHash });
     nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Abs), 1));
-    nodes.push_back(Node{NodeType::Variable, yHash});
+    nodes.push_back(Node { NodeType::Variable, yHash });
     nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 2));
-    Tree tree{nodes};
+    Tree tree { nodes };
     tree.UpdateNodes();
 
     auto dag = BuildVariableGradientDag(tree);

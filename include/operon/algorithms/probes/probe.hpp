@@ -17,13 +17,8 @@ namespace Operon {
 
 // A single named value emitted by a probe for one generation. Vectors cover
 // per-individual/per-variable readings that don't collapse to one scalar.
-using ResultValue = std::variant<
-    std::int64_t,
-    double,
-    bool,
-    std::string,
-    std::vector<std::int64_t>,
-    std::vector<double>>;
+using ResultValue
+    = std::variant<std::int64_t, double, bool, std::string, std::vector<std::int64_t>, std::vector<double>>;
 
 // One generation's worth of named values, handed to a RecordSink. Not a
 // fixed-column struct: probes are free to emit whatever keys apply that
@@ -79,7 +74,7 @@ struct GenerationProbe {
 
     // Called once after the algorithm's Run() returns, for probes that
     // buffer state or hold an open file (e.g. flushing/closing a trace).
-    virtual auto Finish() -> void { }
+    virtual auto Finish() -> void {}
 };
 
 } // namespace Operon

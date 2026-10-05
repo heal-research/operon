@@ -15,22 +15,24 @@
 #include <string>
 #include <vector>
 
-#include "operon/core/tree.hpp"
-#include "operon/hash/hash.hpp"
 #include "operon/core/constants.hpp"
 #include "operon/core/node.hpp"
+#include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
+#include "operon/hash/hash.hpp"
 #include "subtree_rewrite.hpp"
 
 namespace Operon {
 auto Tree::Splice(size_t i) const -> Tree
 {
-    auto const span = detail::DescribeSubtree(Operon::Span<Node const>{nodes_}, i);
-    return Tree(detail::CopySubtree(Operon::Span<Node const>{nodes_}, span)).UpdateNodes();
+    auto const span = detail::DescribeSubtree(Operon::Span<Node const> { nodes_ }, i);
+    return Tree(detail::CopySubtree(Operon::Span<Node const> { nodes_ }, span)).UpdateNodes();
 }
 auto Tree::UpdateNodes() -> Tree&
 {
-    if (nodes_.empty()) { return *this; }
+    if (nodes_.empty()) {
+        return *this;
+    }
     for (size_t i = 0; i < nodes_.size(); ++i) {
         auto& s = nodes_[i];
 
@@ -61,7 +63,9 @@ auto Tree::UpdateNodes() -> Tree&
 
 auto Tree::Validate() const -> tl::expected<void, TreeValidationError>
 {
-    if (nodes_.empty()) { return {}; }
+    if (nodes_.empty()) {
+        return {};
+    }
 
     struct CompletedSubtree {
         size_t First;
@@ -91,13 +95,12 @@ auto Tree::Validate() const -> tl::expected<void, TreeValidationError>
         }
 
         if (node.IsFunction() == node.IsLeaf()) {
-            return tl::make_unexpected(node.IsFunction()
-                ? TreeValidationError::FunctionArityZero
-                : TreeValidationError::TerminalArityNonZero);
+            return tl::make_unexpected(
+                node.IsFunction() ? TreeValidationError::FunctionArityZero : TreeValidationError::TerminalArityNonZero);
         }
         if (node.IsLeaf()) {
             depths[i] = 1;
-            stack.push_back({i, i, 1});
+            stack.push_back({ i, i, 1 });
             continue;
         }
 
@@ -107,7 +110,7 @@ auto Tree::Validate() const -> tl::expected<void, TreeValidationError>
         }
 
         auto const firstChild = stack.size() - arity;
-        auto const first      = stack[firstChild].First;
+        auto const first = stack[firstChild].First;
         if (firstChild > 0 && stack[firstChild - 1].Root + 1 != first) {
             return tl::make_unexpected(TreeValidationError::ChildSubtreesNotContiguous);
         }
@@ -115,15 +118,15 @@ auto Tree::Validate() const -> tl::expected<void, TreeValidationError>
             return tl::make_unexpected(TreeValidationError::ChildSubtreesNotAdjacent);
         }
 
-        size_t depth{1};
+        size_t depth { 1 };
         for (auto j = firstChild; j < stack.size(); ++j) {
             parents[stack[j].Root] = i;
             depth = std::max(depth, stack[j].Depth + 1);
         }
         stack.erase(stack.begin() + static_cast<std::ptrdiff_t>(firstChild), stack.end());
-        stack.push_back({first, i, depth});
+        stack.push_back({ first, i, depth });
         lengths[i] = i - first;
-        depths[i]  = depth;
+        depths[i] = depth;
     }
 
     if (stack.size() != 1) {
@@ -141,10 +144,8 @@ auto Tree::Validate() const -> tl::expected<void, TreeValidationError>
 
     for (size_t i = 0; i < nodes_.size(); ++i) {
         auto const& node = nodes_[i];
-        if (lengths[i] > std::numeric_limits<uint16_t>::max()
-            || depths[i] > std::numeric_limits<uint16_t>::max()
-            || parents[i] > std::numeric_limits<uint16_t>::max()
-            || levels[i] > std::numeric_limits<uint16_t>::max()) {
+        if (lengths[i] > std::numeric_limits<uint16_t>::max() || depths[i] > std::numeric_limits<uint16_t>::max()
+            || parents[i] > std::numeric_limits<uint16_t>::max() || levels[i] > std::numeric_limits<uint16_t>::max()) {
             return tl::make_unexpected(TreeValidationError::DerivedMetadataOverflow);
         }
         if (node.Length != lengths[i]) {
@@ -171,7 +172,7 @@ auto Tree::Reduce() -> Tree&
         if (s.IsLeaf() || !s.IsCommutative()) {
             continue;
         }
-        auto arity{ s.Arity };
+        auto arity { s.Arity };
         for (auto& p : Children(i)) {
             if (s.HashValue == p.HashValue) {
                 p.IsEnabled = false;
@@ -206,10 +207,10 @@ auto Tree::Sort() -> Tree&
 
     Operon::Vector<Operon::Node> sorted = nodes_;
     Operon::Vector<size_t> origins(sorted.size());
-    std::iota(origins.begin(), origins.end(), size_t{0});
+    std::iota(origins.begin(), origins.end(), size_t { 0 });
 
     Operon::Vector<size_t> destinations(sorted.size());
-    std::iota(destinations.begin(), destinations.end(), size_t{0});
+    std::iota(destinations.begin(), destinations.end(), size_t { 0 });
 
     struct ChildSpan {
         Operon::Node Root;
@@ -236,12 +237,13 @@ auto Tree::Sort() -> Tree&
                 children.push_back({ sorted[j], j + 1U - size, size });
             }
         }
-        std::stable_sort(children.begin(), children.end(), [](ChildSpan const& lhs, ChildSpan const& rhs) {
-            return lhs.Root < rhs.Root;
-        });
+        std::stable_sort(children.begin(), children.end(),
+            [](ChildSpan const& lhs, ChildSpan const& rhs) { return lhs.Root < rhs.Root; });
 
-        Operon::Vector<Operon::Node> const buffer(sorted.begin() + static_cast<std::ptrdiff_t>(first), sorted.begin() + static_cast<std::ptrdiff_t>(i));
-        Operon::Vector<size_t> const sourceOrigins(origins.begin() + static_cast<std::ptrdiff_t>(first), origins.begin() + static_cast<std::ptrdiff_t>(i));
+        Operon::Vector<Operon::Node> const buffer(
+            sorted.begin() + static_cast<std::ptrdiff_t>(first), sorted.begin() + static_cast<std::ptrdiff_t>(i));
+        Operon::Vector<size_t> const sourceOrigins(
+            origins.begin() + static_cast<std::ptrdiff_t>(first), origins.begin() + static_cast<std::ptrdiff_t>(i));
         Operon::Vector<Operon::Node> reordered;
         Operon::Vector<size_t> reorderedOrigins;
         reordered.reserve(buffer.size());
@@ -249,8 +251,10 @@ auto Tree::Sort() -> Tree&
 
         for (auto const& child : children) {
             auto const offset = child.First - first;
-            std::copy_n(buffer.begin() + static_cast<std::ptrdiff_t>(offset), static_cast<std::ptrdiff_t>(child.Size), std::back_inserter(reordered));
-            std::copy_n(sourceOrigins.begin() + static_cast<std::ptrdiff_t>(offset), static_cast<std::ptrdiff_t>(child.Size), std::back_inserter(reorderedOrigins));
+            std::copy_n(buffer.begin() + static_cast<std::ptrdiff_t>(offset), static_cast<std::ptrdiff_t>(child.Size),
+                std::back_inserter(reordered));
+            std::copy_n(sourceOrigins.begin() + static_cast<std::ptrdiff_t>(offset),
+                static_cast<std::ptrdiff_t>(child.Size), std::back_inserter(reorderedOrigins));
         }
 
         for (size_t j = 0; j < reorderedOrigins.size(); ++j) {
@@ -296,7 +300,9 @@ void Tree::GetCoefficients(std::vector<Operon::Scalar>& out) const
 {
     out.clear();
     for (auto const& n : nodes_) {
-        if (n.Optimize) { out.push_back(n.Value); }
+        if (n.Optimize) {
+            out.push_back(n.Value);
+        }
     }
 }
 
@@ -307,18 +313,18 @@ void Tree::SetCoefficients(Operon::Span<Operon::Scalar const> coefficients)
     }
     size_t idx = 0;
     for (auto& s : nodes_) {
-        if (s.Optimize) { s.Value = coefficients[idx++]; }
+        if (s.Optimize) {
+            s.Value = coefficients[idx++];
+        }
     }
 }
 
-auto Tree::Depth() const noexcept -> size_t
-{
-    return Empty() ? 0 : nodes_.back().Depth;
-}
+auto Tree::Depth() const noexcept -> size_t { return Empty() ? 0 : nodes_.back().Depth; }
 
 auto Tree::VisitationLength() const noexcept -> size_t
 {
-    return std::transform_reduce(nodes_.begin(), nodes_.end(), 0UL, std::plus<> {}, [](const auto& node) -> auto { return node.Length + 1; });
+    return std::transform_reduce(
+        nodes_.begin(), nodes_.end(), 0UL, std::plus<> {}, [](const auto& node) -> auto { return node.Length + 1; });
 }
 
 auto Tree::Hash(Operon::HashMode mode) const -> Tree const&
@@ -343,7 +349,8 @@ auto Tree::Hash(Operon::HashMode mode) const -> Tree const&
             } else {
                 n.CalculatedHashValue = n.HashValue;
                 if (mode == Operon::HashMode::Strict) {
-                    n.CalculatedHashValue += hasher(reinterpret_cast<uint8_t const*>(&n.Value), sizeof(n.Value)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+                    n.CalculatedHashValue += hasher(reinterpret_cast<uint8_t const*>(&n.Value),
+                        sizeof(n.Value)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
                 }
             }
             continue;
@@ -357,10 +364,12 @@ auto Tree::Hash(Operon::HashMode mode) const -> Tree const&
         if (n.IsCommutative()) {
             std::stable_sort(begin, end, [&](auto a, auto b) -> auto { return nodes_[a] < nodes_[b]; });
         }
-        std::transform(begin, end, std::back_inserter(hashes), [&](auto j) -> auto { return nodes_[j].CalculatedHashValue; });
+        std::transform(
+            begin, end, std::back_inserter(hashes), [&](auto j) -> auto { return nodes_[j].CalculatedHashValue; });
         hashes.push_back(n.HashValue);
 
-        n.CalculatedHashValue = hasher(std::bit_cast<uint8_t*>(hashes.data()), sizeof(Operon::Hash) * hashes.size()); // NOLINT
+        n.CalculatedHashValue
+            = hasher(std::bit_cast<uint8_t*>(hashes.data()), sizeof(Operon::Hash) * hashes.size()); // NOLINT
         childIndices.clear();
         hashes.clear();
     }
@@ -368,16 +377,21 @@ auto Tree::Hash(Operon::HashMode mode) const -> Tree const&
     return *this;
 }
 
-auto Tree::Simplify() -> Tree& {
+auto Tree::Simplify() -> Tree&
+{
     using BO = BuiltinOp;
-    using S  = Operon::Scalar;
+    using S = Operon::Scalar;
 
-    if (nodes_.empty()) { return *this; }
+    if (nodes_.empty()) {
+        return *this;
+    }
 
     // Replace the span [i-L, i] with a single Const node.
     // Disables all old children; repurposes node i as Const(value).
     auto foldToConst = [&](std::size_t i, S value) {
-        for (auto j = i - nodes_[i].Length; j < i; ++j) { nodes_[j].IsEnabled = false; }
+        for (auto j = i - nodes_[i].Length; j < i; ++j) {
+            nodes_[j].IsEnabled = false;
+        }
         nodes_[i] = Node::Constant(static_cast<double>(value));
     };
 
@@ -387,74 +401,139 @@ auto Tree::Simplify() -> Tree& {
 
         for (std::size_t i = 0; i < nodes_.size(); ++i) {
             auto& n = nodes_[i];
-            if (!n.IsEnabled || n.IsLeaf()) { continue; }
+            if (!n.IsEnabled || n.IsLeaf()) {
+                continue;
+            }
 
             // Direct child root indices, in first-operand-first order.
             std::vector<std::size_t> ch;
             ch.reserve(n.Arity);
-            for (auto j : Indices(i)) { ch.push_back(j); }
+            for (auto j : Indices(i)) {
+                ch.push_back(j);
+            }
 
             // --- Constant folding: all direct children are Const leaves ---
             // Running until convergence lets deeper const subtrees fold up in
             // subsequent passes (bottom-up, one level per pass).
-            bool allConst = std::all_of(ch.begin(), ch.end(),
-                [&](std::size_t j) { return nodes_[j].IsConstant(); });
+            bool allConst = std::all_of(ch.begin(), ch.end(), [&](std::size_t j) { return nodes_[j].IsConstant(); });
 
             if (allConst && !ch.empty()) {
                 std::optional<S> acc;
                 bool handled = true;
-                S val{};
+                S val {};
                 switch (n.HashValue) {
                 case Operon::Hash(BO::Add):
-                    val = S{0};
-                    for (auto j : ch) { val += nodes_[j].Value; }
+                    val = S { 0 };
+                    for (auto j : ch) {
+                        val += nodes_[j].Value;
+                    }
                     break;
                 case Operon::Hash(BO::Mul):
-                    val = S{1};
-                    for (auto j : ch) { val *= nodes_[j].Value; }
+                    val = S { 1 };
+                    for (auto j : ch) {
+                        val *= nodes_[j].Value;
+                    }
                     break;
                 case Operon::Hash(BO::Sub):
                     // arity 1 is negation (-x, see InfixFormatter::FormatNode), not identity -
                     // the n-ary accumulator below is only correct for arity >= 2.
-                    if (ch.size() == 1) { val = -nodes_[ch[0]].Value; break; }
-                    for (auto j : ch) { acc = acc ? *acc - nodes_[j].Value : nodes_[j].Value; }
-                    val = acc.value_or(S{0});
+                    if (ch.size() == 1) {
+                        val = -nodes_[ch[0]].Value;
+                        break;
+                    }
+                    for (auto j : ch) {
+                        acc = acc ? *acc - nodes_[j].Value : nodes_[j].Value;
+                    }
+                    val = acc.value_or(S { 0 });
                     break;
                 case Operon::Hash(BO::Div):
                     // arity 1 is inversion (1/x, see InfixFormatter::FormatNode), not identity.
-                    if (ch.size() == 1) { val = S{1} / nodes_[ch[0]].Value; break; }
-                    for (auto j : ch) { acc = acc ? *acc / nodes_[j].Value : nodes_[j].Value; }
-                    val = acc.value_or(S{0});
+                    if (ch.size() == 1) {
+                        val = S { 1 } / nodes_[ch[0]].Value;
+                        break;
+                    }
+                    for (auto j : ch) {
+                        acc = acc ? *acc / nodes_[j].Value : nodes_[j].Value;
+                    }
+                    val = acc.value_or(S { 0 });
                     break;
                 case Operon::Hash(BO::Fmin):
-                    for (auto j : ch) { acc = acc ? std::min(*acc, nodes_[j].Value) : nodes_[j].Value; }
-                    val = acc.value_or(S{0});
+                    for (auto j : ch) {
+                        acc = acc ? std::min(*acc, nodes_[j].Value) : nodes_[j].Value;
+                    }
+                    val = acc.value_or(S { 0 });
                     break;
                 case Operon::Hash(BO::Fmax):
-                    for (auto j : ch) { acc = acc ? std::max(*acc, nodes_[j].Value) : nodes_[j].Value; }
-                    val = acc.value_or(S{0});
+                    for (auto j : ch) {
+                        acc = acc ? std::max(*acc, nodes_[j].Value) : nodes_[j].Value;
+                    }
+                    val = acc.value_or(S { 0 });
                     break;
-                case Operon::Hash(BO::Pow):    val = std::pow(nodes_[ch[0]].Value, nodes_[ch[1]].Value);                break;
-                case Operon::Hash(BO::Powabs): val = std::pow(std::abs(nodes_[ch[0]].Value), nodes_[ch[1]].Value);     break;
-                case Operon::Hash(BO::Aq):     { S y = nodes_[ch[1]].Value; val = nodes_[ch[0]].Value / std::sqrt(S{1} + (y*y)); break; }
-                case Operon::Hash(BO::Exp):    val = std::exp(nodes_[ch[0]].Value);                                     break;
-                case Operon::Hash(BO::Log):    val = std::log(nodes_[ch[0]].Value);                                     break;
-                case Operon::Hash(BO::Log1p):  val = std::log1p(nodes_[ch[0]].Value);                                  break;
-                case Operon::Hash(BO::Logabs): val = std::log(std::abs(nodes_[ch[0]].Value));                          break;
-                case Operon::Hash(BO::Sin):    val = std::sin(nodes_[ch[0]].Value);                                     break;
-                case Operon::Hash(BO::Cos):    val = std::cos(nodes_[ch[0]].Value);                                     break;
-                case Operon::Hash(BO::Tan):    val = std::tan(nodes_[ch[0]].Value);                                     break;
-                case Operon::Hash(BO::Sinh):   val = std::sinh(nodes_[ch[0]].Value);                                    break;
-                case Operon::Hash(BO::Cosh):   val = std::cosh(nodes_[ch[0]].Value);                                    break;
-                case Operon::Hash(BO::Tanh):   val = std::tanh(nodes_[ch[0]].Value);                                    break;
-                case Operon::Hash(BO::Sqrt):   val = std::sqrt(nodes_[ch[0]].Value);                                    break;
-                case Operon::Hash(BO::Sqrtabs):val = std::sqrt(std::abs(nodes_[ch[0]].Value));                         break;
-                case Operon::Hash(BO::Cbrt):   val = std::cbrt(nodes_[ch[0]].Value);                                    break;
-                case Operon::Hash(BO::Square): val = nodes_[ch[0]].Value * nodes_[ch[0]].Value;                        break;
-                case Operon::Hash(BO::Abs):    val = std::abs(nodes_[ch[0]].Value);                                     break;
-                case Operon::Hash(BO::Floor):  val = std::floor(nodes_[ch[0]].Value);                                   break;
-                case Operon::Hash(BO::Ceil):   val = std::ceil(nodes_[ch[0]].Value);                                    break;
-                default:         handled = false;                                                          break;
+                case Operon::Hash(BO::Pow):
+                    val = std::pow(nodes_[ch[0]].Value, nodes_[ch[1]].Value);
+                    break;
+                case Operon::Hash(BO::Powabs):
+                    val = std::pow(std::abs(nodes_[ch[0]].Value), nodes_[ch[1]].Value);
+                    break;
+                case Operon::Hash(BO::Aq): {
+                    S y = nodes_[ch[1]].Value;
+                    val = nodes_[ch[0]].Value / std::sqrt(S { 1 } + (y * y));
+                    break;
+                }
+                case Operon::Hash(BO::Exp):
+                    val = std::exp(nodes_[ch[0]].Value);
+                    break;
+                case Operon::Hash(BO::Log):
+                    val = std::log(nodes_[ch[0]].Value);
+                    break;
+                case Operon::Hash(BO::Log1p):
+                    val = std::log1p(nodes_[ch[0]].Value);
+                    break;
+                case Operon::Hash(BO::Logabs):
+                    val = std::log(std::abs(nodes_[ch[0]].Value));
+                    break;
+                case Operon::Hash(BO::Sin):
+                    val = std::sin(nodes_[ch[0]].Value);
+                    break;
+                case Operon::Hash(BO::Cos):
+                    val = std::cos(nodes_[ch[0]].Value);
+                    break;
+                case Operon::Hash(BO::Tan):
+                    val = std::tan(nodes_[ch[0]].Value);
+                    break;
+                case Operon::Hash(BO::Sinh):
+                    val = std::sinh(nodes_[ch[0]].Value);
+                    break;
+                case Operon::Hash(BO::Cosh):
+                    val = std::cosh(nodes_[ch[0]].Value);
+                    break;
+                case Operon::Hash(BO::Tanh):
+                    val = std::tanh(nodes_[ch[0]].Value);
+                    break;
+                case Operon::Hash(BO::Sqrt):
+                    val = std::sqrt(nodes_[ch[0]].Value);
+                    break;
+                case Operon::Hash(BO::Sqrtabs):
+                    val = std::sqrt(std::abs(nodes_[ch[0]].Value));
+                    break;
+                case Operon::Hash(BO::Cbrt):
+                    val = std::cbrt(nodes_[ch[0]].Value);
+                    break;
+                case Operon::Hash(BO::Square):
+                    val = nodes_[ch[0]].Value * nodes_[ch[0]].Value;
+                    break;
+                case Operon::Hash(BO::Abs):
+                    val = std::abs(nodes_[ch[0]].Value);
+                    break;
+                case Operon::Hash(BO::Floor):
+                    val = std::floor(nodes_[ch[0]].Value);
+                    break;
+                case Operon::Hash(BO::Ceil):
+                    val = std::ceil(nodes_[ch[0]].Value);
+                    break;
+                default:
+                    handled = false;
+                    break;
                 }
                 if (handled) {
                     foldToConst(i, val); // n.Value == 1.0 for all function nodes
@@ -468,32 +547,44 @@ auto Tree::Simplify() -> Tree& {
             case Operon::Hash(BO::Add): {
                 auto newArity = n.Arity;
                 for (auto j : ch) {
-                    if (nodes_[j].IsConstant() && nodes_[j].Value == S{0}) {
+                    if (nodes_[j].IsConstant() && nodes_[j].Value == S { 0 }) {
                         nodes_[j].IsEnabled = false;
                         --newArity;
                         changed = true;
                     }
                 }
-                if      (newArity == 0) { foldToConst(i, S{0}); }
-                else if (newArity == 1) { n.IsEnabled = false; }
-                else                   { n.Arity = newArity; }
+                if (newArity == 0) {
+                    foldToConst(i, S { 0 });
+                } else if (newArity == 1) {
+                    n.IsEnabled = false;
+                } else {
+                    n.Arity = newArity;
+                }
                 break;
             }
             case Operon::Hash(BO::Mul): {
                 bool hasZero = std::any_of(ch.begin(), ch.end(),
-                    [&](std::size_t j) { return nodes_[j].IsConstant() && nodes_[j].Value == S{0}; });
-                if (hasZero) { foldToConst(i, S{0}); changed = true; break; }
+                    [&](std::size_t j) { return nodes_[j].IsConstant() && nodes_[j].Value == S { 0 }; });
+                if (hasZero) {
+                    foldToConst(i, S { 0 });
+                    changed = true;
+                    break;
+                }
                 auto newArity = n.Arity;
                 for (auto j : ch) {
-                    if (nodes_[j].IsConstant() && nodes_[j].Value == S{1}) {
+                    if (nodes_[j].IsConstant() && nodes_[j].Value == S { 1 }) {
                         nodes_[j].IsEnabled = false;
                         --newArity;
                         changed = true;
                     }
                 }
-                if      (newArity == 0) { foldToConst(i, S{1}); }
-                else if (newArity == 1) { n.IsEnabled = false; }
-                else                   { n.Arity = newArity; }
+                if (newArity == 0) {
+                    foldToConst(i, S { 1 });
+                } else if (newArity == 1) {
+                    n.IsEnabled = false;
+                } else {
+                    n.Arity = newArity;
+                }
                 break;
             }
             case Operon::Hash(BO::Sub): {
@@ -501,72 +592,94 @@ auto Tree::Simplify() -> Tree& {
                 // (the loop below never runs at arity 1, which would otherwise
                 // leave newArity==1 and incorrectly disable the node as if its
                 // one child were the whole value).
-                if (n.Arity < 2) { break; }
+                if (n.Arity < 2) {
+                    break;
+                }
                 // Remove Const(0) subtrahends (all children except the first).
                 auto newArity = n.Arity;
                 for (std::size_t ci = 1; ci < ch.size(); ++ci) {
                     auto j = ch[ci];
-                    if (nodes_[j].IsConstant() && nodes_[j].Value == S{0}) {
+                    if (nodes_[j].IsConstant() && nodes_[j].Value == S { 0 }) {
                         nodes_[j].IsEnabled = false;
                         --newArity;
                         changed = true;
                     }
                 }
-                if      (newArity == 0) { foldToConst(i, S{0}); }
-                else if (newArity == 1) { n.IsEnabled = false; } // only minuend left
-                else                   { n.Arity = newArity; }
+                if (newArity == 0) {
+                    foldToConst(i, S { 0 });
+                } else if (newArity == 1) {
+                    n.IsEnabled = false;
+                } // only minuend left
+                else {
+                    n.Arity = newArity;
+                }
                 break;
             }
             case Operon::Hash(BO::Div): {
                 // Arity 1 is inversion (1/x), not identity - same reasoning as Sub above.
-                if (n.Arity < 2) { break; }
+                if (n.Arity < 2) {
+                    break;
+                }
                 // Remove Const(1) denominators (all children except the first).
                 auto newArity = n.Arity;
                 for (std::size_t ci = 1; ci < ch.size(); ++ci) {
                     auto j = ch[ci];
-                    if (nodes_[j].IsConstant() && nodes_[j].Value == S{1}) {
+                    if (nodes_[j].IsConstant() && nodes_[j].Value == S { 1 }) {
                         nodes_[j].IsEnabled = false;
                         --newArity;
                         changed = true;
                     }
                 }
-                if      (newArity == 0) { foldToConst(i, S{1}); }
-                else if (newArity == 1) { n.IsEnabled = false; } // only numerator left
-                else                   { n.Arity = newArity; }
+                if (newArity == 0) {
+                    foldToConst(i, S { 1 });
+                } else if (newArity == 1) {
+                    n.IsEnabled = false;
+                } // only numerator left
+                else {
+                    n.Arity = newArity;
+                }
                 break;
             }
             case Operon::Hash(BO::Pow): {
-                if (ch.size() != 2) { break; }
+                if (ch.size() != 2) {
+                    break;
+                }
                 auto const baseIdx = ch[0];
-                auto const expIdx  = ch[1];
+                auto const expIdx = ch[1];
                 if (nodes_[expIdx].IsConstant()) {
-                    if (nodes_[expIdx].Value == S{0}) {
-                        foldToConst(i, S{1}); changed = true; // x^0 = 1
-                    } else if (nodes_[expIdx].Value == S{1}) {
+                    if (nodes_[expIdx].Value == S { 0 }) {
+                        foldToConst(i, S { 1 });
+                        changed = true; // x^0 = 1
+                    } else if (nodes_[expIdx].Value == S { 1 }) {
                         nodes_[expIdx].IsEnabled = false;
-                        n.IsEnabled = false;               // x^1 = x
+                        n.IsEnabled = false; // x^1 = x
                         changed = true;
-                    } else if (nodes_[expIdx].Value == S{2}) {
-                        nodes_[expIdx].IsEnabled = false;  // Pow(x,2) → Square(x)
-                        n.HashValue = Operon::Hash(BO::Square); // Type stays Function - only HashValue distinguishes ops now
+                    } else if (nodes_[expIdx].Value == S { 2 }) {
+                        nodes_[expIdx].IsEnabled = false; // Pow(x,2) → Square(x)
+                        n.HashValue
+                            = Operon::Hash(BO::Square); // Type stays Function - only HashValue distinguishes ops now
                         n.Arity = 1;
                         changed = true;
-                    } else if (nodes_[expIdx].Value == S{0.5}) {
-                        nodes_[expIdx].IsEnabled = false;  // Pow(x,0.5) → Sqrt(x)
+                    } else if (nodes_[expIdx].Value == S { 0.5 }) {
+                        nodes_[expIdx].IsEnabled = false; // Pow(x,0.5) → Sqrt(x)
                         n.HashValue = Operon::Hash(BO::Sqrt);
                         n.Arity = 1;
                         changed = true;
                     }
-                } else if (nodes_[baseIdx].IsConstant() && nodes_[baseIdx].Value == S{1}) {
-                    foldToConst(i, S{1}); changed = true;  // 1^x = 1
+                } else if (nodes_[baseIdx].IsConstant() && nodes_[baseIdx].Value == S { 1 }) {
+                    foldToConst(i, S { 1 });
+                    changed = true; // 1^x = 1
                 }
                 break;
             }
             case Operon::Hash(BO::Powabs): {
-                if (ch.size() != 2) { break; }
+                if (ch.size() != 2) {
+                    break;
+                }
                 auto const expIdx = ch[1];
-                if (nodes_[expIdx].IsConstant() && nodes_[expIdx].Value == S{0}) {
-                    foldToConst(i, S{1}); changed = true;  // |x|^0 = 1
+                if (nodes_[expIdx].IsConstant() && nodes_[expIdx].Value == S { 0 }) {
+                    foldToConst(i, S { 1 });
+                    changed = true; // |x|^0 = 1
                 }
                 // Note: |x|^1 = |x| ≠ x in general, so we do NOT simplify Powabs(x,1).
                 break;
@@ -587,12 +700,14 @@ auto Tree::Simplify() -> Tree& {
                 if (ch.size() == 1 && nodes_[ch[0]].IsOp<BO::Square>()) {
                     nodes_[ch[0]].IsEnabled = false;
                     n.HashValue = Operon::Hash(BO::Abs); // Type stays Function
-                    n.Arity = 1; // Sqrt/Sqrtabs and Abs are both unary; explicit for symmetry with the Pow retargets above
+                    n.Arity
+                        = 1; // Sqrt/Sqrtabs and Abs are both unary; explicit for symmetry with the Pow retargets above
                     changed = true;
                 }
                 break;
             }
-            default: break;
+            default:
+                break;
             }
 
             // foldToConst above overwrites node i in place as a Length-0
@@ -610,7 +725,9 @@ auto Tree::Simplify() -> Tree& {
             // (erase_if + UpdateNodes) before any later index is examined;
             // the outer while(changed) picks the scan back up from a
             // consistent array.
-            if (changed) { break; }
+            if (changed) {
+                break;
+            }
         }
 
         if (changed) {

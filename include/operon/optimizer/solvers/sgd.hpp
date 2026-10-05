@@ -64,16 +64,17 @@ namespace UpdateRule {
     private:
         using Base = LearningRateUpdateRule;
 
-        T r_{0.1};
+        T r_ { 0.1 };
 
     public:
-        explicit Constant(Eigen::Index /*dim*/= 0, T r = 0.1)
+        explicit Constant(Eigen::Index /*dim*/ = 0, T r = 0.1)
             : Base("constant")
             , r_(r)
         {
         }
 
-        explicit Constant(T r = 0.1) : Constant(0, r)
+        explicit Constant(T r = 0.1)
+            : Constant(0, r)
         {
         }
 
@@ -97,9 +98,10 @@ namespace UpdateRule {
             return os;
         }
 
-        auto SetDimension(int /*unused*/) const -> void final { }
+        auto SetDimension(int /*unused*/) const -> void final {}
 
-        [[nodiscard]] auto Clone(int dim) const -> std::unique_ptr<LearningRateUpdateRule> final {
+        [[nodiscard]] auto Clone(int dim) const -> std::unique_ptr<LearningRateUpdateRule> final
+        {
             return std::make_unique<Constant<T, U>>(dim, r_);
         }
     };
@@ -108,8 +110,8 @@ namespace UpdateRule {
     class Momentum : public LearningRateUpdateRule {
         using Base = LearningRateUpdateRule;
 
-        T r_{0.01}; // learning rate
-        T b_{0.9}; // beta
+        T r_ { 0.01 }; // learning rate
+        T b_ { 0.9 }; // beta
         mutable U m_; // first moment
 
     public:
@@ -155,7 +157,9 @@ namespace UpdateRule {
 
         auto Clone(int dim) const -> std::unique_ptr<LearningRateUpdateRule> final
         {
-            if (dim == 0) { dim = m_.size(); }
+            if (dim == 0) {
+                dim = m_.size();
+            }
             return std::make_unique<Momentum<T, U>>(dim, r_, b_);
         }
     };
@@ -164,9 +168,9 @@ namespace UpdateRule {
     class RmsProp : public LearningRateUpdateRule {
         using Base = LearningRateUpdateRule;
 
-        T r_{0.01}; // learning rate
-        T b_{0.9};  // beta
-        T e_{1e-6}; // epsilon
+        T r_ { 0.01 }; // learning rate
+        T b_ { 0.9 }; // beta
+        T e_ { 1e-6 }; // epsilon
         mutable U m_; // second moment
 
     public:
@@ -214,7 +218,9 @@ namespace UpdateRule {
 
         auto Clone(int dim) const -> std::unique_ptr<LearningRateUpdateRule> final
         {
-            if (dim == 0) { dim = m_.size(); }
+            if (dim == 0) {
+                dim = m_.size();
+            }
             return std::make_unique<RmsProp<T, U>>(dim, r_, b_);
         }
     };
@@ -223,8 +229,8 @@ namespace UpdateRule {
     class AdaDelta : public LearningRateUpdateRule {
         using Base = LearningRateUpdateRule;
 
-        T b_{0.9}; // beta
-        T e_{1e-6}; // epsilon
+        T b_ { 0.9 }; // beta
+        T e_ { 1e-6 }; // epsilon
         mutable U m_; // moment gradient
         mutable U s_; // moment delta
         mutable U d_; // previous delta
@@ -280,18 +286,19 @@ namespace UpdateRule {
 
         auto Clone(int dim) const -> std::unique_ptr<LearningRateUpdateRule> final
         {
-            if (dim == 0) { dim = m_.size(); }
+            if (dim == 0) {
+                dim = m_.size();
+            }
             return std::make_unique<AdaDelta<T, U>>(dim, b_, e_);
         }
     };
 
-    template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>>
-    class AdaMax : public LearningRateUpdateRule {
+    template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>> class AdaMax : public LearningRateUpdateRule {
         using Base = LearningRateUpdateRule;
 
-        T r_{0.01}; // base learning rate
-        T b1_{0.9}; // exponential decay rate first moment
-        T b2_{0.999}; // exponential decay rate second moment
+        T r_ { 0.01 }; // base learning rate
+        T b1_ { 0.9 }; // exponential decay rate first moment
+        T b2_ { 0.999 }; // exponential decay rate second moment
         mutable U m_; // first moment
         mutable U v_; // second moment
 
@@ -344,19 +351,20 @@ namespace UpdateRule {
 
         auto Clone(int dim) const -> std::unique_ptr<LearningRateUpdateRule> final
         {
-            if (dim == 0) { dim = m_.size(); }
+            if (dim == 0) {
+                dim = m_.size();
+            }
             return std::make_unique<AdaMax<T, U>>(dim, r_, b1_, b2_);
         }
     };
 
-    template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>>
-    class Adam : public LearningRateUpdateRule {
+    template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>> class Adam : public LearningRateUpdateRule {
         using Base = LearningRateUpdateRule;
 
-        T r_{0.01}; // base learning rate
-        T e_{1e-8}; // epsilon
-        T b1_{0.9}; // exponential decay rate first moment
-        T b2_{0.999}; // exponential decay rate second moment
+        T r_ { 0.01 }; // base learning rate
+        T e_ { 1e-8 }; // epsilon
+        T b1_ { 0.9 }; // exponential decay rate first moment
+        T b2_ { 0.999 }; // exponential decay rate second moment
         mutable U m_; // first moment
         mutable U v_; // second moment
 
@@ -426,8 +434,10 @@ namespace UpdateRule {
 
         auto Clone(int dim) const -> std::unique_ptr<LearningRateUpdateRule> final
         {
-           if (dim == 0) { dim = m_.size(); }
-           return std::make_unique<Adam<T, U>>(dim, r_, e_, b1_, b2_, debias_);
+            if (dim == 0) {
+                dim = m_.size();
+            }
+            return std::make_unique<Adam<T, U>>(dim, r_, e_, b1_, b2_, debias_);
         }
     };
 
@@ -501,7 +511,9 @@ namespace UpdateRule {
 
         auto Clone(int dim) const -> std::unique_ptr<LearningRateUpdateRule> final
         {
-            if (dim == 0) { dim = m_.size(); }
+            if (dim == 0) {
+                dim = m_.size();
+            }
             return std::make_unique<YamAdam<T, U>>(dim, e_);
         }
     };
@@ -539,8 +551,8 @@ namespace UpdateRule {
         auto Update(Eigen::Ref<U const> const& gradient, Eigen::Ref<U> result) const -> void final
         {
             EXPECT(result.size() == gradient.size());
-            m_ = b1_ * m_ + (T{1} - b1_) * gradient;
-            v_ = (b2_ * v_ + (T{1} - b2_)).cwiseMax(v_) * gradient.square();
+            m_ = b1_ * m_ + (T { 1 } - b1_) * gradient;
+            v_ = (b2_ * v_ + (T { 1 } - b2_)).cwiseMax(v_) * gradient.square();
             result = r_ * m_ / (v_.sqrt() + e_);
         }
 
@@ -565,19 +577,20 @@ namespace UpdateRule {
 
         auto Clone(int dim) const -> std::unique_ptr<LearningRateUpdateRule> final
         {
-            if (dim == 0) { dim = m_.size(); }
-            return std::make_unique<AmsGrad<T,U>>(dim, r_, e_, b1_, b2_);
+            if (dim == 0) {
+                dim = m_.size();
+            }
+            return std::make_unique<AmsGrad<T, U>>(dim, r_, e_, b1_, b2_);
         }
     };
 
-    template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>>
-    class Yogi : public LearningRateUpdateRule {
+    template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>> class Yogi : public LearningRateUpdateRule {
         using Base = LearningRateUpdateRule;
 
-        T r_{0.01}; // learning rate
-        T e_{1e-8}; // epsilon
-        T b1_{0.9}; // exponential decay rate first moment
-        T b2_{0.999}; // exponential decay rate second moment
+        T r_ { 0.01 }; // learning rate
+        T e_ { 1e-8 }; // epsilon
+        T b1_ { 0.9 }; // exponential decay rate first moment
+        T b2_ { 0.999 }; // exponential decay rate second moment
         mutable U m_; // first moment
         mutable U v_; // second moment
 
@@ -641,18 +654,20 @@ namespace UpdateRule {
 
         auto Clone(int dim) const -> std::unique_ptr<LearningRateUpdateRule> final
         {
-            if (dim == 0) { dim = m_.size(); }
+            if (dim == 0) {
+                dim = m_.size();
+            }
             return std::make_unique<Yogi<T, U>>(dim, r_, e_, b1_, b2_, debias_);
         }
     };
 } // namespace UpdateRule
 
-template <typename Functor>
-struct SGDSolver {
+template <typename Functor> struct SGDSolver {
     using Scalar = typename Functor::Scalar;
     using Vector = Eigen::Array<Scalar, -1, 1>;
 
-    explicit SGDSolver(gsl::not_null<Functor const* >functor, gsl::not_null<UpdateRule::LearningRateUpdateRule const*> update)
+    explicit SGDSolver(
+        gsl::not_null<Functor const*> functor, gsl::not_null<UpdateRule::LearningRateUpdateRule const*> update)
         : functor_(functor)
         , rule_(update)
     {
@@ -703,7 +718,7 @@ private:
     gsl::not_null<Functor const*> functor_;
     gsl::not_null<UpdateRule::LearningRateUpdateRule const*> rule_;
 
-    mutable int epochs_ {1000};
+    mutable int epochs_ { 1000 };
     mutable bool converged_ { false };
 };
 } // namespace Operon

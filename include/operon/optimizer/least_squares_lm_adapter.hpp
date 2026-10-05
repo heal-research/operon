@@ -97,7 +97,8 @@ namespace Operon {
  * Evaluate() is thread-safe.
  */
 template <int StorageOrder = Eigen::ColMajor>
-struct LeastSquaresLMAdapter final : public detail::LMBackendFunctor<LeastSquaresLMAdapter<StorageOrder>, StorageOrder> {
+struct LeastSquaresLMAdapter final
+    : public detail::LMBackendFunctor<LeastSquaresLMAdapter<StorageOrder>, StorageOrder> {
     using Base = detail::LMBackendFunctor<LeastSquaresLMAdapter<StorageOrder>, StorageOrder>;
     using Scalar = typename Base::Scalar;
 
@@ -105,9 +106,7 @@ struct LeastSquaresLMAdapter final : public detail::LMBackendFunctor<LeastSquare
     // (Eigen's values(), TinySolver's residual count).
     static constexpr std::size_t MaxBackendResiduals = static_cast<std::size_t>(std::numeric_limits<int>::max());
 
-    explicit LeastSquaresLMAdapter(
-        gsl::not_null<LeastSquaresCostFunction const*> cost,
-        ConstScalarSpan weights = {},
+    explicit LeastSquaresLMAdapter(gsl::not_null<LeastSquaresCostFunction const*> cost, ConstScalarSpan weights = {},
         bool recoverNonFinite = false)
         : Base { cost->NumResiduals(), cost->NumParameters() }
         , cost_(cost)
@@ -137,7 +136,8 @@ struct LeastSquaresLMAdapter final : public detail::LMBackendFunctor<LeastSquare
                 std::fill_n(residuals, this->numResiduals_, std::numeric_limits<Scalar>::quiet_NaN());
             }
             if (jacobian != nullptr) {
-                std::fill_n(jacobian, this->numResiduals_ * this->numParameters_, std::numeric_limits<Scalar>::quiet_NaN());
+                std::fill_n(
+                    jacobian, this->numResiduals_ * this->numParameters_, std::numeric_limits<Scalar>::quiet_NaN());
             }
         };
         if (configurationInvalid_) {
@@ -171,7 +171,8 @@ struct LeastSquaresLMAdapter final : public detail::LMBackendFunctor<LeastSquare
             } else {
                 strides = { this->numParameters_, 1 };
             }
-            jacobianView = ScalarMatrixView { jacobian, Mapping { Extents { this->numResiduals_, this->numParameters_ }, strides } };
+            jacobianView = ScalarMatrixView { jacobian,
+                Mapping { Extents { this->numResiduals_, this->numParameters_ }, strides } };
         }
         if (residuals != nullptr) {
             ++this->residualCallCount_;
@@ -251,7 +252,9 @@ private:
             for (std::size_t i = 0; i < jacobian->extent(0); ++i) {
                 for (std::size_t j = 0; j < jacobian->extent(1); ++j) {
                     if (!std::isfinite(static_cast<double>(At(*jacobian, i, j)))) {
-                        return LeastSquaresError { .Code = LeastSquaresErrorCode::NonFiniteEvaluation, .Row = i, .Column = j };
+                        return LeastSquaresError {
+                            .Code = LeastSquaresErrorCode::NonFiniteEvaluation, .Row = i, .Column = j
+                        };
                     }
                 }
             }

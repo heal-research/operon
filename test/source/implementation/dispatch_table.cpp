@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
-#include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
 
 #include "../operon_test.hpp"
 
@@ -13,10 +13,10 @@
 
 #include "operon/core/pset.hpp"
 #include "operon/core/symbol_library.hpp"
+#include "operon/formatter/formatter.hpp"
 #include "operon/hash/hash.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/parser/infix.hpp"
-#include "operon/formatter/formatter.hpp"
 #include <fmt/format.h>
 
 namespace Operon::Test {
@@ -25,9 +25,9 @@ TEST_CASE("DispatchTable constructors", "[interpreter]")
 {
     using DT = Operon::DispatchTable<Operon::Scalar>;
 
-    std::string const x{"x"};
-    std::vector<Operon::Scalar> const v{0};
-    Operon::Dataset const ds({x}, {v});
+    std::string const x { "x" };
+    std::vector<Operon::Scalar> const v { 0 };
+    Operon::Dataset const ds({ x }, { v });
 
     auto check = [&](DT const& dt, std::string const& expr, Operon::Scalar expected) -> void {
         auto t = InfixParser::ParseOrThrow(expr);
@@ -36,7 +36,8 @@ TEST_CASE("DispatchTable constructors", "[interpreter]")
         CHECK(r[0] == Catch::Approx(expected));
     };
 
-    SECTION("Default constructor") {
+    SECTION("Default constructor")
+    {
         DT const dt;
         check(dt, "1 + 2 + 3", 6);
         check(dt, "1 - 2 - 3", -4);
@@ -44,20 +45,23 @@ TEST_CASE("DispatchTable constructors", "[interpreter]")
         check(dt, "6 / 3 * 2", 4);
     }
 
-    SECTION("Copy constructor") {
+    SECTION("Copy constructor")
+    {
         DT const dt;
         const DT& dt1(dt);
         check(dt1, "2 * 3 / 4", 1.5);
     }
 
-    SECTION("Move constructor") {
+    SECTION("Move constructor")
+    {
         DT const dt;
         DT dt1(dt);
         DT const dt2(std::move(dt1));
         check(dt2, "sin(1 / 2 * 3.141519)", static_cast<Operon::Scalar>(std::sin(1.0 / 2.0 * std::numbers::pi)));
     }
 
-    SECTION("Construct from map") {
+    SECTION("Construct from map")
+    {
         DT const dt;
         auto const& map = dt.GetMap();
         DT const dt3(map);
@@ -73,17 +77,19 @@ TEST_CASE("DispatchTable evaluation of expressions", "[interpreter]")
     using DT = Operon::DispatchTable<Operon::Scalar>;
     DT const dtable;
 
-    std::string const x{"x"};
-    std::vector<Operon::Scalar> const v{0};
-    Operon::Dataset const ds({x}, {v});
+    std::string const x { "x" };
+    std::vector<Operon::Scalar> const v { 0 };
+    Operon::Dataset const ds({ x }, { v });
 
-    SECTION("Arithmetic") {
+    SECTION("Arithmetic")
+    {
         auto t = InfixParser::ParseOrThrow("2 + 3 * 4");
         auto r = Interpreter<Operon::Scalar, DT>::Evaluate(t, ds, Range(0, 1)).value();
         CHECK(r[0] == Catch::Approx(14.0F));
     }
 
-    SECTION("Transcendental functions") {
+    SECTION("Transcendental functions")
+    {
         auto t = InfixParser::ParseOrThrow("exp(1)");
         auto r = Interpreter<Operon::Scalar, DT>::Evaluate(t, ds, Range(0, 1)).value();
         CHECK(r[0] == Catch::Approx(std::exp(1.0F)));
@@ -94,49 +100,51 @@ TEST_CASE("DispatchTable evaluation of expressions", "[interpreter]")
     }
 }
 
-TEST_CASE("RegisterFunction - user-defined symbol", "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
+TEST_CASE(
+    "RegisterFunction - user-defined symbol", "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
 {
-    using DT    = Operon::DispatchTable<Operon::Scalar>;
+    using DT = Operon::DispatchTable<Operon::Scalar>;
     using Scalar = Operon::Scalar;
     constexpr auto S = DT::BatchSize<Scalar>;
 
-    std::string const x{"x"};
+    std::string const x { "x" };
     std::vector<Scalar> xvals(10);
     std::iota(xvals.begin(), xvals.end(), 1.0F); // x = {1, 2, ..., 10}
-    Operon::Dataset ds({x}, {xvals});
+    Operon::Dataset ds({ x }, { xvals });
 
     DT dt;
-    auto const myHash = Operon::Hasher{}("test::negate");
+    auto const myHash = Operon::Hasher {}("test::negate");
 
     // Register a batch callable that negates its argument.
     // Follows the same convention as built-in Func<> specialisations:
     // reads nodes[i].Value as the node weight and applies it.
-    DT::Callable<Scalar> const primal = [](
-        Operon::Vector<Operon::Node> const& nodes,
-        Operon::Backend::View<Scalar, S> data,
-        size_t i,
-        Operon::Range /*rg*/)
-    -> void {
-        auto const  w   = static_cast<Scalar>(nodes[i].Value);
-        auto*       dst = data.data_handle() + (i * S);
+    DT::Callable<Scalar> const primal
+        = [](Operon::Vector<Operon::Node> const& nodes, Operon::Backend::View<Scalar, S> data, size_t i,
+              Operon::Range /*rg*/) -> void {
+        auto const w = static_cast<Scalar>(nodes[i].Value);
+        auto* dst = data.data_handle() + (i * S);
         auto const* src = data.data_handle() + ((i - 1) * S);
-        for (auto k = 0UL; k < S; ++k) { dst[k] = w * -src[k]; }
+        for (auto k = 0UL; k < S; ++k) {
+            dst[k] = w * -src[k];
+        }
     };
 
     dt.RegisterFunction<Scalar>(myHash, primal);
 
-    SECTION("Callable is present in the map after registration") {
+    SECTION("Callable is present in the map after registration")
+    {
         CHECK(dt.Contains(myHash));
         CHECK(dt.TryGetFunction<Scalar>(myHash).has_value());
     }
 
-    SECTION("Evaluate a tree: negate(x)") {
+    SECTION("Evaluate a tree: negate(x)")
+    {
         // Post-order: [Variable(x), Dynamic(negate)]
         Operon::Node varNode(Operon::NodeType::Variable);
         varNode.HashValue = ds.GetVariable(x).value().Hash;
 
         Operon::Node dynNode(Operon::NodeType::Function, myHash);
-        dynNode.Arity  = 1;
+        dynNode.Arity = 1;
         dynNode.Length = 1;
 
         Operon::Tree const tree({ varNode, dynNode });
@@ -153,28 +161,29 @@ TEST_CASE("RegisterFunction - user-defined symbol", "[interpreter]") // NOLINT(r
 
 TEST_CASE("RegisterUnary - scalar lambda adapter", "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
 {
-    using DT     = Operon::DispatchTable<Operon::Scalar>;
+    using DT = Operon::DispatchTable<Operon::Scalar>;
     using Scalar = Operon::Scalar;
 
-    std::string const x{"x"};
+    std::string const x { "x" };
     std::vector<Scalar> xvals(10);
     std::iota(xvals.begin(), xvals.end(), 1.0F); // x = {1, 2, ..., 10}
-    Operon::Dataset ds({x}, {xvals});
+    Operon::Dataset ds({ x }, { xvals });
 
     DT dt;
-    auto const h = Operon::Hasher{}("test::sincos");
+    auto const h = Operon::Hasher {}("test::sincos");
 
     // f(x) = sin(x) + cos(x),  f'(x) = cos(x) - sin(x)
-    Operon::RegisterUnary<DT, Scalar>(dt, h,
-        [](auto x) -> auto { return std::sin(x) + std::cos(x); },
+    Operon::RegisterUnary<DT, Scalar>(
+        dt, h, [](auto x) -> auto { return std::sin(x) + std::cos(x); },
         [](auto x) -> auto { return std::cos(x) - std::sin(x); });
 
-    SECTION("Evaluate with unit weight") {
+    SECTION("Evaluate with unit weight")
+    {
         Operon::Node varNode(Operon::NodeType::Variable);
         varNode.HashValue = ds.GetVariable(x).value().Hash;
 
         Operon::Node dynNode(Operon::NodeType::Function, h);
-        dynNode.Arity  = 1;
+        dynNode.Arity = 1;
         dynNode.Length = 1;
 
         Operon::Tree const tree({ varNode, dynNode });
@@ -188,14 +197,15 @@ TEST_CASE("RegisterUnary - scalar lambda adapter", "[interpreter]") // NOLINT(re
         }
     }
 
-    SECTION("Weight is applied by the adapter") {
+    SECTION("Weight is applied by the adapter")
+    {
         Operon::Node varNode(Operon::NodeType::Variable);
         varNode.HashValue = ds.GetVariable(x).value().Hash;
 
         Operon::Node dynNode(Operon::NodeType::Function, h);
-        dynNode.Arity  = 1;
+        dynNode.Arity = 1;
         dynNode.Length = 1;
-        dynNode.Value  = 3.0F; // non-unit weight
+        dynNode.Value = 3.0F; // non-unit weight
 
         Operon::Tree const tree({ varNode, dynNode });
         auto coeff = tree.GetCoefficients();
@@ -211,7 +221,7 @@ TEST_CASE("RegisterUnary - scalar lambda adapter", "[interpreter]") // NOLINT(re
 
 TEST_CASE("RegisterBinary - scalar lambda adapter", "[interpreter]")
 {
-    using DT     = Operon::DispatchTable<Operon::Scalar>;
+    using DT = Operon::DispatchTable<Operon::Scalar>;
     using Scalar = Operon::Scalar;
 
     // Two variables: x = {1..10}, y = {2..11}
@@ -219,18 +229,19 @@ TEST_CASE("RegisterBinary - scalar lambda adapter", "[interpreter]")
     std::vector<Scalar> yvals(10);
     std::iota(xvals.begin(), xvals.end(), 1.0F);
     std::iota(yvals.begin(), yvals.end(), 2.0F);
-    Operon::Dataset ds({"x", "y"}, {xvals, yvals});
+    Operon::Dataset ds({ "x", "y" }, { xvals, yvals });
 
     DT dt;
-    auto const h = Operon::Hasher{}("test::hypot");
+    auto const h = Operon::Hasher {}("test::hypot");
 
     // f(a, b) = sqrt(a^2 + b^2),  ∂f/∂a = a/f,  ∂f/∂b = b/f
-    Operon::RegisterBinary<DT, Scalar>(dt, h,
-        [](auto a, auto b) -> auto { return std::sqrt((a*a) + (b*b)); },
-        [](auto a, auto b) -> auto { return a / std::sqrt((a*a) + (b*b)); },
-        [](auto a, auto b) -> auto { return b / std::sqrt((a*a) + (b*b)); });
+    Operon::RegisterBinary<DT, Scalar>(
+        dt, h, [](auto a, auto b) -> auto { return std::sqrt((a * a) + (b * b)); },
+        [](auto a, auto b) -> auto { return a / std::sqrt((a * a) + (b * b)); },
+        [](auto a, auto b) -> auto { return b / std::sqrt((a * a) + (b * b)); });
 
-    SECTION("Evaluate with unit weight") {
+    SECTION("Evaluate with unit weight")
+    {
         // Tree: [Variable(x), Variable(y), Dynamic(hypot)]
         // post-order: x at 0, y at 1, hypot at 2
         Operon::Node varX(Operon::NodeType::Variable);
@@ -240,7 +251,7 @@ TEST_CASE("RegisterBinary - scalar lambda adapter", "[interpreter]")
         varY.HashValue = ds.GetVariable("y").value().Hash;
 
         Operon::Node dynNode(Operon::NodeType::Function, h);
-        dynNode.Arity  = 2;
+        dynNode.Arity = 2;
         dynNode.Length = 2;
 
         Operon::Tree const tree({ varX, varY, dynNode });
@@ -249,40 +260,45 @@ TEST_CASE("RegisterBinary - scalar lambda adapter", "[interpreter]")
 
         REQUIRE(std::ssize(r) == 10);
         for (auto i = 0; i < 10; ++i) {
-            auto expected = std::sqrt((xvals[i]*xvals[i]) + (yvals[i]*yvals[i]));
+            auto expected = std::sqrt((xvals[i] * xvals[i]) + (yvals[i] * yvals[i]));
             CHECK(r[i] == Catch::Approx(expected).epsilon(1e-4));
         }
     }
 }
 
-TEST_CASE("PrimitiveSet::AddFunction - user-defined symbol in tree generation", "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
+TEST_CASE("PrimitiveSet::AddFunction - user-defined symbol in tree generation",
+    "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
 {
-    auto const h1 = Operon::Hasher{}("test::sincos");  // unary
-    auto const h2 = Operon::Hasher{}("test::hypot");   // binary
+    auto const h1 = Operon::Hasher {}("test::sincos"); // unary
+    auto const h2 = Operon::Hasher {}("test::hypot"); // binary
 
     Operon::PrimitiveSet pset;
     pset.SetConfig(Operon::PrimitiveSet::Arithmetic); // built-ins
     pset.AddFunction(h1, /*arity=*/1, /*frequency=*/5);
     pset.AddFunction(h2, /*arity=*/2, /*frequency=*/3);
 
-    SECTION("Both hashes are present in the primitive set") {
+    SECTION("Both hashes are present in the primitive set")
+    {
         CHECK(pset.Contains(h1));
         CHECK(pset.Contains(h2));
     }
 
-    SECTION("Arity is stored correctly") {
+    SECTION("Arity is stored correctly")
+    {
         CHECK(pset.MinimumArity(h1) == 1);
         CHECK(pset.MaximumArity(h1) == 1);
         CHECK(pset.MinimumArity(h2) == 2);
         CHECK(pset.MaximumArity(h2) == 2);
     }
 
-    SECTION("Frequency is stored correctly") {
+    SECTION("Frequency is stored correctly")
+    {
         CHECK(pset.Frequency(h1) == 5);
         CHECK(pset.Frequency(h2) == 3);
     }
 
-    SECTION("SampleRandomSymbol returns nodes with correct arity") {
+    SECTION("SampleRandomSymbol returns nodes with correct arity")
+    {
         Operon::RandomGenerator rng(1234);
         auto const nSamples = 200;
 
@@ -299,64 +315,71 @@ TEST_CASE("PrimitiveSet::AddFunction - user-defined symbol in tree generation", 
         }
     }
 
-    SECTION("AddFunction returns false if the hash is already registered") {
-        CHECK_FALSE(pset.AddFunction(h1, 1));
-    }
+    SECTION("AddFunction returns false if the hash is already registered") { CHECK_FALSE(pset.AddFunction(h1, 1)); }
 }
 
 TEST_CASE("Auto-diff fallback via Jet<T,1>", "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
 {
-    using DT     = Operon::DispatchTable<Operon::Scalar>;
+    using DT = Operon::DispatchTable<Operon::Scalar>;
     using Scalar = Operon::Scalar;
 
-    std::string x{"x"};
+    std::string x { "x" };
     std::vector<Scalar> xvals(10);
     std::iota(xvals.begin(), xvals.end(), 1.0F); // x = {1, 2, ..., 10}
-    Operon::Dataset ds({x}, {xvals});
+    Operon::Dataset ds({ x }, { xvals });
 
-    auto const hAuto     = Operon::Hasher{}("test::sincos_auto");
-    auto const hExplicit = Operon::Hasher{}("test::sincos_explicit");
+    auto const hAuto = Operon::Hasher {}("test::sincos_auto");
+    auto const hExplicit = Operon::Hasher {}("test::sincos_explicit");
 
     // Same function registered two ways: auto-diff vs explicit derivative.
     // Unqualified sin/cos with using-declarations allow ADL to resolve to
     // ceres::sin/cos when called with Jet<T,1> during auto-diff.
-    auto primal  = [](auto const& v) -> auto { using std::sin, std::cos; return sin(v) + cos(v); };
-    auto dprimal = [](auto const& v) -> auto { using std::sin, std::cos; return cos(v) - sin(v); };
+    auto primal = [](auto const& v) -> auto {
+        using std::sin, std::cos;
+        return sin(v) + cos(v);
+    };
+    auto dprimal = [](auto const& v) -> auto {
+        using std::sin, std::cos;
+        return cos(v) - sin(v);
+    };
 
     DT dt;
-    Operon::RegisterUnary<DT, Scalar>(dt, hAuto,     primal);           // Jet fallback
-    Operon::RegisterUnary<DT, Scalar>(dt, hExplicit, primal, dprimal);  // explicit
+    Operon::RegisterUnary<DT, Scalar>(dt, hAuto, primal); // Jet fallback
+    Operon::RegisterUnary<DT, Scalar>(dt, hExplicit, primal, dprimal); // explicit
 
     auto makeTree = [&](Operon::Hash h) -> Operon::Tree {
         Operon::Node varNode(Operon::NodeType::Variable);
         varNode.HashValue = ds.GetVariable(x).value().Hash;
         Operon::Node dynNode(Operon::NodeType::Function, h);
-        dynNode.Arity  = 1;
+        dynNode.Arity = 1;
         dynNode.Length = 1;
         return Operon::Tree({ varNode, dynNode });
     };
 
-    auto const tAuto     = makeTree(hAuto);
+    auto const tAuto = makeTree(hAuto);
     auto const tExplicit = makeTree(hExplicit);
-    auto const coeff     = tAuto.GetCoefficients();
-    auto const range     = Operon::Range(0, 10);
+    auto const coeff = tAuto.GetCoefficients();
+    auto const range = Operon::Range(0, 10);
 
-    Operon::Interpreter<Scalar, DT> const interpAuto    (&dt, &ds, &tAuto);
+    Operon::Interpreter<Scalar, DT> const interpAuto(&dt, &ds, &tAuto);
     Operon::Interpreter<Scalar, DT> const interpExplicit(&dt, &ds, &tExplicit);
 
-    SECTION("JacRev: auto-diff matches explicit derivative") {
-        auto jacAuto     = interpAuto.JacRev(coeff, range).value();
+    SECTION("JacRev: auto-diff matches explicit derivative")
+    {
+        auto jacAuto = interpAuto.JacRev(coeff, range).value();
         auto jacExplicit = interpExplicit.JacRev(coeff, range).value();
         CHECK(jacAuto.isApprox(jacExplicit, 1e-4F));
     }
 
-    SECTION("JacFwd: auto-diff matches explicit derivative") {
-        auto jacAuto     = interpAuto.JacFwd(coeff, range).value();
+    SECTION("JacFwd: auto-diff matches explicit derivative")
+    {
+        auto jacAuto = interpAuto.JacFwd(coeff, range).value();
         auto jacExplicit = interpExplicit.JacFwd(coeff, range).value();
         CHECK(jacAuto.isApprox(jacExplicit, 1e-4F));
     }
 
-    SECTION("JacRev matches expected analytic values") {
+    SECTION("JacRev matches expected analytic values")
+    {
         // output = f(w*x),  d/dw at w=1 = x * f'(x) = x*(cos(x)-sin(x))
         auto jac = interpAuto.JacRev(coeff, range).value();
         REQUIRE(jac.rows() == 10);
@@ -367,52 +390,51 @@ TEST_CASE("Auto-diff fallback via Jet<T,1>", "[interpreter]") // NOLINT(readabil
     }
 }
 
-TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
+TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper",
+    "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
 {
-    using DT     = Operon::DispatchTable<Operon::Scalar>;
+    using DT = Operon::DispatchTable<Operon::Scalar>;
     using Scalar = Operon::Scalar;
 
-    std::string const x{"x"};
+    std::string const x { "x" };
     std::vector<Scalar> xvals(5);
     std::iota(xvals.begin(), xvals.end(), 1.0F); // x = {1, 2, 3, 4, 5}
-    Operon::Dataset ds({x}, {xvals});
+    Operon::Dataset ds({ x }, { xvals });
 
     DT dt;
     Operon::PrimitiveSet pset;
     pset.SetConfig(Operon::PrimitiveSet::Arithmetic);
 
-    Operon::FunctionInfo const info{
-        .Name      = "cube",
-        .Desc      = "cube function f(x) = x^3",
-        .Arity     = 1,
-        .Frequency = 1
-    };
+    Operon::FunctionInfo const info { .Name = "cube", .Desc = "cube function f(x) = x^3", .Arity = 1, .Frequency = 1 };
     // RegisterUnaryFunction derives the hash from info.Name the same way.
-    auto const hash = Operon::Hasher{}(info.Name);
+    auto const hash = Operon::Hasher {}(info.Name);
 
-    auto primal  = [](auto v) -> auto { return v * v * v; };
+    auto primal = [](auto v) -> auto { return v * v * v; };
     auto dprimal = [](auto v) -> auto { return 3 * v * v; };
 
     Operon::RegisterUnaryFunction<DT, Scalar>(dt, pset, info, primal, dprimal);
 
-    SECTION("Name and Desc are registered on the node") {
+    SECTION("Name and Desc are registered on the node")
+    {
         Operon::Node const dynNode(Operon::NodeType::Function, hash);
         CHECK(dynNode.Name() == "cube");
         CHECK(dynNode.Desc() == "cube function f(x) = x^3");
     }
 
-    SECTION("Hash is present in dispatch table and primitive set") {
+    SECTION("Hash is present in dispatch table and primitive set")
+    {
         CHECK(dt.Contains(hash));
         CHECK(pset.Contains(hash));
         CHECK(pset.MinimumArity(hash) == 1);
     }
 
-    SECTION("Evaluation is correct") {
+    SECTION("Evaluation is correct")
+    {
         Operon::Node varNode(Operon::NodeType::Variable);
         varNode.HashValue = ds.GetVariable(x).value().Hash;
 
         Operon::Node dynNode(Operon::NodeType::Function, hash);
-        dynNode.Arity  = 1;
+        dynNode.Arity = 1;
         dynNode.Length = 1;
 
         Operon::Tree const tree({ varNode, dynNode });
@@ -425,40 +447,44 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
         }
     }
 
-    SECTION("InfixFormatter uses registered name") {
+    SECTION("InfixFormatter uses registered name")
+    {
         Operon::Node varNode(Operon::NodeType::Variable);
         varNode.HashValue = ds.GetVariable(x).value().Hash;
 
         Operon::Node dynNode(Operon::NodeType::Function, hash);
-        dynNode.Arity  = 1;
+        dynNode.Arity = 1;
         dynNode.Length = 1;
 
         Operon::Tree const tree({ varNode, dynNode });
-        auto formatted = fmt::format("{:infix}", Operon::Fmt::TreeFormatArgs{tree, ds});
+        auto formatted = fmt::format("{:infix}", Operon::Fmt::TreeFormatArgs { tree, ds });
         CHECK(formatted.find("cube") != std::string::npos);
     }
 
-    SECTION("PostfixFormatter and DotFormatter use registered built-in names") {
+    SECTION("PostfixFormatter and DotFormatter use registered built-in names")
+    {
         auto builtInTree = InfixParser::ParseOrThrow("sin(x)");
 
-        auto postfix = fmt::format("{:postfix}", Operon::Fmt::TreeFormatArgs{builtInTree, ds});
+        auto postfix = fmt::format("{:postfix}", Operon::Fmt::TreeFormatArgs { builtInTree, ds });
         CHECK(postfix == "((1.00 * x) sin) ");
 
-        auto dot = fmt::format("{:dot}", Operon::Fmt::TreeFormatArgs{builtInTree, ds});
+        auto dot = fmt::format("{:dot}", Operon::Fmt::TreeFormatArgs { builtInTree, ds });
         CHECK(dot.find("[label=\"sin\"]") != std::string::npos);
         CHECK(dot.find("0 -> 1") != std::string::npos);
     }
 }
 
-TEST_CASE("Formatter bugfixes: registered n-ary calls, weighted function nodes, unsafe format strings, empty trees", "[interpreter]")
+TEST_CASE("Formatter bugfixes: registered n-ary calls, weighted function nodes, unsafe format strings, empty trees",
+    "[interpreter]")
 {
-    using DT     = Operon::DispatchTable<Operon::Scalar>;
+    using DT = Operon::DispatchTable<Operon::Scalar>;
     using Scalar = Operon::Scalar;
 
-    std::string const x{"x"};
-    Operon::Dataset const ds({x}, {std::vector<Scalar>{0.0}});
+    std::string const x { "x" };
+    Operon::Dataset const ds({ x }, { std::vector<Scalar> { 0.0 } });
 
-    SECTION("InfixFormatter renders every argument of a registered n-ary function") {
+    SECTION("InfixFormatter renders every argument of a registered n-ary function")
+    {
         // Regression for a bug where a registered function whose hash fell
         // outside the built-in Add..Powabs range (essentially every
         // user-registered hash, since it is unrelated to BuiltinOp's
@@ -467,12 +493,10 @@ TEST_CASE("Formatter bugfixes: registered n-ary calls, weighted function nodes, 
         // -- silently dropping every other argument.
         DT dt;
         Operon::PrimitiveSet pset;
-        Operon::FunctionInfo const info{
-            .Name = "sum3", .Desc = "n-ary sum", .Arity = 3, .Frequency = 1
-        };
+        Operon::FunctionInfo const info { .Name = "sum3", .Desc = "n-ary sum", .Arity = 3, .Frequency = 1 };
         auto primal = [](auto acc, auto v) -> auto { return acc + v; };
         Operon::RegisterNaryFunction<DT, Scalar>(dt, pset, info, /*maxArity=*/3, primal);
-        auto const hash = Operon::Hasher{}(info.Name);
+        auto const hash = Operon::Hasher {}(info.Name);
 
         auto dyn = Operon::Node::Function(hash, 3); // sets Arity=Length=3
         Operon::Tree const tree({
@@ -482,7 +506,7 @@ TEST_CASE("Formatter bugfixes: registered n-ary calls, weighted function nodes, 
             dyn,
         });
 
-        auto formatted = fmt::format("{:infix}", Operon::Fmt::TreeFormatArgs{tree, ds});
+        auto formatted = fmt::format("{:infix}", Operon::Fmt::TreeFormatArgs { tree, ds });
         CHECK(formatted.find("sum3(") != std::string::npos);
         CHECK(formatted.find("21") != std::string::npos);
         CHECK(formatted.find("34") != std::string::npos);
@@ -490,7 +514,8 @@ TEST_CASE("Formatter bugfixes: registered n-ary calls, weighted function nodes, 
         CHECK(std::count(formatted.begin(), formatted.end(), ',') == 2);
     }
 
-    SECTION("TreeFormatter does not throw on a weighted (non-unit Value) function node") {
+    SECTION("TreeFormatter does not throw on a weighted (non-unit Value) function node")
+    {
         // Regression for a bug where the weighted-function-node branch built
         // a two-placeholder format string ("{:.Nf} * {}") but only ever
         // passed s.Value as an argument, throwing fmt::format_error
@@ -499,94 +524,90 @@ TEST_CASE("Formatter bugfixes: registered n-ary calls, weighted function nodes, 
         // interpreter, not just a leaf/variable concept.
         DT dt;
         Operon::PrimitiveSet pset;
-        Operon::FunctionInfo const info{
-            .Name = "cube", .Desc = "", .Arity = 1, .Frequency = 1
-        };
-        auto primal  = [](auto v) -> auto { return v * v * v; };
+        Operon::FunctionInfo const info { .Name = "cube", .Desc = "", .Arity = 1, .Frequency = 1 };
+        auto primal = [](auto v) -> auto { return v * v * v; };
         auto dprimal = [](auto v) -> auto { return 3 * v * v; };
         Operon::RegisterUnaryFunction<DT, Scalar>(dt, pset, info, primal, dprimal);
-        auto const hash = Operon::Hasher{}(info.Name);
+        auto const hash = Operon::Hasher {}(info.Name);
 
         auto dyn = Operon::Node::Function(hash, 1);
         dyn.Value = 2.5;
         Operon::Tree const tree({ Operon::Node::Constant(1.0), dyn });
 
         std::string formatted;
-        CHECK_NOTHROW(formatted = fmt::format("{:tree}", Operon::Fmt::TreeFormatArgs{tree, ds}));
+        CHECK_NOTHROW(formatted = fmt::format("{:tree}", Operon::Fmt::TreeFormatArgs { tree, ds }));
         CHECK(formatted.find("2.50") != std::string::npos);
         CHECK(formatted.find("cube") != std::string::npos);
     }
 
-    SECTION("DotFormatter includes a weighted function node's weight in its label") {
+    SECTION("DotFormatter includes a weighted function node's weight in its label")
+    {
         DT dt;
         Operon::PrimitiveSet pset;
-        Operon::FunctionInfo const info{
-            .Name = "cube", .Desc = "", .Arity = 1, .Frequency = 1
-        };
-        auto primal  = [](auto v) -> auto { return v * v * v; };
+        Operon::FunctionInfo const info { .Name = "cube", .Desc = "", .Arity = 1, .Frequency = 1 };
+        auto primal = [](auto v) -> auto { return v * v * v; };
         auto dprimal = [](auto v) -> auto { return 3 * v * v; };
         Operon::RegisterUnaryFunction<DT, Scalar>(dt, pset, info, primal, dprimal);
-        auto const hash = Operon::Hasher{}(info.Name);
+        auto const hash = Operon::Hasher {}(info.Name);
 
         auto dyn = Operon::Node::Function(hash, 1);
         dyn.Value = 2.5;
         Operon::Tree const tree({ Operon::Node::Constant(1.0), dyn });
 
-        auto dot = fmt::format("{:dot}", Operon::Fmt::TreeFormatArgs{tree, ds});
+        auto dot = fmt::format("{:dot}", Operon::Fmt::TreeFormatArgs { tree, ds });
         CHECK(dot.find("2.50") != std::string::npos);
         CHECK(dot.find("cube") != std::string::npos);
     }
 
-    SECTION("PostfixFormatter represents a weighted function node's weight as valid trailing RPN") {
+    SECTION("PostfixFormatter represents a weighted function node's weight as valid trailing RPN")
+    {
         DT dt;
         Operon::PrimitiveSet pset;
-        Operon::FunctionInfo const info{
-            .Name = "cube", .Desc = "", .Arity = 1, .Frequency = 1
-        };
-        auto primal  = [](auto v) -> auto { return v * v * v; };
+        Operon::FunctionInfo const info { .Name = "cube", .Desc = "", .Arity = 1, .Frequency = 1 };
+        auto primal = [](auto v) -> auto { return v * v * v; };
         auto dprimal = [](auto v) -> auto { return 3 * v * v; };
         Operon::RegisterUnaryFunction<DT, Scalar>(dt, pset, info, primal, dprimal);
-        auto const hash = Operon::Hasher{}(info.Name);
+        auto const hash = Operon::Hasher {}(info.Name);
 
         auto dyn = Operon::Node::Function(hash, 1);
         dyn.Value = 2.5;
         Operon::Tree const tree({ Operon::Node::Constant(1.0), dyn });
 
-        auto postfix = fmt::format("{:postfix}", Operon::Fmt::TreeFormatArgs{tree, ds});
+        auto postfix = fmt::format("{:postfix}", Operon::Fmt::TreeFormatArgs { tree, ds });
         CHECK(postfix == "(1.00 cube 2.50 *) ");
     }
 
-    SECTION("PostfixFormatter treats a registered function's name as data, not a format string") {
+    SECTION("PostfixFormatter treats a registered function's name as data, not a format string")
+    {
         // Regression for fmt::format_to(..., fmt::runtime(s.Name())), which
         // reparsed the function's own display name as a format spec --
         // registered names are validated only for emptiness/hash
         // collisions, so '{'/'}' in a name is legal and previously threw.
         DT dt;
         Operon::PrimitiveSet pset;
-        Operon::FunctionInfo const info{
-            .Name = "f{brace}", .Desc = "", .Arity = 1, .Frequency = 1
-        };
-        auto primal  = [](auto v) -> auto { return v; };
-        auto dprimal = [](auto) -> auto { return Scalar{1}; };
+        Operon::FunctionInfo const info { .Name = "f{brace}", .Desc = "", .Arity = 1, .Frequency = 1 };
+        auto primal = [](auto v) -> auto { return v; };
+        auto dprimal = [](auto) -> auto { return Scalar { 1 }; };
         Operon::RegisterUnaryFunction<DT, Scalar>(dt, pset, info, primal, dprimal);
-        auto const hash = Operon::Hasher{}(info.Name);
+        auto const hash = Operon::Hasher {}(info.Name);
 
         auto dyn = Operon::Node::Function(hash, 1);
         Operon::Tree const tree({ Operon::Node::Constant(1.0), dyn });
 
         std::string formatted;
-        CHECK_NOTHROW(formatted = fmt::format("{:postfix}", Operon::Fmt::TreeFormatArgs{tree, ds}));
+        CHECK_NOTHROW(formatted = fmt::format("{:postfix}", Operon::Fmt::TreeFormatArgs { tree, ds }));
         CHECK(formatted.find("f{brace}") != std::string::npos);
     }
 
-    SECTION("Tree/Postfix/Dot formatters do not crash on an empty tree") {
+    SECTION("Tree/Postfix/Dot formatters do not crash on an empty tree")
+    {
         Operon::Tree const empty;
         std::string treeOut;
         std::string postfixOut;
         std::string dotOut;
-        CHECK_NOTHROW(treeOut = fmt::format("{:tree}", Operon::Fmt::TreeFormatArgs{empty, ds}));
-        CHECK_NOTHROW(postfixOut = fmt::format("{:postfix}", Operon::Fmt::TreeFormatArgs{empty, ds}));
-        CHECK_NOTHROW(dotOut = fmt::format("{:dot}", Operon::Fmt::TreeFormatArgs{empty, ds}));
+        CHECK_NOTHROW(treeOut = fmt::format("{:tree}", Operon::Fmt::TreeFormatArgs { empty, ds }));
+        CHECK_NOTHROW(postfixOut = fmt::format("{:postfix}", Operon::Fmt::TreeFormatArgs { empty, ds }));
+        CHECK_NOTHROW(dotOut = fmt::format("{:dot}", Operon::Fmt::TreeFormatArgs { empty, ds }));
         CHECK(treeOut.empty());
         CHECK(postfixOut.empty());
         CHECK(dotOut.find("digraph") != std::string::npos);

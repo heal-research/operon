@@ -21,26 +21,25 @@ enum class FisherErrorCode : std::uint8_t {
 };
 
 struct FisherError {
-    FisherErrorCode Code {FisherErrorCode::InvalidShape};
+    FisherErrorCode Code { FisherErrorCode::InvalidShape };
     std::size_t Expected {};
     std::size_t Actual {};
 };
 
 /** F = J^T diag(1/sigma_i^2) J, written into caller-owned fisher (NumParameters x NumParameters). */
 [[nodiscard]] inline auto ComputeFisherMatrix(
-    ConstScalarMatrixView jacobian,
-    ConstScalarSpan sigma,
-    ScalarMatrixView fisher)
-    -> tl::expected<void, FisherError>
+    ConstScalarMatrixView jacobian, ConstScalarSpan sigma, ScalarMatrixView fisher) -> tl::expected<void, FisherError>
 {
     auto const n = jacobian.extent(0); // observations
     auto const p = jacobian.extent(1); // parameters
 
     if (fisher.extent(0) != p || fisher.extent(1) != p) {
-        return tl::unexpected(FisherError { .Code = FisherErrorCode::InvalidShape, .Expected = p, .Actual = fisher.extent(0) });
+        return tl::unexpected(
+            FisherError { .Code = FisherErrorCode::InvalidShape, .Expected = p, .Actual = fisher.extent(0) });
     }
     if (!sigma.empty() && sigma.size() != 1 && sigma.size() != n) {
-        return tl::unexpected(FisherError { .Code = FisherErrorCode::InvalidShape, .Expected = n, .Actual = sigma.size() });
+        return tl::unexpected(
+            FisherError { .Code = FisherErrorCode::InvalidShape, .Expected = n, .Actual = sigma.size() });
     }
     for (auto const s : sigma) {
         if (!std::isfinite(static_cast<double>(s)) || s <= Scalar { 0 }) {
@@ -58,9 +57,10 @@ struct FisherError {
 
     for (std::size_t a = 0; a < p; ++a) {
         for (std::size_t b = a; b < p; ++b) {
-            AccumulationScalar sum {0};
+            AccumulationScalar sum { 0 };
             for (std::size_t i = 0; i < n; ++i) {
-                sum += invVarAt(i) * static_cast<AccumulationScalar>(At(jacobian, i, a)) * static_cast<AccumulationScalar>(At(jacobian, i, b));
+                sum += invVarAt(i) * static_cast<AccumulationScalar>(At(jacobian, i, a))
+                    * static_cast<AccumulationScalar>(At(jacobian, i, b));
             }
             if (!std::isfinite(sum)) {
                 return tl::unexpected(FisherError { .Code = FisherErrorCode::NonFiniteResult });
