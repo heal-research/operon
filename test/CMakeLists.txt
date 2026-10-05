@@ -164,6 +164,19 @@ add_dependencies(build_all_tests operon_test memory_view_consumer view_descripto
 if(NOT PROJECT_IS_TOP_LEVEL)
     set(operon_package_consumer_source_dir "${CMAKE_CURRENT_SOURCE_DIR}/package-consumer")
     set(operon_package_consumer_work_dir "${CMAKE_BINARY_DIR}/package-consumer")
+    # The consumer uses a fresh CMake configuration. Preserve the parent
+    # compiler and flags so an instrumented or ABI-specialized static package
+    # is linked with its required runtime as well.
+    set(operon_package_consumer_parent_context_args
+        "-DOPERON_CMAKE_C_COMPILER=${CMAKE_C_COMPILER}"
+        "-DOPERON_CMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+        "-DOPERON_CMAKE_C_FLAGS=${CMAKE_C_FLAGS}"
+        "-DOPERON_CMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}"
+        "-DOPERON_CMAKE_EXE_LINKER_FLAGS=${CMAKE_EXE_LINKER_FLAGS}"
+        "-DOPERON_CMAKE_SHARED_LINKER_FLAGS=${CMAKE_SHARED_LINKER_FLAGS}"
+        "-DOPERON_CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
+    )
+
 
     add_test(
         NAME package_consumer
@@ -175,6 +188,7 @@ if(NOT PROJECT_IS_TOP_LEVEL)
                 "-DOPERON_VCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET}"
                 "-DOPERON_VCPKG_INSTALLED_DIR=${VCPKG_INSTALLED_DIR}"
                 "-DOPERON_MSVC_RUNTIME_LIBRARY=${CMAKE_MSVC_RUNTIME_LIBRARY}"
+                ${operon_package_consumer_parent_context_args}
                 "-DOPERON_STAGE_DIR=${operon_package_consumer_work_dir}/stage"
                 "-DOPERON_RELOCATED_PREFIX=${operon_package_consumer_work_dir}/relocated-prefix"
                 "-DOPERON_CONSUMER_SOURCE_DIR=${operon_package_consumer_source_dir}"
@@ -200,6 +214,7 @@ if(NOT PROJECT_IS_TOP_LEVEL)
                 "-DOPERON_VCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET}"
                 "-DOPERON_VCPKG_INSTALLED_DIR=${VCPKG_INSTALLED_DIR}"
                 "-DOPERON_MSVC_RUNTIME_LIBRARY=${CMAKE_MSVC_RUNTIME_LIBRARY}"
+                ${operon_package_consumer_parent_context_args}
                 "-DOPERON_STAGE_DIR=${operon_package_consumer_core_work_dir}/stage"
                 "-DOPERON_RELOCATED_PREFIX=${operon_package_consumer_core_work_dir}/relocated-prefix"
                 "-DOPERON_CONSUMER_SOURCE_DIR=${operon_package_consumer_core_source_dir}"
@@ -223,6 +238,7 @@ if(NOT PROJECT_IS_TOP_LEVEL)
                 "-DOPERON_VCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET}"
                 "-DOPERON_VCPKG_INSTALLED_DIR=${VCPKG_INSTALLED_DIR}"
                 "-DOPERON_MSVC_RUNTIME_LIBRARY=${CMAKE_MSVC_RUNTIME_LIBRARY}"
+                ${operon_package_consumer_parent_context_args}
                 "-DOPERON_STAGE_DIR=${operon_package_consumer_optional_backend_work_dir}/stage"
                 "-DOPERON_RELOCATED_PREFIX=${operon_package_consumer_optional_backend_work_dir}/relocated-prefix"
                 "-DOPERON_CONSUMER_SOURCE_DIR=${operon_package_consumer_optional_backend_source_dir}"
