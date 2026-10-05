@@ -26,7 +26,7 @@ static int check(char const* name, enum OperonViewStatus got, enum OperonViewSta
 
 int main(void)
 {
-    float data[4] = {1.0F, 2.0F, 3.0F, 4.0F};
+    float data[4] = { 1.0F, 2.0F, 3.0F, 4.0F };
     struct OperonViewDescriptor desc;
     int failures = 0;
 
@@ -60,11 +60,13 @@ int main(void)
     desc.extents[1] = 2;
 
     desc.byte_strides[1] = PTRDIFF_MIN;
-    failures += check("PTRDIFF_MIN stride rejected, not negated into UB", operon_view_validate(&desc, 0), OPERON_VIEW_ERR_OVERFLOW);
+    failures += check(
+        "PTRDIFF_MIN stride rejected, not negated into UB", operon_view_validate(&desc, 0), OPERON_VIEW_ERR_OVERFLOW);
     desc.byte_strides[1] = (ptrdiff_t)sizeof(float);
 
     desc.data = NULL;
-    failures += check("null data rejected with nonzero extent", operon_view_validate(&desc, 0), OPERON_VIEW_ERR_NULL_DATA);
+    failures
+        += check("null data rejected with nonzero extent", operon_view_validate(&desc, 0), OPERON_VIEW_ERR_NULL_DATA);
     desc.data = data;
 
     desc.extents[0] = 0;

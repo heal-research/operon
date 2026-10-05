@@ -12,7 +12,7 @@ default(
     source/*.cpp source/*.hpp
     cli/*.cpp cli/*.hpp
     include/operon/core/*.h include/*.hpp
-    test/*.cpp test/*.hpp
+    test/*.c test/*.cpp test/*.hpp
     example/*.cpp example/*.hpp
 )
 default(FIX NO)
