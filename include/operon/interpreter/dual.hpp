@@ -7,10 +7,10 @@
 
 #include "operon/core/types.hpp"
 
-#include "operon/ceres/jet.h"
+#include "operon/core/jet.hpp"
 
 namespace Operon {
-using Dual = ceres::Jet<Operon::Scalar, 4 * sizeof(double) / sizeof(Scalar)>;
+using Dual = Jet<Operon::Scalar, 4 * sizeof(double) / sizeof(Scalar)>;
 } // namespace Operon
 
 #endif

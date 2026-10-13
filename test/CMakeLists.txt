@@ -69,6 +69,7 @@ add_executable(operon_test
     source/performance/jit_breakeven.cpp
     source/performance/shape_bisection.cpp
     source/performance/bisection_strategies.cpp
+    source/implementation/jet.cpp
     source/implementation/jit.cpp
     source/implementation/pappus_backend.cpp
     source/implementation/pappus_nsgp.cpp

@@ -16,6 +16,7 @@
 #include "operon/core/dispatch.hpp"
 #include "operon/core/tree.hpp"
 // #include "operon/interpreter/backend/backend.hpp"
+#include "jet_eigen_traits.hpp"
 #include "operon/interpreter/dual.hpp"
 
 namespace Operon::Test::Util {
@@ -169,7 +170,10 @@ auto EvaluateTree(auto const& tree, auto const& dataset, auto const range, T con
                     break;
                 }
                 case Operon::Hash(BuiltinOp::Cbrt): {
-                    buffer.col(i) = buffer.col(i - 1).unaryExpr([](auto x) { return ceres::cbrt(x); });
+                    buffer.col(i) = buffer.col(i - 1).unaryExpr([](auto x) {
+                        using std::cbrt;
+                        return cbrt(x);
+                    });
                     break;
                 }
                 case Operon::Hash(BuiltinOp::Ceil): {
@@ -270,7 +274,7 @@ auto Autodiff(auto const& tree, auto const& dataset, auto const range)
     std::vector<Dual> inputs(coeff.size());
     for (size_t i = 0; i < inputs.size(); ++i) {
         inputs[i].a = parameters[i];
-        inputs[i].v.setZero();
+        inputs[i].v.fill(Scalar { 0 });
     }
     std::vector<Dual> outputs(range.Size());
 
