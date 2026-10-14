@@ -28,14 +28,17 @@ namespace {
 
     constexpr std::size_t Zero = std::numeric_limits<std::size_t>::max();
 
-    // Mix two 64-bit hashes (Boost-style but with a larger multiplier). Note:
-    // Mix(0, 0) == 0 is a fixed point of this formula (composed_function.hpp's
-    // DiffMix salts against exactly this, since it mixes directly against raw
-    // original-tree indices where h[0] == 0 is normal). It's out of reach here
-    // only because Deriv() below always combines *derivative*-dag hashes (never
-    // a raw original-tree index of 0) through this function — an invariant of
-    // how Deriv() is written, not something this function itself enforces.
-    auto Mix(uint64_t a, uint64_t b) -> uint64_t { return a ^ (b * 0x9e3779b97f4a7c15ULL + (a << 6U) + (a >> 2U)); }
+    // Mix two 64-bit hashes (Boost-style but with a larger multiplier). The first argument is salted: unsalted,
+    // Mix(0, 0) == 0 is a fixed point, and NodeType::Constant == BuiltinOp::Add == 0, so the hash of a zero
+    // constant (and of Add(0, 0)) equals the identity hash h[0] == 0 of original node 0. The memo is keyed by
+    // hash alone, so Mul(0, x0) was then taken for Mul(x0, x0) -- reachable whenever a differentiated tree puts a
+    // leaf at index 0 next to a literal zero (a zero weight or constant), e.g. in a first-derivative slice that is
+    // differentiated again. (composed_function.hpp's DiffMix carries the same salt.)
+    auto Mix(uint64_t a, uint64_t b) -> uint64_t
+    {
+        a += 0x9e3779b97f4a7c15ULL;
+        return a ^ (b * 0x9e3779b97f4a7c15ULL + (a << 6U) + (a >> 2U));
+    }
 
     // Append a derivative node (always Optimize=false) and record its hash. The node is constructed directly in
     // the dag's storage (callers fill in the remaining fields through the returned reference): building it in a

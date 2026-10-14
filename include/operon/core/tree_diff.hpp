@@ -180,6 +180,13 @@ OPERON_EXPORT auto BuildVariableGradientDag(Tree const& tree, Operon::Span<Opero
 // derivative nodes created for other roots and the original-tree nodes nothing refers to are dropped, and Ref
 // targets are renumbered. The nodes keep their relative order, so evaluating the result performs the same
 // operations in the same order as evaluating `root` inside the full dag.
+//
+// The result is a forest, not a Validate()-able tree: shared subtrees stay separate physical roots ahead of the
+// root's own span, exactly as in a prefix slice. `root` must be a valid index into `nodes` (callers map a NoGrad
+// root to "identically zero" before slicing; an out-of-range root violates EXPECT). Tree::UpdateNodes recomputes
+// the structural fields (Level, Parent, Length) of the slice, so they differ from those inside the full dag.
+// Because unrelated nodes are dropped, an operation that does not lie on `root`'s dependency path no longer
+// influences the slice's evaluation or bound -- including an unsupported operation or a wide domain.
 OPERON_EXPORT auto SliceDagRoot(Operon::Span<Node const> nodes, std::size_t root) -> Tree;
 
 } // namespace Operon

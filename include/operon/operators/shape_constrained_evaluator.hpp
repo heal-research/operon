@@ -96,9 +96,8 @@ public:
     // `constraints`' variable names are resolved against `problem`'s Dataset once, at construction -- throws
     // std::invalid_argument if a referenced variable isn't a dataset column, or has no `constraints.Domains`
     // entry. `constraints.Domains` must cover every variable the tree can reference, not just constraint
-    // variables: a derivative bound still walks the whole original tree internally (BuildVariableGradientDag's
-    // dag carries the full tree as a prefix). `unknownViolation` (finite, non-negative) is the violation assigned
-    // to a constraint whose bound cannot be certified.
+    // variables: the identity bound and the jet passes evaluate the whole tree. `unknownViolation` (finite,
+    // non-negative) is the violation assigned to a constraint whose bound cannot be certified.
     // `bound.BisectionDepth` must be in [0, 20] (std::invalid_argument otherwise).
     ShapeCertifier(gsl::not_null<Operon::Problem const*> problem, gsl::not_null<Operon::ScalarDispatch const*> dtable,
         ShapeConstraintSet constraints, Operon::Scalar unknownViolation = Operon::Scalar { 1 },

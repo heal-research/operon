@@ -1709,4 +1709,55 @@ TEST_CASE("BuildVariableGradientDag - second derivative of a shared-subexpressio
     CHECK(EvalAt(d2Filtered, ds) == EvalAt(d2, ds));
 }
 
+TEST_CASE(
+    "BuildVariableGradientDag - a zero constant never aliases an original node in the second derivative", "[tree_diff]")
+{
+    Dataset const ds(std::vector<std::string> { "X" }, std::vector<std::vector<Operon::Scalar>> { { 1.0F } });
+    auto const xHash = ds.GetVariable("X")->Hash;
+    auto const variable = [&](Operon::Scalar weight) {
+        Node n { NodeType::Variable, xHash };
+        n.Value = weight;
+        n.Optimize = true;
+        return n;
+    };
+
+    // f(x) = -1 + g(x - (0 * x) / x). The zero-weight variable makes the first derivative contain a literal zero
+    // constant next to the (renumbered) variable that the cone slice moves to index 0: Mul(0, x) must stay distinct
+    // from Mul(x, x). Exact values at x = 1: g = square -> f'' = 2; g = sin -> -sin(1); g = cos -> -cos(1).
+    struct Case {
+        BuiltinOp Outer;
+        double Expected;
+    };
+    for (auto const& [outer, expected] : { Case { BuiltinOp::Square, 2.0 }, Case { BuiltinOp::Sin, -std::sin(1.0) },
+             Case { BuiltinOp::Cos, -std::cos(1.0) } }) {
+        Operon::Vector<Node> nodes;
+        nodes.push_back(Node::Constant(-1.0F));
+        nodes.push_back(variable(1.0F));
+        nodes.push_back(variable(0.0F));
+        nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Div), 2));
+        nodes.push_back(variable(1.0F));
+        nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Sub), 2));
+        nodes.push_back(Node::Function(static_cast<Operon::Hash>(outer), 1));
+        nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 2));
+        Tree tree { nodes };
+        tree.UpdateNodes();
+        REQUIRE(tree.Validate());
+
+        auto const dag1 = BuildVariableGradientDag(tree, tree.GetCoefficients());
+        auto const k1 = VariableIndex(dag1, xHash);
+        REQUIRE(dag1.Certain[k1]);
+        auto const d1 = SliceDagRoot(dag1.Nodes, dag1.Roots[k1]);
+
+        for (bool const filtered : { false, true }) {
+            auto const dag2 = filtered ? BuildVariableGradientDag(d1, {}, std::vector<Operon::Hash> { xHash })
+                                       : BuildVariableGradientDag(d1, d1.GetCoefficients());
+            auto const k2 = VariableIndex(dag2, xHash);
+            REQUIRE(dag2.Certain[k2]);
+            auto const d2 = SliceDagRoot(dag2.Nodes, dag2.Roots[k2]);
+            INFO("outer op " << static_cast<Operon::Hash>(outer) << " filtered " << filtered);
+            CHECK(EvalAt(d2, ds) == Catch::Approx(expected).epsilon(1e-4));
+        }
+    }
+}
+
 } // namespace Operon::Test
