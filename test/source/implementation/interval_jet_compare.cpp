@@ -484,12 +484,12 @@ namespace {
         std::size_t jetFailedDagFinite = 0;
         std::array<Feasibility, 2> feas {}; // [+1, -1]
         std::array<Feasibility, 2> feasRelaxed {}; // jet reported by its derivative alone
-        Containment jetValue { .Slack = 1e-4 };
-        Containment jetDeriv { .Slack = 1e-4 };
-        Containment dagValue { .Slack = 1e-4 };
-        Containment dagDeriv { .Slack = 1e-4 };
-        Containment jetDValue { .Slack = 1e-9 }; // the jet evaluator instantiated for double: formula soundness
-        Containment jetDDeriv { .Slack = 1e-9 };
+        Containment jetValue { 1e-4 };
+        Containment jetDeriv { 1e-4 };
+        Containment dagValue { 1e-4 };
+        Containment dagDeriv { 1e-4 };
+        Containment jetDValue { 1e-9 }; // the jet evaluator instantiated for double: formula soundness
+        Containment jetDDeriv { 1e-9 };
         std::size_t lengthSum = 0;
         std::array<std::size_t, 5> kHistogram {};
         std::size_t violationReports = 0;

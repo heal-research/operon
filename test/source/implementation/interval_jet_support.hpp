@@ -257,6 +257,7 @@ struct Containment {
     // pappus arithmetic is only outward rounded to within a few ulp per operation (see report), which
     // cancellation can amplify; the double instantiation of the jet evaluator is checked with a tiny slack.
     double Slack { 1e-6 };
+    explicit Containment(double slack = 1e-6) : Slack(slack) {}
     std::size_t Checked {}; // finite reference values/derivatives compared against a bound
     std::size_t Violations {}; // outside the bound by more than the slack
     std::size_t Strict {}; // outside the bound at all (informational: double reference vs float bound)

@@ -390,10 +390,10 @@ TEST_CASE("IntervalJetEvaluator: weights and coefficients follow the IntervalEva
         }));
 
         std::mt19937_64 rng { 5 };
-        Containment jv { .Slack = 1e-4 };
-        Containment jd { .Slack = 1e-4 };
-        Containment dv { .Slack = 1e-4 };
-        Containment dd { .Slack = 1e-4 };
+        Containment jv { 1e-4 };
+        Containment jd { 1e-4 };
+        Containment dv { 1e-4 };
+        Containment dd { 1e-4 };
         SampleCheck(tree, coeff, vars, domains, ToBoundSet(*jet), rng, 200, jv, jd);
         SampleCheck(tree, coeff, vars, domains, dagSet, rng, 200, dv, dd);
         CHECK(jd.Checked > 0);
@@ -465,8 +465,8 @@ TEST_CASE("IntervalJetEvaluator: Ref nodes alias their target's value and tangen
     CHECK(jet->Derivative[1] == Interval { 1.0F });
 
     std::mt19937_64 rng { 11 };
-    Containment v { .Slack = 1e-4 };
-    Containment d { .Slack = 1e-4 };
+    Containment v { 1e-4 };
+    Containment d { 1e-4 };
     SampleCheck(tree, coeff, vars, domains, ToBoundSet(*jet), rng, 200, v, d);
     CHECK(d.Checked > 0);
     CHECK(d.Violations == 0);
