@@ -1849,4 +1849,93 @@ TEST_CASE("BuildVariableGradientDag - filtering the second differentiation drops
     CHECK(filtered.Nodes.size() < unfiltered.Nodes.size());
 }
 
+TEST_CASE("Derivative dag builders - nodes are shared by exact structure", "[tree_diff]")
+{
+    // dag = [x]; index 0 is the first original node.
+    Operon::Vector<Node> dag { Node { NodeType::Variable, Operon::Hash { 1 } } };
+    DerivMemo memo;
+
+    auto const zero = GetSymbolicDerivConst(dag, memo, Scalar { 0 });
+    auto const one = GetSymbolicDerivConst(dag, memo, Scalar { 1 });
+    CHECK(GetSymbolicDerivConst(dag, memo, Scalar { 0 }) == zero);
+    CHECK(zero != one);
+    CHECK(GetSymbolicDerivConst(dag, memo, Scalar { -0.0F }) != zero); // distinct bit patterns stay distinct
+
+    // A zero constant never stands in for the first original node: Mul(0, x0), Mul(x0, x0) and Add(0, x0) are
+    // three different expressions.
+    auto const mulZero = MakeSymbolicDerivBinary(dag, memo, BuiltinOp::Mul, zero, 0);
+    auto const mulSquare = MakeSymbolicDerivBinary(dag, memo, BuiltinOp::Mul, 0, 0);
+    auto const addZero = MakeSymbolicDerivBinary(dag, memo, BuiltinOp::Add, zero, 0);
+    CHECK(mulZero != mulSquare);
+    CHECK(addZero != mulZero);
+    CHECK(MakeSymbolicDerivBinary(dag, memo, BuiltinOp::Mul, zero, 0) == mulZero);
+    CHECK(MakeSymbolicDerivBinary(dag, memo, BuiltinOp::Mul, 0, 0) == mulSquare);
+
+    // Operand order matters.
+    CHECK(MakeSymbolicDerivBinary(dag, memo, BuiltinOp::Sub, one, 0)
+        != MakeSymbolicDerivBinary(dag, memo, BuiltinOp::Sub, 0, one));
+    CHECK(MakeSymbolicDerivUnary(dag, memo, BuiltinOp::Sin, 0) == MakeSymbolicDerivUnary(dag, memo, BuiltinOp::Sin, 0));
+    CHECK(MakeSymbolicDerivUnary(dag, memo, BuiltinOp::Sin, 0) != MakeSymbolicDerivUnary(dag, memo, BuiltinOp::Cos, 0));
+
+    // Two Ref slots pointing at the same node are the same operand; a Ref slot is not its own target.
+    auto const sin = MakeSymbolicDerivUnary(dag, memo, BuiltinOp::Sin, 0);
+    auto const first = dag.size();
+    dag.push_back(Node::Ref(static_cast<std::uint16_t>(sin)));
+    auto const second = dag.size();
+    dag.push_back(Node::Ref(static_cast<std::uint16_t>(sin)));
+    auto const viaFirst = MakeSymbolicDerivUnary(dag, memo, BuiltinOp::Exp, first);
+    CHECK(MakeSymbolicDerivUnary(dag, memo, BuiltinOp::Exp, second) == viaFirst);
+    CHECK(MakeSymbolicDerivUnary(dag, memo, BuiltinOp::Exp, sin) != viaFirst);
+
+    // Ref chains keep their depth, however long they are: a Ref is never its own target.
+    auto deep = sin;
+    std::vector<std::size_t> chain;
+    for (int i = 0; i < 300; ++i) {
+        auto const next = dag.size();
+        dag.push_back(Node::Ref(static_cast<std::uint16_t>(deep)));
+        deep = next;
+        chain.push_back(next);
+    }
+    for (auto const hops :
+        { std::size_t { 1 }, std::size_t { 255 }, std::size_t { 256 }, std::size_t { 257 }, chain.size() }) {
+        auto const viaChain = MakeSymbolicDerivUnary(dag, memo, BuiltinOp::Cos, chain[hops - 1]);
+        INFO("hops " << hops);
+        CHECK(viaChain != MakeSymbolicDerivUnary(dag, memo, BuiltinOp::Cos, sin));
+        CHECK(MakeSymbolicDerivUnary(dag, memo, BuiltinOp::Cos, chain[hops - 1]) == viaChain);
+    }
+    CHECK(MakeSymbolicDerivUnary(dag, memo, BuiltinOp::Cos, chain[255])
+        != MakeSymbolicDerivUnary(dag, memo, BuiltinOp::Cos, chain[0]));
+}
+
+TEST_CASE("BuildVariableGradientDag - Ref slots to the same node share derivative subexpressions", "[tree_diff]")
+{
+    Dataset const ds(std::vector<std::string> { "X" }, std::vector<std::vector<Operon::Scalar>> { { 0.7F } });
+    auto const xHash = ds.GetVariable("X")->Hash;
+
+    // f(x) = x + sin(x) + sin(x), with both later uses of x written as Ref slots to the first one. The two sin
+    // arguments are different slots denoting the same node, so d/dx builds cos(x) once, not twice.
+    Operon::Vector<Node> nodes {
+        Node { NodeType::Variable, xHash },
+        Node::Ref(0),
+        Node::Function(static_cast<Operon::Hash>(BuiltinOp::Sin), 1),
+        Node::Ref(0),
+        Node::Function(static_cast<Operon::Hash>(BuiltinOp::Sin), 1),
+        Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 3),
+    };
+    Tree tree { nodes };
+    tree.UpdateNodes();
+    REQUIRE(tree.Validate());
+
+    auto const dag = BuildVariableGradientDag(tree, tree.GetCoefficients());
+    auto const k = VariableIndex(dag, xHash);
+    REQUIRE(dag.Certain[k]);
+    auto const cosCount = std::ranges::count_if(dag.Nodes,
+        [](Node const& n) { return n.IsFunction() && n.HashValue == static_cast<Operon::Hash>(BuiltinOp::Cos); });
+    CHECK(cosCount == 1);
+
+    // f' = 1 + 2 cos(x)
+    auto const derivative = SliceDagRoot(dag.Nodes, dag.Roots[k]);
+    CHECK(EvalAt(derivative, ds) == Catch::Approx(1.0 + 2.0 * std::cos(0.7)).epsilon(1e-5));
+}
+
 } // namespace Operon::Test

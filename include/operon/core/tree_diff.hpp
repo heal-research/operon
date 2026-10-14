@@ -5,7 +5,10 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <string_view>
+#include <type_traits>
 #include <utility>
 
 #include "contracts.hpp"
@@ -16,8 +19,34 @@
 
 namespace Operon {
 
+// Structural identity of a node of a derivative dag under construction: what kind of node it is, its operation,
+// and the dag indices of its operands (or, for a constant, its bit pattern). Operand indices are themselves unique
+// per structure because every node is created through the memo, so equal keys are exactly equal expressions. The
+// key is compared for equality, never trusted as a hash, so a table collision can only cost time.
+struct DerivKey {
+    std::uint64_t Tag {}; // (kind << 32) | operation
+    std::uint64_t A {};
+    std::uint64_t B {};
+
+    auto operator==(DerivKey const&) const noexcept -> bool = default;
+};
+static_assert(std::has_unique_object_representations_v<DerivKey>);
+
+struct DerivKeyHash {
+    using is_avalanching = void;
+    auto operator()(DerivKey const& key) const noexcept -> std::uint64_t
+    {
+        return ankerl::unordered_dense::hash<std::string_view> {}(
+            std::string_view { reinterpret_cast<char const*>(&key), sizeof(DerivKey) }); // NOLINT
+    }
+};
+
+// The hash-consing table of a derivative dag under construction. Opaque to derivative rules: build nodes through
+// GetSymbolicDerivConst / MakeSymbolicDerivUnary / MakeSymbolicDerivBinary.
+using DerivMemo = Operon::Map<DerivKey, std::size_t, DerivKeyHash>;
+
 // A symbolic derivative rule for a unary built-in or user-defined function:
-// given the dag under construction (`dag`/`memo`/`h`, threaded the same way
+// given the dag under construction (`dag`/`memo`, threaded the same way
 // Deriv()'s own helpers in tree_diff.cpp thread them, for hash-consing),
 // this node's own dag index `i`, and its argument's dag index `j`, returns
 // the dag index of f'(j) — or Operon::Vector<Node>::size_type(-1)
@@ -27,8 +56,8 @@ namespace Operon {
 // Exp registers a fresh MakeUnary(Exp, j), not a reuse of `i`), matching
 // the outer applyWeight() step in Deriv() that supplies this node's own
 // weight exactly once regardless of which rule fired.
-using UnarySymbolicDerivRule = std::function<std::size_t(Operon::Vector<Node>& dag,
-    Operon::Map<Operon::Hash, std::size_t>& memo, Operon::Vector<Operon::Hash>& h, std::size_t i, std::size_t j)>;
+using UnarySymbolicDerivRule
+    = std::function<std::size_t(Operon::Vector<Node>& dag, DerivMemo& memo, std::size_t i, std::size_t j)>;
 
 // Register a symbolic derivative rule for a unary function (built-in or
 // user-defined), keyed by the same hash the function's Node::HashValue
@@ -60,9 +89,8 @@ OPERON_EXPORT auto GetUnarySymbolicDeriv(Operon::Hash hash) -> UnarySymbolicDeri
 // ∂f/∂j and of ∂f/∂k, each independently possibly `Zero` if that partial
 // isn't computable. Mirrors UnarySymbolicDerivRule exactly, just for two
 // operands instead of one.
-using BinarySymbolicDerivRule = std::function<std::pair<std::size_t, std::size_t>(Operon::Vector<Node>& dag,
-    Operon::Map<Operon::Hash, std::size_t>& memo, Operon::Vector<Operon::Hash>& h, std::size_t i, std::size_t j,
-    std::size_t k)>;
+using BinarySymbolicDerivRule = std::function<std::pair<std::size_t, std::size_t>(
+    Operon::Vector<Node>& dag, DerivMemo& memo, std::size_t i, std::size_t j, std::size_t k)>;
 
 // Register a symbolic derivative rule for a binary function (built-in or
 // user-defined). Looked up by BuildJacobianDag/BuildHessianDag's internal
@@ -82,36 +110,29 @@ OPERON_EXPORT auto HasBinarySymbolicDeriv(Operon::Hash hash) -> bool;
 OPERON_EXPORT auto GetBinarySymbolicDeriv(Operon::Hash hash) -> BinarySymbolicDerivRule const*;
 
 // A UnarySymbolicDerivRule/BinarySymbolicDerivRule body needs to append new
-// nodes to the derivative dag under construction (`dag`/`memo`/`h`, the
-// same three arguments the rule itself receives), sharing identical
-// subexpressions across derivative columns the same way every built-in
-// rule does. These three functions are that same node-building,
-// subexpression-sharing logic — call them instead of appending nodes by
-// hand.
-//
-// Note: composed_function.hpp's detail::Diff{Mix,GetConst,MakeUnary,
-// MakeBinary} is a separate, intentionally-diverging port of this same
-// protocol (salted hashing, to avoid a Mix(0,0)==0 fixed point that this
-// unsalted version doesn't need to guard against for its own callers) —
-// not a redundant copy to migrate onto these functions.
+// nodes to the derivative dag under construction (`dag`/`memo`, the same two
+// arguments the rule itself receives), sharing identical subexpressions
+// across derivative columns the same way every built-in rule does. These
+// three functions are that same node-building, subexpression-sharing logic
+// (composed_function.hpp's derivative rules use them too) -- call them
+// instead of appending nodes by hand.
 //
 // Get or create a constant node holding `val`. Two calls with the same
 // value return the same dag index.
-OPERON_EXPORT auto GetSymbolicDerivConst(Operon::Vector<Node>& dag, Operon::Map<Operon::Hash, std::size_t>& memo,
-    Operon::Vector<Operon::Hash>& h, Scalar val) -> std::size_t;
+OPERON_EXPORT auto GetSymbolicDerivConst(Operon::Vector<Node>& dag, DerivMemo& memo, Scalar val) -> std::size_t;
 
 // Build `op(a)`, where `a` is an existing dag index. Two calls building the
 // same expression return the same dag index.
-OPERON_EXPORT auto MakeSymbolicDerivUnary(Operon::Vector<Node>& dag, Operon::Map<Operon::Hash, std::size_t>& memo,
-    Operon::Vector<Operon::Hash>& h, BuiltinOp op, std::size_t a) -> std::size_t;
+OPERON_EXPORT auto MakeSymbolicDerivUnary(Operon::Vector<Node>& dag, DerivMemo& memo, BuiltinOp op, std::size_t a)
+    -> std::size_t;
 
 // Build `op(a, b)`, where `a` is the nearer child and `b` is the farther
 // child (same convention as Deriv()'s own hardcoded Pow case, and as the
 // `j`/`k` parameters BinarySymbolicDerivRule receives). Note that Mul(a,b)
-// and Mul(b,a) get different hash keys (less deduplication but no
-// correctness issue) — relevant when writing a non-commutative binary rule.
-OPERON_EXPORT auto MakeSymbolicDerivBinary(Operon::Vector<Node>& dag, Operon::Map<Operon::Hash, std::size_t>& memo,
-    Operon::Vector<Operon::Hash>& h, BuiltinOp op, std::size_t a, std::size_t b) -> std::size_t;
+// and Mul(b,a) are different expressions (less deduplication but no
+// correctness issue) -- relevant when writing a non-commutative binary rule.
+OPERON_EXPORT auto MakeSymbolicDerivBinary(
+    Operon::Vector<Node>& dag, DerivMemo& memo, BuiltinOp op, std::size_t a, std::size_t b) -> std::size_t;
 
 // A flat postfix array containing the original tree (indices 0..OriginalSize-1)
 // plus appended symbolic derivative subtrees. Shared subexpressions between
