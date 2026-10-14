@@ -1620,4 +1620,42 @@ TEST_CASE("BuildVariableGradientDag - unsupported op certainty is per dependent 
     CHECK(dag.Roots[y] != NoGrad);
 }
 
+TEST_CASE("BuildVariableGradientDag - a zero constant never aliases the first original node", "[tree_diff]")
+{
+    Dataset const ds(std::vector<std::string> { "X" }, std::vector<std::vector<Operon::Scalar>> { { 1.3F } });
+    auto const xHash = ds.GetVariable("X")->Hash;
+    auto const variable = [&](Operon::Scalar weight) {
+        Node n { NodeType::Variable, xHash };
+        n.Value = weight;
+        n.Optimize = true;
+        return n;
+    };
+    auto const function
+        = [](BuiltinOp op, std::size_t arity) { return Node::Function(static_cast<Operon::Hash>(op), arity); };
+
+    // g(x) = (0 * x) / (-0.69 * x) is identically 0, so g' = 0 and so is the derivative of any function of g. The
+    // derivative contains Mul(0, x0) next to the first original node x0: it must stay distinct from Mul(x0, x0).
+    for (auto const outer : { BuiltinOp::Add, BuiltinOp::Exp, BuiltinOp::Sin }) {
+        Operon::Vector<Node> nodes { variable(-0.69F), variable(0.0F), function(BuiltinOp::Div, 2) };
+        if (outer != BuiltinOp::Add) {
+            nodes.push_back(function(outer, 1));
+        }
+        Tree tree { nodes };
+        tree.UpdateNodes();
+
+        auto const dag = BuildVariableGradientDag(tree, tree.GetCoefficients());
+        auto const k = VariableIndex(dag, xHash);
+        REQUIRE(dag.Certain[k]);
+        REQUIRE(dag.Roots[k] != NoGrad);
+        auto const derivative = SliceDerivative(dag, dag.Roots[k]);
+
+        Operon::ScalarDispatch dtable;
+        Interpreter<Operon::Scalar, Operon::ScalarDispatch> interp(&dtable, &ds, &derivative);
+        auto const values = interp.Evaluate(derivative.GetCoefficients(), Range { 0, 1 });
+        REQUIRE(values.has_value());
+        INFO("outer op " << static_cast<Operon::Hash>(outer));
+        CHECK(values.value()[0] == 0.0F);
+    }
+}
+
 } // namespace Operon::Test
