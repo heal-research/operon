@@ -53,10 +53,11 @@ struct OPERON_EXPORT LinearScaling {
     Operon::Span<Operon::Scalar const> target, Operon::Span<Operon::Scalar const> weights = {},
     bool omitNonFinite = false) -> LinearScaling;
 
-// Runs the interpreter over `range` and fits (a,b) against `problem`'s target/weights. Returns nullopt iff
-// problem.LinearScalingEnabled() is false. `scratch`, if >= range.Size(), is reused as the output buffer
-// instead of allocating (caller-owned, e.g. ShapeConstrainedEvaluator/ShapeViolationEvaluator's per-call
-// scoring buffer); too-small/empty allocates internally.
+// Runs the interpreter over `range` and fits (a,b) against `problem`'s target/weights under
+// problem.LinearScalingOmitsNonFinite() -- the canonical transform that every evaluator, shape-constrained evaluator
+// certification and the exporters share. Returns nullopt iff problem.LinearScalingEnabled() is false. `scratch`, if >=
+// range.Size(), is reused as the output buffer instead of allocating (caller-owned scoring buffer);
+// too-small/empty allocates internally.
 [[nodiscard]] OPERON_EXPORT auto FitLinearScaling(Operon::Tree const& tree, Operon::Problem const& problem,
     Operon::ScalarDispatch const& dtable, Operon::Range range, Operon::Span<Operon::Scalar> scratch = {})
     -> std::optional<LinearScaling>;

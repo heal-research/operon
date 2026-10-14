@@ -6,11 +6,11 @@
 #define PROBLEM_HPP
 
 #include <gsl/pointers>
-#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "concepts.hpp"
 #include "dataset.hpp"
 #include "pset.hpp"
 #include "range.hpp"
@@ -18,22 +18,13 @@
 namespace Operon {
 
 class Problem {
+
     [[nodiscard]] auto GetVariable(auto t) const -> Operon::Variable
     {
         if (auto v = dataset_->GetVariable(t); v.has_value()) {
             return *v;
         }
         PANIC("cannot map argument to any known variable");
-    }
-
-    auto ValidateInputs(auto const& inputs) const
-    {
-        using T = typename std::remove_cvref_t<decltype(inputs)>::value_type;
-        static_assert(
-            std::is_same_v<T, std::string> || std::is_same_v<T, Operon::Hash>, "the inputs must be strings or hashes");
-        for (auto const& x : inputs) {
-            (void)GetVariable(x);
-        }
     }
 
     std::unique_ptr<Dataset> ownedDataset_;
@@ -48,12 +39,8 @@ class Problem {
     Operon::Set<Operon::Hash> inputs_;
 
     bool defaultInputs_ { true };
-
-    // Problem owns the PrimitiveSet, so it represents the problem formulation
-    // rather than a bare dataset view; whether the fitted model is
-    // Keijzer-scaled is part of that formulation.
-    bool linearScaling_ { true };
-    bool linearScalingOmitsNonFinite_ { false };
+    bool linearScaling_ { true }; // use an affine scaling transform
+    bool omitNonFinite_ { false }; // omit non-finite values when computing the scaling transform
 
 public:
     Problem(const Problem&) = delete;
@@ -70,9 +57,11 @@ public:
 
     explicit Problem(gsl::not_null<Dataset*> dataset) : dataset_ { dataset.get() } { SetDefaultInputs(); }
 
-    template <typename T> auto SetTarget(T t)
+    template <typename T>
+        requires Concepts::VariableIdentifier<T>
+    auto SetTarget(T const& t) -> void
     {
-        target_ = GetVariable<std::remove_cvref_t<T>>(t);
+        target_ = GetVariable(t);
         if (defaultInputs_) {
             SetDefaultInputs();
         }
@@ -87,14 +76,16 @@ public:
     auto SetValidationRange(Operon::Range range) { validation_ = range; }
     auto SetValidationRange(int begin, int end) { validation_ = Operon::Range(begin, end); }
 
-    auto SetInputs(auto const& inputs)
+    template <typename T>
+        requires Concepts::VariableIdentifierRange<T>
+    auto SetInputs(T const& inputs) -> void
     {
-        ValidateInputs(inputs);
-        defaultInputs_ = false;
-        inputs_.clear();
+        Operon::Set<Operon::Hash> resolved;
         for (auto const& x : inputs) {
-            inputs_.insert(GetVariable(x).Hash);
+            resolved.insert(GetVariable(x).Hash);
         }
+        defaultInputs_ = false;
+        inputs_ = std::move(resolved);
     }
 
     [[nodiscard]] auto GetInputs() const -> std::vector<Operon::Hash> const& { return inputs_.values(); }
@@ -121,7 +112,7 @@ public:
         std::vector<Variable> variables;
         variables.reserve(inputs_.size());
         std::transform(inputs_.values().begin(), inputs_.values().end(), std::back_inserter(variables),
-            [&](auto h) { return GetVariable<Operon::Hash>(h); });
+            [&](auto h) -> auto { return GetVariable<Operon::Hash>(h); });
         return variables;
     }
 
@@ -133,11 +124,11 @@ public:
 
     [[nodiscard]] auto LinearScalingEnabled() const noexcept -> bool { return linearScaling_; }
     void SetLinearScalingEnabled(bool value) noexcept { linearScaling_ = value; }
-    [[nodiscard]] auto LinearScalingOmitsNonFinite() const noexcept -> bool { return linearScalingOmitsNonFinite_; }
-    // Caller responsibility: keep this in sync with evaluator-level non-finite handling
-    // (e.g. skipNonFinite). Otherwise certification and scoring may fit different
-    // linear scales for the same individual; the library does not enforce this coupling.
-    void SetLinearScalingOmitsNonFinite(bool value) noexcept { linearScalingOmitsNonFinite_ = value; }
+    [[nodiscard]] auto LinearScalingOmitsNonFinite() const noexcept -> bool { return omitNonFinite_; }
+    // The single declared policy for fitting a linear-scaling transform: interpreter and JIT evaluators,
+    // shape-constrained evaluator certification, the exporters and reporting all fit under it. An evaluator's
+    // scoring-only skipNonFinite option never changes how the scaling is fitted.
+    void SetLinearScalingOmitsNonFinite(bool value) noexcept { omitNonFinite_ = value; }
 
     template <typename Self>
     [[nodiscard]] auto GetDataset(this Self& self)

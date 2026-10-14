@@ -233,14 +233,14 @@ TEST_CASE("IntervalEvaluator: user-registered unary op round-trips and rejects d
     constNode.Optimize = false;
     Tree const tree = Tree({ constNode, Node::Function(customHash, 1) }).UpdateNodes();
     Operon::IntervalEvaluator<Operon::Scalar>::DomainMap noDomains;
-    static_cast<void>(IntervalEvaluator<Operon::Scalar> { &tree, noDomains }.Evaluate({}));
+    REQUIRE(IntervalEvaluator<Operon::Scalar> { &tree, noDomains }({}));
     CHECK(invoked);
 }
 
 // --- End-to-end miss behavior: a genuinely unmapped hash (not registered
-// anywhere) must still throw for interval/affine, matching the unchanged
-// contract documented on Register{Unary,Binary}{Interval,Affine}.
-TEST_CASE("IntervalEvaluator/AffineEvaluator: unmapped op throws at Evaluate()", "[registry][miss]")
+// anywhere) must still be reported as an error result for interval/affine,
+// matching the contract documented on Register{Unary,Binary}{Interval,Affine}.
+TEST_CASE("IntervalEvaluator/AffineEvaluator: unmapped op returns an error", "[registry][miss]")
 {
     constexpr Operon::Hash unmappedHash { 0x3333333333333333ULL };
     auto constNode = Node::Constant(1.0F);
@@ -248,8 +248,8 @@ TEST_CASE("IntervalEvaluator/AffineEvaluator: unmapped op throws at Evaluate()",
     Tree const tree = Tree({ constNode, Node::Function(unmappedHash, 1) }).UpdateNodes();
     Operon::IntervalEvaluator<Operon::Scalar>::DomainMap noDomains;
 
-    CHECK_THROWS_AS(IntervalEvaluator<Operon::Scalar>(&tree, noDomains).Evaluate({}), std::runtime_error);
-    CHECK_THROWS_AS(AffineEvaluator<Operon::Scalar>(&tree, noDomains).Evaluate({}), std::runtime_error);
+    CHECK_FALSE(IntervalEvaluator<Operon::Scalar>(&tree, noDomains)({}));
+    CHECK_FALSE(AffineEvaluator<Operon::Scalar>(&tree, noDomains)({}));
 }
 
 #ifdef HAVE_ASMJIT

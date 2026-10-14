@@ -149,7 +149,9 @@ TEST_CASE("Feynman benchmark suite - TightenRange/TightenRangeBisected soundness
             domains[hash] = { static_cast<Operon::Scalar>(v.lo), static_cast<Operon::Scalar>(v.hi) };
         }
 
-        auto const naive = IntervalEvaluator<Operon::Scalar>(&tree, domains).Evaluate(coeff);
+        auto const naiveResult = IntervalEvaluator<Operon::Scalar>(&tree, domains)(coeff);
+        REQUIRE(naiveResult);
+        auto const naive = *naiveResult;
         auto const tightened = TightenRange(tree, domains, coeff);
         auto const bisected = TightenRangeBisected(tree, domains, coeff, 3);
 

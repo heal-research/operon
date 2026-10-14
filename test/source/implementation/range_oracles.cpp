@@ -134,7 +134,6 @@ namespace {
         problem.SetTarget("Y");
         problem.SetLinearScalingEnabled(false);
         DispatchTable<S> dtable;
-        Evaluator<DispatchTable<S>> metric(&problem, &dtable, NMSE {});
         ShapeConstraintSet constraints;
         for (auto const& domain : oracle.domains) {
             constraints.Domains.emplace(domain.name, std::pair { domain.lo, domain.hi });
@@ -143,10 +142,9 @@ namespace {
             .Variable = "",
             .Sign = std::nullopt,
             .Bound = std::pair { S { -1e6 }, S { 1e6 } } });
-        ShapeConstrainedEvaluator evaluator(&metric, &dtable, constraints);
-        evaluator.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
-        evaluator.SetBoundOptions({ .BisectionDepth = 5 });
-        auto const result = evaluator.Measure(prepared.tree);
+        ShapeCertifier certifier(&problem, &dtable, constraints, Operon::Scalar { 1 },
+            ShapeBoundOptions { .Mode = ShapeBoundMode::Bisected, .BisectionDepth = 5 });
+        auto const result = certifier.MeasureCanonical(prepared.tree);
         REQUIRE(result.Measurements.size() == 1);
         REQUIRE(result.Measurements.front().Bound.has_value());
         auto const [lo, hi] = *result.Measurements.front().Bound;
@@ -166,7 +164,9 @@ TEST_CASE("Range-oracle corpus: interval and bisection enclosures", "[range-orac
 {
     for (auto const& oracle : Oracles()) {
         auto prepared = Prepare(oracle);
-        auto const direct = IE(&prepared.tree, prepared.domains).Evaluate(prepared.tree.GetCoefficients());
+        auto const directResult = IE(&prepared.tree, prepared.domains)(prepared.tree.GetCoefficients());
+        REQUIRE(directResult);
+        auto const direct = *directResult;
         auto const bisected = BisectedBound(prepared, oracle);
         CheckContains(oracle, { direct.inf(), direct.sup() });
         CheckContains(oracle, bisected);

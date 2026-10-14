@@ -7,6 +7,8 @@
 
 #include <concepts>
 #include <cstddef>
+#include <ranges>
+#include <string>
 #include <string_view>
 #include <type_traits>
 
@@ -15,19 +17,33 @@
 namespace Operon {
 class Tree;
 struct Individual;
+template <typename DTable> class Evaluator; // operators/evaluator.hpp
 } // namespace Operon
 
 // Runtime dispatch for Creator/Mutator/Crossover/Selector/Reinserter/
 // EvaluatorCallable stays on the OperatorBase virtual hierarchy (pyoperon and
 // the CLI factories need dynamic wiring), so these concepts don't constrain a
-// template anywhere. Instead, each concrete operator type gets
-// `static_assert(Concepts::X<ConcreteType>)` immediately after its
-// definition, pinning "this type satisfies its concept" as a compile-time
+// template anywhere -- with one deliberate exception, ValueEvaluator, which
+// constrains the base of ShapeConstrainedValueEvaluator. Instead, each concrete
+// operator type gets `static_assert(Concepts::X<ConcreteType>)` immediately after
+// its definition, pinning "this type satisfies its concept" as a compile-time
 // fact so signature drift is a build error rather than a silent mismatch.
 namespace Operon::Concepts {
 
 template <typename T>
 concept Arithmetic = std::is_arithmetic_v<T>;
+
+// A variable is identified by an exact Hash or a value implicitly convertible
+// to std::string. This permits names and string literals but rejects accidental
+// integer-to-hash conversions.
+template <typename T>
+concept VariableIdentifier
+    = std::same_as<std::remove_cvref_t<T>, Operon::Hash> || std::convertible_to<T const&, std::string>;
+
+// A single-pass range whose values can identify variables.
+template <typename T>
+concept VariableIdentifierRange
+    = std::ranges::input_range<T const> && VariableIdentifier<std::ranges::range_value_t<T>>;
 
 // Callable with two (or three) value spans, returns a scalar error measure.
 template <typename T>
@@ -96,6 +112,19 @@ concept Likelihood = requires(
     { T::ComputeLikelihood(x, y, z) } -> std::same_as<Operon::Scalar>;
     { T::UsesSigma } -> std::convertible_to<bool>;
 };
+
+// The shape-constrained evaluator adapter (ShapeConstrainedValueEvaluator) is the only type that sets
+// `IsShapeConstrained`. It is the compile-time fact that keeps one adapter from becoming the base of another.
+template <typename T>
+concept ShapeConstrainedEvaluator = requires { requires T::IsShapeConstrained; };
+
+// A concrete value evaluator: an `Evaluator<DTable>` (interpreter- or backend-based, any scoring metric) whose
+// prediction phase yields the per-row predictions and the exact transform its own objective phase applies. It is
+// the closed set of evaluators that can be the base of a shape-constrained adapter; an adapter itself is not one,
+// so constrained adapters cannot nest.
+template <typename T>
+concept ValueEvaluator = requires { typename T::TDispatch; }
+    && std::derived_from<T, Operon::Evaluator<typename T::TDispatch>> && !ShapeConstrainedEvaluator<T>;
 
 } // namespace Operon::Concepts
 

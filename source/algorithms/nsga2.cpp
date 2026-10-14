@@ -269,7 +269,10 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                                          .for_each_index(size_t { 0 }, parents.size(), size_t { 1 },
                                              [&](size_t i) -> void {
                                                  if (originalCoeffs[i]) {
-                                                     parents[i].Genotype.SetCoefficients(*originalCoeffs[i]);
+                                                     auto const id = executor.this_worker_id();
+                                                     slots[id].resize(trainSize);
+                                                     RestoreNonLamarckianCoefficients(parents[i], *evaluator,
+                                                         *originalCoeffs[i], Operon::Span<Operon::Scalar>(slots[id]));
                                                  }
                                              })
                                          .name("restore non-lamarckian coefficients");

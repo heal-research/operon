@@ -48,6 +48,21 @@ namespace {
     }
 
     auto Domains() -> IE::DomainMap { return IE::DomainMap {}; }
+
+    // Evaluation must succeed; unwrap the enclosure.
+    auto Eval(IE const& eval, Operon::Span<Operon::Scalar const> coeff) -> IE::Interval
+    {
+        auto const result = eval(coeff);
+        REQUIRE(result);
+        return *result;
+    }
+
+    auto Eval(AE const& eval, Operon::Span<Operon::Scalar const> coeff) -> AE::Affine
+    {
+        auto const result = eval(coeff);
+        REQUIRE(result);
+        return *result;
+    }
 } // namespace
 
 TEST_CASE("Interval backend: constants and variables", "[pappus][interval]")
@@ -56,7 +71,7 @@ TEST_CASE("Interval backend: constants and variables", "[pappus][interval]")
     {
         auto tree = Operon::Tree({ Const(2.5) }).UpdateNodes();
         IE eval(&tree, Domains());
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         REQUIRE(r.inf() == Catch::Approx(2.5).margin(1e-5));
         REQUIRE(r.sup() == Catch::Approx(2.5).margin(1e-5));
     }
@@ -68,7 +83,7 @@ TEST_CASE("Interval backend: constants and variables", "[pappus][interval]")
         auto d = Domains();
         d[X1] = { S { 1 }, S { 3 } };
         IE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         REQUIRE(r.inf() == Catch::Approx(1.0).margin(1e-5));
         REQUIRE(r.sup() == Catch::Approx(3.0).margin(1e-5));
     }
@@ -81,7 +96,7 @@ TEST_CASE("Interval backend: constants and variables", "[pappus][interval]")
         d[X1] = { S { 1 }, S { 3 } };
         IE eval(&tree, d);
         d[X1] = { S { 2 }, S { 4 } };
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         REQUIRE(r.inf() == Catch::Approx(1.0).margin(1e-5));
         REQUIRE(r.sup() == Catch::Approx(3.0).margin(1e-5));
     }
@@ -93,7 +108,7 @@ TEST_CASE("Interval backend: constants and variables", "[pappus][interval]")
         auto d = Domains();
         d[X1] = { S { 1 }, S { 3 } };
         IE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         REQUIRE(r.inf() == Catch::Approx(2.0).margin(1e-4));
         REQUIRE(r.sup() == Catch::Approx(6.0).margin(1e-4));
     }
@@ -115,7 +130,7 @@ TEST_CASE("Interval backend: arithmetic", "[pappus][interval]")
     SECTION("X1 + X2 -> [4, 6]")
     {
         auto eval = make({ Var(X1), Var(X2), Util::MakeOp<Operon::BuiltinOp::Add>() });
-        auto const r = eval.Evaluate(eval.GetTree()->GetCoefficients());
+        auto const r = Eval(eval, eval.GetTree()->GetCoefficients());
         REQUIRE(Contains(r, 4.0, 6.0, 1e-5));
     }
 
@@ -124,21 +139,21 @@ TEST_CASE("Interval backend: arithmetic", "[pappus][interval]")
         // operon lays out binary-op children with the semantic LEFT operand at
         // the higher index (rightmost); `Tree::Indices` yields rightmost-first.
         auto eval = make({ Var(X2), Var(X1), Util::MakeOp<Operon::BuiltinOp::Sub>() });
-        auto const r = eval.Evaluate(eval.GetTree()->GetCoefficients());
+        auto const r = Eval(eval, eval.GetTree()->GetCoefficients());
         REQUIRE(Contains(r, -3.0, -1.0, 1e-5));
     }
 
     SECTION("X1 * X2 -> [3, 8]")
     {
         auto eval = make({ Var(X1), Var(X2), Util::MakeOp<Operon::BuiltinOp::Mul>() });
-        auto const r = eval.Evaluate(eval.GetTree()->GetCoefficients());
+        auto const r = Eval(eval, eval.GetTree()->GetCoefficients());
         REQUIRE(Contains(r, 3.0, 8.0, 1e-5));
     }
 
     SECTION("X1 / X2 -> [0.25, 0.6667]")
     {
         auto eval = make({ Var(X2), Var(X1), Util::MakeOp<Operon::BuiltinOp::Div>() });
-        auto const r = eval.Evaluate(eval.GetTree()->GetCoefficients());
+        auto const r = Eval(eval, eval.GetTree()->GetCoefficients());
         REQUIRE(r.inf() <= 0.25 + 1e-5);
         REQUIRE(r.sup() + 1e-5 >= 2.0 / 3.0);
     }
@@ -148,7 +163,7 @@ TEST_CASE("Interval backend: arithmetic", "[pappus][interval]")
         auto node = Util::MakeOp<Operon::BuiltinOp::Sub>();
         node.Arity = 1;
         auto eval = make({ Var(X1), node });
-        auto const r = eval.Evaluate(eval.GetTree()->GetCoefficients());
+        auto const r = Eval(eval, eval.GetTree()->GetCoefficients());
         REQUIRE(Contains(r, -2.0, -1.0, 1e-5));
     }
 
@@ -157,7 +172,7 @@ TEST_CASE("Interval backend: arithmetic", "[pappus][interval]")
         auto node = Util::MakeOp<Operon::BuiltinOp::Div>();
         node.Arity = 1;
         auto eval = make({ Var(X1), node });
-        auto const r = eval.Evaluate(eval.GetTree()->GetCoefficients());
+        auto const r = Eval(eval, eval.GetTree()->GetCoefficients());
         REQUIRE(Contains(r, 0.5, 1.0, 1e-5));
     }
 }
@@ -173,7 +188,7 @@ TEST_CASE("Interval backend: weighted n-ary subtraction and division", "[pappus]
         sub.Arity = 3;
         sub.Value = S { 2 };
         auto const tree = Operon::Tree({ Const(5), Var(X2), Var(X1), sub }).UpdateNodes();
-        auto const result = IE(&tree, domains).Evaluate(tree.GetCoefficients());
+        auto const result = Eval(IE(&tree, domains), tree.GetCoefficients());
 
         REQUIRE(Contains(result, -16.0, -12.0, 1e-5));
     }
@@ -184,7 +199,7 @@ TEST_CASE("Interval backend: weighted n-ary subtraction and division", "[pappus]
         div.Arity = 3;
         div.Value = S { 4 };
         auto const tree = Operon::Tree({ Const(2), Const(2), Var(X1), div }).UpdateNodes();
-        auto const result = IE(&tree, domains).Evaluate(tree.GetCoefficients());
+        auto const result = Eval(IE(&tree, domains), tree.GetCoefficients());
         REQUIRE(Contains(result, 1.0, 2.0, 1e-5));
     }
 }
@@ -200,7 +215,7 @@ TEST_CASE("Interval backend: unary transcendentals", "[pappus][interval]")
         auto dm = Domains();
         dm[X1] = { S { dom.first }, S { dom.second } };
         IE eval(&t, std::move(dm));
-        return { eval, eval.Evaluate(eval.GetTree()->GetCoefficients()) };
+        return { eval, Eval(eval, eval.GetTree()->GetCoefficients()) };
     };
 
     SECTION("square([-1, 2]) -> [0, 4]")
@@ -244,7 +259,7 @@ TEST_CASE("Interval backend: trig and hyperbolic transcendentals", "[pappus][int
         auto dm = Domains();
         dm[X1] = { S { dom.first }, S { dom.second } };
         IE eval(&tree, std::move(dm));
-        return eval.Evaluate(tree.GetCoefficients());
+        return Eval(eval, tree.GetCoefficients());
     };
 
     constexpr double Pi = 3.14159265358979323846;
@@ -307,7 +322,7 @@ TEST_CASE("Affine backend: trig and hyperbolic transcendentals", "[pappus][affin
         auto d = Domains();
         d[X1] = { S { dom.first }, S { dom.second } };
         AE eval(&tree, std::move(d));
-        return eval.Evaluate(tree.GetCoefficients());
+        return Eval(eval, tree.GetCoefficients());
     };
 
     constexpr double Pi = 3.14159265358979323846;
@@ -372,7 +387,7 @@ TEST_CASE("Interval backend: nested tree", "[pappus][interval]")
     d[X2] = { S { 3 }, S { 4 } };
     d[X3] = { S { 5 }, S { 6 } };
     IE eval(&tree, std::move(d));
-    auto const r = eval.Evaluate(tree.GetCoefficients());
+    auto const r = Eval(eval, tree.GetCoefficients());
     // (X1+X2) in [4,6]; * X3 in [5,6] -> [20, 36]
     REQUIRE(Contains(r, 20.0, 36.0, 1e-3));
 }
@@ -387,7 +402,7 @@ TEST_CASE("Interval backend: abs and composable ops", "[pappus][interval]")
         auto dm = Domains();
         dm[X1] = { S { dom.first }, S { dom.second } };
         IE eval(&t, std::move(dm));
-        return { eval, eval.Evaluate(eval.GetTree()->GetCoefficients()) };
+        return { eval, Eval(eval, eval.GetTree()->GetCoefficients()) };
     };
 
     SECTION("abs([-3, -1]) -> [1, 3]")
@@ -428,7 +443,7 @@ TEST_CASE("Interval backend: fmin/fmax", "[pappus][interval]")
     auto make = [&](Operon::Vector<Operon::Node> ns) -> IE::Interval {
         auto tree = Operon::Tree(std::move(ns)).UpdateNodes();
         IE eval(&tree, IE::DomainMap { d });
-        return eval.Evaluate(tree.GetCoefficients());
+        return Eval(eval, tree.GetCoefficients());
     };
 
     SECTION("fmin(X1, X2) -> [1, 3]")
@@ -457,7 +472,7 @@ TEST_CASE("Interval backend: aq", "[pappus][interval]")
     d[X1] = { S { 3 }, S { 6 } };
     d[X2] = { S { 0 }, S { 2 } };
     IE eval(&tree, std::move(d));
-    auto const r = eval.Evaluate(tree.GetCoefficients());
+    auto const r = Eval(eval, tree.GetCoefficients());
     REQUIRE(r.inf() <= 3.0 / std::sqrt(5.0) + 1e-3);
     REQUIRE(r.sup() + 1e-3 >= 6.0);
 }
@@ -477,7 +492,7 @@ TEST_CASE("Affine backend: aq", "[pappus][affine]")
     d[X1] = { S { 3 }, S { 6 } };
     d[X2] = { S { 1 }, S { 2 } };
     AE eval(&tree, std::move(d));
-    auto const r = eval.Evaluate(tree.GetCoefficients());
+    auto const r = Eval(eval, tree.GetCoefficients());
     auto const iv = r.to_interval();
     // aq enclosure must contain the true range [3/sqrt(5), 6/sqrt(2)]
     REQUIRE(iv.inf() <= 3.0 / std::sqrt(5.0) + 1e-3);
@@ -494,7 +509,7 @@ TEST_CASE("Affine backend: abs (non-zero-crossing)", "[pappus][affine]")
         auto d = Domains();
         d[X1] = { S { 2 }, S { 5 } };
         AE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         REQUIRE(Contains(r, 2.0, 5.0, 1e-4));
     }
 
@@ -504,7 +519,7 @@ TEST_CASE("Affine backend: abs (non-zero-crossing)", "[pappus][affine]")
         auto d = Domains();
         d[X1] = { S { -5 }, S { -2 } };
         AE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         REQUIRE(Contains(r, 2.0, 5.0, 1e-4));
     }
 
@@ -515,7 +530,7 @@ TEST_CASE("Affine backend: abs (non-zero-crossing)", "[pappus][affine]")
         auto d = Domains();
         d[X1] = { S { -1 }, S { 2 } };
         AE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         // abs([-1, 2]) = [0, 2]; affine enclosure must contain this.
         REQUIRE(Contains(r, 0.0, 2.0, 1e-3));
     }
@@ -530,7 +545,7 @@ TEST_CASE("Interval backend: cbrt, log1p, floor, ceil", "[pappus][interval]")
         auto dm = Domains();
         dm[X1] = { S { dom.first }, S { dom.second } };
         IE eval(&tree, std::move(dm));
-        return eval.Evaluate(tree.GetCoefficients());
+        return Eval(eval, tree.GetCoefficients());
     };
 
     SECTION("cbrt([-1, 8]) -> [-1, 2]")
@@ -571,7 +586,7 @@ TEST_CASE("Affine backend: cbrt, log1p, floor, ceil, fmin, fmax", "[pappus][affi
         auto d = Domains();
         d[X1] = { S { 1 }, S { 27 } };
         AE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         REQUIRE(Contains(r, 1.0, 3.0, 1e-3));
     }
     SECTION("log1p([0, 1]) -> contains [0, log(2)]")
@@ -580,7 +595,7 @@ TEST_CASE("Affine backend: cbrt, log1p, floor, ceil, fmin, fmax", "[pappus][affi
         auto d = Domains();
         d[X1] = { S { 0 }, S { 1 } };
         AE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         auto const iv = r.to_interval();
         REQUIRE(iv.inf() <= 0.0 + 1e-4);
         REQUIRE(iv.sup() + 1e-3 >= std::log(2.0));
@@ -592,7 +607,7 @@ TEST_CASE("Affine backend: cbrt, log1p, floor, ceil, fmin, fmax", "[pappus][affi
         d[X1] = { S { 1 }, S { 3 } };
         d[X2] = { S { 2 }, S { 4 } };
         AE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         REQUIRE(Contains(r, 1.0, 3.0, 1e-3));
     }
     SECTION("fmax([1,3], [2,4]) -> contains [2, 4]")
@@ -602,7 +617,7 @@ TEST_CASE("Affine backend: cbrt, log1p, floor, ceil, fmin, fmax", "[pappus][affi
         d[X1] = { S { 1 }, S { 3 } };
         d[X2] = { S { 2 }, S { 4 } };
         AE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         REQUIRE(Contains(r, 2.0, 4.0, 1e-3));
     }
     SECTION("floor([-1.5, 8.7]) -> contains [-2, 8]")
@@ -611,7 +626,7 @@ TEST_CASE("Affine backend: cbrt, log1p, floor, ceil, fmin, fmax", "[pappus][affi
         auto d = Domains();
         d[X1] = { S { -1.5 }, S { 8.7 } };
         AE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         REQUIRE(Contains(r, -2.0, 8.0, 1e-3));
     }
     SECTION("ceil([-1.5, 8.7]) -> contains [-1, 9]")
@@ -620,17 +635,17 @@ TEST_CASE("Affine backend: cbrt, log1p, floor, ceil, fmin, fmax", "[pappus][affi
         auto d = Domains();
         d[X1] = { S { -1.5 }, S { 8.7 } };
         AE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         REQUIRE(Contains(r, -1.0, 9.0, 1e-3));
     }
 }
 
-TEST_CASE("Interval backend: missing domain throws", "[pappus][interval]")
+TEST_CASE("Interval backend: missing domain returns an error", "[pappus][interval]")
 {
     constexpr Operon::Hash X1 { 1 };
     auto tree = Operon::Tree({ Var(X1) }).UpdateNodes();
     IE eval(&tree, Domains()); // no domain for X1
-    REQUIRE_THROWS_AS(eval.Evaluate(tree.GetCoefficients()), std::runtime_error);
+    REQUIRE_FALSE(eval(tree.GetCoefficients()));
 }
 
 TEST_CASE("Affine backend: arithmetic", "[pappus][affine]")
@@ -649,21 +664,21 @@ TEST_CASE("Affine backend: arithmetic", "[pappus][affine]")
     SECTION("X1 + X2 (exact in affine) -> [4, 6]")
     {
         auto eval = make({ Var(X1), Var(X2), Util::MakeOp<Operon::BuiltinOp::Add>() });
-        auto const r = eval.Evaluate(eval.GetTree()->GetCoefficients());
+        auto const r = Eval(eval, eval.GetTree()->GetCoefficients());
         REQUIRE(Contains(r, 4.0, 6.0, 1e-4));
     }
 
     SECTION("X1 * X2 (affine enclosure contains [3, 8])")
     {
         auto eval = make({ Var(X1), Var(X2), Util::MakeOp<Operon::BuiltinOp::Mul>() });
-        auto const r = eval.Evaluate(eval.GetTree()->GetCoefficients());
+        auto const r = Eval(eval, eval.GetTree()->GetCoefficients());
         REQUIRE(Contains(r, 3.0, 8.0, 1e-3));
     }
 
     SECTION("X1 - X2 -> contains [-3, -1]")
     {
         auto eval = make({ Var(X2), Var(X1), Util::MakeOp<Operon::BuiltinOp::Sub>() });
-        auto const r = eval.Evaluate(eval.GetTree()->GetCoefficients());
+        auto const r = Eval(eval, eval.GetTree()->GetCoefficients());
         REQUIRE(Contains(r, -3.0, -1.0, 1e-4));
     }
 }
@@ -681,8 +696,8 @@ TEST_CASE("Affine backend: shared context", "[pappus][affine]")
     d[X2] = { S { 0 }, S { 1 } };
     AE eval(&tree, std::move(d));
 
-    auto const c0 = eval.Evaluate(tree.GetCoefficients());
-    auto const c1 = eval.Evaluate(tree.GetCoefficients());
+    auto const c0 = Eval(eval, tree.GetCoefficients());
+    auto const c1 = Eval(eval, tree.GetCoefficients());
     REQUIRE(c0.to_interval().inf() <= c1.to_interval().sup() + 1e-3);
     REQUIRE(c1.to_interval().inf() <= c0.to_interval().sup() + 1e-3);
 }
@@ -698,8 +713,8 @@ TEST_CASE("Affine backend: no index reuse across evaluations", "[pappus][affine]
     d[X1] = { S { 1 }, S { 3 } };
     AE eval(&tree, std::move(d));
 
-    auto const r1 = eval.Evaluate(tree.GetCoefficients());
-    auto const r2 = eval.Evaluate(tree.GetCoefficients());
+    auto const r1 = Eval(eval, tree.GetCoefficients());
+    auto const r2 = Eval(eval, tree.GetCoefficients());
     // r1 and r2 are from independent evaluations; r1 - r2 must enclose [-2, 2].
     auto const diff = pappus::ops::sub<Scalar>(r1, r2);
     auto const iv = diff.to_interval();
@@ -721,7 +736,7 @@ TEST_CASE("Affine backend: inv over zero-containing domain is NaN-poisoned, not 
     auto d = Domains();
     d[X1] = { S { -1 }, S { 1 } }; // contains zero
     AE eval(&tree, std::move(d));
-    auto const r = eval.Evaluate(tree.GetCoefficients()).to_interval();
+    auto const r = Eval(eval, tree.GetCoefficients()).to_interval();
     REQUIRE(std::isnan(r.inf()));
     REQUIRE(std::isnan(r.sup()));
 }
@@ -745,8 +760,8 @@ TEST_CASE("Affine backend: mixed context throws", "[pappus][affine]")
     AE eval1(&tree, std::move(d1));
     AE eval2(&tree, std::move(d2));
 
-    auto const r1 = eval1.Evaluate(tree.GetCoefficients());
-    auto const r2 = eval2.Evaluate(tree.GetCoefficients());
+    auto const r1 = Eval(eval1, tree.GetCoefficients());
+    auto const r2 = Eval(eval2, tree.GetCoefficients());
     // Combining forms from different contexts must throw.
     REQUIRE_THROWS_AS(pappus::ops::add<Scalar>(r1, r2), std::invalid_argument);
 }
@@ -764,7 +779,7 @@ TEST_CASE("Interval backend: empty interval propagation", "[pappus][interval]")
         auto d = Domains();
         d[X1] = { S { -3 }, S { -1 } };
         IE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         REQUIRE(r.is_empty());
         REQUIRE(std::isnan(r.inf()));
         REQUIRE(std::isnan(r.sup()));
@@ -776,7 +791,7 @@ TEST_CASE("Interval backend: empty interval propagation", "[pappus][interval]")
         auto d = Domains();
         d[X1] = { S { -4 }, S { -1 } };
         IE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         REQUIRE(r.is_empty());
     }
 
@@ -789,7 +804,7 @@ TEST_CASE("Interval backend: empty interval propagation", "[pappus][interval]")
         auto d = Domains();
         d[X1] = { S { -3 }, S { -1 } };
         IE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         REQUIRE(r.is_empty());
     }
 
@@ -799,7 +814,7 @@ TEST_CASE("Interval backend: empty interval propagation", "[pappus][interval]")
         auto d = Domains();
         d[X1] = { S { -3 }, S { -2 } };
         IE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         REQUIRE(r.is_empty());
     }
 }
@@ -816,7 +831,7 @@ TEST_CASE("Interval backend: infinite bounds", "[pappus][interval]")
         auto d = Domains();
         d[X1] = { S { -1 }, S { 1 } }; // contains zero
         IE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         REQUIRE(r.is_infinite());
         REQUIRE(r.inf() == -std::numeric_limits<S>::infinity());
         REQUIRE(r.sup() == +std::numeric_limits<S>::infinity());
@@ -829,7 +844,7 @@ TEST_CASE("Interval backend: infinite bounds", "[pappus][interval]")
         auto d = Domains();
         d[X1] = { S { 0 }, S { std::numeric_limits<S>::infinity() } };
         IE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         REQUIRE(r.inf() <= 1.0 + 1e-4);
         REQUIRE(r.sup() == std::numeric_limits<S>::infinity());
     }
@@ -845,7 +860,7 @@ TEST_CASE("Interval backend: single-point (degenerate) intervals", "[pappus][int
         auto d = Domains();
         d[X1] = { S { 2 }, S { 2 } }; // point interval
         IE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         REQUIRE(r.inf() == Catch::Approx(4.0).margin(1e-4));
         REQUIRE(r.sup() == Catch::Approx(4.0).margin(1e-4));
     }
@@ -856,7 +871,7 @@ TEST_CASE("Interval backend: single-point (degenerate) intervals", "[pappus][int
         auto d = Domains();
         d[X1] = { S { 9 }, S { 9 } };
         IE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         REQUIRE(r.inf() == Catch::Approx(3.0).margin(1e-4));
         REQUIRE(r.sup() == Catch::Approx(3.0).margin(1e-4));
     }
@@ -878,7 +893,7 @@ TEST_CASE("Interval backend: n-ary Fmin/Fmax with arity > 2", "[pappus][interval
         d[X2] = { S { 2 }, S { 4 } };
         d[X3] = { S { 3 }, S { 6 } };
         IE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         // min([1,5], [2,4], [3,6]) = [min(1,2,3), min(5,4,6)] = [1, 4]
         REQUIRE(Contains(r, 1.0, 4.0, 1e-5));
     }
@@ -893,7 +908,7 @@ TEST_CASE("Interval backend: n-ary Fmin/Fmax with arity > 2", "[pappus][interval
         d[X2] = { S { 2 }, S { 4 } };
         d[X3] = { S { 3 }, S { 6 } };
         IE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         // max([1,5], [2,4], [3,6]) = [max(1,2,3), max(5,4,6)] = [3, 6]
         REQUIRE(Contains(r, 3.0, 6.0, 1e-5));
     }
@@ -915,7 +930,7 @@ TEST_CASE("Affine backend: n-ary Fmin/Fmax with arity > 2", "[pappus][affine]")
         d[X2] = { S { 2 }, S { 4 } };
         d[X3] = { S { 3 }, S { 6 } };
         AE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         // min enclosure must contain [1, 4]
         REQUIRE(Contains(r, 1.0, 4.0, 1e-3));
     }
@@ -930,7 +945,7 @@ TEST_CASE("Affine backend: n-ary Fmin/Fmax with arity > 2", "[pappus][affine]")
         d[X2] = { S { 2 }, S { 4 } };
         d[X3] = { S { 3 }, S { 6 } };
         AE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         // max enclosure must contain [3, 6]
         REQUIRE(Contains(r, 3.0, 6.0, 1e-3));
     }
@@ -952,7 +967,7 @@ TEST_CASE("Affine backend: max_terms condensation", "[pappus][affine]")
     SECTION("max_terms=0 (unbounded) — terms grow freely")
     {
         AE eval(&tree, std::move(d), /*maxTerms=*/0);
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         // The result is a valid enclosure of [1, 16]
         REQUIRE(Contains(r, 1.0, 16.0, 1e-3));
     }
@@ -963,7 +978,7 @@ TEST_CASE("Affine backend: max_terms condensation", "[pappus][affine]")
         d2[X1] = { S { 1 }, S { 2 } };
         d2[X2] = { S { 1 }, S { 2 } };
         AE eval(&tree, std::move(d2), /*maxTerms=*/2);
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         // Still a valid (but potentially looser) enclosure of [1, 16]
         REQUIRE(Contains(r, 1.0, 16.0, 1e-2));
     }
@@ -990,7 +1005,7 @@ TEST_CASE("Interval backend: pow/powabs child ordering", "[pappus][interval]")
         d[X1] = { S { 2 }, S { 3 } }; // base
         d[X2] = { S { 1 }, S { 2 } }; // exponent
         IE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         // pow([2,3],[1,2]) = [2^1, 3^2] = [2, 9]
         REQUIRE(r.inf() <= 2.0 + 1e-3);
         REQUIRE(r.sup() + 1e-2 >= 9.0);
@@ -1005,7 +1020,7 @@ TEST_CASE("Interval backend: pow/powabs child ordering", "[pappus][interval]")
         d[X1] = { S { -3 }, S { 2 } }; // abs → [0, 3]
         d[X2] = { S { 2 }, S { 3 } }; // exponent
         IE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         // pow(abs([-3,2]), [2,3]) = pow([0,3], [2,3]) ⊇ [0, 27]
         REQUIRE(r.inf() <= 0.0 + 1e-3);
         REQUIRE(r.sup() + 1e-2 >= 27.0);
@@ -1023,7 +1038,7 @@ TEST_CASE("Interval backend: pow with negative-base domain and constant even exp
     auto d = Domains();
     d[X1] = { S { -3 }, S { -1 } }; // always-negative base
     IE eval(&tree, std::move(d));
-    auto const r = eval.Evaluate(tree.GetCoefficients());
+    auto const r = Eval(eval, tree.GetCoefficients());
     // pow([-3,-1], 2) = [1, 9], not empty
     REQUIRE(r.inf() <= 1.0 + 1e-3);
     REQUIRE(r.sup() + 1e-2 >= 9.0);
@@ -1053,7 +1068,7 @@ TEST_CASE("Affine backend: pow/powabs child ordering", "[pappus][affine]")
         auto d = Domains();
         d[X1] = { S { 2 }, S { 3 } };
         AE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         REQUIRE(Contains(r, 4.0, 9.0, 1e-2));
         // Key: upper bound must reach 9, not just 8 (the swapped result).
         REQUIRE(r.to_interval().sup() + 1e-2 >= 9.0);
@@ -1072,7 +1087,7 @@ TEST_CASE("Affine backend: pow/powabs child ordering", "[pappus][affine]")
         auto d = Domains();
         d[X1] = { S { -3 }, S { -1 } }; // all-negative: abs = exact negation, min(abs) = 1 > 0
         AE eval(&tree, std::move(d));
-        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const r = Eval(eval, tree.GetCoefficients());
         REQUIRE(Contains(r, 1.0, 27.0, 1e-2));
     }
 }
@@ -1087,7 +1102,7 @@ TEST_CASE("Affine backend: pow with non-degenerate exponent falls back to interv
     d[X2] = { S { 1 }, S { 2 } };
 
     AE eval(&tree, std::move(d));
-    auto const r = eval.Evaluate(tree.GetCoefficients());
+    auto const r = Eval(eval, tree.GetCoefficients());
     REQUIRE(Contains(r, 2.0, 9.0, 1e-2));
 }
 
@@ -1133,7 +1148,7 @@ TEST_CASE("Pappus backends: evaluation throughput", "[pappus][performance]")
     });
 
     IE iev(&tree, IE::DomainMap { d });
-    b.run("interval Evaluate", [&]() { nb::doNotOptimizeAway(iev.Evaluate(coeffs)); });
+    b.run("interval Evaluate", [&]() { nb::doNotOptimizeAway(iev(coeffs)); });
 
     // Constructing from an existing map compiles scalar bounds directly into
     // node slots. Keep the avoided input-map copy visible in this benchmark.
@@ -1147,20 +1162,20 @@ TEST_CASE("Pappus backends: evaluation throughput", "[pappus][performance]")
     });
 
     AE aev(&tree, AE::DomainMap { d });
-    b.run("affine Evaluate (max_terms=0)", [&]() { nb::doNotOptimizeAway(aev.Evaluate(coeffs)); });
+    b.run("affine Evaluate (max_terms=0)", [&]() { nb::doNotOptimizeAway(aev(coeffs)); });
 
     AE aev4(&tree, AE::DomainMap { d }, /*maxTerms=*/4);
-    b.run("affine Evaluate (max_terms=4)", [&]() { nb::doNotOptimizeAway(aev4.Evaluate(coeffs)); });
+    b.run("affine Evaluate (max_terms=4)", [&]() { nb::doNotOptimizeAway(aev4(coeffs)); });
 
     // Phase 8b: term-growth report — call Evaluate once per config and print.
     // Not timed; just measures state after one evaluation.
     {
         AE ev_unbounded(&tree, AE::DomainMap { d }, /*maxTerms=*/0);
-        auto const r_u = ev_unbounded.Evaluate(coeffs);
+        auto const r_u = Eval(ev_unbounded, coeffs);
         auto const terms_u = ev_unbounded.TermCount();
 
         AE ev_4(&tree, AE::DomainMap { d }, /*maxTerms=*/4);
-        auto const r_4 = ev_4.Evaluate(coeffs);
+        auto const r_4 = Eval(ev_4, coeffs);
         auto const terms_4 = ev_4.TermCount();
 
         // Sanity: both enclosures must agree (one is tighter, one is looser).

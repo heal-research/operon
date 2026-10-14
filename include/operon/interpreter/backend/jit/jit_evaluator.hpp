@@ -55,10 +55,19 @@ public:
 // pointers differ per call.  Column pointers are rebuilt from the tree at
 // call time (VarOrder) — no per-entry varOrder storage needed.
 //
+// It is an Evaluator<ScalarDispatch> that overrides only the prediction step
+// (`Predict`): evaluation counting, the linear-scaling fit (under the
+// problem's declared Problem::LinearScalingOmitsNonFinite policy), the error
+// metric, and skip-nonfinite scoring are the interpreter evaluator's own, so
+// JIT and interpreter results follow identical scoring and fit policy.
+//
 // Thread-safe for concurrent evaluation and compilation. ClearCache() and
 // configuration changes require all evaluations using this instance to stop.
 // AVX2 is attempted first; falls back to the scalar path on older CPUs.
-class OPERON_EXPORT JitEvaluator final : public EvaluatorBase {
+//
+// Not sealed: it is a value evaluator that ShapeConstrainedValueEvaluator derives from. The derived adapter is
+// itself a JitEvaluator, so JitLevenbergMarquardtOptimizer keeps using the same JIT instance and code cache.
+class OPERON_EXPORT JitEvaluator : public Operon::Evaluator<Operon::ScalarDispatch> {
 public:
     JitEvaluator(
         gsl::not_null<Problem const*> problem, gsl::not_null<JitZobrist const*> zobrist, ErrorMetric error = MSE {});
@@ -69,13 +78,6 @@ public:
     JitEvaluator& operator=(JitEvaluator const&) = delete;
     JitEvaluator(JitEvaluator&&) = delete;
     JitEvaluator& operator=(JitEvaluator&&) = delete;
-
-    // JIT-compiled (or interpreter-fallback) forward pass filling `buf` with the genotype's raw output.
-    auto Evaluate(Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf) const
-        -> tl::expected<std::optional<Operon::EvaluatedBuffer>, Operon::InterpreterError> override;
-
-    // Linear-scaling fit-and-apply plus the error metric over Evaluate's values.
-    auto Score(ScoreContext ctx, std::optional<Operon::EvaluatedBuffer> evaluated) const -> ReturnType override;
 
     [[nodiscard]] auto CacheSize() const -> std::size_t;
     // Counts only lookups that find an already-compiled forward function.
@@ -109,11 +111,15 @@ public:
     [[nodiscard]] auto Avx2Fails() const -> std::size_t { return avx2Fails_.load(); }
     [[nodiscard]] auto CompileFails() const -> std::size_t { return compileFails_.load(); }
 
+protected:
+    // JIT-compiled (or interpreter-fallback) forward pass filling `values` with the genotype's raw output.
+    auto Predict(Operon::Individual const& ind, Operon::Span<Operon::Scalar> values) const
+        -> tl::expected<void, Operon::InterpreterError> override;
+
 private:
     [[nodiscard]] auto GetOrCompile(Tree const& tree, Hash hash) const -> CompileMeta const*;
 
     gsl::not_null<JitZobrist const*> zobrist_;
-    ErrorMetric error_;
 
     mutable TreeCompiler compiler_;
 
@@ -126,6 +132,8 @@ private:
     mutable std::atomic<std::size_t> avx2Fails_ { 0 };
     mutable std::atomic<std::size_t> compileFails_ { 0 };
 };
+
+static_assert(Operon::Concepts::ValueEvaluator<JitEvaluator>);
 
 } // namespace Operon::JIT
 

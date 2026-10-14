@@ -36,6 +36,15 @@ namespace {
     auto Const(double v) -> Operon::Node { return Operon::Node::Constant(v); }
 
     auto Domains() -> IE::DomainMap { return IE::DomainMap {}; }
+
+    // Naive interval enclosure; the evaluation itself must succeed.
+    auto Naive(Operon::Tree const* tree, IE::DomainMap domains, Operon::Span<Operon::Scalar const> coeff)
+        -> IE::Interval
+    {
+        auto const result = IE(tree, std::move(domains))(coeff);
+        REQUIRE(result);
+        return *result;
+    }
 } // namespace
 
 TEST_CASE("TightenRange - falls back to naive when a variable's gradient is unsupported (Abs)", "[range_tightening]")
@@ -47,7 +56,7 @@ TEST_CASE("TightenRange - falls back to naive when a variable's gradient is unsu
     d[X1] = { S { -1 }, S { 1 } };
     auto const coeff = tree.GetCoefficients();
 
-    auto const naive = IE(&tree, IE::DomainMap { d }).Evaluate(coeff);
+    auto const naive = Naive(&tree, IE::DomainMap { d }, coeff);
     auto const tightened = TightenRange(tree, d, coeff);
 
     REQUIRE(naive.inf() == Catch::Approx(0.0).margin(1e-4));
@@ -70,7 +79,7 @@ TEST_CASE("TightenRange - falls back to naive for n-ary Div (arity > 2, unsuppor
     d[X1] = { S { 0 }, S { 1 } };
     auto const coeff = tree.GetCoefficients();
 
-    auto const naive = IE(&tree, IE::DomainMap { d }).Evaluate(coeff);
+    auto const naive = Naive(&tree, IE::DomainMap { d }, coeff);
     auto const tightened = TightenRange(tree, d, coeff);
 
     REQUIRE(naive.inf() == Catch::Approx(0.0).margin(1e-4));
@@ -98,7 +107,7 @@ TEST_CASE(
     d[X1] = { S { -1 }, S { 1 } };
     auto const coeff = tree.GetCoefficients();
 
-    auto const naive = IE(&tree, IE::DomainMap { d }).Evaluate(coeff);
+    auto const naive = Naive(&tree, IE::DomainMap { d }, coeff);
     auto const tightened = TightenRange(tree, d, coeff);
     auto const bisected = TightenRangeBisected(tree, d, coeff, 3);
 
@@ -126,7 +135,7 @@ TEST_CASE("TightenRange - falls back to naive when only ONE occurrence of a vari
     d[X1] = { S { -1 }, S { 1 } };
     auto const coeff = tree.GetCoefficients();
 
-    auto const naive = IE(&tree, IE::DomainMap { d }).Evaluate(coeff);
+    auto const naive = Naive(&tree, IE::DomainMap { d }, coeff);
     auto const tightened = TightenRange(tree, d, coeff);
 
     REQUIRE(tightened.inf() <= naive.inf() + 1e-4);
@@ -144,7 +153,7 @@ TEST_CASE("TightenRange - uses the live coeff span for an optimizable variable w
     d[X1] = { S { 0 }, S { 1 } };
     std::vector<Operon::Scalar> const coeff { 2.0F };
 
-    auto const naive = IE(&tree, IE::DomainMap { d }).Evaluate(coeff);
+    auto const naive = Naive(&tree, IE::DomainMap { d }, coeff);
     auto const tightened = TightenRange(tree, d, coeff);
 
     REQUIRE(naive.inf() == Catch::Approx(0.0).margin(1e-4));
@@ -166,7 +175,7 @@ TEST_CASE("TightenRange - uses live coeff span for optimizable function weights"
     d[X1] = { S { 0 }, S { 1 } };
     std::vector<Operon::Scalar> const coeff { 100.0F };
 
-    auto const naive = IE(&tree, IE::DomainMap { d }).Evaluate(coeff);
+    auto const naive = Naive(&tree, IE::DomainMap { d }, coeff);
     auto const tightened = TightenRange(tree, d, coeff);
 
     REQUIRE(naive.inf() == Catch::Approx(0.0).margin(1e-4));
@@ -179,7 +188,7 @@ TEST_CASE("TightenRange - constant tree matches naive exactly (no variables)", "
 {
     auto tree = Operon::Tree({ Const(2.5) }).UpdateNodes();
     auto const coeff = tree.GetCoefficients();
-    auto const naive = IE(&tree, Domains()).Evaluate(coeff);
+    auto const naive = Naive(&tree, Domains(), coeff);
     auto const tightened = TightenRange(tree, Domains(), coeff);
 
     REQUIRE(tightened.inf() == Catch::Approx(naive.inf()).margin(1e-6));
@@ -195,7 +204,7 @@ TEST_CASE("TightenRange - single linear variable matches naive exactly (no depen
     d[X1] = { S { 1 }, S { 3 } };
     auto const coeff = tree.GetCoefficients();
 
-    auto const naive = IE(&tree, IE::DomainMap { d }).Evaluate(coeff);
+    auto const naive = Naive(&tree, IE::DomainMap { d }, coeff);
     auto const tightened = TightenRange(tree, d, coeff);
 
     REQUIRE(tightened.inf() == Catch::Approx(naive.inf()).margin(1e-4));
@@ -221,7 +230,7 @@ TEST_CASE("TightenRange - classic dependency-problem example x - x*x is tighter 
     d[X1] = { S { 0 }, S { 1 } };
     auto const coeff = tree.GetCoefficients();
 
-    auto const naive = IE(&tree, IE::DomainMap { d }).Evaluate(coeff);
+    auto const naive = Naive(&tree, IE::DomainMap { d }, coeff);
     auto const tightened = TightenRange(tree, d, coeff);
 
     REQUIRE(naive.inf() == Catch::Approx(-1.0).margin(1e-4));
@@ -389,7 +398,7 @@ TEST_CASE("TightenRange - result is always a subset of the naive enclosure", "[r
     d[X2] = { S { 0 }, S { 3 } };
     auto const coeff = tree.GetCoefficients();
 
-    auto const naive = IE(&tree, IE::DomainMap { d }).Evaluate(coeff);
+    auto const naive = Naive(&tree, IE::DomainMap { d }, coeff);
     auto const tightened = TightenRange(tree, d, coeff);
 
     REQUIRE(tightened.inf() >= naive.inf() - 1e-4);

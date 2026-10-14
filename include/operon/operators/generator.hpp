@@ -83,7 +83,10 @@ public:
         auto evaluate
             = [&]() { ScoreIndividual(random, *res.Child, *Evaluator(), coeffOptimizer_, pLocal, pLamarck, buf); };
 
-        if (cache_ != nullptr) {
+        // The transposition table keys fitness by structure only. An evaluator whose result depends on the stored
+        // coefficients (e.g. ShapeConstrainedValueEvaluator, which publishes a per-genotype completion) opts out: a
+        // structural hit could neither certify the recipient genotype nor publish its completion.
+        if (cache_ != nullptr && Evaluator()->StructuralFitnessReusable()) {
             auto const hash = cache_->ComputeHash(res.Child->Genotype);
             Operon::Vector<Operon::Scalar> cached(Evaluator()->ObjectiveCount());
             if (cache_->TryGet(hash, cached)) {

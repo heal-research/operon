@@ -16,6 +16,11 @@ namespace {
     using Scalar = Operon::Scalar;
     using Interval = IntervalEvaluator<Scalar>::Interval;
 
+    auto EvaluateInterval(Tree const& tree, IntervalEvaluator<Scalar>::DomainMap const& domains,
+        Operon::Span<Operon::Scalar const> coeff) -> tl::expected<Interval, std::string>
+    {
+        return IntervalEvaluator<Scalar>(&tree, domains)(coeff);
+    }
     // Mirrors Deriv()'s dispatch in tree_diff.cpp; must stay in sync with it.
     auto IsSymbolicallyDifferentiable(Node const& n) -> bool
     {
@@ -47,11 +52,12 @@ namespace {
     }
 
     auto EvaluateGradientColumn(VariableGradientDag const& gdag, std::size_t root,
-        IntervalEvaluator<Scalar>::DomainMap const& domains, Operon::Span<Operon::Scalar const> coeff) -> Interval
+        IntervalEvaluator<Scalar>::DomainMap const& domains, Operon::Span<Operon::Scalar const> coeff)
+        -> tl::expected<Interval, std::string>
     {
         Operon::Vector<Node> subnodes(gdag.Nodes.cbegin(), gdag.Nodes.cbegin() + static_cast<std::ptrdiff_t>(root) + 1);
         Tree const gradTree { std::move(subnodes) };
-        return IntervalEvaluator<Scalar>(&gradTree, domains).Evaluate(coeff);
+        return EvaluateInterval(gradTree, domains, coeff);
     }
 
     auto MixHash(std::uint64_t a, std::uint64_t b) -> std::uint64_t
@@ -134,7 +140,11 @@ auto TightenRange(Tree const& tree, IntervalEvaluator<Scalar>::DomainMap const& 
         return result;
     };
 
-    auto const naive = IntervalEvaluator<Scalar>(&tree, domains).Evaluate(coeff);
+    auto const naiveResult = EvaluateInterval(tree, domains, coeff);
+    if (!naiveResult) {
+        return Interval::empty();
+    }
+    auto const& naive = *naiveResult;
 
     // A variable can occur multiple times with only some occurrences behind
     // an undifferentiated op (e.g. X + abs(X)); the root would then come
@@ -161,9 +171,12 @@ auto TightenRange(Tree const& tree, IntervalEvaluator<Scalar>::DomainMap const& 
         auto const m = Interval { domain.first, domain.second }.mid();
         midpoints.insert_or_assign(hash, IntervalEvaluator<Scalar>::Domain { m, m });
     }
-    auto const fm = IntervalEvaluator<Scalar>(&tree, midpoints).Evaluate(coeff);
+    auto const fm = EvaluateInterval(tree, midpoints, coeff);
+    if (!fm) {
+        return finish(naive);
+    }
 
-    auto meanValue = fm;
+    auto meanValue = *fm;
     for (std::size_t k = 0; k < gdag.Variables.size(); ++k) {
         auto const root = gdag.Roots[k];
         if (root == NoGrad) {
@@ -174,14 +187,17 @@ auto TightenRange(Tree const& tree, IntervalEvaluator<Scalar>::DomainMap const& 
         auto const dit = domains.find(hash);
         if (dit == domains.end()) {
             return finish(naive);
-        } // defensive: naive would already have thrown
+        } // defensive: naive would already have failed
         auto const& [lo, hi] = dit->second;
         auto const m = Interval { lo, hi }.mid();
 
         auto const gradInterval = EvaluateGradientColumn(gdag, root, domains, coeff);
+        if (!gradInterval) {
+            return finish(naive);
+        }
         auto const xkMinusM
             = pappus::ops::sub<Scalar>(pappus::ops::variable<Scalar>(lo, hi), pappus::ops::constant<Scalar>(m));
-        meanValue = pappus::ops::add<Scalar>(meanValue, pappus::ops::mul<Scalar>(gradInterval, xkMinusM));
+        meanValue = pappus::ops::add<Scalar>(meanValue, pappus::ops::mul<Scalar>(*gradInterval, xkMinusM));
     }
 
     if (meanValue.is_empty()) {
@@ -206,10 +222,10 @@ auto TightenRange(Tree const& tree, IntervalEvaluator<Scalar>::DomainMap const& 
     for (auto const& [hash, domain] : domains) {
         auto probe = midpoints;
         probe[hash] = IntervalEvaluator<Scalar>::Domain { domain.first, domain.first };
-        auto const flo = IntervalEvaluator<Scalar>(&tree, probe).Evaluate(coeff);
+        auto const flo = EvaluateInterval(tree, probe, coeff);
         probe[hash] = IntervalEvaluator<Scalar>::Domain { domain.second, domain.second };
-        auto const fhi = IntervalEvaluator<Scalar>(&tree, probe).Evaluate(coeff);
-        if (!meanValue.contains(flo) || !meanValue.contains(fhi)) {
+        auto const fhi = EvaluateInterval(tree, probe, coeff);
+        if (!flo || !fhi || !meanValue.contains(*flo) || !meanValue.contains(*fhi)) {
             return finish(naive);
         }
     }
@@ -260,10 +276,10 @@ auto TightenRangeBisected(Tree const& tree, IntervalEvaluator<Scalar>::DomainMap
             continue;
         }
         auto const gradInterval = EvaluateGradientColumn(gdag, root, domains, coeff);
-        if (!gradInterval.contains(Scalar { 0 })) {
+        if (!gradInterval || !gradInterval->contains(Scalar { 0 })) {
             continue;
         }
-        auto const d = gradInterval.diameter();
+        auto const d = gradInterval->diameter();
         if (d > bestDiameter) {
             bestDiameter = d;
             splitVar = gdag.Variables[k];

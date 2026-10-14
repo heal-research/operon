@@ -158,7 +158,9 @@ TEST_CASE("NSGA2 Pareto front: interval bounds are valid", "[pappus][nsgp]")
 
         // --- IntervalEvaluator ---
         IE iev(&ind.Genotype, IE::DomainMap { dom });
-        auto const enc = iev.Evaluate(ind.Genotype.GetCoefficients());
+        auto const encResult = iev(ind.Genotype.GetCoefficients());
+        REQUIRE(encResult);
+        auto const enc = *encResult;
         // Empty (NaN bounds) is valid for out-of-domain ops (e.g. log of a
         // negative interval). Non-empty must satisfy inf <= sup.
         auto const ieEmpty = std::isnan(enc.inf()) || std::isnan(enc.sup());
@@ -166,34 +168,40 @@ TEST_CASE("NSGA2 Pareto front: interval bounds are valid", "[pappus][nsgp]")
         REQUIRE((ieEmpty || enc.inf() <= enc.sup()));
 
         // --- AffineEvaluator (unbounded) — measure raw term growth ---
-        // AE can throw std::exception for out-of-domain inputs (e.g. log of a
-        // negative affine form); that is documented behaviour, not a bug.
-        try {
+        // AE reports out-of-domain inputs (e.g. log of a negative affine
+        // form) as an error result; that is documented behaviour, not a bug.
+        {
             AE aev(&ind.Genotype, AE::DomainMap { dom });
-            auto const r = aev.Evaluate(ind.Genotype.GetCoefficients());
-            auto const terms = aev.TermCount();
-            auto const aiv = r.to_interval();
-            auto const aeEmpty = std::isnan(aiv.inf()) || std::isnan(aiv.sup());
-            INFO("AE (unbounded) terms=" << terms << " enclosure: [" << aiv.inf() << ", " << aiv.sup() << "]"
-                                         << " length=" << ind.Genotype.Length());
-            REQUIRE((aeEmpty || aiv.inf() <= aiv.sup()));
-        } catch (std::exception const& e) {
-            INFO("AE (unbounded) threw (domain error): " << e.what());
+            auto const result = aev(ind.Genotype.GetCoefficients());
+            if (result) {
+                auto const& r = *result;
+                auto const terms = aev.TermCount();
+                auto const aiv = r.to_interval();
+                auto const aeEmpty = std::isnan(aiv.inf()) || std::isnan(aiv.sup());
+                INFO("AE (unbounded) terms=" << terms << " enclosure: [" << aiv.inf() << ", " << aiv.sup() << "]"
+                                             << " length=" << ind.Genotype.Length());
+                REQUIRE((aeEmpty || aiv.inf() <= aiv.sup()));
+            } else {
+                INFO("AE (unbounded) failed (domain error): " << result.error());
+            }
         }
 
         // --- AffineEvaluator (bounded) — verify condensation cap is respected ---
-        try {
+        {
             AE aevB(&ind.Genotype, AE::DomainMap { dom }, TermBudget);
-            auto const rB = aevB.Evaluate(ind.Genotype.GetCoefficients());
-            auto const termsB = aevB.TermCount();
-            auto const aivB = rB.to_interval();
-            auto const aeEmptyB = std::isnan(aivB.inf()) || std::isnan(aivB.sup());
-            INFO("AE (cap=" << TermBudget << ") terms=" << termsB << " enclosure: [" << aivB.inf() << ", " << aivB.sup()
-                            << "]");
-            REQUIRE(termsB <= TermBudget);
-            REQUIRE((aeEmptyB || aivB.inf() <= aivB.sup()));
-        } catch (std::exception const& e) {
-            INFO("AE (bounded) threw (domain error): " << e.what());
+            auto const resultB = aevB(ind.Genotype.GetCoefficients());
+            if (resultB) {
+                auto const& rB = *resultB;
+                auto const termsB = aevB.TermCount();
+                auto const aivB = rB.to_interval();
+                auto const aeEmptyB = std::isnan(aivB.inf()) || std::isnan(aivB.sup());
+                INFO("AE (cap=" << TermBudget << ") terms=" << termsB << " enclosure: [" << aivB.inf() << ", "
+                                << aivB.sup() << "]");
+                REQUIRE(termsB <= TermBudget);
+                REQUIRE((aeEmptyB || aivB.inf() <= aivB.sup()));
+            } else {
+                INFO("AE (bounded) failed (domain error): " << resultB.error());
+            }
         }
     }
 }

@@ -22,6 +22,8 @@
 #include "operon/parser/infix.hpp"
 #include "operon/random/random.hpp"
 
+#include "fixed_scaling_evaluator.hpp"
+
 namespace Operon::Test {
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -83,6 +85,12 @@ struct EvaluatorFixture {
         ind.Genotype = t;
         return ind;
     }
+};
+
+// skipNonFinite is a scoring-only option; the scaling fit policy is declared by the problem, so the evaluator
+// requires the problem's fitting policy to omit non-finite rows.
+struct SkipNonFiniteFixture : EvaluatorFixture {
+    SkipNonFiniteFixture() { problem.SetLinearScalingOmitsNonFinite(true); }
 };
 
 class FixedCoefficientOptimizer final : public OptimizerBase {
@@ -843,7 +851,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
 
     SECTION("all-finite tree: matches default (skipNonFinite_ off) exactly")
     {
-        EvaluatorFixture fix;
+        SkipNonFiniteFixture fix;
         auto ind = EvaluatorFixture::MakeIndividual(fix.tree); // X1+X2+X3, always finite
         DTable dtable;
 
@@ -859,7 +867,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
 
     SECTION("partial non-finite tree: default clamps to ErrMax, skip mode gives a graded score")
     {
-        EvaluatorFixture fix;
+        SkipNonFiniteFixture fix;
         auto t = InfixParser::ParseOrThrow("log(X1)", *fix.problem.GetDataset());
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
@@ -878,7 +886,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
 
     SECTION("penalty weight scales monotonically with the non-finite fraction's contribution")
     {
-        EvaluatorFixture fix;
+        SkipNonFiniteFixture fix;
         auto t = InfixParser::ParseOrThrow("log(X1)", *fix.problem.GetDataset());
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
@@ -897,7 +905,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
 
     SECTION("NMSE also supports skipNonFinite_")
     {
-        EvaluatorFixture fix;
+        SkipNonFiniteFixture fix;
         auto t = InfixParser::ParseOrThrow("log(X1)", *fix.problem.GetDataset());
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
@@ -949,7 +957,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         // Same value-level hardening as the NMSE section: two runs with
         // different penalty weights must differ by exactly
         // (weightHi - weightLo) * variance(target) * (nonFiniteCount / N).
-        EvaluatorFixture fix;
+        SkipNonFiniteFixture fix;
         auto t = InfixParser::ParseOrThrow("log(X1)", *fix.problem.GetDataset());
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
@@ -979,7 +987,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
     SECTION("RMSE/MAE penalty is scaled by target stddev, not variance (regression: both are linear-error-unit "
             "metrics, variance is a squared-error-unit scale)")
     {
-        EvaluatorFixture fix;
+        SkipNonFiniteFixture fix;
         auto t = InfixParser::ParseOrThrow("log(X1)", *fix.problem.GetDataset());
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
@@ -1010,7 +1018,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
     SECTION("SSE penalty is scaled by variance * finite-point-count, not variance alone (regression: SSE is a sum, not "
             "an average, of squared errors)")
     {
-        EvaluatorFixture fix;
+        SkipNonFiniteFixture fix;
         auto t = InfixParser::ParseOrThrow("log(X1)", *fix.problem.GetDataset());
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
@@ -1039,7 +1047,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
 
     SECTION("SSE/RMSE/MAE also support skipNonFinite_")
     {
-        EvaluatorFixture fix;
+        SkipNonFiniteFixture fix;
         auto t = InfixParser::ParseOrThrow("log(X1)", *fix.problem.GetDataset());
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
@@ -1053,9 +1061,35 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         }
     }
 
+    SECTION("R2/C2 support skipNonFinite_ with a dimensionless penalty")
+    {
+        SkipNonFiniteFixture fix;
+        auto t = InfixParser::ParseOrThrow("log(X1)", *fix.problem.GetDataset());
+        auto ind = EvaluatorFixture::MakeIndividual(t);
+        DTable dtable;
+
+        for (auto metric : std::initializer_list<ErrorMetric> { R2 {}, C2 {} }) {
+            Evaluator<DTable> loPen { &fix.problem, &dtable, metric, /*skipNonFinite=*/true,
+                /*nonFinitePenaltyWeight=*/0.0 };
+            Evaluator<DTable> hiPen { &fix.problem, &dtable, metric, /*skipNonFinite=*/true,
+                /*nonFinitePenaltyWeight=*/0.5 };
+
+            auto const rLo = loPen(fix.rng, ind)[0];
+            auto const rHi = hiPen(fix.rng, ind)[0];
+            CHECK(std::isfinite(rLo));
+            CHECK(std::isfinite(rHi));
+            CHECK(rHi > rLo);
+
+            auto const fraction = static_cast<double>(rHi - rLo) / 0.5;
+            CHECK(fraction > 0.0);
+            CHECK(fraction <= 1.0);
+            CHECK_THAT(fraction, Catch::Matchers::WithinRel(0.5, 0.10));
+        }
+    }
+
     SECTION("all non-finite predictions are clamped instead of scoring as perfect SSE")
     {
-        EvaluatorFixture fix;
+        SkipNonFiniteFixture fix;
         auto t = InfixParser::ParseOrThrow("log(X1 - X1 - 1)", *fix.problem.GetDataset());
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
@@ -1068,7 +1102,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
 
     SECTION("non-finite target values do not poison skip-mode penalty variance")
     {
-        EvaluatorFixture fix;
+        SkipNonFiniteFixture fix;
         fix.data(0, EvaluatorFixture::Ncol - 1) = std::numeric_limits<Operon::Scalar>::quiet_NaN();
         auto t = InfixParser::ParseOrThrow("log(X1)", *fix.problem.GetDataset());
         auto ind = EvaluatorFixture::MakeIndividual(t);
@@ -1341,8 +1375,18 @@ TEST_CASE("EvaluatorBase::operator() dispatch reaches the concrete derived overr
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Phase-split contract regression coverage
+// Evaluator contract: operator() is the sole execution path
 // ──────────────────────────────────────────────────────────────────────────────
+static_assert(!CanCallEvaluatePhase<Evaluator<ScalarDispatch>>);
+static_assert(!CanCallEvaluatePhase<MultiEvaluator>);
+static_assert(!CanCallEvaluatePhase<PredictionCountingEvaluator>);
+static_assert(!CanCallScorePhase<Evaluator<ScalarDispatch>>);
+static_assert(!CanCallScorePhase<MultiEvaluator>);
+static_assert(!CanCallScorePhase<UserDefinedEvaluator>);
+static_assert(!CanCallScorePhase<DiversityEvaluator>);
+static_assert(!CanCallRestorationHook<Evaluator<ScalarDispatch>>);
+static_assert(!CanCallRestorationHook<MultiEvaluator>);
+
 TEST_CASE("Evaluator two-phase contract edge cases", "[evaluator]")
 {
     EvaluatorFixture fix;
@@ -1359,50 +1403,138 @@ TEST_CASE("Evaluator two-phase contract edge cases", "[evaluator]")
         auto const initialCount = ev.CallCount.load();
         auto const fit = ev(fix.rng, ind);
 
+        REQUIRE(fit.size() == ev.ObjectiveCount());
         REQUIRE(fit[0] == EvaluatorBase::ErrMax);
         REQUIRE(ev.CallCount.load() == initialCount + 1);
     }
 
-    SECTION("ShapeConstrainedEvaluator hard-reject skips the wrapped evaluator's Score phase")
+    SECTION("a failing child keeps the composed vector width and every CallCount moves exactly once")
     {
-        // X1*X1 over [1,5]: d/dX1 = 2*X1 in [2,10] -- certifiably positive.
-        // Sign=-1 (non-increasing) is structurally violated regardless of linear scaling.
-        Operon::ShapeConstraintSet cs;
-        cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
-        cs.Domains.insert_or_assign("X2", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
-        cs.Domains.insert_or_assign("X3", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
-        cs.Constraints.push_back(
-            { .Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = -1, .Bound = std::nullopt });
+        Evaluator<DTable> const mse { &fix.problem, &fix.dtable, MSE {} };
+        Evaluator<DTable> const nmse { &fix.problem, &fix.dtable, NMSE {} };
+        MultiEvaluator multi { &fix.problem };
+        multi.Add(&mse);
+        multi.Add(&nmse);
 
-        Evaluator<DTable> const inner { &fix.problem, &fix.dtable };
-        Operon::ShapeConstrainedEvaluator sce { &inner, &fix.dtable, cs };
+        auto ind = EvaluatorFixture::MakeIndividual(Operon::InfixParser::ParseOrThrow("X1", fix.ds));
+        ind.Genotype.Nodes().front().HashValue = static_cast<Operon::Hash>(0xDEADBEEFDEADBEEFULL);
 
-        // X1 * X1 -- always non-decreasing in X1 on [1,5], violates Sign=-1.
-        auto ind = EvaluatorFixture::MakeIndividual(Operon::InfixParser::ParseOrThrow("X1 * X1", fix.ds));
+        auto const fit = multi(fix.rng, ind);
+        REQUIRE(fit.size() == multi.ObjectiveCount());
+        CHECK(fit[0] == EvaluatorBase::ErrMax);
+        CHECK(fit[1] == EvaluatorBase::ErrMax);
+        CHECK(multi.CallCount.load() == 1);
+        CHECK(mse.CallCount.load() == 1);
+        CHECK(nmse.CallCount.load() == 1);
+    }
+}
 
-        // Populate the feasibility cache via Prepare.
-        sce.Prepare(std::span<Operon::Individual const> { &ind, 1 });
+TEST_CASE("MultiEvaluator invokes children only through operator() and is order independent", "[evaluator]")
+{
+    EvaluatorFixture fix;
+    using DTable = EvaluatorFixture::DTable;
+    Evaluator<DTable> const mse { &fix.problem, &fix.dtable, MSE {} };
+    Evaluator<DTable> const nmse { &fix.problem, &fix.dtable, NMSE {} };
+    Operon::TreePropertyEvaluator const length { &fix.problem,
+        [](Operon::Tree const& t) { return static_cast<Operon::Scalar>(t.Length()); } };
+    auto const ind = EvaluatorFixture::MakeIndividual(fix.tree);
+    std::vector<Operon::Scalar> buf(fix.problem.TrainingRange().Size());
 
-        // The tree must be certified infeasible before we score it.
-        REQUIRE_FALSE(sce.Feasible(ind.Genotype));
+    auto const expectedMse = mse(fix.rng, ind, buf)[0];
+    auto const expectedNmse = nmse(fix.rng, ind, buf)[0];
+    auto const expectedLength = length(fix.rng, ind, buf)[0];
 
-        auto const initialInnerCount = inner.CallCount.load();
-        auto const initialGateCount = sce.CallCount.load();
-        auto const initialInnerResiduals = inner.ResidualEvaluations.load();
+    SECTION("one call increments the composition and each child exactly once")
+    {
+        MultiEvaluator multi { &fix.problem };
+        multi.Add(&mse);
+        multi.Add(&length);
+        multi.Add(&nmse);
+        auto const mseBefore = mse.CallCount.load();
+        auto const lengthBefore = length.CallCount.load();
+        auto const nmseBefore = nmse.CallCount.load();
 
-        auto const fit = sce(fix.rng, ind);
+        auto const fit = multi(fix.rng, ind, buf);
+        REQUIRE(fit.size() == 3);
+        CHECK(fit[0] == expectedMse);
+        CHECK(fit[1] == expectedLength);
+        CHECK(fit[2] == expectedNmse);
+        CHECK(multi.CallCount.load() == 1);
+        CHECK(mse.CallCount.load() == mseBefore + 1);
+        CHECK(length.CallCount.load() == lengthBefore + 1);
+        CHECK(nmse.CallCount.load() == nmseBefore + 1);
+    }
 
-        // Hard rejection still runs the wrapped evaluator's Evaluate (forward
-        // pass), so its ResidualEvaluations grows by one, but it skips the
-        // wrapped evaluator's Score phase, so the wrapped CallCount does not
-        // move. The gate counts the call itself.
-        REQUIRE(sce.CallCount.load() == initialGateCount + 1);
-        REQUIRE(inner.CallCount.load() == initialInnerCount);
-        REQUIRE(inner.ResidualEvaluations.load() == initialInnerResiduals + 1);
+    SECTION("reordering the children only reorders the objectives")
+    {
+        MultiEvaluator forward { &fix.problem };
+        forward.Add(&mse);
+        forward.Add(&length);
+        forward.Add(&nmse);
+        MultiEvaluator reversed { &fix.problem };
+        reversed.Add(&nmse);
+        reversed.Add(&length);
+        reversed.Add(&mse);
 
-        // Fitness must be the gate's worst-value sentinel, not a real evaluated score.
-        REQUIRE(fit[0] > static_cast<Operon::Scalar>(0)); // worstValue_ is a positive large value
-        REQUIRE(fit[0] != EvaluatorBase::ErrMax / 2); // not the normal evaluator output
+        auto const a = forward(fix.rng, ind, buf);
+        auto const b = reversed(fix.rng, ind, buf);
+        REQUIRE(a.size() == 3);
+        REQUIRE(b.size() == 3);
+        CHECK(a[0] == b[2]);
+        CHECK(a[1] == b[1]);
+        CHECK(a[2] == b[0]);
+    }
+
+    SECTION("a nested composition equals the flat one")
+    {
+        MultiEvaluator inner { &fix.problem };
+        inner.Add(&length);
+        inner.Add(&nmse);
+        MultiEvaluator outer { &fix.problem };
+        outer.Add(&mse);
+        outer.Add(&inner);
+
+        auto const fit = outer(fix.rng, ind, buf);
+        REQUIRE(fit.size() == outer.ObjectiveCount());
+        REQUIRE(fit.size() == 3);
+        CHECK(fit[0] == expectedMse);
+        CHECK(fit[1] == expectedLength);
+        CHECK(fit[2] == expectedNmse);
+        CHECK(inner.CallCount.load() == 1);
+    }
+}
+
+TEST_CASE("Evaluator fits its linear scaling under the problem's declared policy", "[evaluator][scaling]")
+{
+    EvaluatorFixture fix;
+    using DTable = EvaluatorFixture::DTable;
+    auto const ind = EvaluatorFixture::MakeIndividual(InfixParser::ParseOrThrow("3 - 0.5 * (X1 + X2 + X3)", fix.ds));
+    auto const expected = FitLinearScaling(ind.Genotype, fix.problem, fix.dtable, fix.problem.TrainingRange());
+    REQUIRE(expected);
+    REQUIRE_THAT(expected->Scale, Catch::Matchers::WithinRel(-2.0, 1e-3));
+    REQUIRE_THAT(expected->Offset, Catch::Matchers::WithinRel(6.0, 1e-3));
+
+    Evaluator<DTable> const ev { &fix.problem, &fix.dtable, MSE {} };
+    CHECK_THAT(static_cast<double>(ev(fix.rng, ind)[0]), Catch::Matchers::WithinAbs(0.0, 1e-4));
+
+    SECTION("disabled scaling is respected")
+    {
+        fix.problem.SetLinearScalingEnabled(false);
+        CHECK(ev(fix.rng, ind)[0] > 1.0F);
+    }
+
+    SECTION("skipNonFinite is scoring-only and must agree with the problem's fitting policy")
+    {
+        CHECK_THROWS_AS(
+            (Evaluator<DTable> { &fix.problem, &fix.dtable, NMSE {}, /*skipNonFinite=*/true }), std::invalid_argument);
+
+        fix.problem.SetLinearScalingOmitsNonFinite(true);
+        Evaluator<DTable> const skip { &fix.problem, &fix.dtable, NMSE {}, /*skipNonFinite=*/true };
+        CHECK_THAT(static_cast<double>(skip(fix.rng, ind)[0]), Catch::Matchers::WithinAbs(0.0, 1e-4));
+
+        fix.problem.SetLinearScalingOmitsNonFinite(false);
+        fix.problem.SetLinearScalingEnabled(false);
+        CHECK_NOTHROW((Evaluator<DTable> { &fix.problem, &fix.dtable, NMSE {}, /*skipNonFinite=*/true }));
     }
 }
 

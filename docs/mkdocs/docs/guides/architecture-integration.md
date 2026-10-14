@@ -12,11 +12,11 @@ Operon keeps the model representation, expression execution, evaluation, and sea
 
 ### Add an objective
 
-Implement `EvaluatorBase::Score` or compose an existing evaluator. Return a fitness vector whose length agrees with `ObjectiveCount()`. If the objective needs interpreted values, implement `Evaluate` and consume only the associated `EvaluatedBuffer` in `Score`. Select a multi-objective algorithm and a comparison that interprets every objective as minimization.
+Implement `EvaluatorBase::Score` (protected) or compose an existing evaluator through its `operator()`. Return a fitness vector whose length agrees with `ObjectiveCount()`. If the objective needs interpreted values, implement `Evaluate` and consume only the associated `EvaluatedBuffer` in `Score`; do not increment `CallCount` yourself. Select a multi-objective algorithm and a comparison that interprets every objective as minimization.
 
 ### Add a whole-domain constraint
 
-Describe domains and constraints in a `ShapeConstraintSet`, then wrap the ordinary evaluator in `ShapeConstrainedEvaluator` or add `ShapeViolationEvaluator` as a distinct objective. Bounds certify only what their enclosure proves; configure enforcement and unknown-violation treatment explicitly.
+Describe domains and constraints in a `ShapeConstraintSet`, then construct `ShapeConstrainedValueEvaluator<BaseEvaluator>` over the concrete value evaluator (a derived evaluator, built before any type erasure). It owns the constrained objective vector (error, structural objectives such as tree length, and optionally the shape violation) and performs one prediction pass per call. Bounds certify only what their enclosure proves; configure enforcement and unknown-violation treatment explicitly.
 
 ### Replace one search operator
 

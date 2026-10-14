@@ -95,16 +95,12 @@ auto Prepare(CorpusCase const& c) -> PreparedCase
 auto Evaluate(Operon::Tree const& tree, DomainMap const& domains, std::size_t& evaluations) -> std::optional<Interval>
 {
     ++evaluations;
-    try {
-        Operon::IntervalEvaluator<Scalar> evaluator(&tree, domains);
-        auto const bound = evaluator.Evaluate(tree.GetCoefficients());
-        if (!std::isfinite(bound.inf()) || !std::isfinite(bound.sup())) {
-            return std::nullopt;
-        }
-        return bound;
-    } catch (std::exception const&) {
+    Operon::IntervalEvaluator<Scalar> evaluator(&tree, domains);
+    auto const bound = evaluator(tree.GetCoefficients());
+    if (!bound || !std::isfinite(bound->inf()) || !std::isfinite(bound->sup())) {
         return std::nullopt;
     }
+    return *bound;
 }
 
 auto ReferencedAxes(Operon::Tree const& tree, DomainMap const& domains) -> std::vector<Operon::Hash>

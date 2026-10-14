@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
@@ -445,5 +446,52 @@ TEST_CASE("Backend vs vdt ULP accuracy", "[backend]")
     }
 }
 #endif
+
+// The double FastTanh once lost the leading x^1 term of its numerator (alpha_1 = 1), so Tanh<double> and its
+// derivative were wrong everywhere (tanh(-2) came out as about -0.100). Production runs in float, so the
+// float-only ULP table above could not see it; exercise the double kernel directly in every build.
+TEST_CASE("Backend FastTanh<double> accuracy", "[backend]")
+{
+    using W = eve::wide<double>;
+    auto const ulpDistance = [](double a, double b) -> uint64_t {
+        auto ua = std::bit_cast<uint64_t>(a);
+        auto ub = std::bit_cast<uint64_t>(b);
+        constexpr uint64_t signBit = uint64_t { 1 } << 63U;
+        ua = (ua & signBit) != 0 ? signBit - ua : ua;
+        ub = (ub & signBit) != 0 ? signBit - ub : ub;
+        return ua > ub ? ua - ub : ub - ua;
+    };
+
+    std::vector<double> inputs;
+    for (int i = 0; i <= 20000; ++i) {
+        inputs.push_back(-20.0 + 40.0 * i / 20000.0);
+    }
+    for (double x : { 0.0, -0.0, 1e-9, -1e-9, 1e-8, 1e-5, -1e-5, 3e-4, -3e-4, 0.0004, -0.0004, 0.0005, -2.0, 2.0, 17.5,
+             -17.5, 17.7, -17.7, 25.0 }) {
+        inputs.push_back(x);
+    }
+    while (inputs.size() % W::size() != 0) {
+        inputs.push_back(0.5);
+    }
+
+    uint64_t worstUlp = 0;
+    double worstInput = 0;
+    for (std::size_t i = 0; i < inputs.size(); i += W::size()) {
+        auto const out = Backend::detail::FastTanh<double>(W { inputs.data() + i });
+        for (std::size_t lane = 0; lane < W::size(); ++lane) {
+            auto const d = ulpDistance(out.get(lane), std::tanh(inputs[i + lane]));
+            if (d > worstUlp) {
+                worstUlp = d;
+                worstInput = inputs[i + lane];
+            }
+        }
+    }
+    INFO("max ULP = " << worstUlp << " at x=" << worstInput);
+    CHECK(worstUlp <= 8);
+
+    // The derivative the Tanh backend derives from it: 1 - tanh^2 at x = -2 is 0.0707..., not 0.99.
+    auto const t = Backend::detail::FastTanh<double>(W { -2.0 }).get(0);
+    CHECK(1.0 - t * t == Catch::Approx(1.0 - std::tanh(-2.0) * std::tanh(-2.0)).epsilon(1e-12));
+}
 
 } // namespace Operon::Test

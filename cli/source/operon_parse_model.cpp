@@ -179,7 +179,7 @@ auto VariableIndex(Operon::VariableGradientDag const& dag, Operon::Hash variable
     return static_cast<std::size_t>(std::distance(dag.Variables.begin(), it));
 }
 
-// The same per-constraint tree ShapeConstrainedEvaluator::BoundFor (in
+// The same per-constraint tree ShapeCertifier's bounding (in
 // shape_constrained_evaluator.cpp, also private) would bound -- Identity
 // is the model itself, First-/SecondDerivative slice a gradient dag built
 // via BuildVariableGradientDag. Returns nullopt when the derivative is
@@ -299,19 +299,10 @@ auto PrintTargetAnalysis(cxxopts::ParseResult const& result, Operon::Dataset& ds
     Operon::Reporter<void>::PrintStats(stats, /*printHeader=*/true);
 
     if (constraints) {
-        Operon::Evaluator<Operon::ScalarDispatch> eval { &problem, &dtable, Operon::NMSE {} };
-        Operon::ShapeConstrainedEvaluator shapeEval { &eval, &dtable, *constraints };
-        auto const shapeBoundModeConfig
-            = Operon::ParseShapeBoundModeConfig(result["shape-bound-mode"].as<std::string>());
-        auto shapeBoundOptions = Operon::ShapeBoundOptions {};
-        shapeBoundOptions.BisectionDepth = result["shape-bisection-depth"].as<int>();
-        if (shapeBoundModeConfig.BisectionDepth) {
-            shapeBoundOptions.BisectionDepth = *shapeBoundModeConfig.BisectionDepth;
-        }
-        Operon::ValidateShapeBoundOptions(shapeBoundOptions);
-        shapeEval.SetBoundMode(shapeBoundModeConfig.Mode);
-        shapeEval.SetBoundOptions(shapeBoundOptions);
-        auto const summary = shapeEval.Measure(model);
+        Operon::ShapeCertifier shapeEval { &problem, &dtable, *constraints, Operon::Scalar { 1 },
+            Operon::ParseShapeBoundOptions(
+                result["shape-bound-mode"].as<std::string>(), result["shape-bisection-depth"].as<int>()) };
+        auto const summary = shapeEval.MeasureCanonical(model);
         fmt::print("shape_feasible {} shape_violation {}\n", summary.Feasible, summary.Violation);
 
         bool const tighten = result["tighten-range"].as<bool>();

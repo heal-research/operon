@@ -25,11 +25,14 @@
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/operators/evaluator.hpp"
+#include "operon/operators/linear_scaling.hpp"
+#include "operon/operators/shape_constrained_evaluator.hpp"
 #include "operon/optimizer/jit_least_squares.hpp"
 #include "operon/optimizer/optimizer.hpp"
 #include "operon/parser/infix.hpp"
 
 #include "../operon_test.hpp"
+#include "fixed_scaling_evaluator.hpp"
 
 namespace nb = ankerl::nanobench;
 
@@ -321,26 +324,18 @@ TEST_CASE("JitEvaluator correctness", "[jit][evaluator]")
     SECTION("Sin") { check("sin(X1)"); }
     SECTION("Composite") { check("sin(X1) * cos(X2) + exp(0 - X3 * X3)"); }
 
-    SECTION("Phase split composes without a second forward pass")
+    SECTION("operator() runs one forward pass and counts one call")
     {
         auto tree = InfixParser::ParseOrThrow("X1 * X2 + X3", ds);
         Individual ind(1);
         ind.Genotype = std::move(tree);
 
-        std::vector<Scalar> phaseBuf(range.Size());
-        auto evaluated = jitEval.Evaluate(ind, phaseBuf);
-        REQUIRE(evaluated);
-        REQUIRE(*evaluated);
-        auto const split = jitEval.Score({ .Rng = rng, .Ind = ind, .Scratch = phaseBuf }, std::move(*evaluated));
+        std::vector<Scalar> buf(range.Size());
+        auto const fit = jitEval(rng, ind, buf);
 
-        std::vector<Scalar> composedBuf(range.Size());
-        auto const composed = jitEval(rng, ind, composedBuf);
-
-        REQUIRE(split.size() == 1);
-        REQUIRE(composed.size() == 1);
-        CHECK(split[0] == Catch::Approx(composed[0]).epsilon(1e-3F));
-        CHECK(jitEval.ResidualEvaluations == 2);
-        CHECK(jitEval.CallCount == 2);
+        REQUIRE(fit.size() == 1);
+        CHECK(jitEval.ResidualEvaluations == 1);
+        CHECK(jitEval.CallCount == 1);
     }
 
     SECTION("Cache reuse")
@@ -380,6 +375,98 @@ TEST_CASE("JitEvaluator correctness", "[jit][evaluator]")
         CHECK(jitEval.CompileSuccesses() == 0);
         // Cache itself is unaffected — the compiled entry is still there.
         CHECK(jitEval.CacheSize() >= 1);
+    }
+}
+
+// JitEvaluator is an Evaluator<ScalarDispatch> overriding only the prediction step: scoring and the scaling fit
+// policy are the interpreter evaluator's own, and a ShapeConstrainedValueEvaluator certifies either backend
+// identically in one pass.
+TEST_CASE("JitEvaluator shares scoring, scaling policy and shape certification with the interpreter",
+    "[jit][evaluator][scaling]")
+{
+    auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
+    auto range = Range { 0, std::min(ds.Rows<std::size_t>(), std::size_t { 200 }) };
+
+    Problem problem { &ds };
+    problem.SetTarget("Y");
+    problem.SetTrainingRange(range);
+    auto inputs = ds.VariableHashes();
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
+    problem.SetInputs(inputs);
+
+    RandomGenerator rng(1234);
+    JIT::JitZobrist zobrist(rng, /*maxLength=*/50, inputs);
+    DTable dtable;
+    TreePropertyEvaluator length(&problem, [](Tree const& t) { return static_cast<Scalar>(t.Length()); });
+
+    ShapeConstraintSet constraints;
+    for (auto const hash : problem.GetInputs()) {
+        constraints.Domains.insert_or_assign(ds.GetVariable(hash)->Name, std::pair { Scalar { -1 }, Scalar { 1 } });
+    }
+    constraints.Constraints.push_back({ .Op = ShapeConstraintOp::Identity,
+        .Variable = "",
+        .Sign = std::nullopt,
+        .Bound = std::pair { Scalar { -1 }, Scalar { 1 } } });
+    using E = ShapeConstraintEnforcement;
+    ShapeConstraintPolicy const policy {
+        .Enforcement = E::PenaltyAndExtraObjective, .UnknownViolation = Scalar { 1 }, .PenaltyWeight = Scalar { 2 }
+    };
+    using Structural = std::vector<gsl::not_null<TreePropertyEvaluator const*>>;
+    ShapeConstraintSpec const spec {
+        .Constraints = constraints, .Policy = policy, .Structural = Structural { &length }
+    };
+    // The adapter is the (interpreter or JIT) evaluator itself, so its own counters see the single prediction pass.
+    ShapeConstrainedValueEvaluator<Evaluator<DTable>> refGate(
+        ShapeConstraintSpec { spec }, &dtable, &problem, &dtable, MSE {});
+    ShapeConstrainedValueEvaluator<JIT::JitEvaluator> jitGate(
+        ShapeConstraintSpec { spec }, &dtable, &problem, &zobrist, MSE {});
+
+    Individual ind(3);
+    ind.Genotype = InfixParser::ParseOrThrow("3 - 0.5 * (X1 * X2 + X3)", ds);
+    std::vector<Scalar> buf(range.Size());
+
+    auto const compare = [&]() {
+        auto const ref = refGate(rng, ind, buf);
+        auto const jit = jitGate(rng, ind, buf);
+        REQUIRE(ref.size() == 3);
+        REQUIRE(jit.size() == 3);
+        for (std::size_t i = 0; i < ref.size(); ++i) {
+            CHECK(jit[i] == Catch::Approx(ref[i]).epsilon(1e-3).margin(1e-4));
+        }
+        auto const refMeasure = refGate.Certifier().MeasureCanonical(ind.Genotype);
+        auto const jitMeasure = jitGate.Certifier().MeasureCanonical(ind.Genotype);
+        CHECK(jitMeasure.Feasible == refMeasure.Feasible);
+        CHECK(jitMeasure.Violation == Catch::Approx(refMeasure.Violation).epsilon(1e-3).margin(1e-4));
+        // One prediction pass per constrained call on either backend.
+        CHECK(refGate.ResidualEvaluations == 1);
+        CHECK(jitGate.ResidualEvaluations == 1);
+    };
+
+    SECTION("scaling enabled: the same fitted transform and score")
+    {
+        auto const expected = FitLinearScaling(ind.Genotype, problem, dtable, range);
+        REQUIRE(expected);
+        CHECK_FALSE(expected->IsIdentity());
+        compare();
+    }
+
+    SECTION("scaling disabled")
+    {
+        problem.SetLinearScalingEnabled(false);
+        compare();
+    }
+
+    SECTION("the problem's non-finite fitting policy applies to both backends")
+    {
+        problem.SetLinearScalingOmitsNonFinite(true);
+        ind.Genotype = InfixParser::ParseOrThrow("log(X1) + X2", ds);
+        compare();
+    }
+
+    SECTION("the interpreter fallback path (compilation gated off) matches too")
+    {
+        jitGate.SetMaxLength(1);
+        compare();
     }
 }
 

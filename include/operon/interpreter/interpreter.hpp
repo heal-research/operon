@@ -690,15 +690,11 @@ private:
 };
 
 // Convenience methods to interpret many trees in parallel (mostly useful from the Python wrapper).
-auto OPERON_EXPORT TryEvaluateTrees(
+auto OPERON_EXPORT EvaluateTrees(
     Operon::Vector<Operon::Tree> const& trees, Operon::Dataset const* dataset, Operon::Range range, size_t nthread = 0)
     -> tl::expected<Operon::Vector<Operon::Vector<Operon::Scalar>>, TreeEvaluationError>;
-auto OPERON_EXPORT TryEvaluateTrees(Operon::Vector<Operon::Tree> const& trees, Operon::Dataset const* dataset,
+auto OPERON_EXPORT EvaluateTrees(Operon::Vector<Operon::Tree> const& trees, Operon::Dataset const* dataset,
     Operon::Range range, std::span<Operon::Scalar> result, size_t nthread = 0)
     -> tl::expected<void, TreeEvaluationError>;
-auto OPERON_EXPORT EvaluateTrees(Operon::Vector<Operon::Tree> const& trees, Operon::Dataset const* dataset,
-    Operon::Range range, size_t nthread = 0) -> Operon::Vector<Operon::Vector<Operon::Scalar>>;
-auto OPERON_EXPORT EvaluateTrees(Operon::Vector<Operon::Tree> const& trees, Operon::Dataset const* dataset,
-    Operon::Range range, std::span<Operon::Scalar> result, size_t nthread = 0) -> void;
 } // namespace Operon
 #endif

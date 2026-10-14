@@ -56,6 +56,7 @@ add_executable(operon_test
     source/implementation/selection.cpp
     source/implementation/serialization.cpp
     source/implementation/shape_constrained_evaluator.cpp
+    source/implementation/shape_constrained_value_evaluator.cpp
     source/implementation/shape_bound_correctness.cpp
     ../cli/source/shape_constraints_config.cpp
     source/implementation/standard_library.cpp
@@ -70,6 +71,9 @@ add_executable(operon_test
     source/performance/shape_bisection.cpp
     source/performance/bisection_strategies.cpp
     source/implementation/jet.cpp
+    source/implementation/interval_jet.cpp
+    source/implementation/second_order_jet.cpp
+    source/implementation/interval_jet_compare.cpp
     source/implementation/jit.cpp
     source/implementation/pappus_backend.cpp
     source/implementation/pappus_nsgp.cpp
@@ -97,6 +101,18 @@ endif()
 target_compile_features(operon_test PRIVATE cxx_std_23)
 target_include_directories(operon_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../source/thirdparty ${CMAKE_CURRENT_SOURCE_DIR}/../cli/source)
 set_target_properties(operon_test PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN YES
+)
+
+# Hidden interval-jet comparison/benchmark harness ("[.interval-jet-compare]", "[.interval-jet-bench]") as a
+# stand-alone executable so it can be built on its own, in Release, with heap-allocation counting enabled:
+#   cmake --build <build-dir> --target operon_interval_jet_compare
+add_executable(operon_interval_jet_compare EXCLUDE_FROM_ALL source/implementation/interval_jet_compare.cpp)
+target_link_libraries(operon_interval_jet_compare PRIVATE operon::operon Catch2::Catch2WithMain)
+target_compile_definitions(operon_interval_jet_compare PRIVATE OPERON_JET_COUNT_ALLOCATIONS)
+target_compile_features(operon_interval_jet_compare PRIVATE cxx_std_23)
+set_target_properties(operon_interval_jet_compare PROPERTIES
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN YES
 )

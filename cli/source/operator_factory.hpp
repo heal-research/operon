@@ -9,10 +9,12 @@
 #include "operon/core/individual.hpp" // for Comparison
 #include "operon/core/types.hpp" // for Span
 #include "operon/interpreter/interpreter.hpp" // for Interpreter
+#include "operon/operators/shape_constrained_evaluator.hpp" // for ShapeConstraintSpec
 #include "operon/optimizer/optimizer.hpp"
 #include "util.hpp" // for Split
 #include <cstddef> // for size_t
 #include <memory> // for unique_ptr, make_unique
+#include <optional> // for optional
 #include <string> // for operator==, string
 #include <unordered_map> // for unordered_map
 #include <utility> // for addressof
@@ -96,8 +98,12 @@ auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<
 auto ParseMutators(std::string const& str, std::unordered_map<std::string, MutatorBase*> const& available,
     MultiMutation& mutator) -> void;
 
+// Builds the objective evaluator named by `str`. With `shape`, the evaluator is the
+// ShapeConstrainedValueEvaluator over that concrete evaluator (constructed before type erasure), owning the whole
+// constrained objective vector.
 auto ParseEvaluator(std::string const& str, Problem& problem, ScalarDispatch& dtable, bool skipNonFinite = false,
-    double nonFinitePenaltyWeight = 1.0) -> std::unique_ptr<EvaluatorBase>;
+    double nonFinitePenaltyWeight = 1.0, std::optional<ShapeConstraintSpec> const& shape = std::nullopt)
+    -> std::unique_ptr<EvaluatorBase>;
 
 auto ParseErrorMetric(std::string const& str) -> std::tuple<std::unique_ptr<Operon::ErrorMetric>, bool>;
 

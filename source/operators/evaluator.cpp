@@ -7,6 +7,7 @@
 #include "operon/core/distance.hpp"
 #include "operon/operators/linear_scaling.hpp"
 #include "operon/operators/local_search.hpp"
+#include "operon/operators/shape_constrained_evaluator.hpp"
 #include "operon/optimizer/optimizer.hpp"
 #include "operon/random/random.hpp"
 
@@ -47,11 +48,11 @@ namespace {
     // don't recognize it (e.g. MSVC); it only costs the opt-in caller here regardless.
     template <typename T>
     [[gnu::noinline]] auto SkipNonFiniteScore(ErrorMetric const& error, Operon::Span<T> estimated,
-        Operon::Span<T const> target, Operon::Span<T const> weights, bool scaling, double penaltyWeight)
-        -> Operon::Scalar
+        Operon::Span<T const> target, Operon::Span<T const> weights, std::optional<LinearScaling> const& scaling,
+        double penaltyWeight) -> Operon::Scalar
     {
         if (scaling) {
-            FitLinearScaling(estimated, target, weights, /*omitNonFinite=*/true).ApplyInPlace(estimated);
+            scaling->ApplyInPlace(estimated);
         }
         auto [value, nonFiniteCount]
             = weights.empty() ? error.FiniteSubset(estimated, target) : error.FiniteSubset(estimated, target, weights);
@@ -60,10 +61,9 @@ namespace {
         }
         auto const fraction
             = nonFiniteCount != 0 ? static_cast<double>(nonFiniteCount) / static_cast<double>(estimated.size()) : 0.0;
-        // Per-metric scale so a single penaltyWeight means the same thing regardless of the active metric's
-        // units: NMSE already normalizes by target variance (scale = 1); MSE/SSE are squared-error units
-        // (variance, and variance * finite-count since SSE is a sum, not an average); RMSE/MAE are linear-error
-        // units (stddev = sqrt(variance)).
+        // Per-metric scale keeps one penaltyWeight meaningful across metric units: NMSE, R2, and C2 are
+        // dimensionless (scale = 1); MSE/SSE are squared-error units (variance, and variance * finite-count
+        // since SSE is a sum); RMSE/MAE are linear-error units (stddev = sqrt(variance)).
         double sumWeights = 0.0;
         double mean = 0.0;
         double m2 = 0.0;
@@ -84,6 +84,8 @@ namespace {
         double scale {};
         switch (error.Type()) {
         case ErrorType::NMSE:
+        case ErrorType::R2:
+        case ErrorType::C2:
             scale = 1.0;
             break;
         case ErrorType::MSE:
@@ -97,8 +99,7 @@ namespace {
             scale = variance * static_cast<double>(estimated.size() - nonFiniteCount);
             break;
         default:
-            scale = variance;
-            break; // unreachable: R2/C2 reject --skip-nonfinite in ParseEvaluator
+            throw std::runtime_error("unknown error metric");
         }
         return static_cast<Operon::Scalar>(value + penaltyWeight * scale * fraction);
     }
@@ -142,49 +143,61 @@ TreePropertyEvaluator::TreePropertyEvaluator(
 }
 
 template <>
+auto OPERON_EXPORT Evaluator<ScalarDispatch>::Predict(
+    Operon::Individual const& ind, Operon::Span<Operon::Scalar> values) const -> tl::expected<void, InterpreterError>
+{
+    auto const* problem = GetProblem();
+    auto const& tree = ind.Genotype;
+    TInterpreter const interpreter { GetDispatchTable(), problem->GetDataset(), &tree };
+    auto coeff = tree.GetCoefficients();
+    if (auto const evaluated = interpreter.Evaluate(coeff, problem->TrainingRange(), values); !evaluated) {
+        return tl::unexpected(evaluated.error());
+    }
+    return {};
+}
+
+template <>
 auto OPERON_EXPORT Evaluator<ScalarDispatch>::Evaluate(Operon::Individual const& ind,
     Operon::Span<Operon::Scalar> buf) const -> tl::expected<std::optional<EvaluatedBuffer>, InterpreterError>
 {
     auto const* problem = GetProblem();
     auto const trainingRange = problem->TrainingRange();
-    auto const& tree = ind.Genotype;
-    TInterpreter const interpreter { GetDispatchTable(), problem->GetDataset(), &tree };
 
     ENSURE(buf.size() >= trainingRange.Size());
     // buf.size() may exceed trainingRange.Size() (caller-owned scratch reused across calls), but
-    // Interpreter::TryEvaluate and the target/weight spans require an exact-sized view -- slice once, up
+    // Interpreter::Evaluate and the target/weight spans require an exact-sized view -- slice once, up
     // front, for every downstream use.
     auto estimatedValues = buf.subspan(0, trainingRange.Size());
-    auto coeff = tree.GetCoefficients();
     ++ResidualEvaluations;
-    if (auto const evaluated = interpreter.Evaluate(coeff, trainingRange, estimatedValues); !evaluated) {
-        return tl::unexpected(std::move(evaluated.error()));
+    if (auto const predicted = Predict(ind, estimatedValues); !predicted) {
+        return tl::unexpected(predicted.error());
     }
-    return std::optional<EvaluatedBuffer> { MarkEvaluated(ind, estimatedValues) };
+    auto const scaling = detail::FitScalingIfEnabled(*problem, estimatedValues);
+    return std::optional<EvaluatedBuffer> { MarkEvaluated(ind, estimatedValues, scaling) };
 }
 
 template <>
-auto OPERON_EXPORT Evaluator<ScalarDispatch>::Score(ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const ->
+auto OPERON_EXPORT Evaluator<ScalarDispatch>::Score(Operon::RandomGenerator& /*rng*/, Operon::Individual const& ind,
+    Operon::Span<Operon::Scalar> buf, std::optional<EvaluatedBuffer> evaluated) const ->
     typename EvaluatorBase::ReturnType
 {
-    ++CallCount;
-
     auto const* problem = GetProblem();
     auto const trainingRange = problem->TrainingRange();
     ENSURE(evaluated.has_value());
-    auto estimatedValues = evaluated->Values(ctx.Ind, ctx.Scratch);
+    auto estimatedValues = evaluated->Values(ind, buf);
     ENSURE(estimatedValues.size() == trainingRange.Size());
     auto const targetValues = problem->TargetValues(trainingRange);
     auto const weights = problem->Weights(trainingRange).value_or(Operon::Span<Operon::Scalar const> {});
 
+    auto const& scaling = evaluated->Scaling();
+
     Operon::Scalar fit {};
     if (skipNonFinite_) [[unlikely]] {
         fit = SkipNonFiniteScore<Operon::Scalar>(
-            error_, estimatedValues, targetValues, weights, UsesLinearScaling(), nonFinitePenaltyWeight_);
+            error_, estimatedValues, targetValues, weights, scaling, nonFinitePenaltyWeight_);
     } else {
-        if (UsesLinearScaling()) {
-            FitLinearScaling(estimatedValues, targetValues, weights, /*omitNonFinite=*/false)
-                .ApplyInPlace(estimatedValues);
+        if (scaling) {
+            scaling->ApplyInPlace(estimatedValues);
         }
         fit = static_cast<Operon::Scalar>(
             weights.empty() ? error_(estimatedValues, targetValues) : error_(estimatedValues, targetValues, weights));
@@ -210,13 +223,13 @@ auto DiversityEvaluator::Prepare(Operon::Span<Operon::Individual const> pop) con
     }
 }
 
-auto DiversityEvaluator::Score(ScoreContext ctx, std::optional<EvaluatedBuffer> /*evaluated*/) const ->
+auto DiversityEvaluator::Score(Operon::RandomGenerator& rng, Operon::Individual const& ind,
+    Operon::Span<Operon::Scalar> /*buf*/, std::optional<EvaluatedBuffer> /*evaluated*/) const ->
     typename EvaluatorBase::ReturnType
 {
-    ++CallCount;
-    (void)ctx.Ind.Genotype.Hash(hashmode_);
-    Operon::Vector<Operon::Hash> lhs(ctx.Ind.Genotype.Length());
-    auto const& nodes = ctx.Ind.Genotype.Nodes();
+    (void)ind.Genotype.Hash(hashmode_);
+    Operon::Vector<Operon::Hash> lhs(ind.Genotype.Length());
+    auto const& nodes = ind.Genotype.Nodes();
     std::ranges::transform(nodes, lhs.begin(), [](auto const& n) -> auto { return n.CalculatedHashValue; });
     std::ranges::stable_sort(lhs);
     auto const& values = divmap_.values();
@@ -224,27 +237,37 @@ auto DiversityEvaluator::Score(ScoreContext ctx, std::optional<EvaluatedBuffer> 
     Operon::Scalar distance { 0 };
     Operon::Vector<double> const distances(sampleSize_);
     for (auto i = 0UL; i < sampleSize_; ++i) {
-        auto const& rhs = Operon::Random::Sample(ctx.Rng, values.begin(), values.end())->second;
+        auto const& rhs = Operon::Random::Sample(rng, values.begin(), values.end())->second;
         distance += static_cast<Operon::Scalar>(Operon::Distance::Jaccard(lhs, rhs));
     }
     return EvaluatorBase::ReturnType { -distance / static_cast<Operon::Scalar>(sampleSize_) };
 }
 
-auto MultiEvaluator::Score(ScoreContext ctx, std::optional<EvaluatedBuffer> /*evaluated*/) const ->
+auto MultiEvaluator::Add(EvaluatorBase const* evaluator) -> void
+{
+    // The adapter's restoration hook is only reachable through the evaluator the algorithm holds, never through a
+    // composition's operator() dispatch: reject the unsupported composition deterministically.
+    if (dynamic_cast<detail::ShapeConstraintEnforcer const*>(evaluator) != nullptr) {
+        throw std::invalid_argument(
+            "MultiEvaluator: a ShapeConstrainedValueEvaluator cannot be a child. It already owns the complete "
+            "constrained objective vector (structural objectives included), and inside a composition its "
+            "non-Lamarckian restoration step would be skipped; hand it to the algorithm directly");
+    }
+    evaluators_.emplace_back(evaluator);
+}
+
+auto MultiEvaluator::Score(Operon::RandomGenerator& rng, Operon::Individual const& ind,
+    Operon::Span<Operon::Scalar> buf, std::optional<EvaluatedBuffer> /*evaluated*/) const ->
     typename EvaluatorBase::ReturnType
 {
     using vstat::univariate::accumulate;
 
-    // Counts one increment per call at every composition depth, not just the leaf Evaluator<DTable>, so a
-    // caller (e.g. OffspringSelectionGenerator::SelectionPressure) sees the same per-call semantics regardless
-    // of nesting. Stats() below separately sums the inner evaluators' own counters for total sub-evaluator work.
-    ++CallCount;
-
     EvaluatorBase::ReturnType fit;
     fit.reserve(SubEvaluatorObjectiveCount());
 
+    // Every child runs through its own operator() -- the sole evaluator execution path -- in Add order.
     for (auto const& ev : evaluators_) {
-        auto f = (*ev)(ctx.Rng, ctx.Ind, ctx.Scratch);
+        auto f = (*ev)(rng, ind, buf);
         std::copy(f.begin(), f.end(), std::back_inserter(fit));
     }
 
@@ -287,13 +310,14 @@ auto MultiEvaluator::Score(ScoreContext ctx, std::optional<EvaluatedBuffer> /*ev
 }
 
 template <>
-auto OPERON_EXPORT BayesianInformationCriterionEvaluator<ScalarDispatch>::Score(
-    ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const -> typename EvaluatorBase::ReturnType
+auto OPERON_EXPORT BayesianInformationCriterionEvaluator<ScalarDispatch>::Score(Operon::RandomGenerator& rng,
+    Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf, std::optional<EvaluatedBuffer> evaluated) const ->
+    typename EvaluatorBase::ReturnType
 {
-    auto const& tree = ctx.Ind.Genotype;
+    auto const& tree = ind.Genotype;
     auto p = static_cast<Operon::Scalar>(std::ranges::count_if(tree.Nodes(), &Operon::Node::Optimize));
     auto n = static_cast<Operon::Scalar>(Evaluator::GetProblem()->TrainingRange().Size());
-    auto mse = Evaluator<ScalarDispatch>::Score(ctx, std::move(evaluated)).front();
+    auto mse = Evaluator<ScalarDispatch>::Score(rng, ind, buf, std::move(evaluated)).front();
     auto bic = (n * std::log(mse)) + (p * std::log(n));
     if (!std::isfinite(bic)) {
         bic = EvaluatorBase::ErrMax;
@@ -302,10 +326,11 @@ auto OPERON_EXPORT BayesianInformationCriterionEvaluator<ScalarDispatch>::Score(
 }
 
 template <>
-auto OPERON_EXPORT AkaikeInformationCriterionEvaluator<ScalarDispatch>::Score(
-    ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const -> typename EvaluatorBase::ReturnType
+auto OPERON_EXPORT AkaikeInformationCriterionEvaluator<ScalarDispatch>::Score(Operon::RandomGenerator& rng,
+    Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf, std::optional<EvaluatedBuffer> evaluated) const ->
+    typename EvaluatorBase::ReturnType
 {
-    auto mse = Evaluator<ScalarDispatch>::Score(ctx, std::move(evaluated)).front();
+    auto mse = Evaluator<ScalarDispatch>::Score(rng, ind, buf, std::move(evaluated)).front();
     auto n = static_cast<Operon::Scalar>(Evaluator::GetProblem()->TrainingRange().Size());
     auto aik = n / 2 * (std::log(Operon::Math::Tau) + std::log(mse) + 1);
     if (!std::isfinite(aik)) {
@@ -337,6 +362,12 @@ auto LocalSearch(Operon::RandomGenerator& random, Operon::Individual& ind, Opero
     return BernoulliTrial { pLamarck }(random) ? std::nullopt : std::make_optional(std::move(c));
 }
 
+auto RestoreNonLamarckianCoefficients(Operon::Individual& ind, Operon::EvaluatorBase const& evaluator,
+    Operon::Span<Operon::Scalar const> stored, Operon::Span<Operon::Scalar> buf) -> void
+{
+    evaluator.FinalizeRestoredCoefficients(ind, stored, buf);
+}
+
 auto ScoreIndividual(Operon::RandomGenerator& random, Operon::Individual& ind, Operon::EvaluatorBase const& evaluator,
     Operon::CoefficientOptimizer const* coeffOptimizer, double pLocal, double pLamarck,
     Operon::Span<Operon::Scalar> buf) -> void
@@ -344,7 +375,7 @@ auto ScoreIndividual(Operon::RandomGenerator& random, Operon::Individual& ind, O
     auto originalCoeffs = LocalSearch(random, ind, evaluator, coeffOptimizer, pLocal, pLamarck);
     ind.Fitness = evaluator(random, ind, buf);
     if (originalCoeffs) {
-        ind.Genotype.SetCoefficients(*originalCoeffs);
+        RestoreNonLamarckianCoefficients(ind, evaluator, *originalCoeffs, buf);
     }
 
     for (auto& v : ind.Fitness) {

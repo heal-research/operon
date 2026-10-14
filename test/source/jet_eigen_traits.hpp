@@ -17,11 +17,11 @@
 // dependency, so these specializations live in the test harness.
 namespace Eigen {
 
-template <typename T, int N> struct NumTraits<Operon::Jet<T, N>> {
-    using Real = Operon::Jet<T, N>;
-    using NonInteger = Operon::Jet<T, N>;
-    using Nested = Operon::Jet<T, N>;
-    using Literal = Operon::Jet<T, N>;
+template <typename T, int N, Operon::JetOrder Order> struct NumTraits<Operon::Jet<T, N, Order>> {
+    using Real = Operon::Jet<T, N, Order>;
+    using NonInteger = Operon::Jet<T, N, Order>;
+    using Nested = Operon::Jet<T, N, Order>;
+    using Literal = Operon::Jet<T, N, Order>;
 
     static auto dummy_precision() -> Real { return Real(T(1e-12)); }
     static auto epsilon() -> Real { return Real(std::numeric_limits<T>::epsilon()); }
@@ -47,12 +47,14 @@ template <typename T, int N> struct NumTraits<Operon::Jet<T, N>> {
 };
 
 // Jet <op> scalar and scalar <op> Jet are element-wise Jet operations.
-template <typename BinaryOp, typename T, int N> struct ScalarBinaryOpTraits<Operon::Jet<T, N>, T, BinaryOp> {
-    using ReturnType = Operon::Jet<T, N>;
+template <typename BinaryOp, typename T, int N, Operon::JetOrder Order>
+struct ScalarBinaryOpTraits<Operon::Jet<T, N, Order>, T, BinaryOp> {
+    using ReturnType = Operon::Jet<T, N, Order>;
 };
 
-template <typename BinaryOp, typename T, int N> struct ScalarBinaryOpTraits<T, Operon::Jet<T, N>, BinaryOp> {
-    using ReturnType = Operon::Jet<T, N>;
+template <typename BinaryOp, typename T, int N, Operon::JetOrder Order>
+struct ScalarBinaryOpTraits<T, Operon::Jet<T, N, Order>, BinaryOp> {
+    using ReturnType = Operon::Jet<T, N, Order>;
 };
 
 } // namespace Eigen

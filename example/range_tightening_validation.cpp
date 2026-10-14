@@ -182,7 +182,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         auto const coeff = tree.GetCoefficients();
 
         auto const t0 = std::chrono::steady_clock::now();
-        auto const naive = IE(&tree, domains).Evaluate(coeff);
+        auto const naiveResult = IE(&tree, domains)(coeff);
+        auto const naive = naiveResult ? *naiveResult : IE::Interval::empty();
         auto const t1 = std::chrono::steady_clock::now();
         auto const tightened = Operon::TightenRange(tree, domains, coeff);
         auto const t2 = std::chrono::steady_clock::now();

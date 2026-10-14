@@ -168,8 +168,10 @@ struct VariableGradientDag {
 // depends on that variable (not merely elsewhere in the tree). `coeff`
 // (optional) supplies live weights for Optimize==true Variable nodes, since
 // — unlike every other Deriv() leaf case — this one bakes a numeric weight
-// into the dag at build time rather than resolving it later.
-OPERON_EXPORT auto BuildVariableGradientDag(Tree const& tree, Operon::Span<Operon::Scalar const> coeff = {})
-    -> VariableGradientDag;
+// into the dag at build time rather than resolving it later. When
+// `variableFilter` is non-empty, only its variables receive derivative roots;
+// variables absent from the tree remain absent from the returned DAG.
+OPERON_EXPORT auto BuildVariableGradientDag(Tree const& tree, Operon::Span<Operon::Scalar const> coeff = {},
+    Operon::Span<Operon::Hash const> variableFilter = {}) -> VariableGradientDag;
 
 } // namespace Operon
