@@ -2518,4 +2518,40 @@ TEST_CASE("Bisection schedule counts variables in the expanded expression", "[sh
     }
 }
 
+TEST_CASE("Bisection schedule stays balanced on deeply shared expressions", "[shape-constraints][bisection]")
+{
+    Eigen::Array<Operon::Scalar, -1, -1> data(2, 3);
+    data << Operon::Scalar { -1 }, Operon::Scalar { -1 }, Operon::Scalar { 0 }, Operon::Scalar { 1 },
+        Operon::Scalar { 1 }, Operon::Scalar { 0 };
+    Operon::Dataset ds(gsl::not_null { data.data() }, 2, 3);
+    auto const x1 = ds.GetVariable("X1").value().Hash;
+    auto const x2 = ds.GetVariable("X2").value().Hash;
+    Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> domains {
+        { x1, { Operon::Scalar { -1 }, Operon::Scalar { 1 } } },
+        { x2, { Operon::Scalar { -1 }, Operon::Scalar { 1 } } },
+    };
+
+    // g0 = X1 + X2, g(n+1) = 0.5 * (g(n) + Ref(g(n))): every level doubles how often each variable is evaluated, so
+    // the expanded occurrence counts reach 2^levels (the expression is still X1 + X2). Equal counts and widths must
+    // keep splitting the two variables alternately however deep the sharing goes.
+    for (int const levels : { 4, 100, 511, 512, 1024 }) {
+        INFO("levels " << levels);
+        Operon::Vector<Node> nodes { Node { NodeType::Variable, x1 }, Node { NodeType::Variable, x2 },
+            Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 2) };
+        for (int level = 0; level < levels; ++level) {
+            nodes.push_back(Node::Ref(static_cast<std::uint16_t>(nodes.size() - 1)));
+            nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 2));
+            nodes.push_back(Node::Constant(0.5F));
+            nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Mul), 2));
+        }
+        Tree tree { nodes };
+        tree.UpdateNodes();
+        REQUIRE(tree.Validate());
+        auto const result = detail::BisectionSplits(tree, domains, 6);
+        REQUIRE(result.size() == 2);
+        CHECK(result[0].second == 3);
+        CHECK(result[1].second == 3);
+    }
+}
+
 } // namespace Operon::Test

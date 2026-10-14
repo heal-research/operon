@@ -1344,8 +1344,11 @@ void PrintRegretTable(std::vector<InstanceRecord> const& records, Group const& g
     auto const dInf = static_cast<double>(std::max<std::size_t>(informative, 1));
     fmt::print("\n[{}] n={} informative={} ({:.1f}%)\n", GroupLabel(group), n, informative,
         100.0 * static_cast<double>(informative) / dn);
-    fmt::print("  regret = W/W_oracle - 1 in %; 'all' = every (instance,depth); 'inf' = allocation matters (worst >1% "
-               "wider than best); geo = geometric mean of W/W_oracle - 1; cap = mean of min(regret,100%); pos = "
+    fmt::print("  regret = (W - Wbest) / max(Wbest, 1e-6 * W0) in % (W/W_oracle - 1 unless the best bound is below "
+               "1e-6 of the "
+               "direct bound; the same denominator gates 'inf'); 'all' = every (instance,depth); 'inf' = allocation "
+               "matters (worst >1% wider than best; medians are over (instance,depth) pairs); geo = geometric mean of "
+               "the regret; cap = mean of min(regret,100%); pos = "
                "(W-Wbest)/(Wworst-Wbest); red = mean 1-W/W0\n");
     fmt::print("  {:<15} {:>6} {:>7} {:>8} {:>10} | {:>6} {:>7} {:>8} {:>7} {:>6} {:>6} {:>6} | {:>6} {:>8} {:>5}\n",
         "strategy", "opt%", "med%", "p95%", "max%", "optI%", "medI%", "p95I%", "geoI%", "capI%", "gt100I", "pos",
