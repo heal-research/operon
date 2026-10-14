@@ -1849,4 +1849,43 @@ TEST_CASE("BuildVariableGradientDag - filtering the second differentiation drops
     CHECK(filtered.Nodes.size() < unfiltered.Nodes.size());
 }
 
+TEST_CASE("Derivative dag builders - nodes are shared by exact structure", "[tree_diff]")
+{
+    // dag = [x]; index 0 is the first original node.
+    Operon::Vector<Node> dag { Node { NodeType::Variable, Operon::Hash { 1 } } };
+    DerivMemo memo;
+
+    auto const zero = GetSymbolicDerivConst(dag, memo, Scalar { 0 });
+    auto const one = GetSymbolicDerivConst(dag, memo, Scalar { 1 });
+    CHECK(GetSymbolicDerivConst(dag, memo, Scalar { 0 }) == zero);
+    CHECK(zero != one);
+    CHECK(GetSymbolicDerivConst(dag, memo, Scalar { -0.0F }) != zero); // distinct bit patterns stay distinct
+
+    // A zero constant never stands in for the first original node: Mul(0, x0), Mul(x0, x0) and Add(0, x0) are
+    // three different expressions.
+    auto const mulZero = MakeSymbolicDerivBinary(dag, memo, BuiltinOp::Mul, zero, 0);
+    auto const mulSquare = MakeSymbolicDerivBinary(dag, memo, BuiltinOp::Mul, 0, 0);
+    auto const addZero = MakeSymbolicDerivBinary(dag, memo, BuiltinOp::Add, zero, 0);
+    CHECK(mulZero != mulSquare);
+    CHECK(addZero != mulZero);
+    CHECK(MakeSymbolicDerivBinary(dag, memo, BuiltinOp::Mul, zero, 0) == mulZero);
+    CHECK(MakeSymbolicDerivBinary(dag, memo, BuiltinOp::Mul, 0, 0) == mulSquare);
+
+    // Operand order matters, and a unary node differs from a binary node over the same operand.
+    CHECK(MakeSymbolicDerivBinary(dag, memo, BuiltinOp::Sub, one, 0)
+        != MakeSymbolicDerivBinary(dag, memo, BuiltinOp::Sub, 0, one));
+    CHECK(MakeSymbolicDerivUnary(dag, memo, BuiltinOp::Sin, 0) == MakeSymbolicDerivUnary(dag, memo, BuiltinOp::Sin, 0));
+    CHECK(MakeSymbolicDerivUnary(dag, memo, BuiltinOp::Sin, 0) != MakeSymbolicDerivUnary(dag, memo, BuiltinOp::Cos, 0));
+
+    // Two Ref slots pointing at the same node are the same operand; a Ref slot is not its own target.
+    auto const sin = MakeSymbolicDerivUnary(dag, memo, BuiltinOp::Sin, 0);
+    auto const first = dag.size();
+    dag.push_back(Node::Ref(static_cast<std::uint16_t>(sin)));
+    auto const second = dag.size();
+    dag.push_back(Node::Ref(static_cast<std::uint16_t>(sin)));
+    auto const viaFirst = MakeSymbolicDerivUnary(dag, memo, BuiltinOp::Exp, first);
+    CHECK(MakeSymbolicDerivUnary(dag, memo, BuiltinOp::Exp, second) == viaFirst);
+    CHECK(MakeSymbolicDerivUnary(dag, memo, BuiltinOp::Exp, sin) != viaFirst);
+}
+
 } // namespace Operon::Test

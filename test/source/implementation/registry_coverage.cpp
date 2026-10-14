@@ -158,8 +158,9 @@ TEST_CASE("HashRegistry: round-trip and write-once contract", "[registry][hash_r
 TEST_CASE("RegisterUnarySymbolicDeriv: colliding with a built-in hash always throws", "[registry][toctou]")
 {
     CHECK_THROWS_AS(Operon::RegisterUnarySymbolicDeriv(Operon::Hash(BuiltinOp::Log),
-                        [](Operon::Vector<Operon::Node>&, Operon::Map<Operon::Hash, std::size_t>&,
-                            Operon::Vector<Operon::Hash>&, std::size_t, std::size_t) -> std::size_t { return 0; }),
+                        [](Operon::Vector<Operon::Node>&, Operon::DerivMemo&, std::size_t, std::size_t) -> std::size_t {
+                            return 0;
+                        }),
         std::invalid_argument);
 }
 
@@ -173,9 +174,8 @@ TEST_CASE("RegisterUnarySymbolicDeriv: colliding with a built-in hash always thr
 TEST_CASE("RegisterBinarySymbolicDeriv: colliding with a hardcoded/excluded built-in hash always throws",
     "[registry][toctou]")
 {
-    auto const noop
-        = [](Operon::Vector<Operon::Node>&, Operon::Map<Operon::Hash, std::size_t>&, Operon::Vector<Operon::Hash>&,
-              std::size_t, std::size_t, std::size_t) -> std::pair<std::size_t, std::size_t> { return { 0, 0 }; };
+    auto const noop = [](Operon::Vector<Operon::Node>&, Operon::DerivMemo&, std::size_t, std::size_t,
+                          std::size_t) -> std::pair<std::size_t, std::size_t> { return { 0, 0 }; };
 
     for (auto op : { BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Sub, BuiltinOp::Div, BuiltinOp::Pow, BuiltinOp::Aq,
              BuiltinOp::Powabs, BuiltinOp::Fmin, BuiltinOp::Fmax }) {

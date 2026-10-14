@@ -215,101 +215,12 @@ inline void ValidateBodyStructuralInvariants(Tree const& body, std::size_t arity
 }
 
 namespace detail {
-    // Hand-rolled port of tree_diff.cpp's private hash-consing convention
-    // (Mix/Push/AppendRef/GetConst/MakeUnary/MakeBinary — anonymous-
-    // namespace internals there, not exported) so a composed function's
-    // symbolic-derivative rule can build/extend the *same* live dag/memo/h
-    // Deriv() threads through the outer tree's own differentiation, using
-    // only public Node factories — the same "external caller hand-rolls the
-    // convention" precedent test/source/implementation/user_defined_registries.cpp
-    // already established. Matching Mix/Push exactly, rather than inventing
-    // a different scheme, keeps hash-consing behavior between
-    // composed-function-injected nodes and the rest of the dag consistent.
+    // A composed function's symbolic-derivative rule builds/extends the *same* live dag/memo Deriv() threads
+    // through the outer tree's own differentiation, through the public GetSymbolicDerivConst /
+    // MakeSymbolicDerivUnary / MakeSymbolicDerivBinary builders -- the node-sharing logic every built-in rule uses.
     using DiffNodes = Operon::Vector<Node>;
-    using DiffHashes = Operon::Vector<Operon::Hash>;
-    using DiffMemo = Operon::Map<Operon::Hash, std::size_t>;
+    using DiffMemo = Operon::DerivMemo;
     inline constexpr std::size_t DiffZero = std::numeric_limits<std::size_t>::max();
-
-    // Salted relative to tree_diff.cpp's own Mix(): that version is safe
-    // within tree_diff.cpp itself because Deriv() only ever combines
-    // *derivative* dag indices this way (fresh nodes, whose own hashes are
-    // already mixed), never a raw original-tree index directly — but
-    // DiffCopyBody (below) *does* mix directly against tree_diff.cpp's
-    // `h[i] = i` identity hashes for the original tree's prefix (needed to
-    // reconstruct the composed body's primal value inline). `h[0] == 0`
-    // there is completely normal, but combined with `BuiltinOp::Add == 0`
-    // it makes the unsalted Mix(0,0) == 0 a real fixed point: found by
-    // direct reproduction, not by inspection — `exp(x+x+x)` composed and
-    // differentiated came out as `3*exp(2x)` instead of `3*exp(3x)`,
-    // because Mix(Add, h[0]=0) collapsed to exactly 0 and stayed 0 through
-    // a second Add combining with it, causing DiffMakeBinary's memo to
-    // spuriously treat `Add(innerSum, x)` as identical to `Add(x, x)`. The
-    // salt breaks that fixed point without needing bit-for-bit agreement
-    // with tree_diff.cpp's own Mix (the two memo maps are never compared
-    // against each other, so nothing requires the formulas to match).
-    inline auto DiffMix(std::uint64_t a, std::uint64_t b) -> std::uint64_t
-    {
-        a += 0x9e3779b97f4a7c15ULL;
-        return a ^ (b * 0x9e3779b97f4a7c15ULL + (a << 6U) + (a >> 2U));
-    }
-
-    inline void DiffPush(DiffNodes& dag, DiffHashes& h, Node n, std::uint64_t hash)
-    {
-        n.Optimize = false;
-        dag.push_back(n);
-        h.push_back(hash);
-    }
-
-    inline auto DiffAppendRef(DiffNodes& dag, DiffHashes& h, std::size_t target) -> std::size_t
-    {
-        auto hash = DiffMix(static_cast<std::uint64_t>(Operon::NodeType::Ref), h[target]);
-        DiffPush(dag, h, Node::Ref(static_cast<std::uint16_t>(target)), hash);
-        return dag.size() - 1;
-    }
-
-    inline auto DiffGetConst(DiffNodes& dag, DiffMemo& memo, DiffHashes& h, Operon::Scalar val) -> std::size_t
-    {
-        auto hash = DiffMix(static_cast<std::uint64_t>(Operon::NodeType::Constant),
-            std::bit_cast<std::uint64_t>(static_cast<double>(val)));
-        if (auto it = memo.find(hash); it != memo.end()) {
-            return it->second;
-        }
-        auto idx = dag.size();
-        DiffPush(dag, h, Node::Constant(val), hash);
-        memo.insert_or_assign(hash, idx);
-        return idx;
-    }
-
-    inline auto DiffMakeUnary(DiffNodes& dag, DiffMemo& memo, DiffHashes& h, Operon::BuiltinOp op, std::size_t a)
-        -> std::size_t
-    {
-        auto opHash = DiffMix(static_cast<std::uint64_t>(op), h[a]);
-        if (auto it = memo.find(opHash); it != memo.end()) {
-            return it->second;
-        }
-        DiffAppendRef(dag, h, a);
-        auto n = Node::Function(static_cast<Operon::Hash>(op), 1);
-        auto idx = dag.size();
-        DiffPush(dag, h, n, opHash);
-        memo.insert_or_assign(opHash, idx);
-        return idx;
-    }
-
-    inline auto DiffMakeBinary(DiffNodes& dag, DiffMemo& memo, DiffHashes& h, Operon::BuiltinOp op, std::size_t a,
-        std::size_t b) -> std::size_t
-    {
-        auto opHash = DiffMix(DiffMix(static_cast<std::uint64_t>(op), h[a]), h[b]);
-        if (auto it = memo.find(opHash); it != memo.end()) {
-            return it->second;
-        }
-        DiffAppendRef(dag, h, b);
-        DiffAppendRef(dag, h, a);
-        auto n = Node::Function(static_cast<Operon::Hash>(op), 2);
-        auto idx = dag.size();
-        DiffPush(dag, h, n, opHash);
-        memo.insert_or_assign(opHash, idx);
-        return idx;
-    }
 
     // Copies bodyNodes[k]'s structure into the live dag once, memoized in
     // `bodyToLive` (postfix order — children already copied by the time a
@@ -318,7 +229,7 @@ namespace detail {
     // (that live subtree literally *is* the value of that parameter — no
     // new node needed, matching MakeComposedCallable's own "substitute, don't
     // recompute" approach).
-    inline void DiffCopyBody(DiffNodes& dag, DiffMemo& memo, DiffHashes& h, Operon::Vector<Node> const& bodyNodes,
+    inline void DiffCopyBody(DiffNodes& dag, DiffMemo& memo, Operon::Vector<Node> const& bodyNodes,
         std::array<std::int64_t, kMaxComposedFunctionArity> const& liveChildIdx, std::vector<std::size_t>& bodyToLive)
     {
         for (std::size_t k = 0; k < bodyNodes.size(); ++k) {
@@ -327,7 +238,7 @@ namespace detail {
                 auto const pIdx = static_cast<std::size_t>(n.HashValue - Operon::BuiltinOpCount);
                 bodyToLive[k] = static_cast<std::size_t>(liveChildIdx[pIdx]);
             } else if (n.Type == Operon::NodeType::Constant) {
-                bodyToLive[k] = DiffGetConst(dag, memo, h, n.Value);
+                bodyToLive[k] = Operon::GetSymbolicDerivConst(dag, memo, n.Value);
             } else {
                 auto const op = static_cast<Operon::BuiltinOp>(n.HashValue);
                 // Resolve children via Tree::Indices (already-established
@@ -338,11 +249,11 @@ namespace detail {
                     children.push_back(bodyToLive[c]);
                 }
                 if (n.Arity == 1) {
-                    bodyToLive[k] = DiffMakeUnary(dag, memo, h, op, children[0]);
+                    bodyToLive[k] = Operon::MakeSymbolicDerivUnary(dag, memo, op, children[0]);
                 } else {
-                    // near=children[0], far=children[1] — matches DiffMakeBinary's
+                    // near=children[0], far=children[1] — matches MakeSymbolicDerivBinary's
                     // own (a=near,b=far) convention directly, no reordering.
-                    bodyToLive[k] = DiffMakeBinary(dag, memo, h, op, children[0], children[1]);
+                    bodyToLive[k] = Operon::MakeSymbolicDerivBinary(dag, memo, op, children[0], children[1]);
                 }
             }
         }
@@ -355,14 +266,14 @@ namespace detail {
     // "weight-of-a-variable" rule Deriv() uses for ordinary Optimize=true
     // Variable leaves — see the design doc's Fix-2 for why conflating these
     // two would compute the wrong derivative.
-    inline auto DiffParam(DiffNodes& dag, DiffMemo& memo, DiffHashes& h, Operon::Vector<Node> const& bodyNodes,
+    inline auto DiffParam(DiffNodes& dag, DiffMemo& memo, Operon::Vector<Node> const& bodyNodes,
         std::vector<std::size_t> const& bodyToLive, std::size_t k, std::size_t targetParam) -> std::size_t
     {
         auto const& n = bodyNodes[k];
 
         if (n.IsVariable()) {
             auto const pIdx = static_cast<std::size_t>(n.HashValue - Operon::BuiltinOpCount);
-            return pIdx == targetParam ? DiffGetConst(dag, memo, h, Operon::Scalar { 1 }) : DiffZero;
+            return pIdx == targetParam ? Operon::GetSymbolicDerivConst(dag, memo, Operon::Scalar { 1 }) : DiffZero;
         }
         if (n.Type == Operon::NodeType::Constant) {
             return DiffZero;
@@ -377,7 +288,7 @@ namespace detail {
         if (n.IsAddition()) {
             Operon::Vector<std::size_t> terms;
             for (auto c : children) {
-                auto dc = DiffParam(dag, memo, h, bodyNodes, bodyToLive, c, targetParam);
+                auto dc = DiffParam(dag, memo, bodyNodes, bodyToLive, c, targetParam);
                 if (dc != DiffZero) {
                     terms.push_back(dc);
                 }
@@ -387,14 +298,14 @@ namespace detail {
             }
             auto result = terms[0];
             for (std::size_t m = 1; m < terms.size(); ++m) {
-                result = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Add, result, terms[m]);
+                result = Operon::MakeSymbolicDerivBinary(dag, memo, Operon::BuiltinOp::Add, result, terms[m]);
             }
             return result;
         }
         if (n.IsMultiplication()) {
             Operon::Vector<std::size_t> terms;
             for (std::size_t m = 0; m < arity; ++m) {
-                auto dm = DiffParam(dag, memo, h, bodyNodes, bodyToLive, children[m], targetParam);
+                auto dm = DiffParam(dag, memo, bodyNodes, bodyToLive, children[m], targetParam);
                 if (dm == DiffZero) {
                     continue;
                 }
@@ -403,32 +314,34 @@ namespace detail {
                     if (l == m) {
                         continue;
                     }
-                    prod = (prod == DiffZero)
-                        ? bodyToLive[children[l]]
-                        : DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, prod, bodyToLive[children[l]]);
+                    prod = (prod == DiffZero) ? bodyToLive[children[l]]
+                                              : Operon::MakeSymbolicDerivBinary(
+                                                    dag, memo, Operon::BuiltinOp::Mul, prod, bodyToLive[children[l]]);
                 }
-                terms.push_back(prod == DiffZero ? dm : DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, dm, prod));
+                terms.push_back(prod == DiffZero
+                        ? dm
+                        : Operon::MakeSymbolicDerivBinary(dag, memo, Operon::BuiltinOp::Mul, dm, prod));
             }
             if (terms.empty()) {
                 return DiffZero;
             }
             auto result = terms[0];
             for (std::size_t m = 1; m < terms.size(); ++m) {
-                result = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Add, result, terms[m]);
+                result = Operon::MakeSymbolicDerivBinary(dag, memo, Operon::BuiltinOp::Add, result, terms[m]);
             }
             return result;
         }
         if (n.IsSubtraction()) {
-            auto dj = DiffParam(dag, memo, h, bodyNodes, bodyToLive, children[0], targetParam);
+            auto dj = DiffParam(dag, memo, bodyNodes, bodyToLive, children[0], targetParam);
             if (arity == 1) {
                 if (dj == DiffZero) {
                     return DiffZero;
                 }
-                auto neg1 = DiffGetConst(dag, memo, h, Operon::Scalar { -1 });
-                return DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, neg1, dj);
+                auto neg1 = Operon::GetSymbolicDerivConst(dag, memo, Operon::Scalar { -1 });
+                return Operon::MakeSymbolicDerivBinary(dag, memo, Operon::BuiltinOp::Mul, neg1, dj);
             }
             // arity == 2 (v1 infix grammar never produces arity > 2 here)
-            auto dk = DiffParam(dag, memo, h, bodyNodes, bodyToLive, children[1], targetParam);
+            auto dk = DiffParam(dag, memo, bodyNodes, bodyToLive, children[1], targetParam);
             if (dj == DiffZero && dk == DiffZero) {
                 return DiffZero;
             }
@@ -436,97 +349,97 @@ namespace detail {
                 return dj;
             }
             if (dj == DiffZero) {
-                auto neg1 = DiffGetConst(dag, memo, h, Operon::Scalar { -1 });
-                return DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, neg1, dk);
+                auto neg1 = Operon::GetSymbolicDerivConst(dag, memo, Operon::Scalar { -1 });
+                return Operon::MakeSymbolicDerivBinary(dag, memo, Operon::BuiltinOp::Mul, neg1, dk);
             }
-            return DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Sub, dj, dk);
+            return Operon::MakeSymbolicDerivBinary(dag, memo, Operon::BuiltinOp::Sub, dj, dk);
         }
         if (n.IsDivision()) {
             if (arity == 1) {
-                auto dj = DiffParam(dag, memo, h, bodyNodes, bodyToLive, children[0], targetParam);
+                auto dj = DiffParam(dag, memo, bodyNodes, bodyToLive, children[0], targetParam);
                 if (dj == DiffZero) {
                     return DiffZero;
                 }
                 auto j = bodyToLive[children[0]];
-                auto j2 = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, j, j);
-                auto neg1 = DiffGetConst(dag, memo, h, Operon::Scalar { -1 });
-                auto negDj = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, neg1, dj);
-                return DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Div, negDj, j2);
+                auto j2 = Operon::MakeSymbolicDerivBinary(dag, memo, Operon::BuiltinOp::Mul, j, j);
+                auto neg1 = Operon::GetSymbolicDerivConst(dag, memo, Operon::Scalar { -1 });
+                auto negDj = Operon::MakeSymbolicDerivBinary(dag, memo, Operon::BuiltinOp::Mul, neg1, dj);
+                return Operon::MakeSymbolicDerivBinary(dag, memo, Operon::BuiltinOp::Div, negDj, j2);
             }
             // a/b: d = (da*b - a*db) / b^2 — arity == 2 only (v1 grammar)
             auto j = bodyToLive[children[0]];
             auto k2 = bodyToLive[children[1]];
-            auto dj = DiffParam(dag, memo, h, bodyNodes, bodyToLive, children[0], targetParam);
-            auto dk = DiffParam(dag, memo, h, bodyNodes, bodyToLive, children[1], targetParam);
+            auto dj = DiffParam(dag, memo, bodyNodes, bodyToLive, children[0], targetParam);
+            auto dk = DiffParam(dag, memo, bodyNodes, bodyToLive, children[1], targetParam);
             if (dj == DiffZero && dk == DiffZero) {
                 return DiffZero;
             }
             if (dk == DiffZero) {
-                return DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Div, dj, k2);
+                return Operon::MakeSymbolicDerivBinary(dag, memo, Operon::BuiltinOp::Div, dj, k2);
             }
-            auto denom = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, k2, k2);
+            auto denom = Operon::MakeSymbolicDerivBinary(dag, memo, Operon::BuiltinOp::Mul, k2, k2);
             std::size_t num = DiffZero;
             if (dj != DiffZero) {
-                num = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, dj, k2);
+                num = Operon::MakeSymbolicDerivBinary(dag, memo, Operon::BuiltinOp::Mul, dj, k2);
             }
             {
-                auto term = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, j, dk);
+                auto term = Operon::MakeSymbolicDerivBinary(dag, memo, Operon::BuiltinOp::Mul, j, dk);
                 if (num == DiffZero) {
-                    auto neg1 = DiffGetConst(dag, memo, h, Operon::Scalar { -1 });
-                    num = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, neg1, term);
+                    auto neg1 = Operon::GetSymbolicDerivConst(dag, memo, Operon::Scalar { -1 });
+                    num = Operon::MakeSymbolicDerivBinary(dag, memo, Operon::BuiltinOp::Mul, neg1, term);
                 } else {
-                    num = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Sub, num, term);
+                    num = Operon::MakeSymbolicDerivBinary(dag, memo, Operon::BuiltinOp::Sub, num, term);
                 }
             }
-            return DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Div, num, denom);
+            return Operon::MakeSymbolicDerivBinary(dag, memo, Operon::BuiltinOp::Div, num, denom);
         }
         if (n.IsPow()) {
             // bodyToLive[k] below is the live dag index DiffCopyBody copied
             // this Pow node's own primal into — already an unweighted fresh
-            // node (DiffMakeBinary(Pow, ...) from DiffCopyBody), semantically
+            // node (MakeSymbolicDerivBinary(Pow, ...) from DiffCopyBody), semantically
             // equivalent to Deriv()'s own hardcoded Pow case in tree_diff.cpp,
             // which recomputes an unweighted Pow(j, k) fresh from children for
             // the same k*ln(j)/j and ln(j) terms.
             auto j = bodyToLive[children[0]];
             auto k2 = bodyToLive[children[1]];
-            auto dj = DiffParam(dag, memo, h, bodyNodes, bodyToLive, children[0], targetParam);
-            auto dk = DiffParam(dag, memo, h, bodyNodes, bodyToLive, children[1], targetParam);
+            auto dj = DiffParam(dag, memo, bodyNodes, bodyToLive, children[0], targetParam);
+            auto dk = DiffParam(dag, memo, bodyNodes, bodyToLive, children[1], targetParam);
             if (dj == DiffZero && dk == DiffZero) {
                 return DiffZero;
             }
             Operon::Vector<std::size_t> terms;
             if (dj != DiffZero) {
-                auto ki = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, k2, bodyToLive[k]);
-                auto term = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Div, ki, j);
-                terms.push_back(DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, dj, term));
+                auto ki = Operon::MakeSymbolicDerivBinary(dag, memo, Operon::BuiltinOp::Mul, k2, bodyToLive[k]);
+                auto term = Operon::MakeSymbolicDerivBinary(dag, memo, Operon::BuiltinOp::Div, ki, j);
+                terms.push_back(Operon::MakeSymbolicDerivBinary(dag, memo, Operon::BuiltinOp::Mul, dj, term));
             }
             if (dk != DiffZero) {
-                auto logJ = DiffMakeUnary(dag, memo, h, Operon::BuiltinOp::Log, j);
-                auto t = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, bodyToLive[k], logJ);
-                terms.push_back(DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, dk, t));
+                auto logJ = Operon::MakeSymbolicDerivUnary(dag, memo, Operon::BuiltinOp::Log, j);
+                auto t = Operon::MakeSymbolicDerivBinary(dag, memo, Operon::BuiltinOp::Mul, bodyToLive[k], logJ);
+                terms.push_back(Operon::MakeSymbolicDerivBinary(dag, memo, Operon::BuiltinOp::Mul, dk, t));
             }
             if (terms.empty()) {
                 return DiffZero;
             }
             auto result = terms[0];
             for (std::size_t m = 1; m < terms.size(); ++m) {
-                result = DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Add, result, terms[m]);
+                result = Operon::MakeSymbolicDerivBinary(dag, memo, Operon::BuiltinOp::Add, result, terms[m]);
             }
             return result;
         }
         // unary built-in with registered symbolic-diff coverage (guaranteed
         // by ValidateSymbolicDiffCoverage at registration time — Aq/Powabs/
         // Fmin/Fmax and unregistered unary ops never reach this point).
-        auto dj = DiffParam(dag, memo, h, bodyNodes, bodyToLive, children[0], targetParam);
+        auto dj = DiffParam(dag, memo, bodyNodes, bodyToLive, children[0], targetParam);
         if (dj == DiffZero) {
             return DiffZero;
         }
         auto const* rule = Operon::GetUnarySymbolicDeriv(n.HashValue);
-        auto fp = (*rule)(dag, memo, h, bodyToLive[k], bodyToLive[children[0]]);
+        auto fp = (*rule)(dag, memo, bodyToLive[k], bodyToLive[children[0]]);
         if (fp == DiffZero) {
             return DiffZero;
         }
-        return DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Mul, fp, dj);
+        return Operon::MakeSymbolicDerivBinary(dag, memo, Operon::BuiltinOp::Mul, fp, dj);
     }
 } // namespace detail
 
@@ -543,14 +456,14 @@ namespace detail {
 inline auto MakeComposedUnarySymbolicDerivRule(Tree const& body) -> UnarySymbolicDerivRule
 {
     auto const& bodyNodes = body.Nodes();
-    return [bodyNodes](detail::DiffNodes& dag, detail::DiffMemo& memo, detail::DiffHashes& h, std::size_t /*i*/,
-               std::size_t j) -> std::size_t {
-        std::array<std::int64_t, kMaxComposedFunctionArity> liveChildIdx {};
-        liveChildIdx[0] = static_cast<std::int64_t>(j);
-        std::vector<std::size_t> bodyToLive(bodyNodes.size());
-        detail::DiffCopyBody(dag, memo, h, bodyNodes, liveChildIdx, bodyToLive);
-        return detail::DiffParam(dag, memo, h, bodyNodes, bodyToLive, bodyNodes.size() - 1, 0);
-    };
+    return
+        [bodyNodes](detail::DiffNodes& dag, detail::DiffMemo& memo, std::size_t /*i*/, std::size_t j) -> std::size_t {
+            std::array<std::int64_t, kMaxComposedFunctionArity> liveChildIdx {};
+            liveChildIdx[0] = static_cast<std::int64_t>(j);
+            std::vector<std::size_t> bodyToLive(bodyNodes.size());
+            detail::DiffCopyBody(dag, memo, bodyNodes, liveChildIdx, bodyToLive);
+            return detail::DiffParam(dag, memo, bodyNodes, bodyToLive, bodyNodes.size() - 1, 0);
+        };
 }
 
 // Binary counterpart, pluggable into Operon::RegisterBinarySymbolicDeriv
@@ -569,16 +482,16 @@ inline auto MakeComposedUnarySymbolicDerivRule(Tree const& body) -> UnarySymboli
 inline auto MakeComposedBinarySymbolicDerivRule(Tree const& body) -> BinarySymbolicDerivRule
 {
     auto const& bodyNodes = body.Nodes();
-    return [bodyNodes](detail::DiffNodes& dag, detail::DiffMemo& memo, detail::DiffHashes& h, std::size_t /*i*/,
-               std::size_t j, std::size_t k) -> std::pair<std::size_t, std::size_t> {
+    return [bodyNodes](detail::DiffNodes& dag, detail::DiffMemo& memo, std::size_t /*i*/, std::size_t j,
+               std::size_t k) -> std::pair<std::size_t, std::size_t> {
         std::array<std::int64_t, kMaxComposedFunctionArity> liveChildIdx {};
         liveChildIdx[0] = static_cast<std::int64_t>(k); // param[0] = far child
         liveChildIdx[1] = static_cast<std::int64_t>(j); // param[1] = near child
         std::vector<std::size_t> bodyToLive(bodyNodes.size());
-        detail::DiffCopyBody(dag, memo, h, bodyNodes, liveChildIdx, bodyToLive);
+        detail::DiffCopyBody(dag, memo, bodyNodes, liveChildIdx, bodyToLive);
         auto const root = bodyNodes.size() - 1;
-        auto fpk = detail::DiffParam(dag, memo, h, bodyNodes, bodyToLive, root, 0); // ∂body/∂param[0] = ∂f/∂k
-        auto fpj = detail::DiffParam(dag, memo, h, bodyNodes, bodyToLive, root, 1); // ∂body/∂param[1] = ∂f/∂j
+        auto fpk = detail::DiffParam(dag, memo, bodyNodes, bodyToLive, root, 0); // ∂body/∂param[0] = ∂f/∂k
+        auto fpj = detail::DiffParam(dag, memo, bodyNodes, bodyToLive, root, 1); // ∂body/∂param[1] = ∂f/∂j
         return { fpj, fpk };
     };
 }

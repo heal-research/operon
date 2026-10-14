@@ -57,12 +57,11 @@ TEST_CASE("User-defined function via registries: recip(x) = 1/x", "[registry][us
     // MakeSymbolicDerivUnary/MakeSymbolicDerivBinary) so this rule gets the
     // same node-sharing behavior every built-in rule gets, without needing
     // to know tree_diff.cpp's internal node-append protocol.
-    RegisterUnarySymbolicDeriv(hash,
-        [](Operon::Vector<Node>& dag, Operon::Map<Operon::Hash, std::size_t>& memo, Operon::Vector<Operon::Hash>& h,
-            std::size_t /*i*/, std::size_t j) -> std::size_t {
-            auto negOne = GetSymbolicDerivConst(dag, memo, h, Scalar { -1 });
-            auto sq = MakeSymbolicDerivUnary(dag, memo, h, BuiltinOp::Square, j);
-            return MakeSymbolicDerivBinary(dag, memo, h, BuiltinOp::Div, negOne,
+    RegisterUnarySymbolicDeriv(
+        hash, [](Operon::Vector<Node>& dag, DerivMemo& memo, std::size_t /*i*/, std::size_t j) -> std::size_t {
+            auto negOne = GetSymbolicDerivConst(dag, memo, Scalar { -1 });
+            auto sq = MakeSymbolicDerivUnary(dag, memo, BuiltinOp::Square, j);
+            return MakeSymbolicDerivBinary(dag, memo, BuiltinOp::Div, negOne,
                 sq); // -1 / x^2, non-commutative — exercises binary child ordering
         });
     REQUIRE(HasUnarySymbolicDeriv(hash));

@@ -10,7 +10,6 @@
 #include <cstdint>
 #include <limits>
 #include <memory_resource>
-#include <numeric>
 #include <optional>
 #include <stdexcept>
 
@@ -23,79 +22,76 @@ namespace Operon {
 namespace {
 
     using Nodes = Operon::Vector<Node>;
-    using Hashes = Operon::Vector<Operon::Hash>;
-    using Memo = Operon::Map<Operon::Hash, std::size_t>;
+    using Memo = DerivMemo;
 
     constexpr std::size_t Zero = std::numeric_limits<std::size_t>::max();
 
-    // Mix two 64-bit hashes (Boost-style but with a larger multiplier). The first argument is salted: unsalted,
-    // Mix(0, 0) == 0 is a fixed point, and NodeType::Constant == BuiltinOp::Add == 0, so the hash of a zero
-    // constant (and of Add(0, 0)) equals the identity hash h[0] == 0 of original node 0. The memo is keyed by
-    // hash alone, so Mul(0, x0) was then taken for Mul(x0, x0) -- reachable whenever the differentiated tree has
-    // a leaf at index 0 next to a literal zero (a zero weight or constant). (composed_function.hpp's DiffMix
-    // carries the same salt.)
-    auto Mix(uint64_t a, uint64_t b) -> uint64_t
+    // The kinds of memoized node (DerivKey::Tag high word); the low word is the BuiltinOp, where there is one.
+    enum class Kind : std::uint64_t { Variable = 1, Constant = 2, Unary = 3, Binary = 4 };
+
+    constexpr auto Tag(Kind kind, std::uint64_t op = 0) -> std::uint64_t
     {
-        a += 0x9e3779b97f4a7c15ULL;
-        return a ^ (b * 0x9e3779b97f4a7c15ULL + (a << 6U) + (a >> 2U));
+        return (static_cast<std::uint64_t>(kind) << 32U) | op;
     }
 
-    // Append a derivative node (always Optimize=false) and record its hash. The node is constructed directly in
-    // the dag's storage (callers fill in the remaining fields through the returned reference): building it in a
-    // temporary and copying it in costs a store-forwarding stall, which showed up as the single hottest line.
-    auto Push(Nodes& dag, Hashes& h, NodeType type, Operon::Hash nodeHash, uint64_t hash) -> Node&
+    // Append a derivative node (always Optimize=false). The node is constructed directly in the dag's storage
+    // (callers fill in the remaining fields through the returned reference): building it in a temporary and
+    // copying it in costs a store-forwarding stall, which showed up as the single hottest line.
+    auto Push(Nodes& dag, NodeType type, Operon::Hash nodeHash) -> Node&
     {
         auto& n = dag.emplace_back(type, nodeHash);
         n.Optimize = false;
-        h.push_back(hash);
         return n;
     }
 
-    // Append a copy of `n` (always Optimize=false) and record its hash.
-    void Push(Nodes& dag, Hashes& h, Node const& n, uint64_t hash)
+    // Identity of operand `a` for hash-consing. A Ref slot stands for its target, so two Ref slots pointing at the
+    // same node are the same operand; a Ref chain keeps its depth, so a Ref never equals its own target.
+    auto Operand(Nodes const& dag, std::size_t a) -> std::uint64_t
     {
-        dag.push_back(n);
-        dag.back().Optimize = false;
-        h.push_back(hash);
+        std::uint64_t depth = 0;
+        while (dag[a].IsRef()) {
+            a = dag[a].RefTo;
+            ++depth;
+        }
+        return (depth << 56U) | a;
     }
 
     // Append a Ref node pointing to `target`; NOT hash-consed (each occurrence
     // occupies its own physical slot adjacent to the parent operator).
-    auto AppendRef(Nodes& dag, Hashes& h, std::size_t target) -> std::size_t
+    auto AppendRef(Nodes& dag, std::size_t target) -> std::size_t
     {
         EXPECT(target <= std::numeric_limits<uint16_t>::max());
-        auto hash = Mix(static_cast<uint64_t>(NodeType::Ref), h[target]);
-        Push(dag, h, NodeType::Ref, Node::DefaultHash(NodeType::Ref), hash).RefTo = static_cast<uint16_t>(target);
+        Push(dag, NodeType::Ref, Node::DefaultHash(NodeType::Ref)).RefTo = static_cast<uint16_t>(target);
         return dag.size() - 1;
     }
 
     // Get or create an unweighted Variable copy of `origNode` (Value=1, Optimize=false).
     // Used for d(w * X_i)/dw = X_i: the unweighted column without the learned weight.
-    auto GetVar(Nodes& dag, Memo& memo, Hashes& h, Node const& origNode, std::size_t origIdx) -> std::size_t
+    auto GetVar(Nodes& dag, Memo& memo, Node const& origNode, std::size_t origIdx) -> std::size_t
     {
-        auto varHash = Mix(static_cast<uint64_t>(NodeType::Variable), Mix(origNode.HashValue, ~origIdx));
-        auto [it, inserted] = memo.try_emplace(varHash, std::size_t { 0 });
+        auto [it, inserted]
+            = memo.try_emplace(DerivKey { Tag(Kind::Variable), origNode.HashValue, origIdx }, std::size_t { 0 });
         if (!inserted) {
             return it->second;
         }
-        Node col = origNode;
-        col.Value = 1.0F;
         auto idx = dag.size();
-        Push(dag, h, col, varHash);
+        auto& col = dag.emplace_back(origNode);
+        col.Value = 1.0F;
+        col.Optimize = false;
         it->second = idx;
         return idx;
     }
 
     // Get or create a constant node with the given value (hash-consed by value).
-    auto GetConst(Nodes& dag, Memo& memo, Hashes& h, Scalar val) -> std::size_t
+    auto GetConst(Nodes& dag, Memo& memo, Scalar val) -> std::size_t
     {
-        auto hash = Mix(static_cast<uint64_t>(NodeType::Constant), std::bit_cast<uint64_t>(static_cast<double>(val)));
-        auto [it, inserted] = memo.try_emplace(hash, std::size_t { 0 });
+        auto const bits = std::bit_cast<std::uint64_t>(static_cast<double>(val));
+        auto [it, inserted] = memo.try_emplace(DerivKey { Tag(Kind::Constant), bits, 0 }, std::size_t { 0 });
         if (!inserted) {
             return it->second;
         }
         auto idx = dag.size();
-        Push(dag, h, NodeType::Constant, Node::DefaultHash(NodeType::Constant), hash).Value = val;
+        Push(dag, NodeType::Constant, Node::DefaultHash(NodeType::Constant)).Value = val;
         it->second = idx;
         return idx;
     }
@@ -103,16 +99,16 @@ namespace {
     // Build unary op(a) where `a` is an existing dag index.
     // Layout appended: [Ref(a), UnaryOp]
     // Hash-consed so that identical expressions share a single node.
-    auto MakeUnary(Nodes& dag, Memo& memo, Hashes& h, BuiltinOp op, std::size_t a) -> std::size_t
+    auto MakeUnary(Nodes& dag, Memo& memo, BuiltinOp op, std::size_t a) -> std::size_t
     {
-        auto opHash = Mix(static_cast<uint64_t>(op), h[a]);
-        auto [it, inserted] = memo.try_emplace(opHash, std::size_t { 0 });
+        auto [it, inserted] = memo.try_emplace(
+            DerivKey { Tag(Kind::Unary, static_cast<std::uint64_t>(op)), Operand(dag, a), 0 }, std::size_t { 0 });
         if (!inserted) {
             return it->second;
         }
-        AppendRef(dag, h, a);
+        AppendRef(dag, a);
         auto idx = dag.size();
-        auto& n = Push(dag, h, NodeType::Function, static_cast<Operon::Hash>(op), opHash);
+        auto& n = Push(dag, NodeType::Function, static_cast<Operon::Hash>(op));
         n.Arity = 1;
         n.Length = 1;
         it->second = idx;
@@ -123,19 +119,20 @@ namespace {
     // and `b` is the "second/farther" child (k) in postfix order.
     // For non-commutative ops: Sub(a,b)=a-b, Div(a,b)=a/b, Pow(a,b)=a^b.
     // Layout appended: [Ref(b), Ref(a), BinaryOp]
-    // Hash-consed; note that Mul(a,b) and Mul(b,a) get different hash keys
+    // Hash-consed; note that Mul(a,b) and Mul(b,a) are different keys
     // (less deduplication but no correctness issue).
-    auto MakeBinary(Nodes& dag, Memo& memo, Hashes& h, BuiltinOp op, std::size_t a, std::size_t b) -> std::size_t
+    auto MakeBinary(Nodes& dag, Memo& memo, BuiltinOp op, std::size_t a, std::size_t b) -> std::size_t
     {
-        auto opHash = Mix(Mix(static_cast<uint64_t>(op), h[a]), h[b]);
-        auto [it, inserted] = memo.try_emplace(opHash, std::size_t { 0 });
+        auto [it, inserted] = memo.try_emplace(
+            DerivKey { Tag(Kind::Binary, static_cast<std::uint64_t>(op)), Operand(dag, a), Operand(dag, b) },
+            std::size_t { 0 });
         if (!inserted) {
             return it->second;
         }
-        AppendRef(dag, h, b); // farther child first
-        AppendRef(dag, h, a); // nearer child second
+        AppendRef(dag, b); // farther child first
+        AppendRef(dag, a); // nearer child second
         auto idx = dag.size();
-        auto& n = Push(dag, h, NodeType::Function, static_cast<Operon::Hash>(op), opHash);
+        auto& n = Push(dag, NodeType::Function, static_cast<Operon::Hash>(op));
         n.Arity = 2;
         n.Length = 2;
         it->second = idx;
@@ -143,14 +140,14 @@ namespace {
     }
 
     // Sum a list of non-zero terms via a left-associative chain of binary Add nodes.
-    auto AddTerms(Nodes& dag, Memo& memo, Hashes& h, Operon::Span<std::size_t const> terms) -> std::size_t
+    auto AddTerms(Nodes& dag, Memo& memo, Operon::Span<std::size_t const> terms) -> std::size_t
     {
         if (terms.empty()) {
             return Zero;
         }
         auto result = terms[0];
         for (std::size_t k = 1; k < terms.size(); ++k) {
-            result = MakeBinary(dag, memo, h, BuiltinOp::Add, result, terms[k]);
+            result = MakeBinary(dag, memo, BuiltinOp::Add, result, terms[k]);
         }
         return result;
     }
@@ -200,118 +197,118 @@ namespace {
             auto& reg = SymbolicDerivRules();
 
             reg.Register(Operon::Hash(BuiltinOp::Exp),
-                [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
-                    return MakeUnary(dag, memo, h, BuiltinOp::Exp, j); // d exp(j)/dj = exp(j), recomputed fresh from j
+                [](Nodes& dag, Memo& memo, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                    return MakeUnary(dag, memo, BuiltinOp::Exp, j); // d exp(j)/dj = exp(j), recomputed fresh from j
                 });
 
             UnarySymbolicDerivRule logRule
-                = [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
-                auto c1 = GetConst(dag, memo, h, Scalar { 1 });
-                return MakeBinary(dag, memo, h, BuiltinOp::Div, c1, j);
+                = [](Nodes& dag, Memo& memo, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                auto c1 = GetConst(dag, memo, Scalar { 1 });
+                return MakeBinary(dag, memo, BuiltinOp::Div, c1, j);
             };
             reg.Register(Operon::Hash(BuiltinOp::Log), logRule);
             reg.Register(Operon::Hash(BuiltinOp::Logabs), logRule);
 
             reg.Register(Operon::Hash(BuiltinOp::Log1p),
-                [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
-                    auto c1 = GetConst(dag, memo, h, Scalar { 1 });
-                    auto onePlusJ = MakeBinary(dag, memo, h, BuiltinOp::Add, c1, j);
-                    return MakeBinary(dag, memo, h, BuiltinOp::Div, c1, onePlusJ);
+                [](Nodes& dag, Memo& memo, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                    auto c1 = GetConst(dag, memo, Scalar { 1 });
+                    auto onePlusJ = MakeBinary(dag, memo, BuiltinOp::Add, c1, j);
+                    return MakeBinary(dag, memo, BuiltinOp::Div, c1, onePlusJ);
                 });
 
             reg.Register(Operon::Hash(BuiltinOp::Sin),
-                [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
-                    return MakeUnary(dag, memo, h, BuiltinOp::Cos, j);
+                [](Nodes& dag, Memo& memo, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                    return MakeUnary(dag, memo, BuiltinOp::Cos, j);
                 });
 
             reg.Register(Operon::Hash(BuiltinOp::Cos),
-                [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
-                    auto sinJ = MakeUnary(dag, memo, h, BuiltinOp::Sin, j);
-                    auto neg1 = GetConst(dag, memo, h, Scalar { -1 });
-                    return MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, sinJ);
+                [](Nodes& dag, Memo& memo, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                    auto sinJ = MakeUnary(dag, memo, BuiltinOp::Sin, j);
+                    auto neg1 = GetConst(dag, memo, Scalar { -1 });
+                    return MakeBinary(dag, memo, BuiltinOp::Mul, neg1, sinJ);
                 });
 
             reg.Register(Operon::Hash(BuiltinOp::Tan),
-                [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
-                    auto c1 = GetConst(dag, memo, h, Scalar { 1 });
-                    auto tanJ = MakeUnary(dag, memo, h, BuiltinOp::Tan, j); // recomputed fresh from j
-                    auto sqJ = MakeUnary(dag, memo, h, BuiltinOp::Square, tanJ);
-                    return MakeBinary(dag, memo, h, BuiltinOp::Add, c1, sqJ);
+                [](Nodes& dag, Memo& memo, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                    auto c1 = GetConst(dag, memo, Scalar { 1 });
+                    auto tanJ = MakeUnary(dag, memo, BuiltinOp::Tan, j); // recomputed fresh from j
+                    auto sqJ = MakeUnary(dag, memo, BuiltinOp::Square, tanJ);
+                    return MakeBinary(dag, memo, BuiltinOp::Add, c1, sqJ);
                 });
 
             reg.Register(Operon::Hash(BuiltinOp::Acos),
-                [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
-                    auto c1 = GetConst(dag, memo, h, Scalar { 1 });
-                    auto sqJ = MakeUnary(dag, memo, h, BuiltinOp::Square, j);
-                    auto denom = MakeBinary(dag, memo, h, BuiltinOp::Sub, c1, sqJ);
-                    auto sqD = MakeUnary(dag, memo, h, BuiltinOp::Sqrt, denom);
-                    auto recip = MakeBinary(dag, memo, h, BuiltinOp::Div, c1, sqD);
-                    auto neg1 = GetConst(dag, memo, h, Scalar { -1 });
-                    return MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, recip);
+                [](Nodes& dag, Memo& memo, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                    auto c1 = GetConst(dag, memo, Scalar { 1 });
+                    auto sqJ = MakeUnary(dag, memo, BuiltinOp::Square, j);
+                    auto denom = MakeBinary(dag, memo, BuiltinOp::Sub, c1, sqJ);
+                    auto sqD = MakeUnary(dag, memo, BuiltinOp::Sqrt, denom);
+                    auto recip = MakeBinary(dag, memo, BuiltinOp::Div, c1, sqD);
+                    auto neg1 = GetConst(dag, memo, Scalar { -1 });
+                    return MakeBinary(dag, memo, BuiltinOp::Mul, neg1, recip);
                 });
 
             reg.Register(Operon::Hash(BuiltinOp::Asin),
-                [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
-                    auto c1 = GetConst(dag, memo, h, Scalar { 1 });
-                    auto sqJ = MakeUnary(dag, memo, h, BuiltinOp::Square, j);
-                    auto denom = MakeBinary(dag, memo, h, BuiltinOp::Sub, c1, sqJ);
-                    auto sqD = MakeUnary(dag, memo, h, BuiltinOp::Sqrt, denom);
-                    return MakeBinary(dag, memo, h, BuiltinOp::Div, c1, sqD);
+                [](Nodes& dag, Memo& memo, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                    auto c1 = GetConst(dag, memo, Scalar { 1 });
+                    auto sqJ = MakeUnary(dag, memo, BuiltinOp::Square, j);
+                    auto denom = MakeBinary(dag, memo, BuiltinOp::Sub, c1, sqJ);
+                    auto sqD = MakeUnary(dag, memo, BuiltinOp::Sqrt, denom);
+                    return MakeBinary(dag, memo, BuiltinOp::Div, c1, sqD);
                 });
 
             reg.Register(Operon::Hash(BuiltinOp::Atan),
-                [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
-                    auto c1 = GetConst(dag, memo, h, Scalar { 1 });
-                    auto sqJ = MakeUnary(dag, memo, h, BuiltinOp::Square, j);
-                    auto denom = MakeBinary(dag, memo, h, BuiltinOp::Add, c1, sqJ);
-                    return MakeBinary(dag, memo, h, BuiltinOp::Div, c1, denom);
+                [](Nodes& dag, Memo& memo, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                    auto c1 = GetConst(dag, memo, Scalar { 1 });
+                    auto sqJ = MakeUnary(dag, memo, BuiltinOp::Square, j);
+                    auto denom = MakeBinary(dag, memo, BuiltinOp::Add, c1, sqJ);
+                    return MakeBinary(dag, memo, BuiltinOp::Div, c1, denom);
                 });
 
             reg.Register(Operon::Hash(BuiltinOp::Sinh),
-                [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
-                    return MakeUnary(dag, memo, h, BuiltinOp::Cosh, j);
+                [](Nodes& dag, Memo& memo, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                    return MakeUnary(dag, memo, BuiltinOp::Cosh, j);
                 });
 
             reg.Register(Operon::Hash(BuiltinOp::Cosh),
-                [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
-                    return MakeUnary(dag, memo, h, BuiltinOp::Sinh, j);
+                [](Nodes& dag, Memo& memo, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                    return MakeUnary(dag, memo, BuiltinOp::Sinh, j);
                 });
 
             reg.Register(Operon::Hash(BuiltinOp::Tanh),
-                [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
-                    auto c1 = GetConst(dag, memo, h, Scalar { 1 });
-                    auto tanhJ = MakeUnary(dag, memo, h, BuiltinOp::Tanh, j); // recomputed fresh from j
-                    auto sqJ = MakeUnary(dag, memo, h, BuiltinOp::Square, tanhJ);
-                    return MakeBinary(dag, memo, h, BuiltinOp::Sub, c1, sqJ);
+                [](Nodes& dag, Memo& memo, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                    auto c1 = GetConst(dag, memo, Scalar { 1 });
+                    auto tanhJ = MakeUnary(dag, memo, BuiltinOp::Tanh, j); // recomputed fresh from j
+                    auto sqJ = MakeUnary(dag, memo, BuiltinOp::Square, tanhJ);
+                    return MakeBinary(dag, memo, BuiltinOp::Sub, c1, sqJ);
                 });
 
             // 1/(2*sqrt(j)), not sqrt(j)/(2*j) — the latter is algebraically
             // equal but introduces a spurious 0/0 at j == 0 that this form
             // (a true +inf singularity, matching real calculus) does not.
             reg.Register(Operon::Hash(BuiltinOp::Sqrt),
-                [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
-                    auto c1 = GetConst(dag, memo, h, Scalar { 1 });
-                    auto c2 = GetConst(dag, memo, h, Scalar { 2 });
-                    auto sqrtJ = MakeUnary(dag, memo, h, BuiltinOp::Sqrt, j); // recomputed fresh from j
-                    auto denom = MakeBinary(dag, memo, h, BuiltinOp::Mul, c2, sqrtJ);
-                    return MakeBinary(dag, memo, h, BuiltinOp::Div, c1, denom);
+                [](Nodes& dag, Memo& memo, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                    auto c1 = GetConst(dag, memo, Scalar { 1 });
+                    auto c2 = GetConst(dag, memo, Scalar { 2 });
+                    auto sqrtJ = MakeUnary(dag, memo, BuiltinOp::Sqrt, j); // recomputed fresh from j
+                    auto denom = MakeBinary(dag, memo, BuiltinOp::Mul, c2, sqrtJ);
+                    return MakeBinary(dag, memo, BuiltinOp::Div, c1, denom);
                 });
 
             // 1/(3*cbrt(j)^2), same singularity-avoidance reasoning as Sqrt above.
             reg.Register(Operon::Hash(BuiltinOp::Cbrt),
-                [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
-                    auto c1 = GetConst(dag, memo, h, Scalar { 1 });
-                    auto c3 = GetConst(dag, memo, h, Scalar { 3 });
-                    auto cbrtJ = MakeUnary(dag, memo, h, BuiltinOp::Cbrt, j); // recomputed fresh from j
-                    auto sqCbrtJ = MakeUnary(dag, memo, h, BuiltinOp::Square, cbrtJ);
-                    auto denom = MakeBinary(dag, memo, h, BuiltinOp::Mul, c3, sqCbrtJ);
-                    return MakeBinary(dag, memo, h, BuiltinOp::Div, c1, denom);
+                [](Nodes& dag, Memo& memo, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                    auto c1 = GetConst(dag, memo, Scalar { 1 });
+                    auto c3 = GetConst(dag, memo, Scalar { 3 });
+                    auto cbrtJ = MakeUnary(dag, memo, BuiltinOp::Cbrt, j); // recomputed fresh from j
+                    auto sqCbrtJ = MakeUnary(dag, memo, BuiltinOp::Square, cbrtJ);
+                    auto denom = MakeBinary(dag, memo, BuiltinOp::Mul, c3, sqCbrtJ);
+                    return MakeBinary(dag, memo, BuiltinOp::Div, c1, denom);
                 });
 
             reg.Register(Operon::Hash(BuiltinOp::Square),
-                [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
-                    auto c2 = GetConst(dag, memo, h, Scalar { 2 });
-                    return MakeBinary(dag, memo, h, BuiltinOp::Mul, c2, j);
+                [](Nodes& dag, Memo& memo, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                    auto c2 = GetConst(dag, memo, Scalar { 2 });
+                    return MakeBinary(dag, memo, BuiltinOp::Mul, c2, j);
                 });
 
             return true;
@@ -389,8 +386,7 @@ namespace {
     };
 
     // Forward declaration for mutual recursion.
-    auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h, std::size_t i, DerivTarget const& target)
-        -> std::size_t;
+    auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, std::size_t i, DerivTarget const& target) -> std::size_t;
 
     // Collect child indices of orig[i] (nearest child first), allocated from `arena`.
     auto ChildIndices(Nodes const& orig, std::size_t i, std::pmr::memory_resource* arena) -> IndexList
@@ -408,7 +404,7 @@ namespace {
     // identity hash - see DerivTarget).
     // Returns the dag index of the result expression, or Zero to signal "zero".
     // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-    auto DerivUncached(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h, std::size_t i, DerivTarget const& target)
+    auto DerivUncached(Nodes const& orig, Nodes& dag, Memo& memo, std::size_t i, DerivTarget const& target)
         -> std::size_t
     {
         auto const& n = orig[i];
@@ -420,7 +416,7 @@ namespace {
         // --- leaves ---
         if (n.IsConstant()) {
             if (target.kind == DerivTarget::Kind::Coefficient && i == target.index) {
-                return GetConst(dag, memo, h, Scalar { 1 });
+                return GetConst(dag, memo, Scalar { 1 });
             }
             return Zero;
         }
@@ -428,20 +424,20 @@ namespace {
             if (target.kind == DerivTarget::Kind::Coefficient) {
                 // d(w * X_i)/dw = X_i
                 if (n.Optimize && i == target.index) {
-                    return GetVar(dag, memo, h, orig[i], i);
+                    return GetVar(dag, memo, orig[i], i);
                 }
                 return Zero;
             }
             // d(w * X)/dX = w; not GetVar (that's d(w*x)/dw's answer)
             if (n.HashValue == target.hash) {
                 auto const w = target.effectiveValues.empty() ? n.Value : target.effectiveValues[i];
-                return GetConst(dag, memo, h, w);
+                return GetConst(dag, memo, w);
             }
             return Zero;
         }
         if (n.IsRef()) {
             // Ref is a structural alias; forward the derivative to its target.
-            return Deriv(orig, dag, memo, h, orig[i].RefTo, target);
+            return Deriv(orig, dag, memo, orig[i].RefTo, target);
         }
 
         // Every Function node's forward evaluation multiplies its op result by
@@ -466,8 +462,8 @@ namespace {
             if (w == Scalar { 1 }) {
                 return x;
             }
-            auto c = GetConst(dag, memo, h, w);
-            return MakeBinary(dag, memo, h, BuiltinOp::Mul, c, x);
+            auto c = GetConst(dag, memo, w);
+            return MakeBinary(dag, memo, BuiltinOp::Mul, c, x);
         };
 
         auto const children = ChildIndices(orig, i, target.arena);
@@ -478,12 +474,12 @@ namespace {
             IndexList terms { target.arena };
             terms.reserve(arity);
             for (auto c : children) {
-                auto dc = Deriv(orig, dag, memo, h, c, target);
+                auto dc = Deriv(orig, dag, memo, c, target);
                 if (dc != Zero) {
                     terms.push_back(dc);
                 }
             }
-            return applyWeight(AddTerms(dag, memo, h, terms));
+            return applyWeight(AddTerms(dag, memo, terms));
         }
 
         // --- n-ary Mul: product rule ---
@@ -491,7 +487,7 @@ namespace {
             IndexList terms { target.arena };
             terms.reserve(arity);
             for (std::size_t m = 0; m < arity; ++m) {
-                auto dm = Deriv(orig, dag, memo, h, children[m], target);
+                auto dm = Deriv(orig, dag, memo, children[m], target);
                 if (dm == Zero) {
                     continue;
                 }
@@ -501,23 +497,23 @@ namespace {
                     if (l == m) {
                         continue;
                     }
-                    prod = (prod == Zero) ? children[l] : MakeBinary(dag, memo, h, BuiltinOp::Mul, prod, children[l]);
+                    prod = (prod == Zero) ? children[l] : MakeBinary(dag, memo, BuiltinOp::Mul, prod, children[l]);
                 }
-                terms.push_back((prod == Zero) ? dm : MakeBinary(dag, memo, h, BuiltinOp::Mul, dm, prod));
+                terms.push_back((prod == Zero) ? dm : MakeBinary(dag, memo, BuiltinOp::Mul, dm, prod));
             }
-            return applyWeight(AddTerms(dag, memo, h, terms));
+            return applyWeight(AddTerms(dag, memo, terms));
         }
 
         // --- Sub ---
         if (n.IsSubtraction()) {
             if (arity == 1) {
                 // Unary minus: -a. d(-a)/dc = -da
-                auto dj = Deriv(orig, dag, memo, h, children[0], target);
+                auto dj = Deriv(orig, dag, memo, children[0], target);
                 if (dj == Zero) {
                     return Zero;
                 }
-                auto neg1 = GetConst(dag, memo, h, Scalar { -1 });
-                return applyWeight(MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, dj));
+                auto neg1 = GetConst(dag, memo, Scalar { -1 });
+                return applyWeight(MakeBinary(dag, memo, BuiltinOp::Mul, neg1, dj));
             }
             // arity >= 2: treat as +first - rest (this covers plain binary
             // subtraction too: with only two children, "the rest" is just the
@@ -526,7 +522,7 @@ namespace {
             IndexList neg { target.arena };
             neg.reserve(arity);
             for (std::size_t m = 0; m < arity; ++m) {
-                auto dm = Deriv(orig, dag, memo, h, children[m], target);
+                auto dm = Deriv(orig, dag, memo, children[m], target);
                 if (dm == Zero) {
                     continue;
                 }
@@ -536,8 +532,8 @@ namespace {
                     neg.push_back(dm);
                 }
             }
-            auto p = AddTerms(dag, memo, h, pos);
-            auto q = AddTerms(dag, memo, h, neg);
+            auto p = AddTerms(dag, memo, pos);
+            auto q = AddTerms(dag, memo, neg);
             if (p == Zero && q == Zero) {
                 return Zero;
             }
@@ -545,55 +541,55 @@ namespace {
                 return applyWeight(p);
             }
             if (p == Zero) {
-                auto neg1 = GetConst(dag, memo, h, Scalar { -1 });
-                return applyWeight(MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, q));
+                auto neg1 = GetConst(dag, memo, Scalar { -1 });
+                return applyWeight(MakeBinary(dag, memo, BuiltinOp::Mul, neg1, q));
             }
-            return applyWeight(MakeBinary(dag, memo, h, BuiltinOp::Sub, p, q));
+            return applyWeight(MakeBinary(dag, memo, BuiltinOp::Sub, p, q));
         }
 
         // --- Div ---
         if (n.IsDivision()) {
             if (arity == 1) {
                 // 1/j: d(1/j)/dc = -dj / j^2
-                auto dj = Deriv(orig, dag, memo, h, children[0], target);
+                auto dj = Deriv(orig, dag, memo, children[0], target);
                 if (dj == Zero) {
                     return Zero;
                 }
                 auto j = children[0];
-                auto j2 = MakeBinary(dag, memo, h, BuiltinOp::Mul, j, j);
-                auto neg1 = GetConst(dag, memo, h, Scalar { -1 });
-                auto negDj = MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, dj);
-                return applyWeight(MakeBinary(dag, memo, h, BuiltinOp::Div, negDj, j2));
+                auto j2 = MakeBinary(dag, memo, BuiltinOp::Mul, j, j);
+                auto neg1 = GetConst(dag, memo, Scalar { -1 });
+                auto negDj = MakeBinary(dag, memo, BuiltinOp::Mul, neg1, dj);
+                return applyWeight(MakeBinary(dag, memo, BuiltinOp::Div, negDj, j2));
             }
             if (arity == 2) {
                 // a/b: d = (da*b - a*db) / b^2
                 auto j = children[0]; // numerator (nearer)
                 auto k = children[1]; // denominator (farther)
-                auto dj = Deriv(orig, dag, memo, h, j, target);
-                auto dk = Deriv(orig, dag, memo, h, k, target);
+                auto dj = Deriv(orig, dag, memo, j, target);
+                auto dk = Deriv(orig, dag, memo, k, target);
                 if (dj == Zero && dk == Zero) {
                     return Zero;
                 }
                 // When only the numerator depends on x, simplify da/b directly.
                 // Avoids (da*b)/b^2 which produces 0*Inf=NaN when b=Inf.
                 if (dk == Zero) {
-                    return applyWeight(MakeBinary(dag, memo, h, BuiltinOp::Div, dj, k));
+                    return applyWeight(MakeBinary(dag, memo, BuiltinOp::Div, dj, k));
                 }
-                auto k2 = MakeBinary(dag, memo, h, BuiltinOp::Mul, k, k);
+                auto k2 = MakeBinary(dag, memo, BuiltinOp::Mul, k, k);
                 std::size_t num = Zero;
                 if (dj != Zero) {
-                    num = MakeBinary(dag, memo, h, BuiltinOp::Mul, dj, k);
+                    num = MakeBinary(dag, memo, BuiltinOp::Mul, dj, k);
                 }
                 {
-                    auto term = MakeBinary(dag, memo, h, BuiltinOp::Mul, j, dk);
+                    auto term = MakeBinary(dag, memo, BuiltinOp::Mul, j, dk);
                     if (num == Zero) {
-                        auto neg1 = GetConst(dag, memo, h, Scalar { -1 });
-                        num = MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, term);
+                        auto neg1 = GetConst(dag, memo, Scalar { -1 });
+                        num = MakeBinary(dag, memo, BuiltinOp::Mul, neg1, term);
                     } else {
-                        num = MakeBinary(dag, memo, h, BuiltinOp::Sub, num, term);
+                        num = MakeBinary(dag, memo, BuiltinOp::Sub, num, term);
                     }
                 }
-                return applyWeight(MakeBinary(dag, memo, h, BuiltinOp::Div, num, k2));
+                return applyWeight(MakeBinary(dag, memo, BuiltinOp::Div, num, k2));
             }
             return Zero; // arity > 2 not yet supported
         }
@@ -602,27 +598,27 @@ namespace {
         if (n.IsPow()) {
             auto j = children[0]; // base (nearer)
             auto k = children[1]; // exponent (farther)
-            auto dj = Deriv(orig, dag, memo, h, j, target);
-            auto dk = Deriv(orig, dag, memo, h, k, target);
+            auto dj = Deriv(orig, dag, memo, j, target);
+            auto dk = Deriv(orig, dag, memo, k, target);
             if (dj == Zero && dk == Zero) {
                 return Zero;
             }
             // Fresh, unweighted j^k, recomputed from children.
-            auto powJK = MakeBinary(dag, memo, h, BuiltinOp::Pow, j, k);
+            auto powJK = MakeBinary(dag, memo, BuiltinOp::Pow, j, k);
             IndexList terms { target.arena };
             if (dj != Zero) {
                 // d/dj: k * j^k / j = k * result / j
-                auto ki = MakeBinary(dag, memo, h, BuiltinOp::Mul, k, powJK); // k * result
-                auto term = MakeBinary(dag, memo, h, BuiltinOp::Div, ki, j);
-                terms.push_back(MakeBinary(dag, memo, h, BuiltinOp::Mul, dj, term));
+                auto ki = MakeBinary(dag, memo, BuiltinOp::Mul, k, powJK); // k * result
+                auto term = MakeBinary(dag, memo, BuiltinOp::Div, ki, j);
+                terms.push_back(MakeBinary(dag, memo, BuiltinOp::Mul, dj, term));
             }
             if (dk != Zero) {
                 // d/dk: j^k * ln(j) = result * log(j)
-                auto logJ = MakeUnary(dag, memo, h, BuiltinOp::Log, j);
-                auto t = MakeBinary(dag, memo, h, BuiltinOp::Mul, powJK, logJ);
-                terms.push_back(MakeBinary(dag, memo, h, BuiltinOp::Mul, dk, t));
+                auto logJ = MakeUnary(dag, memo, BuiltinOp::Log, j);
+                auto t = MakeBinary(dag, memo, BuiltinOp::Mul, powJK, logJ);
+                terms.push_back(MakeBinary(dag, memo, BuiltinOp::Mul, dk, t));
             }
-            return applyWeight(AddTerms(dag, memo, h, terms));
+            return applyWeight(AddTerms(dag, memo, terms));
         }
 
         // --- Aq, Powabs, Fmin, Fmax: not yet differentiated ---
@@ -641,27 +637,27 @@ namespace {
             if (rule != nullptr) {
                 auto j = children[0]; // nearer
                 auto k = children[1]; // farther
-                auto dj = Deriv(orig, dag, memo, h, j, target);
-                auto dk = Deriv(orig, dag, memo, h, k, target);
+                auto dj = Deriv(orig, dag, memo, j, target);
+                auto dk = Deriv(orig, dag, memo, k, target);
                 if (dj == Zero && dk == Zero) {
                     return Zero;
                 }
-                auto [fpj, fpk] = (*rule)(dag, memo, h, i, j, k);
+                auto [fpj, fpk] = (*rule)(dag, memo, i, j, k);
                 IndexList terms { target.arena };
                 if (dj != Zero && fpj != Zero) {
-                    terms.push_back(MakeBinary(dag, memo, h, BuiltinOp::Mul, fpj, dj));
+                    terms.push_back(MakeBinary(dag, memo, BuiltinOp::Mul, fpj, dj));
                 }
                 if (dk != Zero && fpk != Zero) {
-                    terms.push_back(MakeBinary(dag, memo, h, BuiltinOp::Mul, fpk, dk));
+                    terms.push_back(MakeBinary(dag, memo, BuiltinOp::Mul, fpk, dk));
                 }
-                return applyWeight(AddTerms(dag, memo, h, terms));
+                return applyWeight(AddTerms(dag, memo, terms));
             }
         }
 
         // --- unary nodes ---
         if (arity == 1) {
             auto j = children[0];
-            auto dj = Deriv(orig, dag, memo, h, j, target);
+            auto dj = Deriv(orig, dag, memo, j, target);
             if (dj == Zero) {
                 return Zero;
             }
@@ -674,12 +670,12 @@ namespace {
             if (rule == nullptr) {
                 return Zero;
             }
-            auto fp = (*rule)(dag, memo, h, i, j); // symbolic f'(j)
+            auto fp = (*rule)(dag, memo, i, j); // symbolic f'(j)
 
             if (fp == Zero) {
                 return Zero;
             }
-            return applyWeight(MakeBinary(dag, memo, h, BuiltinOp::Mul, fp, dj));
+            return applyWeight(MakeBinary(dag, memo, BuiltinOp::Mul, fp, dj));
         }
 
         return Zero;
@@ -693,27 +689,26 @@ namespace {
     // it linear in the dag and leaves the produced dag identical.
     constexpr std::size_t Uncached = Zero - 1;
 
-    auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h, std::size_t i, DerivTarget const& target)
-        -> std::size_t
+    auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, std::size_t i, DerivTarget const& target) -> std::size_t
     {
         if (target.derivCache.empty()) {
-            return DerivUncached(orig, dag, memo, h, i, target);
+            return DerivUncached(orig, dag, memo, i, target);
         }
         if (auto const cached = target.derivCache[i]; cached != Uncached) {
             return cached;
         }
-        auto const result = DerivUncached(orig, dag, memo, h, i, target);
+        auto const result = DerivUncached(orig, dag, memo, i, target);
         target.derivCache[i] = result;
         return result;
     }
 
-    // Shared first-pass logic: copy original nodes into `dag`, build identity
-    // hashes, collect optimizable constants, and differentiate the tree root
-    // w.r.t. each constant. Returns the constants vector (needed by the Hessian
-    // second pass). The caller owns `dag`, `memo`, and `h` so that BuildHessianDag
-    // can continue appending to them.
-    auto DifferentiateFirstOrder(Tree const& tree, Nodes& dag, Memo& memo, Hashes& h,
-        Operon::Vector<std::size_t>& roots, std::size_t reserveFactor) -> Operon::Vector<std::size_t>
+    // Shared first-pass logic: copy original nodes into `dag`, collect
+    // optimizable constants, and differentiate the tree root w.r.t. each
+    // constant. Returns the constants vector (needed by the Hessian second
+    // pass). The caller owns `dag` and `memo` so that BuildHessianDag can
+    // continue appending to them.
+    auto DifferentiateFirstOrder(Tree const& tree, Nodes& dag, Memo& memo, Operon::Vector<std::size_t>& roots,
+        std::size_t reserveFactor) -> Operon::Vector<std::size_t>
     {
         RegisterBuiltinSymbolicDerivs();
 
@@ -724,11 +719,6 @@ namespace {
         dag.reserve(n * reserveFactor);
 
         memo.clear();
-        h.clear();
-        h.reserve(n * reserveFactor);
-        for (std::size_t i = 0; i < n; ++i) {
-            h.push_back(static_cast<uint64_t>(i));
-        }
 
         Operon::Vector<std::size_t> constants;
         for (std::size_t i = 0; i < n; ++i) {
@@ -740,7 +730,7 @@ namespace {
         roots.resize(constants.size(), Zero);
         for (std::size_t ci = 0; ci < constants.size(); ++ci) {
             DerivTarget const target { .kind = DerivTarget::Kind::Coefficient, .index = constants[ci] };
-            roots[ci] = Deriv(orig, dag, memo, h, n - 1, target);
+            roots[ci] = Deriv(orig, dag, memo, n - 1, target);
         }
 
         return constants;
@@ -809,7 +799,7 @@ namespace {
     // DifferentiateFirstOrder's analog for BuildVariableGradientDag: collects
     // distinct Variable hashes (not per-instance) and differentiates once per
     // distinct hash.
-    auto DifferentiateVariableGradient(Tree const& tree, Nodes& dag, Memo& memo, Hashes& h,
+    auto DifferentiateVariableGradient(Tree const& tree, Nodes& dag, Memo& memo,
         Operon::Vector<Operon::Hash>& variables, Operon::Vector<std::size_t>& roots, Operon::Vector<bool>& certain,
         Operon::Span<Operon::Scalar const> coeff, Operon::Span<Operon::Hash const> variableFilter) -> void
     {
@@ -829,10 +819,6 @@ namespace {
         dag.insert(dag.end(), orig.begin(), orig.end());
 
         memo.clear();
-        h.clear();
-        h.reserve(n * 8);
-        h.resize(n);
-        std::iota(h.begin(), h.end(), uint64_t { 0 });
 
         // One pass over the nodes: collect the distinct (filtered) variable hashes and precompute each node's live
         // weight from coeff, matching how IntervalEvaluator/Interpreter consume it (Optimize==true nodes in
@@ -884,7 +870,7 @@ namespace {
                 .arena = &arena,
                 .derivCache = derivCache,
             };
-            roots[vi] = Deriv(orig, dag, memo, h, n - 1, target);
+            roots[vi] = Deriv(orig, dag, memo, n - 1, target);
         }
     }
 
@@ -946,28 +932,23 @@ auto GetBinarySymbolicDeriv(Operon::Hash hash) -> BinarySymbolicDerivRule const*
     return BinaryDerivRules().TryGet(hash);
 }
 
-auto GetSymbolicDerivConst(Nodes& dag, Memo& memo, Hashes& h, Scalar val) -> std::size_t
+auto GetSymbolicDerivConst(Nodes& dag, Memo& memo, Scalar val) -> std::size_t { return GetConst(dag, memo, val); }
+
+auto MakeSymbolicDerivUnary(Nodes& dag, Memo& memo, BuiltinOp op, std::size_t a) -> std::size_t
 {
-    return GetConst(dag, memo, h, val);
+    return MakeUnary(dag, memo, op, a);
 }
 
-auto MakeSymbolicDerivUnary(Nodes& dag, Memo& memo, Hashes& h, BuiltinOp op, std::size_t a) -> std::size_t
+auto MakeSymbolicDerivBinary(Nodes& dag, Memo& memo, BuiltinOp op, std::size_t a, std::size_t b) -> std::size_t
 {
-    return MakeUnary(dag, memo, h, op, a);
-}
-
-auto MakeSymbolicDerivBinary(Nodes& dag, Memo& memo, Hashes& h, BuiltinOp op, std::size_t a, std::size_t b)
-    -> std::size_t
-{
-    return MakeBinary(dag, memo, h, op, a, b);
+    return MakeBinary(dag, memo, op, a, b);
 }
 
 auto BuildJacobianDag(Tree const& tree) -> JacobianDag
 {
     JacobianDag dag;
     Memo memo;
-    Hashes h;
-    DifferentiateFirstOrder(tree, dag.Nodes, memo, h, dag.Roots, 8);
+    DifferentiateFirstOrder(tree, dag.Nodes, memo, dag.Roots, 8);
     dag.OriginalSize = tree.Nodes().size();
     return dag;
 }
@@ -976,8 +957,7 @@ auto BuildHessianDag(Tree const& tree) -> HessianDag
 {
     HessianDag result;
     Memo memo;
-    Hashes h;
-    auto const constants = DifferentiateFirstOrder(tree, result.Nodes, memo, h, result.JacobianRoots, 32);
+    auto const constants = DifferentiateFirstOrder(tree, result.Nodes, memo, result.JacobianRoots, 32);
 
     result.OriginalSize = tree.Nodes().size();
     auto const p = constants.size();
@@ -997,7 +977,7 @@ auto BuildHessianDag(Tree const& tree) -> HessianDag
         for (std::size_t j = i; j < p; ++j) {
             DerivTarget const target { .kind = DerivTarget::Kind::Coefficient, .index = constants[j] };
             result.HessianRoots[result.UpperIdx(i, j)]
-                = Deriv(snapshot, result.Nodes, memo, h, result.JacobianRoots[i], target);
+                = Deriv(snapshot, result.Nodes, memo, result.JacobianRoots[i], target);
         }
     }
 
@@ -1007,18 +987,16 @@ auto BuildHessianDag(Tree const& tree) -> HessianDag
 auto BuildVariableGradientDag(Tree const& tree, Operon::Span<Operon::Scalar const> coeff,
     Operon::Span<Operon::Hash const> variableFilter) -> VariableGradientDag
 {
-    // The hash-consing table and the hash array are pure scratch (nothing from them escapes into the result), so
-    // every thread keeps one pair alive across calls instead of regrowing them each time. Derivative rules are
-    // arbitrary user callbacks, so a nested call made while the pair is leased falls back to a private pair.
+    // The hash-consing table is pure scratch (nothing from it escapes into the result), so every thread keeps one
+    // alive across calls instead of regrowing it each time. Derivative rules are arbitrary user callbacks, so a
+    // nested call made while it is leased falls back to a private one.
     struct Scratch {
         Memo memo;
-        Hashes h;
         bool busy { false };
     };
     // Bounds on what a thread retains after a call, so one huge tree doesn't pin memory or make every later
     // memo.clear() memset a huge bucket array.
     constexpr std::size_t MaxRetainedBuckets = 1U << 12U;
-    constexpr std::size_t MaxRetainedHashes = 1U << 14U;
     thread_local Scratch shared;
 
     struct Lease {
@@ -1041,13 +1019,10 @@ auto BuildVariableGradientDag(Tree const& tree, Operon::Span<Operon::Scalar cons
             if (scratch.memo.bucket_count() > MaxRetainedBuckets) {
                 scratch.memo = Memo {};
             }
-            if (scratch.h.capacity() > MaxRetainedHashes) {
-                scratch.h = Hashes {};
-            }
         }
     };
 
-    // The private pair is only built on the (rare) nested-call path: a default-constructed Memo allocates buckets.
+    // The private table is only built on the (rare) nested-call path: a default-constructed Memo allocates buckets.
     std::optional<Scratch> fallback;
     bool const useShared = !shared.busy;
     if (!useShared) {
@@ -1056,8 +1031,8 @@ auto BuildVariableGradientDag(Tree const& tree, Operon::Span<Operon::Scalar cons
     Lease const lease { useShared ? shared : *fallback, useShared };
 
     VariableGradientDag dag;
-    DifferentiateVariableGradient(tree, dag.Nodes, lease.scratch.memo, lease.scratch.h, dag.Variables, dag.Roots,
-        dag.Certain, coeff, variableFilter);
+    DifferentiateVariableGradient(
+        tree, dag.Nodes, lease.scratch.memo, dag.Variables, dag.Roots, dag.Certain, coeff, variableFilter);
     dag.OriginalSize = tree.Nodes().size();
     return dag;
 }
