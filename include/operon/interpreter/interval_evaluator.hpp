@@ -268,7 +268,9 @@ private:
     {
         auto const& nodes = nodes_;
         domainSlots_.clear();
-        domainSlots_.reserve(nodes.size());
+        if (domainSlots_.capacity() < nodes.size()) {
+            domainSlots_.reserve(std::max<std::size_t>(nodes.size(), 2 * domainSlots_.capacity()));
+        }
         for (auto const& node : nodes) {
             auto const it = node.Type == NodeType::Variable ? domains_.find(node.HashValue) : domains_.end();
             domainSlots_.push_back(it == domains_.end() ? DomainSlot {} : DomainSlot { it->second, true });

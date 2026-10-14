@@ -336,6 +336,9 @@ namespace {
         // Scratch memory for the transient child/term index lists built while recursing. BuildVariableGradientDag
         // points this at a per-call monotonic arena; the default is plain heap allocation.
         std::pmr::memory_resource* arena { std::pmr::get_default_resource() };
+        // VariableValue mode: derivCache[i] holds the finished result of Deriv() for node i (Uncached while pending),
+        // or is empty to disable caching. Only worth enabling when the source has Ref nodes (see Deriv()).
+        Operon::Span<std::size_t> derivCache {};
     };
 
     // Index list for the transient child/term lists built while recursing. Almost every list has at most a handful
@@ -405,7 +408,7 @@ namespace {
     // identity hash - see DerivTarget).
     // Returns the dag index of the result expression, or Zero to signal "zero".
     // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-    auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h, std::size_t i, DerivTarget const& target)
+    auto DerivUncached(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h, std::size_t i, DerivTarget const& target)
         -> std::size_t
     {
         auto const& n = orig[i];
@@ -682,6 +685,28 @@ namespace {
         return Zero;
     }
 
+    // Deriv() is a pure function of (i, target) over hash-consed dag construction: a second call for the same node
+    // re-walks the node's whole subtree, finds every derivative node already in `memo` and returns the same index
+    // without appending anything. When the source holds Ref nodes (a shared subexpression is reachable through
+    // several parents, e.g. a derivative dag being differentiated again) that re-walk is repeated once per
+    // reference, so the walk costs the unfolded tree rather than the dag. Caching the result per source node makes
+    // it linear in the dag and leaves the produced dag identical.
+    constexpr std::size_t Uncached = Zero - 1;
+
+    auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h, std::size_t i, DerivTarget const& target)
+        -> std::size_t
+    {
+        if (target.derivCache.empty()) {
+            return DerivUncached(orig, dag, memo, h, i, target);
+        }
+        if (auto const cached = target.derivCache[i]; cached != Uncached) {
+            return cached;
+        }
+        auto const result = DerivUncached(orig, dag, memo, h, i, target);
+        target.derivCache[i] = result;
+        return result;
+    }
+
     // Shared first-pass logic: copy original nodes into `dag`, build identity
     // hashes, collect optimizable constants, and differentiate the tree root
     // w.r.t. each constant. Returns the constants vector (needed by the Hessian
@@ -819,9 +844,11 @@ namespace {
         if (haveCoeff) {
             effectiveValues.resize(n);
         }
+        bool hasRef = false;
         std::size_t ci = 0;
         for (std::size_t i = 0; i < n; ++i) {
             auto const& nd = orig[i];
+            hasRef = hasRef || nd.IsRef();
             if (haveCoeff) {
                 bool const optimized = nd.Optimize;
                 effectiveValues[i] = optimized ? coeff[std::min(ci, coeff.size() - 1)] : nd.Value;
@@ -839,15 +866,23 @@ namespace {
 
         roots.resize(variables.size(), Zero);
         certain.resize(variables.size(), true);
+        std::pmr::vector<std::uint8_t> depends(n, &arena);
+        std::pmr::vector<std::size_t> derivCache { &arena };
+        if (hasRef) {
+            derivCache.resize(n);
+        }
         for (std::size_t vi = 0; vi < variables.size(); ++vi) {
-            std::pmr::vector<std::uint8_t> depends(n, &arena);
             certain[vi] = !AnalyzeDependence(orig, variables[vi], depends);
+            if (hasRef) {
+                std::ranges::fill(derivCache, Uncached);
+            }
             DerivTarget const target {
                 .kind = DerivTarget::Kind::VariableValue,
                 .hash = variables[vi],
                 .effectiveValues = effectiveValues,
                 .dependsOnTarget = depends,
                 .arena = &arena,
+                .derivCache = derivCache,
             };
             roots[vi] = Deriv(orig, dag, memo, h, n - 1, target);
         }
@@ -1025,6 +1060,62 @@ auto BuildVariableGradientDag(Tree const& tree, Operon::Span<Operon::Scalar cons
         dag.Certain, coeff, variableFilter);
     dag.OriginalSize = tree.Nodes().size();
     return dag;
+}
+
+auto SliceDagRoot(Operon::Span<Node const> nodes, std::size_t root) -> Tree
+{
+    EXPECT(root < nodes.size());
+
+    constexpr auto Dead = std::numeric_limits<std::uint32_t>::max();
+    alignas(std::max_align_t) std::array<std::byte, 8192> buffer;
+    std::pmr::monotonic_buffer_resource arena { buffer.data(), buffer.size() };
+    // slot[i] == Dead: node i is not needed. Otherwise it is live; the marking pass leaves 0 there and the
+    // compaction pass replaces it with the node's new index.
+    std::pmr::vector<std::uint32_t> slot(root + 1, Dead, &arena);
+    // Ref targets still to be marked. Each node is marked once and so queues at most one target.
+    std::pmr::vector<std::uint32_t> pending(root + 2, &arena);
+    std::size_t pendingCount = 0;
+
+    // Every live region is a complete postfix subtree, [t - Length, t], so a live node always has its own subtree
+    // live too and a Ref target that is already live needs no further marking. Whether a node is a Ref, or live,
+    // is unpredictable, so the per-node work below is branch-free.
+    std::size_t liveCount = 0;
+    auto const markSubtree = [&](std::size_t t) {
+        if (slot[t] != Dead) {
+            return;
+        }
+        for (auto k = t - nodes[t].Length; k <= t; ++k) {
+            auto const fresh = slot[k] == Dead;
+            liveCount += static_cast<std::size_t>(fresh);
+            slot[k] = 0;
+            pending[pendingCount] = nodes[k].RefTo;
+            pendingCount += static_cast<std::size_t>(fresh & nodes[k].IsRef());
+        }
+    };
+    markSubtree(root);
+    while (pendingCount > 0) {
+        markSubtree(pending[--pendingCount]);
+    }
+
+    // Compaction: every node is copied to the next free slot, which only advances past live ones, so a dead
+    // node's copy is simply overwritten. The root is live and last, hence `next` is below liveCount whenever a dead
+    // node is copied.
+    Operon::Vector<Node> sliced(liveCount);
+    std::size_t next = 0;
+    for (std::size_t i = 0; i <= root; ++i) {
+        auto const live = slot[i] != Dead;
+        sliced[next] = nodes[i];
+        slot[i] = static_cast<std::uint32_t>(next);
+        next += static_cast<std::size_t>(live);
+    }
+    for (auto& n : sliced) {
+        auto const isRef = n.IsRef();
+        auto const target = slot[isRef ? n.RefTo : 0];
+        n.RefTo = isRef ? static_cast<std::uint16_t>(target) : n.RefTo;
+    }
+    Tree tree(std::move(sliced));
+    tree.UpdateNodes();
+    return tree;
 }
 
 } // namespace Operon

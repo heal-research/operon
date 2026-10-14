@@ -4,6 +4,7 @@
 #ifndef OPERON_POSTORDER_EVALUATOR_HPP
 #define OPERON_POSTORDER_EVALUATOR_HPP
 
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <utility>
@@ -30,7 +31,11 @@ auto EvaluatePostOrder(Nodes const& nodes, Primal& primal, typename Policy::Cont
     }
 
     primal.clear();
-    primal.reserve(nodes.size());
+    // Geometric growth: an evaluator retargeted at ever-larger node sequences (SetTree/SetNodes on a shared
+    // evaluator) would otherwise reallocate its buffer on every new maximum.
+    if (primal.capacity() < nodes.size()) {
+        primal.reserve(std::max<std::size_t>(nodes.size(), 2 * primal.capacity()));
+    }
 
     auto const fold = [&](std::size_t index, std::optional<Value> initial, auto operation) -> Value {
         auto accumulator = std::move(initial);

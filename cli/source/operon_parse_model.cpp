@@ -152,11 +152,6 @@ auto FitScale(cxxopts::ParseResult const& result, Operon::Tree const& model, Ope
         : std::pair { Operon::Scalar { 1 }, Operon::Scalar { 0 } };
 }
 
-// Duplicated from shape_constrained_evaluator.cpp's anonymous-namespace
-// helper of the same name (same Ref-node-DAG-slicing idiom as the
-// tree_diff tests) -- not exported from that translation unit, and this
-// is a ~6-line utility, so a local copy is cheaper than exporting a
-// private implementation detail across a module boundary for one caller.
 constexpr std::size_t noGrad = std::numeric_limits<std::size_t>::max();
 
 auto SliceToTree(Operon::VariableGradientDag const& dag, std::size_t root) -> std::optional<Operon::Tree>
@@ -164,10 +159,7 @@ auto SliceToTree(Operon::VariableGradientDag const& dag, std::size_t root) -> st
     if (root == noGrad) {
         return std::nullopt;
     }
-    Operon::Vector<Operon::Node> sliced(dag.Nodes.begin(), dag.Nodes.begin() + static_cast<std::ptrdiff_t>(root) + 1);
-    Operon::Tree t(std::move(sliced));
-    t.UpdateNodes();
-    return t;
+    return Operon::SliceDagRoot(dag.Nodes, root);
 }
 
 auto VariableIndex(Operon::VariableGradientDag const& dag, Operon::Hash variable) -> std::optional<std::size_t>
@@ -201,7 +193,8 @@ auto ConstraintTreeFor(Operon::ShapeConstraint const& c, Operon::Tree const& mod
     if (c.Op == Operon::ShapeConstraintOp::FirstDerivative || !d1) {
         return d1;
     }
-    auto dag2 = Operon::BuildVariableGradientDag(*d1, d1->GetCoefficients());
+    auto dag2 = Operon::BuildVariableGradientDag(
+        *d1, d1->GetCoefficients(), Operon::Span<Operon::Hash const> { &variable, 1 });
     auto const i2 = VariableIndex(dag2, variable);
     if (!i2 || !dag2.Certain[*i2]) {
         return std::nullopt;
