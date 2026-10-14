@@ -784,6 +784,21 @@ auto MakeStrategies() -> std::vector<StrategySpec>
              }
              return Allocation { WidestFirstSplits(score, IdentityOrder(c.Axes.size()), c.Depth), 0, 0 };
          } });
+    // dep_sq with ties broken by the smaller variable hash instead of first appearance: what
+    // IntervalSubdivisionPlan::Make does, independent of how the tree is laid out.
+    strategies.push_back({ "dep_sq_hash", true, [](StrategyContext const& c) {
+                              auto score = AxisWidths(c.Axes);
+                              if (std::ranges::any_of(c.Axes, [](auto const& a) { return a.Occurrences > 1.0; })) {
+                                  for (std::size_t i = 0; i < score.size(); ++i) {
+                                      auto const extra = std::max(c.Axes[i].Occurrences - 1.0, 0.0);
+                                      score[i] *= extra * extra;
+                                  }
+                              }
+                              auto order = IdentityOrder(c.Axes.size());
+                              std::ranges::sort(
+                                  order, [&](std::size_t a, std::size_t b) { return c.Axes[a].Hash < c.Axes[b].Hash; });
+                              return Allocation { WidestFirstSplits(score, order, c.Depth), 0, 0 };
+                          } });
     // smear weighted by (occurrences - 1): sensitivity times dependency.
     strategies.push_back(
         { "smear_dep", true, [](StrategyContext const& c) {

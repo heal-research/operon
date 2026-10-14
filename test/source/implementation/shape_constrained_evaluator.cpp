@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <map>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -389,8 +390,8 @@ namespace {
     // referenced axis, the same widest-axis-pick + uniform-split algorithm as the wide<T>-batched path, every leaf
     // evaluated through IntervalEvaluator<Operon::Scalar> in a plain loop -- an independent cross-check of the SIMD
     // path. For more than one referenced axis, production itself evaluates scalar-only (no wide<T> arithmetic has a
-    // soundness proof yet for a multi-axis endpoint pattern), so this mirrors production's own balanced greedy-widest-
-    // axis schedule leaf-for-leaf; this is the CI-active twin of the soundness cross-check that until now lived only
+    // soundness proof yet for a multi-axis endpoint pattern), so this evaluates production's own balanced schedule
+    // leaf-for-leaf; this is the CI-active twin of the soundness cross-check that until now lived only
     // in test/source/performance/shape_bisection.cpp (excluded from ctest via "~[performance]").
     auto ScalarBisectedBound(Operon::Tree const& tree, Operon::IntervalEvaluator<Operon::Scalar>::DomainMap const& dom,
         int depth) -> std::pair<Operon::Scalar, Operon::Scalar>
@@ -406,50 +407,21 @@ namespace {
             return directBound();
         }
 
-        std::vector<Operon::Hash> axes;
-        std::vector<Operon::Scalar> widths;
-        for (auto const& n : tree.Nodes()) {
-            if (!n.IsVariable() || std::ranges::find(axes, n.HashValue) != axes.end()) {
-                continue;
-            }
-            auto const it = dom.find(n.HashValue);
-            if (it == dom.end()) {
-                continue;
-            }
-            auto const width = it->second.second - it->second.first;
-            if (width <= Operon::Scalar { 0 }) {
-                continue;
-            }
-            axes.push_back(n.HashValue);
-            widths.push_back(width);
-        }
-        if (axes.empty()) {
+        // The production schedule itself (how often each variable's domain is halved): this reference checks the
+        // leaf evaluation (packed lanes vs scalar), not the choice of schedule.
+        auto const planned = Operon::detail::BisectionSplits(tree, dom, depth);
+        if (planned.empty()) {
             return directBound();
         }
-
-        // Mirrors BisectedIntervalBound's own materially lower cap for the
-        // unbatched multi-axis sweep.
-        constexpr int MaxMultiAxisBisectionDepth = 12;
-        auto const effectiveDepth = axes.size() > 1 ? std::min(depth, MaxMultiAxisBisectionDepth) : depth;
-
+        std::vector<Operon::Hash> axes;
+        std::vector<int> splits;
         std::vector<std::size_t> schedule;
-        schedule.reserve(static_cast<std::size_t>(effectiveDepth));
-        for (int level = 0; level < effectiveDepth; ++level) {
-            auto selected = std::size_t { 0 };
-            for (std::size_t axis = 1; axis < axes.size(); ++axis) {
-                if (widths[axis] > widths[selected]) {
-                    selected = axis;
-                }
-            }
-            schedule.push_back(selected);
-            widths[selected] /= Operon::Scalar { 2 };
+        for (auto const& [axis, count] : planned) {
+            schedule.insert(schedule.end(), static_cast<std::size_t>(count), axes.size());
+            axes.push_back(axis);
+            splits.push_back(count);
         }
-
-        auto const nLeaves = std::size_t { 1 } << effectiveDepth;
-        std::vector<int> splits(axes.size());
-        for (auto axis : schedule) {
-            ++splits[axis];
-        }
+        auto const nLeaves = std::size_t { 1 } << schedule.size();
         auto const coeff = tree.GetCoefficients();
 
         Operon::Scalar resLo = std::numeric_limits<Operon::Scalar>::infinity();
@@ -2444,6 +2416,105 @@ TEST_CASE("ShapeCertifier - second-derivative bounds enclose the true range in e
             CHECK(static_cast<double>(summary.Measurements[0].Bound->first) <= lo + 1e-4);
             CHECK(static_cast<double>(summary.Measurements[0].Bound->second) >= hi - 1e-4);
         }
+    }
+}
+
+namespace {
+    // The schedule of `expr` over [0.75, 1.25] x [0.75, 1.25] (or the given widths), as halvings per variable name.
+    auto PlannedSplits(std::string const& expr, int depth, Operon::Scalar width1 = Operon::Scalar { 0.5 },
+        Operon::Scalar width2 = Operon::Scalar { 0.5 }) -> std::map<std::string, int>
+    {
+        Eigen::Array<Operon::Scalar, -1, -1> data(2, 3);
+        data << Operon::Scalar { 0.75 }, Operon::Scalar { 0.75 }, Operon::Scalar { 0 }, Operon::Scalar { 1.25 },
+            Operon::Scalar { 1.25 }, Operon::Scalar { 0 };
+        Operon::Dataset ds(gsl::not_null { data.data() }, 2, 3);
+        auto const tree = Operon::InfixParser::ParseOrThrow(expr, ds);
+        auto const x1 = ds.GetVariable("X1").value().Hash;
+        auto const x2 = ds.GetVariable("X2").value().Hash;
+        Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> domains {
+            { x1, { Operon::Scalar { 0.75 }, Operon::Scalar { 0.75 } + width1 } },
+            { x2, { Operon::Scalar { 0.75 }, Operon::Scalar { 0.75 } + width2 } },
+        };
+        std::map<std::string, int> result;
+        for (auto const& [axis, count] : detail::BisectionSplits(tree, domains, depth)) {
+            result[axis == x1 ? "X1" : "X2"] = count;
+        }
+        return result;
+    }
+} // namespace
+
+TEST_CASE("Bisection schedule spends the splits on variables that occur repeatedly", "[shape-constraints][bisection]")
+{
+    // X1 occurs twice and X2 once, so X2 is enclosed exactly and every split goes to X1, whichever variable is
+    // wider and wherever it appears in the tree.
+    for (auto const* expr : { "X1 + X2 * (X1 - 0.9) ^ 4", "X2 * (X1 - 0.9) ^ 4 + X1", "X1 * X1 + X2" }) {
+        for (int const depth : { 1, 3, 6 }) {
+            INFO(expr << " depth " << depth);
+            auto const equalWidths = PlannedSplits(expr, depth);
+            CHECK(equalWidths == std::map<std::string, int> { { "X1", depth } });
+            auto const wideSingle = PlannedSplits(expr, depth, Operon::Scalar { 0.5 }, Operon::Scalar { 8 });
+            CHECK(wideSingle == std::map<std::string, int> { { "X1", depth } });
+        }
+    }
+}
+
+TEST_CASE("Bisection schedule is widest-first when no variable repeats", "[shape-constraints][bisection]")
+{
+    // X1 over width 4 and X2 over width 1: three halvings of X1 equalise the widths, so depth 3 is all X1 and
+    // depth 5 is X1 x4 / X2 x1 (4 -> 0.25 vs 1 -> 0.5 after four, then the fifth goes to X2).
+    CHECK(PlannedSplits("X1 + X2", 3, Operon::Scalar { 4 }, Operon::Scalar { 1 })
+        == std::map<std::string, int> { { "X1", 3 } });
+    CHECK(PlannedSplits("X1 * X2", 5, Operon::Scalar { 4 }, Operon::Scalar { 1 })
+        == std::map<std::string, int> { { "X1", 4 }, { "X2", 1 } });
+}
+
+TEST_CASE("Bisection schedule does not depend on how the tree is laid out", "[shape-constraints][bisection]")
+{
+    // Equal widths and equal occurrence counts: the tie goes to the variable with the smaller hash, so swapping the
+    // operands (which swaps first appearance) cannot change which variable gets the extra split.
+    for (int const depth : { 1, 3, 5 }) {
+        INFO("depth " << depth);
+        CHECK(PlannedSplits("X1 * X2", depth) == PlannedSplits("X2 * X1", depth));
+        CHECK(PlannedSplits("sin(X1) + cos(X2)", depth) == PlannedSplits("cos(X2) + sin(X1)", depth));
+    }
+}
+
+TEST_CASE("Bisection schedule counts variables in the expanded expression", "[shape-constraints][bisection]")
+{
+    Eigen::Array<Operon::Scalar, -1, -1> data(2, 3);
+    data << Operon::Scalar { 0.75 }, Operon::Scalar { 0.75 }, Operon::Scalar { 0 }, Operon::Scalar { 1.25 },
+        Operon::Scalar { 1.25 }, Operon::Scalar { 0 };
+    Operon::Dataset ds(gsl::not_null { data.data() }, 2, 3);
+    auto const x1 = ds.GetVariable("X1").value().Hash;
+    auto const x2 = ds.GetVariable("X2").value().Hash;
+    Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> domains {
+        { x1, { Operon::Scalar { 0.75 }, Operon::Scalar { 1.25 } } },
+        { x2, { Operon::Scalar { 0.75 }, Operon::Scalar { 1.25 } } },
+    };
+    auto const variable = [](Operon::Hash hash) { return Node { NodeType::Variable, hash }; };
+    auto const function
+        = [](BuiltinOp op, std::size_t arity) { return Node::Function(static_cast<Operon::Hash>(op), arity); };
+    auto const splits = [&](Operon::Vector<Node> nodes, int depth) {
+        Tree tree { std::move(nodes) };
+        tree.UpdateNodes();
+        return detail::BisectionSplits(tree, domains, depth);
+    };
+
+    SECTION("a Ref slot counts as the subtree it points at")
+    {
+        // X2 + X1 * X1, the second X1 written as a Ref slot: X1 occurs twice in the expanded expression, X2 once.
+        auto const result = splits(
+            { variable(x2), variable(x1), Node::Ref(1), function(BuiltinOp::Mul, 2), function(BuiltinOp::Add, 2) }, 4);
+        REQUIRE(result.size() == 1);
+        CHECK(result[0] == std::pair { x1, 4 });
+    }
+
+    SECTION("a variable the root does not reach takes no axis")
+    {
+        // [X2, X1]: the root is X1 alone; X2 is a dead node.
+        auto const result = splits({ variable(x2), variable(x1) }, 3);
+        REQUIRE(result.size() == 1);
+        CHECK(result[0] == std::pair { x1, 3 });
     }
 }
 
