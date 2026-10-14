@@ -174,4 +174,12 @@ struct VariableGradientDag {
 OPERON_EXPORT auto BuildVariableGradientDag(Tree const& tree, Operon::Span<Operon::Scalar const> coeff = {},
     Operon::Span<Operon::Hash const> variableFilter = {}) -> VariableGradientDag;
 
+// Extracts the expression that computes `nodes[root]` from a dag built by BuildJacobianDag/BuildHessianDag/
+// BuildVariableGradientDag (`dag.Nodes`) as a standalone Tree. Unlike a plain prefix copy `[0, root]`, only the nodes
+// `root` actually depends on are kept (its own postfix span plus, transitively, the span of every Ref target); the
+// derivative nodes created for other roots and the original-tree nodes nothing refers to are dropped, and Ref
+// targets are renumbered. The nodes keep their relative order, so evaluating the result performs the same
+// operations in the same order as evaluating `root` inside the full dag.
+OPERON_EXPORT auto SliceDagRoot(Operon::Span<Node const> nodes, std::size_t root) -> Tree;
+
 } // namespace Operon

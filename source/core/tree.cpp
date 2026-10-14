@@ -288,6 +288,7 @@ auto Tree::Sort() -> Tree&
 auto Tree::GetCoefficients() const -> std::vector<Operon::Scalar>
 {
     std::vector<Operon::Scalar> coefficients;
+    coefficients.reserve(static_cast<std::size_t>(CoefficientsCount()));
     for (auto const& n : nodes_) {
         if (n.Optimize) {
             coefficients.push_back(n.Value);

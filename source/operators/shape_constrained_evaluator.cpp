@@ -48,10 +48,7 @@ namespace {
         if (root == NoGrad) {
             return std::nullopt;
         }
-        Operon::Vector<Node> sliced(dag.Nodes.begin(), dag.Nodes.begin() + static_cast<std::ptrdiff_t>(root) + 1);
-        Tree t(std::move(sliced));
-        t.UpdateNodes();
-        return t;
+        return SliceDagRoot(dag.Nodes, root);
     }
 
     auto VariableIndex(VariableGradientDag const& dag, Operon::Hash variable) -> std::optional<std::size_t>
@@ -425,8 +422,8 @@ namespace {
     //
     // dag1 is the first-order gradient-dag of `tree`, built once per bound set by the caller and shared across
     // every derivative constraint in it (pure function of tree/coeff, independent of which variable). dag2
-    // (SecondDerivative) is still built per-call from the sliced first-derivative tree `d1`, which IS
-    // variable-specific.
+    // (SecondDerivative) is still built per-call from the first-derivative tree `d1` (SliceDagRoot of dag1's root for
+    // `variable`, so it holds only the nodes that root depends on), which IS variable-specific.
     template <typename Evaluator>
     auto BoundFor(ShapeConstraintOp op, Operon::Hash variable, Evaluator& evaluator, VariableGradientDag const& dag1,
         ShapeBoundOptions const& opts) -> BoundResult
@@ -452,7 +449,10 @@ namespace {
         if (!d1) {
             return zero();
         }
-        auto dag2 = BuildVariableGradientDag(*d1, d1->GetCoefficients());
+        // Only `variable`'s derivative is used, so only it is differentiated (an unfiltered dag2 would also
+        // differentiate d1 w.r.t. every other variable of the tree and leave their nodes in front of this root). No
+        // coefficient span: d1 is a standalone tree whose Optimize nodes already hold the live coefficient values.
+        auto dag2 = BuildVariableGradientDag(*d1, {}, Operon::Span<Operon::Hash const> { &variable, 1 });
         auto const i2 = VariableIndex(dag2, variable);
         if (!i2) {
             return zero();

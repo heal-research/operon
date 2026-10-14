@@ -1526,10 +1526,7 @@ TEST_CASE("Second-order interval jet vs twice-differentiated dag: time per tree"
                     if (root == NoGrad) {
                         continue;
                     }
-                    Operon::Vector<Operon::Node> sliced(
-                        dag1.Nodes.begin(), dag1.Nodes.begin() + static_cast<std::ptrdiff_t>(root) + 1);
-                    Operon::Tree d1(std::move(sliced));
-                    d1.UpdateNodes();
+                    auto const d1 = Operon::SliceDagRoot(dag1.Nodes, root);
                     auto const dag2 = BuildVariableGradientDag(d1, d1.GetCoefficients(), std::vector { it.Vars[k] });
                     IE ie(&d1, it.Domains);
                     ie.SetNodes(dag2.Nodes);

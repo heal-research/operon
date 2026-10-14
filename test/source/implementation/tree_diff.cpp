@@ -1620,4 +1620,93 @@ TEST_CASE("BuildVariableGradientDag - unsupported op certainty is per dependent 
     CHECK(dag.Roots[y] != NoGrad);
 }
 
+namespace {
+
+    auto EvalAt(Tree const& tree, Dataset const& ds) -> Operon::Scalar
+    {
+        Operon::ScalarDispatch dtable;
+        Interpreter<Operon::Scalar, Operon::ScalarDispatch> interp(&dtable, &ds, &tree);
+        return interp.Evaluate(tree.GetCoefficients(), Range { 0, 1 }).value()[0];
+    }
+
+} // namespace
+
+TEST_CASE("SliceDagRoot - keeps only the nodes the root depends on and evaluates like the prefix slice", "[tree_diff]")
+{
+    Dataset const ds(
+        std::vector<std::string> { "X", "Y" }, std::vector<std::vector<Operon::Scalar>> { { 2.0F }, { 3.0F } });
+    auto const xHash = ds.GetVariable("X")->Hash;
+    auto const yHash = ds.GetVariable("Y")->Hash;
+
+    // f(x,y) = x * y + sin(x) / (y + 2). Variables are listed in order of first appearance (X, then Y), so the
+    // prefix up to d/dy's root also holds every node built for d/dx.
+    Operon::Vector<Node> nodes;
+    nodes.push_back(Node { NodeType::Variable, xHash });
+    nodes.push_back(Node { NodeType::Variable, yHash });
+    nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Mul), 2));
+    nodes.push_back(Node { NodeType::Variable, xHash });
+    nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Sin), 1));
+    nodes.push_back(Node { NodeType::Variable, yHash });
+    nodes.push_back(Node::Constant(2.0F));
+    nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 2));
+    nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Div), 2));
+    nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 2));
+    Tree tree { nodes };
+    tree.UpdateNodes();
+
+    auto const dag = BuildVariableGradientDag(tree, tree.GetCoefficients());
+    for (auto const hash : { xHash, yHash }) {
+        auto const k = VariableIndex(dag, hash);
+        REQUIRE(dag.Certain[k]);
+        auto const root = dag.Roots[k];
+        REQUIRE(root != NoGrad);
+
+        auto const prefix = SliceDerivative(dag, root);
+        auto const cone = SliceDagRoot(dag.Nodes, root);
+        // (Not Validate()-able: like the prefix slice it is a forest -- shared subtrees precede the root's own span.)
+        CHECK(cone.Nodes().size() <= prefix.Nodes().size());
+        CHECK(EvalAt(cone, ds) == EvalAt(prefix, ds));
+        // Every node left is reachable from the root: a second slice of the slice is the identity.
+        CHECK(SliceDagRoot(cone.Nodes(), cone.Nodes().size() - 1).Nodes().size() == cone.Nodes().size());
+    }
+    auto const yRoot = dag.Roots[VariableIndex(dag, yHash)];
+    CHECK(SliceDagRoot(dag.Nodes, yRoot).Nodes().size() < SliceDerivative(dag, yRoot).Nodes().size());
+}
+
+TEST_CASE("BuildVariableGradientDag - second derivative of a shared-subexpression dag", "[tree_diff]")
+{
+    Dataset const ds(std::vector<std::string> { "X" }, std::vector<std::vector<Operon::Scalar>> { { 2.0F } });
+    auto const xHash = ds.GetVariable("X")->Hash;
+
+    // f(x) = x * x * sin(x): the first derivative references x, x*x and sin(x) repeatedly (Ref nodes), which the
+    // second differentiation reaches through several parents.
+    Operon::Vector<Node> nodes;
+    nodes.push_back(Node { NodeType::Variable, xHash });
+    nodes.push_back(Node { NodeType::Variable, xHash });
+    nodes.push_back(Node { NodeType::Variable, xHash });
+    nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Sin), 1));
+    nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Mul), 3));
+    Tree tree { nodes };
+    tree.UpdateNodes();
+
+    auto const dag1 = BuildVariableGradientDag(tree, tree.GetCoefficients());
+    auto const d1 = SliceDagRoot(dag1.Nodes, dag1.Roots[VariableIndex(dag1, xHash)]);
+    REQUIRE(std::ranges::any_of(d1.Nodes(), [](Node const& n) { return n.IsRef(); }));
+
+    auto const dag2 = BuildVariableGradientDag(d1, d1.GetCoefficients());
+    auto const dag2Filtered = BuildVariableGradientDag(d1, {}, std::vector<Operon::Hash> { xHash });
+    auto const k2 = VariableIndex(dag2, xHash);
+    auto const k2f = VariableIndex(dag2Filtered, xHash);
+    REQUIRE(dag2.Certain[k2]);
+    REQUIRE(dag2Filtered.Certain[k2f]);
+
+    // f'' = 2 sin x + 4 x cos x - x^2 sin x at x = 2
+    auto const x = 2.0;
+    auto const expected = 2.0 * std::sin(x) + 4.0 * x * std::cos(x) - x * x * std::sin(x);
+    auto const d2 = SliceDagRoot(dag2.Nodes, dag2.Roots[k2]);
+    auto const d2Filtered = SliceDagRoot(dag2Filtered.Nodes, dag2Filtered.Roots[k2f]);
+    CHECK(EvalAt(d2, ds) == Catch::Approx(expected).epsilon(1e-4));
+    CHECK(EvalAt(d2Filtered, ds) == EvalAt(d2, ds));
+}
+
 } // namespace Operon::Test
