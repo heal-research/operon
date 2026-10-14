@@ -63,9 +63,10 @@ enum class ShapeBoundMode : std::uint8_t {
 
 struct ShapeBoundOptions {
     ShapeBoundMode Mode { ShapeBoundMode::Interval };
-    // Bisected mode: 2^BisectionDepth uniform sub-boxes along the widest referenced axis (leaf count, not
-    // recursion levels, hence not tied to SIMD width). Multi-axis trees bisect over a balanced grid evaluated
-    // scalar/unbatched, independently capped well below this value.
+    // Bisected mode: 2^BisectionDepth uniform sub-boxes (leaf count, not recursion levels, hence not tied to SIMD
+    // width). The depth is spent on the variables whose repeated occurrences cause the dependency problem,
+    // weighted by domain width (see detail::BisectionSplits). The depth is independently capped well below this
+    // value when more than one variable is split.
     int BisectionDepth { 3 };
     // Opt-in TightenRange rescue path for bounds the direct/bisection paths couldn't certify.
     bool UseTightenRangeFallback { false };
@@ -207,6 +208,15 @@ namespace detail {
         double worstValue_ { 1.0 };
         mutable std::atomic_size_t violations_ { 0 };
     };
+
+    // The bisection schedule of the Bisected interval bound: for every variable that receives splits, how many times
+    // its domain is halved (the leaves are the product grid, 2^(sum of the halvings)). The total is `depth`, except
+    // that it is capped at 12 when more than one variable is reachable. Empty when `depth` is not in [1, 20] or no
+    // variable of `tree` has a domain of positive width that the expression evaluates. Exposed so that reference
+    // implementations of the leaf evaluation (tests, benchmarks) can follow the production schedule.
+    OPERON_EXPORT auto BisectionSplits(Tree const& tree,
+        Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> const& domains, int depth)
+        -> std::vector<std::pair<Operon::Hash, int>>;
 
 } // namespace detail
 

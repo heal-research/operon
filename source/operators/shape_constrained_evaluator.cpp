@@ -8,6 +8,7 @@
 #include <cstring>
 #include <iterator>
 #include <limits>
+#include <numbers>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -74,6 +75,43 @@ namespace {
         return evaluator(tree.GetCoefficients());
     }
 
+    // How many times each variable is evaluated when the expression rooted at the last node is expanded (a Ref slot
+    // counts as the subtree it points at, so a variable reached through shared structure counts once per use).
+    // Nodes the root does not reach are not counted. `Axes` lists the variable hashes of interest; the result holds
+    // one count per axis. Sharing can double a count at every level of a deep DAG, so counts saturate at 2^500
+    // (still far beyond any difference that matters, and small enough that scores computed from them stay finite).
+    inline auto ExpandedOccurrences(Operon::Span<Node const> nodes, Operon::Span<Operon::Hash const> axes)
+        -> Operon::Vector<double>
+    {
+        constexpr double Saturation = 0x1.0p500;
+        Operon::Vector<double> occurrences(axes.size(), 0.0);
+        if (nodes.empty()) {
+            return occurrences;
+        }
+        Operon::Vector<double> uses(nodes.size(), 0.0);
+        uses.back() = 1.0;
+        for (auto i = nodes.size(); i-- > 0;) {
+            auto const count = uses[i];
+            if (count == 0.0) {
+                continue;
+            }
+            auto const& node = nodes[i];
+            if (node.IsRef()) {
+                uses[node.RefTo] = std::min(uses[node.RefTo] + count, Saturation);
+            } else if (node.IsVariable()) {
+                if (auto const it = std::ranges::find(axes, node.HashValue); it != axes.end()) {
+                    auto& occurrence = occurrences[static_cast<std::size_t>(it - axes.begin())];
+                    occurrence = std::min(occurrence + count, Saturation);
+                }
+            } else if (!node.IsLeaf()) {
+                for (auto const child : Subtree<Node const> { nodes, i }.Indices()) {
+                    uses[child] = std::min(uses[child] + count, Saturation);
+                }
+            }
+        }
+        return occurrences;
+    }
+
     struct IntervalSubdivisionPlan {
         using DomainMap = IntervalEvaluator<Operon::Scalar>::DomainMap;
 
@@ -84,6 +122,15 @@ namespace {
 
         [[nodiscard]] auto SingleAxis() const noexcept -> bool { return Axes.size() == 1; }
 
+        // The 2^depth leaves are split along the axes by a fixed schedule of `depth` bisections. A variable that
+        // occurs once in the expression is enclosed exactly by interval arithmetic and gains nothing from being
+        // split; a variable that occurs several times loses the correlation between its occurrences (the dependency
+        // problem), which splitting recovers. Each level therefore bisects the axis with the highest
+        //     width * (occurrences - 1)^2
+        // (occurrences counted in the expanded expression), halving that axis' score once it is split. When no
+        // variable repeats the score is the plain width. Equal scores go to the smaller variable hash, so the
+        // schedule does not depend on how the tree is laid out. Any schedule gives a sound bound; only its
+        // tightness differs.
         [[nodiscard]] static auto Make(Tree const& tree, DomainMap const& domains, int depth)
             -> std::optional<IntervalSubdivisionPlan>
         {
@@ -91,10 +138,10 @@ namespace {
                 return std::nullopt;
             }
 
-            IntervalSubdivisionPlan plan;
-            Operon::Vector<Operon::Scalar> widths;
+            Operon::Vector<Operon::Hash> candidates;
+            Operon::Vector<Operon::Scalar> candidateWidths;
             for (auto const& node : tree.Nodes()) {
-                if (!node.IsVariable() || std::ranges::find(plan.Axes, node.HashValue) != plan.Axes.end()) {
+                if (!node.IsVariable() || std::ranges::find(candidates, node.HashValue) != candidates.end()) {
                     continue;
                 }
                 auto const it = domains.find(node.HashValue);
@@ -105,11 +152,31 @@ namespace {
                 if (width <= Operon::Scalar { 0 }) {
                     continue;
                 }
-                plan.Axes.push_back(node.HashValue);
-                widths.push_back(width);
+                candidates.push_back(node.HashValue);
+                candidateWidths.push_back(width);
+            }
+
+            // A variable the expanded expression never evaluates cannot affect the bound: it takes no axis.
+            auto const counts = ExpandedOccurrences(tree.Nodes(), candidates);
+            IntervalSubdivisionPlan plan;
+            // Scores are kept as logarithms: log(width) + 2 log(occurrences - 1), minus log 2 per halving. An axis
+            // that does not repeat scores -inf whenever another axis does.
+            Operon::Vector<double> occurrences;
+            Operon::Vector<double> score;
+            for (std::size_t k = 0; k < candidates.size(); ++k) {
+                if (counts[k] > 0.0) {
+                    plan.Axes.push_back(candidates[k]);
+                    occurrences.push_back(counts[k]);
+                    score.push_back(std::log(static_cast<double>(candidateWidths[k])));
+                }
             }
             if (plan.Axes.empty()) {
                 return std::nullopt;
+            }
+            if (std::ranges::any_of(occurrences, [](double n) { return n > 1.0; })) {
+                for (std::size_t k = 0; k < score.size(); ++k) {
+                    score[k] += 2.0 * std::log(std::max(occurrences[k] - 1.0, 0.0));
+                }
             }
 
             constexpr int MaxScalarDepth = 12;
@@ -119,13 +186,14 @@ namespace {
             for (int level = 0; level < plan.Depth; ++level) {
                 auto selected = std::size_t { 0 };
                 for (std::size_t axis = 1; axis < plan.Axes.size(); ++axis) {
-                    if (widths[axis] > widths[selected]) {
+                    if (score[axis] > score[selected]
+                        || (score[axis] == score[selected] && plan.Axes[axis] < plan.Axes[selected])) {
                         selected = axis;
                     }
                 }
                 plan.Schedule.push_back(selected);
                 ++plan.Splits[selected];
-                widths[selected] /= Operon::Scalar { 2 };
+                score[selected] -= std::numbers::ln2;
             }
             return plan;
         }
@@ -826,6 +894,23 @@ namespace {
     }
 
 } // namespace
+
+namespace detail {
+    auto BisectionSplits(Tree const& tree,
+        Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> const& domains, int depth)
+        -> std::vector<std::pair<Operon::Hash, int>>
+    {
+        std::vector<std::pair<Operon::Hash, int>> result;
+        if (auto const plan = IntervalSubdivisionPlan::Make(tree, domains, depth)) {
+            for (std::size_t axis = 0; axis < plan->Axes.size(); ++axis) {
+                if (plan->Splits[axis] > 0) {
+                    result.emplace_back(plan->Axes[axis], plan->Splits[axis]);
+                }
+            }
+        }
+        return result;
+    }
+} // namespace detail
 
 auto ParseShapeEnforcement(std::string const& str) -> ShapeConstraintEnforcement
 {

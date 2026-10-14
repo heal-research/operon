@@ -43,45 +43,19 @@ auto ScalarBisectedBound(Operon::Tree const& tree, Operon::IntervalEvaluator<Ope
         return directBound();
     }
 
-    std::vector<Operon::Hash> axes;
-    std::vector<Operon::Scalar> widths;
-    for (auto const& n : tree.Nodes()) {
-        if (!n.IsVariable() || std::ranges::find(axes, n.HashValue) != axes.end()) {
-            continue;
-        }
-        auto const it = dom.find(n.HashValue);
-        if (it == dom.end()) {
-            continue;
-        }
-        auto const width = it->second.second - it->second.first;
-        if (width <= Operon::Scalar { 0 }) {
-            continue;
-        }
-        axes.push_back(n.HashValue);
-        widths.push_back(width);
-    }
-    if (axes.empty()) {
+    auto const planned = Operon::detail::BisectionSplits(tree, dom, depth);
+    if (planned.empty()) {
         return directBound();
     }
-
+    std::vector<Operon::Hash> axes;
+    std::vector<int> splits;
     std::vector<std::size_t> schedule;
-    schedule.reserve(static_cast<std::size_t>(depth));
-    for (int level = 0; level < depth; ++level) {
-        auto selected = std::size_t { 0 };
-        for (std::size_t axis = 1; axis < axes.size(); ++axis) {
-            if (widths[axis] > widths[selected]) {
-                selected = axis;
-            }
-        }
-        schedule.push_back(selected);
-        widths[selected] /= Operon::Scalar { 2 };
+    for (auto const& [axis, count] : planned) {
+        schedule.insert(schedule.end(), static_cast<std::size_t>(count), axes.size());
+        axes.push_back(axis);
+        splits.push_back(count);
     }
-
-    std::vector<int> splits(axes.size());
-    for (auto axis : schedule) {
-        ++splits[axis];
-    }
-    int const nLeaves = 1 << depth;
+    int const nLeaves = 1 << schedule.size();
     auto const coeff = tree.GetCoefficients();
 
     Operon::Scalar resLo = std::numeric_limits<Operon::Scalar>::infinity();
