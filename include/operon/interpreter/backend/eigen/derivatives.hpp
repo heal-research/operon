@@ -166,7 +166,7 @@ template <typename T, std::size_t S>
 auto Ceil(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> /*primal*/,
     Backend::View<T, S> trace, std::integral auto /*i*/, std::integral auto j)
 {
-    // Derivative is zero a.e.; provides no gradient information (cf. Ceres jet.h).
+    // Derivative is zero a.e.; provides no gradient information (cf. floor/ceil in core/jet.hpp).
     Col(trace, j).setZero();
 }
 
@@ -174,7 +174,7 @@ template <typename T, std::size_t S>
 auto Floor(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> /*primal*/,
     Backend::View<T, S> trace, std::integral auto /*i*/, std::integral auto j)
 {
-    // Derivative is zero a.e.; provides no gradient information (cf. Ceres jet.h).
+    // Derivative is zero a.e.; provides no gradient information (cf. floor/ceil in core/jet.hpp).
     Col(trace, j).setZero();
 }
 

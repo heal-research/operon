@@ -50,9 +50,16 @@ With a configuration, the default is `hard-reject`:
 - **Hard reject** assigns `--shape-worst-value` to every objective of an infeasible candidate. It is the strictest option and changes the search trajectory.
 - **Penalty** adds a weighted violation objective to the error objective.
 - **Extra objective** adds shape violation as a separate NSGA-II objective.
-- **Feasibility first** is available with GP; it prefers feasible candidates during comparison.
 
-Use `--shape-enforcement` to select a comma-separated combination supported by the chosen algorithm. NSGA-II supports hard rejection, penalty, and an extra objective; its default is hard rejection.
+Use `--shape-enforcement` to select one mode supported by the chosen algorithm: `hard-reject`, `penalty`, `extra-objective`, or `penalty,extra-objective` (also accepted as `extra-objective,penalty`); the modes are mutually exclusive alternatives, not combinable flags. GP supports `hard-reject` and `penalty`; its default is `hard-reject`. NSGA-II supports all four; its default is `hard-reject`.
+
+NSGA-II objectives are `[error, tree length]`, plus a trailing shape-violation objective for `extra-objective` and `penalty,extra-objective`. `penalty` folds the weighted violation into the error, and `extra-objective` appends the measured violation as the last objective (`penalty,extra-objective` does both). Under `hard-reject` an infeasible candidate receives `--shape-worst-value` on every objective.
+
+## Evaluation cost
+
+Each candidate evaluation performs exactly one prediction pass for every enforcement mode: the evaluator fits the linear scaling during that pass, and the shape certificate is computed under that same transform before the error is scored (`ShapeConstrainedValueEvaluator`). Shape constraints therefore apply to the coefficients presented at the evaluation call.
+
+Fitness describes the evaluated model: under non-Lamarckian local search the shape verdict applies to the optimized coefficients that were scored, and the restored genotype is not re-certified. To certify a model for export or reporting, measure it explicitly with `ShapeCertifier::MeasureCanonical`. With a shape-constrained evaluator the structural transposition cache (`--transposition-cache`) is bypassed, because a structural hit carries no coefficient identity to certify.
 
 ## Bound backends
 
@@ -61,6 +68,8 @@ Use `--shape-enforcement` to select a comma-separated combination supported by t
 - `combined`: affine arithmetic with an interval fallback;
 - `affine`: affine arithmetic only;
 - `bisected` or `bisected:N`: interval arithmetic over subdivided boxes. Bare `bisected` uses the separate `--shape-bisection-depth` option (default `3`), while `bisected:N` carries an explicit depth `N` (0–20). An empty suffix (`bisected:`) is invalid.
+
+In `interval` mode a second-derivative constraint is bounded by a single forward-mode pass over the model that propagates the value, the first derivative and the pure second derivative (`Operon::Jet<T, K, Operon::JetOrder::SecondDiagonal>` over interval scalars, evaluated by `Operon::IntervalSecondOrderJetEvaluator`), instead of differentiating the symbolic first-derivative tree a second time. This stores directional pure curvature only: it does not represent or independently expose mixed partials. With the one-hot seeds used by shape certification, direction `k` is the selected variable and `w[k]` is that variable's unmixed second partial. Up to four distinct constraint variables are handled per pass; constraints that repeat a variable share one direction. Non-smooth operations are treated as opaque and report an uncertain result, so interval evaluation across a kink never certifies curvature. An operation without a differentiation rule falls back to the symbolic path.
 
 A successful run means that the returned model was scored under the selected enforcement policy. Check the final `shape-constraints:` status line when a certificate is required: a model can be printed after an infeasible hard-reject search if no feasible individual was found.
 

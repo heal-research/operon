@@ -24,11 +24,20 @@ JitZobrist::JitZobrist(
 {
 }
 
+namespace {
+    // The base interpreter evaluator needs a dispatch table; the JIT fallback interpreter and its scoring never
+    // register user callables, so one shared immutable default table serves every JitEvaluator.
+    auto DefaultDispatch() -> ScalarDispatch const*
+    {
+        static ScalarDispatch const dtable;
+        return &dtable;
+    }
+} // namespace
+
 JitEvaluator::JitEvaluator(
     gsl::not_null<Problem const*> problem, gsl::not_null<JitZobrist const*> zobrist, ErrorMetric error)
-    : EvaluatorBase(problem)
+    : Operon::Evaluator<Operon::ScalarDispatch>(problem, DefaultDispatch(), error)
     , zobrist_(zobrist)
-    , error_(error)
     , compiler_(&zobrist->Pool())
 {
 }
@@ -141,8 +150,7 @@ auto JitEvaluator::GetOrCompileJacobian(Tree const& tree) const -> CompileMeta c
     return meta;
 }
 
-auto JitEvaluator::Evaluate(Individual const& ind, Span<Scalar> buf) const
-    -> tl::expected<std::optional<Operon::EvaluatedBuffer>, Operon::InterpreterError>
+auto JitEvaluator::Predict(Individual const& ind, Span<Scalar> values) const -> tl::expected<void, InterpreterError>
 {
     auto const* problem = GetProblem();
     auto const* dataset = problem->GetDataset();
@@ -151,13 +159,7 @@ auto JitEvaluator::Evaluate(Individual const& ind, Span<Scalar> buf) const
     auto const hash = zobrist_->ComputeHash(tree);
     auto const* compiled = GetOrCompile(tree, hash);
 
-    ENSURE(buf.size() >= range.Size());
-    ++ResidualEvaluations;
-
-    // The composed evaluator contract permits a larger reused scratch buffer,
-    // whereas both execution backends write exactly TrainingRange().Size()
-    // rows. Keep all writes on the same exact-sized prefix.
-    auto estimatedValues = buf.subspan(0, range.Size());
+    ENSURE(values.size() == range.Size());
 
     if (compiled != nullptr) {
         auto const nRows = static_cast<int32_t>(range.Size());
@@ -181,46 +183,18 @@ auto JitEvaluator::Evaluate(Individual const& ind, Span<Scalar> buf) const
         ENSURE(static_cast<int>(varOrderBuf.size()) == compiled->nVars);
         ENSURE(static_cast<int>(coeff.size()) == compiled->nConsts);
         compiled->fn(scratch.data(), colPtrs.data(), nRowsPad, coeff.empty() ? nullptr : coeff.data());
-        std::copy_n(scratch.data(), nRows, estimatedValues.data());
-    } else {
-        thread_local ScalarDispatch fallbackDtable;
-        thread_local std::vector<Scalar> coeffBuf;
-        tree.GetCoefficients(coeffBuf);
-        Interpreter<Scalar, ScalarDispatch> const interp { &fallbackDtable, dataset, &tree };
-        if (auto const evaluated
-            = interp.Evaluate(Span<Scalar const>(coeffBuf.data(), coeffBuf.size()), range, estimatedValues);
-            !evaluated) {
-            return tl::unexpected(std::move(evaluated.error()));
-        }
+        std::copy_n(scratch.data(), nRows, values.data());
+        return {};
     }
 
-    return std::optional<Operon::EvaluatedBuffer> { MarkEvaluated(ind, estimatedValues) };
-}
-
-auto JitEvaluator::Score(ScoreContext ctx, std::optional<Operon::EvaluatedBuffer> evaluated) const -> ReturnType
-{
-    ++CallCount;
-
-    auto const* problem = GetProblem();
-    auto const range = problem->TrainingRange();
-    ENSURE(evaluated.has_value());
-    auto estimatedValues = evaluated->Values(ctx.Ind, ctx.Scratch);
-    ENSURE(estimatedValues.size() == range.Size());
-    auto const targetValues = problem->TargetValues(range);
-    auto const weights = problem->Weights(range).value_or(Span<Scalar const> {});
-
-    if (problem->LinearScalingEnabled()) {
-        FitLinearScaling(Span<Scalar const>(estimatedValues.data(), estimatedValues.size()), targetValues, weights,
-            /*omitNonFinite=*/false)
-            .ApplyInPlace(estimatedValues);
+    thread_local std::vector<Scalar> coeffBuf;
+    tree.GetCoefficients(coeffBuf);
+    Interpreter<Scalar, ScalarDispatch> const interp { GetDispatchTable(), dataset, &tree };
+    if (auto const evaluated = interp.Evaluate(Span<Scalar const>(coeffBuf.data(), coeffBuf.size()), range, values);
+        !evaluated) {
+        return tl::unexpected(evaluated.error());
     }
-
-    auto fit = static_cast<Scalar>(
-        weights.empty() ? error_(estimatedValues, targetValues) : error_(estimatedValues, targetValues, weights));
-    if (!std::isfinite(fit)) {
-        fit = EvaluatorBase::ErrMax;
-    }
-    return ReturnType { fit };
+    return {};
 }
 
 auto JitEvaluator::CacheSize() const -> std::size_t { return zobrist_->JitCache().Size(); }

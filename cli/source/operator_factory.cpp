@@ -163,7 +163,7 @@ auto ParseMutators(std::string const& str, std::unordered_map<std::string, Mutat
 }
 
 auto ParseEvaluator(std::string const& str, Problem& problem, ScalarDispatch& dtable, bool skipNonFinite,
-    double nonFinitePenaltyWeight) -> std::unique_ptr<EvaluatorBase>
+    double nonFinitePenaltyWeight, std::optional<ShapeConstraintSpec> const& shape) -> std::unique_ptr<EvaluatorBase>
 {
     using T = ScalarDispatch;
 
@@ -177,41 +177,51 @@ auto ParseEvaluator(std::string const& str, Problem& problem, ScalarDispatch& dt
             "--nonfinite-penalty-weight must be a finite, non-negative value (got {})\n", nonFinitePenaltyWeight));
     }
 
-    std::unique_ptr<EvaluatorBase> evaluator;
+    // Each branch is a concrete value evaluator; MakeValueEvaluator constructs it, or its shape-constrained adapter,
+    // before the result is erased to EvaluatorBase.
+    using Gauss = GaussianLikelihood<Operon::Scalar>;
+    using Poisson = PoissonLikelihood<Operon::Scalar>;
     if (str == "r2") {
-        evaluator = std::make_unique<Operon::Evaluator<T>>(&problem, &dtable, Operon::R2 {});
-    } else if (str == "c2") {
-        evaluator = std::make_unique<Operon::Evaluator<T>>(&problem, &dtable, Operon::C2 {});
-    } else if (str == "nmse") {
-        evaluator = std::make_unique<Operon::Evaluator<T>>(
-            &problem, &dtable, Operon::NMSE {}, skipNonFinite, nonFinitePenaltyWeight);
-    } else if (str == "mse") {
-        evaluator = std::make_unique<Operon::Evaluator<T>>(
-            &problem, &dtable, Operon::MSE {}, skipNonFinite, nonFinitePenaltyWeight);
-    } else if (str == "rmse") {
-        evaluator = std::make_unique<Operon::Evaluator<T>>(
-            &problem, &dtable, Operon::RMSE {}, skipNonFinite, nonFinitePenaltyWeight);
-    } else if (str == "mae") {
-        evaluator = std::make_unique<Operon::Evaluator<T>>(
-            &problem, &dtable, Operon::MAE {}, skipNonFinite, nonFinitePenaltyWeight);
-    } else if (str == "mdl_gauss") {
-        evaluator = std::make_unique<Operon::MinimumDescriptionLengthEvaluator<T, GaussianLikelihood<Operon::Scalar>>>(
-            &problem, &dtable);
-    } else if (str == "mdl_poisson") {
-        evaluator = std::make_unique<Operon::MinimumDescriptionLengthEvaluator<T, PoissonLikelihood<Operon::Scalar>>>(
-            &problem, &dtable);
-    } else if (str == "fbf_gauss") {
-        evaluator = std::make_unique<Operon::FractionalBayesFactorEvaluator<T, GaussianLikelihood<Operon::Scalar>>>(
-            &problem, &dtable);
-    } else if (str == "fbf_poisson") {
+        return MakeValueEvaluator<Operon::Evaluator<T>>(shape, &dtable, &problem, &dtable, Operon::R2 {});
+    }
+    if (str == "c2") {
+        return MakeValueEvaluator<Operon::Evaluator<T>>(shape, &dtable, &problem, &dtable, Operon::C2 {});
+    }
+    if (str == "nmse") {
+        return MakeValueEvaluator<Operon::Evaluator<T>>(
+            shape, &dtable, &problem, &dtable, Operon::NMSE {}, skipNonFinite, nonFinitePenaltyWeight);
+    }
+    if (str == "mse") {
+        return MakeValueEvaluator<Operon::Evaluator<T>>(
+            shape, &dtable, &problem, &dtable, Operon::MSE {}, skipNonFinite, nonFinitePenaltyWeight);
+    }
+    if (str == "rmse") {
+        return MakeValueEvaluator<Operon::Evaluator<T>>(
+            shape, &dtable, &problem, &dtable, Operon::RMSE {}, skipNonFinite, nonFinitePenaltyWeight);
+    }
+    if (str == "mae") {
+        return MakeValueEvaluator<Operon::Evaluator<T>>(
+            shape, &dtable, &problem, &dtable, Operon::MAE {}, skipNonFinite, nonFinitePenaltyWeight);
+    }
+    if (str == "mdl_gauss") {
+        return MakeValueEvaluator<Operon::MinimumDescriptionLengthEvaluator<T, Gauss>>(
+            shape, &dtable, &problem, &dtable);
+    }
+    if (str == "mdl_poisson") {
+        return MakeValueEvaluator<Operon::MinimumDescriptionLengthEvaluator<T, Poisson>>(
+            shape, &dtable, &problem, &dtable);
+    }
+    if (str == "fbf_gauss") {
+        return MakeValueEvaluator<Operon::FractionalBayesFactorEvaluator<T, Gauss>>(shape, &dtable, &problem, &dtable);
+    }
+    if (str == "fbf_poisson") {
         throw std::runtime_error(
             "fbf_poisson is not supported: the fractional Bayes factor is derived under Gaussian assumptions");
-    } else if (str == "gauss") {
-        evaluator = std::make_unique<Operon::GaussianLikelihoodEvaluator<T>>(&problem, &dtable);
-    } else {
-        throw std::runtime_error(fmt::format("unable to parse evaluator metric '{}'\n", str));
     }
-    return evaluator;
+    if (str == "gauss") {
+        return MakeValueEvaluator<Operon::GaussianLikelihoodEvaluator<T>>(shape, &dtable, &problem, &dtable);
+    }
+    throw std::runtime_error(fmt::format("unable to parse evaluator metric '{}'\n", str));
 }
 
 auto ParseErrorMetric(std::string const& str) -> std::tuple<std::unique_ptr<Operon::ErrorMetric>, bool>

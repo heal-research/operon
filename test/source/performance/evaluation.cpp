@@ -509,8 +509,10 @@ TEST_CASE("Parallel interpreter", "[performance]")
     Operon::Vector<Operon::Scalar> result(trees.size() * range.Size());
     for (auto t : threads) {
         b.batch(static_cast<double>(TotalNodes(trees) * range.Size()))
-            .run(
-                fmt::format("{} thread(s)", t), [&]() -> void { Operon::EvaluateTrees(trees, &ds, range, result, t); });
+            .run(fmt::format("{} thread(s)", t), [&]() -> void {
+                auto r = Operon::EvaluateTrees(trees, &ds, range, result, t);
+                nb::doNotOptimizeAway(r);
+            });
     }
 }
 

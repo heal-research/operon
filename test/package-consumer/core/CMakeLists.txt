@@ -18,8 +18,8 @@ project(operon_package_consumer_core LANGUAGES CXX)
 # A core-only request must not attempt backend dependency discovery: no
 # Eigen (interpreter/optimizer numerics), no L-BFGS (CoefficientOptimizer),
 # no vstat/infix-parser/pappus/eve/asmjit (there is no separate "Ceres"
-# CMake package to check -- the vendored include/operon/ceres/ headers are
-# autodiff-only and never reach find_package()). Nothing is disabled here on
+# CMake package to check -- the vendored include/operon/ceres/tiny_solver.h
+# is an optimizer-layer header and never reaches find_package()). Nothing is disabled here on
 # purpose: when the build environment can discover these packages, the
 # assertions below prove operonConfig.cmake never even probed for them.
 find_package(operon CONFIG REQUIRED COMPONENTS core)

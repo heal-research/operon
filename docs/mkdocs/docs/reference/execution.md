@@ -28,33 +28,84 @@ Header: [`operon/operators/evaluator.hpp`](https://github.com/heal-research/oper
 class Objective final : public EvaluatorBase {
 public:
   using EvaluatorBase::EvaluatorBase;
+
+protected:
   auto Evaluate(Individual const&, Span<Scalar>) const
       -> tl::expected<std::optional<EvaluatedBuffer>, InterpreterError> override;
-  auto Score(ScoreContext, std::optional<EvaluatedBuffer>) const
+  auto Score(RandomGenerator&, Individual const&, Span<Scalar>, std::optional<EvaluatedBuffer>) const
       -> ReturnType override;
 };
 ```
 
-The three-argument `operator()` is final. It calls `Evaluate`, then `Score`, and replaces an evaluation error with `{ErrMax}`. A value-based evaluator MUST fill the provided scratch span and return `MarkEvaluated(individual, values)`. `Score` MUST acquire values through `EvaluatedBuffer::Values(ctx.Ind, ctx.Scratch)`; it is invalid to assume the scratch buffer contains the right individual without that proof.
+The three-argument `operator()` is the sole public execution path and is `final`. It increments `CallCount` once, runs
+`Evaluate`, replaces an evaluation error with `ErrMax` repeated `ObjectiveCount()` times, and otherwise runs `Score`.
+`Evaluate` and `Score` are protected hooks. A value-based evaluator MUST fill the provided scratch span and return
+`MarkEvaluated(individual, values, scaling)`, where `scaling` is the exact `std::optional<LinearScaling>` it will apply
+(`nullopt`: scaling disabled). `Score` MUST acquire values through `EvaluatedBuffer::Values(ind, buf)` and consume the
+buffer's transform rather than refitting. It is invalid to assume the scratch buffer contains the right individual
+without that proof. Whether an evaluator is a value evaluator is a compile-time fact: `Concepts::ValueEvaluator` is satisfied by an `Evaluator<DTable>` that is not itself a shape-constrained adapter.
 
-`ObjectiveCount()` defaults to one; override it for vector objectives. `Prepare(population)` is a pre-evaluation hook. `SetBudget`, `BudgetExhausted`, and atomic counter accessors expose the evaluation budget and accounting. Built-in `Evaluator<DTable>` accepts an `ErrorMetric`; `SSE`, `MSE`, `NMSE`, `RMSE`, `MAE`, `R2`, and `C2` are available metric types.
+`ObjectiveCount()` defaults to one; override it for vector objectives. `Prepare(population)` is a pre-evaluation hook. `SetBudget`, `BudgetExhausted`, and atomic counter accessors expose the evaluation budget and accounting. Built-in `Evaluator<DTable>` accepts an `ErrorMetric`; `SSE`, `MSE`, `NMSE`, `RMSE`, `MAE`, `R2`, and `C2` are available metric types. Its linear scaling is fitted under `Problem::LinearScalingOmitsNonFinite()`; `skipNonFinite` only changes scoring. `JIT::JitEvaluator` derives from `Evaluator<ScalarDispatch>` and overrides only the `Predict` step.
 
 
 Evaluator failures are converted to the evaluator's worst-score sentinel rather than escaping through the optimization loop. In particular, `MinimumDescriptionLengthEvaluator::Score` returns `EvaluatorBase::ErrMax` when Jacobian evaluation fails, preserving the evaluator's fixed fitness arity and allowing population comparisons to continue safely.
+
 ## Shape constraints
 
 Header: [`operon/operators/shape_constrained_evaluator.hpp`](https://github.com/heal-research/operon/blob/main/include/operon/operators/shape_constrained_evaluator.hpp)
 
 ```cpp
-ShapeConstrainedEvaluator constrained { &baseEvaluator, &dispatch, constraints };
-constrained.SetBoundMode(ShapeBoundMode::Interval);
-auto summary = constrained.Measure(tree);
-bool feasible = constrained.Feasible(tree);
+TreePropertyEvaluator length { &problem, [](Tree const& t) { return Scalar(t.Length()); } };
+ShapeConstrainedValueEvaluator<Evaluator<ScalarDispatch>> evaluator {
+    ShapeConstraintSpec { .Constraints = constraints,
+        .Policy = { .Enforcement = ShapeConstraintEnforcement::ExtraObjective },
+        .Structural = { &length },
+        .Bound = { .Mode = ShapeBoundMode::Interval } },
+    &dispatch, &problem, &dispatch, NMSE {} };                     // trailing arguments construct the base evaluator
+auto fitness = evaluator(rng, individual, scratch);               // [error, length, shape violation]
+auto summary = evaluator.Certifier().MeasureCanonical(tree);       // standalone/reporting only
 ```
 
-`ShapeConstrainedEvaluator` wraps another evaluator. It bounds the tree and requested input derivatives on declared domain boxes before delegating. `HardReject` returns the configured worst value; `Penalty`, `ExtraObjective`, and `FeasibilityFirst` express other policy choices. `ShapeViolationEvaluator` exposes the measurement as an objective without wrapping another evaluator.
+`ShapeCertifier` (not an evaluator) owns the constraint set, domain boxes, bound backend and options.
+`Measure(tree, transform)` takes the exact fitted transform;
+it never fits a fallback. `MeasureCanonical(tree)` fits the canonical transform under
+`Problem::LinearScalingOmitsNonFinite()` and is for reporting and standalone use.
 
-`Interval` is the default bound mode. `Combined` intersects interval and affine bounds; `Bisected` requires `Interval`. `SetBoundMode` and `SetBoundOptions` validate these combinations. A failure to certify is not proof that the mathematical constraint fails—enclosures are conservative.
+`ShapeConstrainedValueEvaluator<BaseEvaluator>` is a `final` evaluator derived from a concrete
+`Concepts::ValueEvaluator` (`Evaluator<DTable>` with any metric, the MDL, FBF and likelihood evaluators, or
+`JIT::JitEvaluator`; BIC and AIC are sealed). It *is* the value evaluator, so its only public execution method is the
+inherited `operator()` and it calls `BaseEvaluator`'s own protected phases on itself. Its structural post-objectives
+are restricted to `TreePropertyEvaluator`, whose prediction phase is sealed, so no post-objective can add a prediction
+pass. The output is `[primary (+ PenaltyWeight * violation under Penalty), post-objectives..., violation under
+ExtraObjective]`. `HardReject` returns `WorstValue()` for the whole vector without evaluating post-objectives; a failed
+prediction or score returns `ErrMax` for the whole vector. The verdict's `Feasible` flag is authoritative: an
+uncertified constraint is infeasible even when `UnknownViolation` is zero. Constrained adapters cannot nest: an
+adapter is not a `ValueEvaluator`, so
+`ShapeConstrainedValueEvaluator<ShapeConstrainedValueEvaluator<X>>` does not compile.
+
+The evaluator-independent half of the adapter is a non-template implementation detail,
+`Operon::detail::ShapeConstraintEnforcer`, a second (non-evaluator) base. It is not part of the public API surface:
+the shape configuration (`ShapeConstraintSpec`, `ShapeConstraintPolicy`, `ShapeCertifier`), the adapter template and the
+`MakeValueEvaluator` factory are. Its public members (`Certifier()`, `Policy()`, `WorstValue()`, `SetWorstValue()`,
+`Violations()`) are available on every adapter and, for type-erased evaluators
+inside the library's own CLI and probes, through `dynamic_cast<detail::ShapeConstraintEnforcer const*>(evaluator)`.
+Factories construct the typed adapter before erasing it: `MakeValueEvaluator<Leaf>(spec, dtable, leafArgs...)` returns
+`std::unique_ptr<EvaluatorBase>` holding either the plain leaf or `ShapeConstrainedValueEvaluator<Leaf>`, and
+`JIT::MakeJitObjects(..., spec)` builds `ShapeConstrainedValueEvaluator<JitEvaluator>` for mode `all`, so the JIT
+optimizer keeps using the same `JitEvaluator` subobject.
+
+A call evaluates the base evaluator's prediction exactly once. The fitness describes the evaluated model, i.e. the
+coefficients present at the call (under non-Lamarckian local search, the optimized coefficients that were scored);
+the adapter does not re-certify the restored genotype. To certify a model for export or reporting, use
+`ShapeCertifier::MeasureCanonical` (or `Measure` with an exact transform). The adapter reports
+`StructuralFitnessReusable() == false`, so offspring generators bypass the structural (Zobrist) fitness cache for it.
+
+`MultiEvaluator::Add` throws `std::invalid_argument` for a `ShapeConstrainedValueEvaluator` child, whatever its base
+type and however it is type-erased; the adapter already owns the complete constrained objective vector, including its
+structural objectives (pass them in `ShapeConstraintSpec::Structural`). Ordinary children keep generic `operator()`
+dispatch.
+
+`Interval` is the default bound mode. `Combined` intersects interval and affine bounds; `Affine` uses affine arithmetic alone; `Bisected` uses interval arithmetic over `2^BisectionDepth` sub-boxes. The mode and `BisectionDepth` (in `[0, 20]`, validated by the `ShapeCertifier` constructor) are set through `ShapeBoundOptions`. A failure to certify is not proof that the mathematical constraint fails—enclosures are conservative.
 
 ## Coefficient optimization
 

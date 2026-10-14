@@ -278,6 +278,38 @@ TEST_CASE("Error metrics finite subset", "[metrics]")
         CHECK(std::abs(mae - ref) < eps);
     }
 
+    SECTION("R2 skips non-finite rows")
+    {
+        auto [r2, skipped] = R2ScoreFinite(cbegin(x), cend(x), cbegin(y));
+        auto const ref = R2Score(cbegin(xf), cend(xf), cbegin(yf));
+        CHECK(skipped == 3UL);
+        CHECK(std::abs(r2 - ref) < eps);
+    }
+
+    SECTION("weighted R2 skips non-finite rows")
+    {
+        auto [r2, skipped] = R2ScoreFinite(cbegin(x), cend(x), cbegin(y), cbegin(w));
+        auto const ref = R2Score(cbegin(xf), cend(xf), cbegin(yf), cbegin(wf));
+        CHECK(skipped == 3UL);
+        CHECK(std::abs(r2 - ref) < eps);
+    }
+
+    SECTION("C2 skips non-finite rows")
+    {
+        auto [c2, skipped] = SquaredCorrelationFinite(cbegin(x), cend(x), cbegin(y));
+        auto const ref = SquaredCorrelation(cbegin(xf), cend(xf), cbegin(yf));
+        CHECK(skipped == 3UL);
+        CHECK(std::abs(c2 - ref) < eps);
+    }
+
+    SECTION("weighted C2 skips non-finite rows")
+    {
+        auto [c2, skipped] = SquaredCorrelationFinite(cbegin(x), cend(x), cbegin(y), cbegin(w));
+        auto const ref = SquaredCorrelation(cbegin(xf), cend(xf), cbegin(yf), cbegin(wf));
+        CHECK(skipped == 3UL);
+        CHECK(std::abs(c2 - ref) < eps);
+    }
+
     SECTION("all-finite input matches the plain metric exactly")
     {
         auto [mse, skipped] = MeanSquaredErrorFinite(cbegin(xf), cend(xf), cbegin(yf));

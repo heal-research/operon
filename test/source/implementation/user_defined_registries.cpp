@@ -99,7 +99,9 @@ TEST_CASE("User-defined function via registries: recip(x) = 1/x", "[registry][us
         IntervalEvaluator<Scalar>::DomainMap dm;
         dm[varHash] = { Scalar { 1 }, Scalar { 4 } };
         IntervalEvaluator<Scalar> ivEval(&ivTree, std::move(dm));
-        auto iv = ivEval.Evaluate(ivTree.GetCoefficients());
+        auto ivResult = ivEval(ivTree.GetCoefficients());
+        REQUIRE(ivResult);
+        auto iv = *ivResult;
         CHECK(iv.inf() <= 0.25 + 1e-4);
         CHECK(iv.sup() + 1e-4 >= 1.0);
     }
@@ -122,7 +124,9 @@ TEST_CASE("User-defined function via registries: recip(x) = 1/x", "[registry][us
         AffineEvaluator<Scalar>::DomainMap dm;
         dm[varHash] = { Scalar { 1 }, Scalar { 4 } };
         AffineEvaluator<Scalar> afEval(&afTree, std::move(dm));
-        auto af = afEval.Evaluate(afTree.GetCoefficients());
+        auto afResult = afEval(afTree.GetCoefficients());
+        REQUIRE(afResult);
+        auto af = *afResult;
         auto ivFromAffine = af.to_interval();
         CHECK(ivFromAffine.inf() <= 0.25 + 1e-2);
         CHECK(ivFromAffine.sup() + 1e-2 >= 1.0);

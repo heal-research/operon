@@ -404,7 +404,9 @@ TEST_CASE("Composed function: unary interval/affine mini-evaluator", "[composed-
 
         Operon::IntervalEvaluator<Operon::Scalar>::DomainMap domains { { xHash, { -5.0F, 5.0F } } };
         Operon::IntervalEvaluator<Operon::Scalar> eval(&tree, domains);
-        auto result = eval.Evaluate({});
+        auto const intervalResult = eval({});
+        REQUIRE(intervalResult);
+        auto const result = *intervalResult;
         CHECK(result.inf() >= -1e-3);
         CHECK(result.sup() <= 1.0 + 1e-3);
         // Must be a real (non-degenerate) enclosure, not [0,0] from a bug
@@ -441,7 +443,9 @@ TEST_CASE("Composed function: unary interval/affine mini-evaluator", "[composed-
 
         Operon::AffineEvaluator<Operon::Scalar>::DomainMap domains { { xHash, { -5.0F, 5.0F } } };
         Operon::AffineEvaluator<Operon::Scalar> eval(&tree, domains);
-        auto result = eval.Evaluate({});
+        auto affineResult = eval({});
+        REQUIRE(affineResult);
+        auto result = *affineResult;
         auto const iv = result.to_interval();
         CHECK(iv.inf() == Catch::Approx(0.0).margin(1e-4));
         CHECK(iv.sup() == Catch::Approx(0.0).margin(1e-4));
@@ -652,7 +656,9 @@ TEST_CASE("Composed function: binary interval/affine mini-evaluator (arity-2, st
         Operon::IntervalEvaluator<Operon::Scalar>::DomainMap domains { { xHash, { 0.0F, 5.0F } },
             { yHash, { 0.0F, 2.0F } } };
         Operon::IntervalEvaluator<Operon::Scalar> eval(&tree, domains);
-        auto result = eval.Evaluate({});
+        auto const intervalResult = eval({});
+        REQUIRE(intervalResult);
+        auto const result = *intervalResult;
         // a - b for a in [0,5], b in [0,2]: [0-2, 5-0] = [-2, 5].
         CHECK(result.inf() == Catch::Approx(-2.0).margin(1e-3));
         CHECK(result.sup() == Catch::Approx(5.0).margin(1e-3));
@@ -680,7 +686,9 @@ TEST_CASE("Composed function: binary interval/affine mini-evaluator (arity-2, st
 
         Operon::AffineEvaluator<Operon::Scalar>::DomainMap domains { { xHash, { -5.0F, 5.0F } } };
         Operon::AffineEvaluator<Operon::Scalar> eval(&tree, domains);
-        auto result = eval.Evaluate({});
+        auto affineResult = eval({});
+        REQUIRE(affineResult);
+        auto result = *affineResult;
         auto const iv = result.to_interval();
         CHECK(iv.inf() == Catch::Approx(0.0).margin(1e-4));
         CHECK(iv.sup() == Catch::Approx(0.0).margin(1e-4));
@@ -737,7 +745,9 @@ TEST_CASE("Composed function: RegisterComposedFunction orchestrator (end-to-end)
         // Interval bound.
         Operon::IntervalEvaluator<Operon::Scalar>::DomainMap domains { { xHash, { -5.0F, 5.0F } } };
         Operon::IntervalEvaluator<Operon::Scalar> ieval(&tree, domains);
-        auto result = ieval.Evaluate({});
+        auto const intervalResult = ieval({});
+        REQUIRE(intervalResult);
+        auto const result = *intervalResult;
         CHECK(result.inf() >= -1e-3);
         CHECK(result.sup() <= 1.0 + 1e-3);
 
@@ -879,7 +889,9 @@ TEST_CASE("Usage example: recip(x) = 1/x via RegisterComposedFunction", "[compos
     // Interval bound: 1/x for x in [1,2] is [0.5, 1].
     Operon::IntervalEvaluator<Operon::Scalar>::DomainMap domains { { xHash, { 1.0F, 2.0F } } };
     Operon::IntervalEvaluator<Operon::Scalar> ieval(&tree, domains);
-    auto result = ieval.Evaluate({});
+    auto const intervalResult = ieval({});
+    REQUIRE(intervalResult);
+    auto const result = *intervalResult;
     CHECK(result.inf() == Catch::Approx(0.5).margin(1e-3));
     CHECK(result.sup() == Catch::Approx(1.0).margin(1e-3));
 }

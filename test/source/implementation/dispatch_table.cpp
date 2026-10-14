@@ -333,7 +333,7 @@ TEST_CASE("Auto-diff fallback via Jet<T,1>", "[interpreter]") // NOLINT(readabil
 
     // Same function registered two ways: auto-diff vs explicit derivative.
     // Unqualified sin/cos with using-declarations allow ADL to resolve to
-    // ceres::sin/cos when called with Jet<T,1> during auto-diff.
+    // Operon::sin/cos (core/jet.hpp) when called with Jet<T,1> during auto-diff.
     auto primal = [](auto const& v) -> auto {
         using std::sin, std::cos;
         return sin(v) + cos(v);

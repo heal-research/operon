@@ -183,8 +183,8 @@ public:
     // tracked radius of a small final result, making the enclosure unsound.
     [[nodiscard]] auto MaxAbsCenter() const noexcept -> Scalar { return maxAbsCenter_; }
 
-    // The affine interval enclosure of the root.
-    [[nodiscard]] auto TryEvaluate(Operon::Span<Scalar const> coeff) const -> tl::expected<Affine, std::string>
+    // The affine enclosure of the root. Never throws: failures come back as the error string.
+    [[nodiscard]] auto operator()(Operon::Span<Scalar const> coeff) const -> tl::expected<Affine, std::string>
     {
         // The shared noise-symbol counter grows monotonically across Evaluate
         // calls — it is NOT reset. This ensures that forms from different
@@ -233,7 +233,7 @@ public:
         // accumulator can carry a much larger |center()| than either its
         // final result or any single child (e.g. a long multiplication
         // chain that later gets divided back down), and the ill-
-        // conditioned-fallback guard in ShapeConstrainedEvaluator relies on
+        // conditioned-fallback guard in the shape bounding (ShapeCertifier) relies on
         // MaxAbsCenter() having seen the true worst intermediate, not just
         // each node's own settled value.
         auto const addFold = [&](std::size_t i) {
@@ -421,15 +421,6 @@ public:
             }
         }
         return primal_.back();
-    }
-
-    [[nodiscard]] auto Evaluate(Operon::Span<Scalar const> coeff) const -> Affine
-    {
-        auto result = TryEvaluate(coeff);
-        if (!result) {
-            throw std::runtime_error(result.error());
-        }
-        return std::move(*result);
     }
 
 private:

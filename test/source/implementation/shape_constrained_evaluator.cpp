@@ -6,6 +6,7 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -15,14 +16,17 @@
 #include <string>
 #include <vector>
 
+#include "fixed_scaling_evaluator.hpp"
 #include "operon/core/constraint.hpp"
 #include "operon/core/dataset.hpp"
 #include "operon/core/individual.hpp"
 #include "operon/core/problem.hpp"
 #include "operon/core/tree_diff.hpp"
-#include "operon/core/tree_hash.hpp"
+#include "operon/hash/hash.hpp"
 #include "operon/interpreter/affine_evaluator.hpp"
 #include "operon/interpreter/interval_evaluator.hpp"
+#include "operon/interpreter/interval_jet_evaluator.hpp"
+#include "operon/interpreter/interval_second_order_jet_evaluator.hpp"
 #include "operon/operators/evaluator.hpp"
 #include "operon/operators/linear_scaling.hpp"
 #include "operon/operators/shape_constrained_evaluator.hpp"
@@ -83,6 +87,38 @@ namespace {
         out << text;
         return path;
     }
+
+    // Standalone, reporting-path view of a ShapeCertifier: Measure/Feasible/RawViolation fit the tree's own canonical
+    // transform (Problem::LinearScalingOmitsNonFinite). The bound-correctness tests below ask about a tree under its
+    // own fit; the gate never does this -- it passes the transform its evaluator applied.
+    class CanonicalShape {
+    public:
+        CanonicalShape(Operon::Problem const* problem, Operon::ScalarDispatch const* dtable,
+            Operon::ShapeConstraintSet constraints, Operon::Scalar unknownViolation = Operon::Scalar { 1 },
+            ShapeBoundOptions bound = {})
+            : certifier_(problem, dtable, std::move(constraints), unknownViolation, bound)
+        {
+        }
+        CanonicalShape(Operon::EvaluatorBase const* evaluator, Operon::ScalarDispatch const* dtable,
+            Operon::ShapeConstraintSet constraints, Operon::Scalar unknownViolation = Operon::Scalar { 1 },
+            ShapeBoundOptions bound = {})
+            : CanonicalShape(evaluator->GetProblem(), dtable, std::move(constraints), unknownViolation, bound)
+        {
+        }
+
+        [[nodiscard]] auto Measure(Operon::Tree const& tree) const -> Operon::ShapeConstraintMeasurementSummary
+        {
+            return certifier_.MeasureCanonical(tree);
+        }
+        [[nodiscard]] auto Feasible(Operon::Tree const& tree) const -> bool { return Measure(tree).Feasible; }
+        [[nodiscard]] auto RawViolation(Operon::Tree const& tree) const -> Operon::Scalar
+        {
+            return Measure(tree).Violation;
+        }
+
+    private:
+        Operon::ShapeCertifier certifier_;
+    };
 
 } // namespace
 
@@ -167,108 +203,7 @@ TEST_CASE("LoadShapeConstraints handles empty paths and JSON schema errors", "[s
     rejectsConfig("non_string_op", R"json({"constraints":[{"op":7,"sign":1}]})json");
 }
 
-TEST_CASE("ShapeConstrainedEvaluator - correctly-signed constraints are feasible", "[shape-constraints]")
-{
-    Fixture fx;
-    Operon::ShapeConstraintSet cs;
-    cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
-    cs.Domains.insert_or_assign("X2", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
-    cs.Constraints.push_back({ .Op = ShapeConstraintOp::FirstDerivative,
-        .Variable = "X1",
-        .Sign = 1,
-        .Bound = std::nullopt }); // non-decreasing: true
-    cs.Constraints.push_back({ .Op = ShapeConstraintOp::FirstDerivative,
-        .Variable = "X2",
-        .Sign = -1,
-        .Bound = std::nullopt }); // non-increasing: true
-
-    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
-    CHECK(sce.Feasible(fx.tree));
-
-    auto ind = Fixture::MakeIndividual(fx.tree);
-    std::vector<Operon::Scalar> buf(fx.problem.TrainingRange().Size());
-    auto fit = sce(fx.rng, ind, buf);
-    auto expected = fx.nmse(fx.rng, ind, buf);
-    REQUIRE(fit.size() == expected.size());
-    CHECK(fit[0] == Catch::Approx(expected[0])); // passes through to the wrapped NMSE evaluator
-    CHECK(sce.Violations() == 0);
-}
-
-TEST_CASE("ShapeConstrainedEvaluator preserves a wrapped derived evaluator's objective", "[shape-constraints]")
-{
-    // Regression: the gate must always delegate phase 2 to the concrete
-    // wrapped evaluator. A derived class such as MinimumDescriptionLengthEvaluator
-    // shares Evaluator<DTable>'s phase 1 but has a distinct scoring objective.
-    Fixture fx;
-    Operon::MinimumDescriptionLengthEvaluator<Fixture::DTable, Operon::GaussianLikelihood<Operon::Scalar>> mdl {
-        &fx.problem, &fx.dtable
-    };
-
-    Operon::ShapeConstraintSet cs;
-    cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
-    cs.Domains.insert_or_assign("X2", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
-    cs.Constraints.push_back(
-        { .Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt });
-
-    Operon::ShapeConstrainedEvaluator sce(&mdl, &fx.dtable, cs);
-
-    auto ind = Fixture::MakeIndividual(fx.tree);
-    std::vector<Operon::Scalar> buf(fx.problem.TrainingRange().Size());
-
-    // First call on this tree starts with a feasibleCache_ miss. The gate's phase 1
-    // must certify from the wrapped evaluator's values, then phase 2 must preserve
-    // the wrapped evaluator's MDL result.
-    auto const wrapped = sce(fx.rng, ind, buf);
-    auto const direct = mdl(fx.rng, ind, buf);
-    REQUIRE(wrapped.size() == direct.size());
-    CHECK(wrapped[0] == Catch::Approx(direct[0]));
-}
-
-TEST_CASE("ShapeConstrainedEvaluator cache miss and hit preserve the wrapped score", "[shape-constraints]")
-{
-    // Both calls must reach the wrapped evaluator's phase 2. The first also
-    // populates feasibility data from its phase-1 values; the second reads it.
-    Fixture fx;
-    Operon::ShapeConstraintSet cs;
-    cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
-    cs.Domains.insert_or_assign("X2", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
-    cs.Constraints.push_back(
-        { .Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt });
-
-    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
-
-    auto ind = Fixture::MakeIndividual(fx.tree);
-    std::vector<Operon::Scalar> buf(fx.problem.TrainingRange().Size());
-
-    auto const miss = sce(fx.rng, ind, buf);
-    auto const hit = sce(fx.rng, ind, buf);
-    REQUIRE(miss.size() == hit.size());
-    CHECK(miss[0] == Catch::Approx(hit[0]));
-    CHECK(fx.nmse.ResidualEvaluations == 2);
-}
-
-TEST_CASE("ShapeConstrainedEvaluator - wrongly-signed constraint is rejected with WorstValue", "[shape-constraints]")
-{
-    Fixture fx;
-    Operon::ShapeConstraintSet cs;
-    cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
-    cs.Domains.insert_or_assign("X2", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
-    // f is actually non-decreasing in X1; asserting the opposite must be rejected.
-    cs.Constraints.push_back(
-        { .Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = -1, .Bound = std::nullopt });
-
-    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
-    CHECK_FALSE(sce.Feasible(fx.tree));
-
-    auto ind = Fixture::MakeIndividual(fx.tree);
-    std::vector<Operon::Scalar> buf(fx.problem.TrainingRange().Size());
-    auto fit = sce(fx.rng, ind, buf);
-    REQUIRE(fit.size() == 1);
-    CHECK(fit[0] == Catch::Approx(1.0)); // default WorstValue
-    CHECK(sce.Violations() == 1);
-}
-
-TEST_CASE("ShapeConstrainedEvaluator - value bound constraint", "[shape-constraints]")
+TEST_CASE("ShapeCertifier - value bound constraint", "[shape-constraints]")
 {
     Fixture fx;
     Operon::ShapeConstraintSet cs;
@@ -279,90 +214,54 @@ TEST_CASE("ShapeConstrainedEvaluator - value bound constraint", "[shape-constrai
         .Variable = "",
         .Sign = std::nullopt,
         .Bound = std::pair { Operon::Scalar { -4 }, Operon::Scalar { 4 } } });
-    Operon::ShapeConstrainedEvaluator wide(&fx.nmse, &fx.dtable, cs);
+    CanonicalShape wide(&fx.nmse, &fx.dtable, cs);
     CHECK(wide.Feasible(fx.tree));
 
     cs.Constraints[0].Bound = std::pair { Operon::Scalar { -1 }, Operon::Scalar { 1 } };
-    Operon::ShapeConstrainedEvaluator narrow(&fx.nmse, &fx.dtable, cs);
+    CanonicalShape narrow(&fx.nmse, &fx.dtable, cs);
     CHECK_FALSE(narrow.Feasible(fx.tree));
 }
 
-TEST_CASE("ParseShapeBoundMode parses flags and bisected depths", "[shape-constraints]")
+TEST_CASE("ParseShapeBoundOptions parses single tokens and bisected depths", "[shape-constraints]")
 {
-    CHECK(Operon::ParseShapeBoundMode("combined") == ShapeBoundMode::Combined);
-    CHECK(Operon::ParseShapeBoundMode("interval") == ShapeBoundMode::Interval);
-    CHECK(Operon::ParseShapeBoundMode("affine") == ShapeBoundMode::Affine);
-    CHECK(Operon::ParseShapeBoundMode("bisected") == (ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
-    auto const bare = Operon::ParseShapeBoundModeConfig("bisected");
-    CHECK(bare.Mode == (ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
-    CHECK_FALSE(bare.BisectionDepth.has_value());
-    auto const explicitDepth = Operon::ParseShapeBoundModeConfig("bisected:7");
-    CHECK(explicitDepth.Mode == (ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
+    CHECK(Operon::ParseShapeBoundOptions("combined", 3).Mode == ShapeBoundMode::Combined);
+    CHECK(Operon::ParseShapeBoundOptions("interval", 3).Mode == ShapeBoundMode::Interval);
+    CHECK(Operon::ParseShapeBoundOptions("affine", 3).Mode == ShapeBoundMode::Affine);
+    auto const bare = Operon::ParseShapeBoundOptions("bisected", 4);
+    CHECK(bare.Mode == ShapeBoundMode::Bisected);
+    CHECK(bare.BisectionDepth == 4);
+    CHECK_FALSE(bare.UseTightenRangeFallback);
+    auto const explicitDepth = Operon::ParseShapeBoundOptions("bisected:7", 4);
+    CHECK(explicitDepth.Mode == ShapeBoundMode::Bisected);
     CHECK(explicitDepth.BisectionDepth == 7);
-    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("not-a-mode"), std::invalid_argument);
-    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("interval,affine"), std::invalid_argument);
-    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("bisected:"), std::invalid_argument);
-    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("bisected:-1"), std::invalid_argument);
-    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("bisected:21"), std::invalid_argument);
-    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("bisected:x"), std::invalid_argument);
-    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("affine,bisected"), std::invalid_argument);
+    CHECK(Operon::ParseShapeBoundOptions("interval", 5).BisectionDepth == 5);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundOptions("not-a-mode", 3), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundOptions("interval,affine", 3), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundOptions("combined,bisected:5", 3), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundOptions("bisected:", 3), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundOptions("bisected:-1", 3), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundOptions("bisected:21", 3), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundOptions("bisected:x", 3), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundOptions("affine,bisected", 3), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundOptions("bisected:7,bisected", 3), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundOptions("interval", -1), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundOptions("interval", 21), std::invalid_argument);
 }
 
-TEST_CASE("ParseShapeBoundMode rejects duplicate bisected tokens", "[shape-constraints]")
+TEST_CASE("ParseShapeBoundOptions: explicit bisected:N overrides the default depth", "[shape-constraints]")
 {
-    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("bisected:7,bisected"), std::invalid_argument);
-    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("bisected,bisected:7"), std::invalid_argument);
-    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("bisected:3,bisected:9"), std::invalid_argument);
+    CHECK(Operon::ParseShapeBoundOptions("bisected", 4).BisectionDepth == 4);
+    CHECK(Operon::ParseShapeBoundOptions("bisected:9", 4).BisectionDepth == 9);
+    CHECK(Operon::ParseShapeBoundOptions("bisected:0", 15).BisectionDepth == 0);
+    CHECK(Operon::ParseShapeBoundOptions("bisected:15", 0).BisectionDepth == 15);
 }
 
-TEST_CASE("ParseShapeBoundModeConfig accepts combined alongside an explicit bisected depth", "[shape-constraints]")
+TEST_CASE("Bisection depth is validated at the parse and certifier boundaries", "[shape-constraints]")
 {
-    // "combined" sets no bits of its own (ShapeBoundMode::Combined == 0), so
-    // pairing it with bisected:N is a valid, redundant-but-harmless
-    // combination equivalent to bisected:N alone -- not a duplicate-bisected
-    // rejection and not an interval/affine conflict.
-    auto const cfg = Operon::ParseShapeBoundModeConfig("combined,bisected:5");
-    CHECK(cfg.Mode == (ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
-    REQUIRE(cfg.BisectionDepth.has_value());
-    CHECK(*cfg.BisectionDepth == 5);
-}
+    CHECK(Operon::ParseShapeBoundOptions("bisected:20", 3).BisectionDepth == 20);
+    CHECK(Operon::ParseShapeBoundOptions("interval", 0).BisectionDepth == 0);
+    CHECK(Operon::ParseShapeBoundOptions("interval", 20).BisectionDepth == 20);
 
-TEST_CASE(
-    "CLI bisection-depth precedence: explicit bisected:N overrides --shape-bisection-depth", "[shape-constraints]")
-{
-    // Mirrors the precedence pattern each CLI (operon_gp, operon_nsgp,
-    // operon_parse_model) applies after parsing --shape-bound-mode and
-    // --shape-bisection-depth: seed ShapeBoundOptions::BisectionDepth from
-    // the CLI's depth option, then let an explicit bisected:N win before
-    // SetBoundOptions(). See e.g. cli/source/operon_gp.cpp.
-    auto const applyPrecedence = [](std::string const& modeStr, int cliDepthOption) -> Operon::ShapeBoundOptions {
-        auto const config = Operon::ParseShapeBoundModeConfig(modeStr);
-        Operon::ShapeBoundOptions options {};
-        options.BisectionDepth = cliDepthOption;
-        if (config.BisectionDepth) {
-            options.BisectionDepth = *config.BisectionDepth;
-        }
-        Operon::ValidateShapeBoundOptions(options);
-        return options;
-    };
-
-    // Bare `bisected` has no depth of its own: the CLI's
-    // --shape-bisection-depth value is what reaches ShapeBoundOptions.
-    CHECK(applyPrecedence("bisected", 4).BisectionDepth == 4);
-    // An explicit bisected:N overrides that CLI default...
-    CHECK(applyPrecedence("bisected:9", 4).BisectionDepth == 9);
-    // ...in both directions (explicit depth lower or higher than the
-    // CLI default), and even for depth 0.
-    CHECK(applyPrecedence("bisected:0", 15).BisectionDepth == 0);
-    CHECK(applyPrecedence("bisected:15", 0).BisectionDepth == 15);
-}
-
-TEST_CASE("SetBoundMode rejects invalid combinations the same way ParseShapeBoundMode does", "[shape-constraints]")
-{
-    // A programmatically-constructed ShapeBoundMode bypasses the string
-    // parser entirely -- SetBoundMode must enforce the same invariants
-    // (via ValidateShapeBoundMode) rather than silently accepting a mode
-    // whose Bisected flag then gets ignored downstream.
     Fixture fx;
     Operon::ShapeConstraintSet cs;
     cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
@@ -370,23 +269,19 @@ TEST_CASE("SetBoundMode rejects invalid combinations the same way ParseShapeBoun
     cs.Constraints.push_back({ .Op = ShapeConstraintOp::Identity,
         .Variable = "",
         .Sign = std::nullopt,
-        .Bound = std::pair { Operon::Scalar { -100 }, Operon::Scalar { 100 } } });
+        .Bound = std::pair { Operon::Scalar { -1e6 }, Operon::Scalar { 1e6 } } });
 
-    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
-    CHECK_THROWS_AS(sce.SetBoundMode(ShapeBoundMode::Bisected), std::invalid_argument);
-    CHECK_THROWS_AS(sce.SetBoundMode(ShapeBoundMode::Affine | ShapeBoundMode::Bisected), std::invalid_argument);
-    CHECK_THROWS_AS(sce.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Affine), std::invalid_argument);
-    CHECK_THROWS_AS(sce.SetBoundMode(static_cast<ShapeBoundMode>(1U << 3U)), std::invalid_argument);
-    CHECK_NOTHROW(sce.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
-    CHECK(sce.BoundMode() == (ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
-
-    Operon::ShapeViolationEvaluator sve(&fx.problem, &fx.dtable, cs);
-    CHECK_THROWS_AS(sve.SetBoundMode(ShapeBoundMode::Bisected), std::invalid_argument);
-    CHECK_NOTHROW(sve.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
-    CHECK(sve.BoundMode() == (ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
+    auto const make = [&](int depth) {
+        return Operon::ShapeCertifier(&fx.problem, &fx.dtable, cs, Operon::Scalar { 1 },
+            Operon::ShapeBoundOptions { .Mode = ShapeBoundMode::Bisected, .BisectionDepth = depth });
+    };
+    CHECK_THROWS_AS(make(-1), std::invalid_argument);
+    CHECK_NOTHROW(make(0));
+    CHECK_NOTHROW(make(20));
+    CHECK_THROWS_AS(make(21), std::invalid_argument);
 }
 
-TEST_CASE("ShapeConstrainedEvaluator - bisected interval tightens a dependency-problem bound", "[shape-constraints]")
+TEST_CASE("ShapeCertifier - bisected interval tightens a dependency-problem bound", "[shape-constraints]")
 {
     // f(X1) = (X1 - 1) * (X1 - 1) over [0, 10]: true range [0, 81], naive
     // interval multiplication overestimates to [-9, 81] (dependency
@@ -417,17 +312,17 @@ TEST_CASE("ShapeConstrainedEvaluator - bisected interval tightens a dependency-p
         .Sign = std::nullopt,
         .Bound = std::pair { Operon::Scalar { -1000 }, Operon::Scalar { 1000 } } });
 
-    Operon::ShapeConstrainedEvaluator shapeEval(&nmse, &dtable, cs);
-    shapeEval.SetBoundOptions(
-        { .BisectionDepth = 4 }); // Exceeds one AVX2 float batch; every batch needs fresh lane bounds.
+    CanonicalShape plainEval(&nmse, &dtable, cs, Operon::Scalar { 1 },
+        { .Mode = ShapeBoundMode::Interval,
+            .BisectionDepth = 4 }); // Exceeds one AVX2 float batch; every batch needs fresh lane bounds.
+    CanonicalShape shapeEval(
+        &nmse, &dtable, cs, Operon::Scalar { 1 }, { .Mode = ShapeBoundMode::Bisected, .BisectionDepth = 4 });
 
-    shapeEval.SetBoundMode(ShapeBoundMode::Interval);
-    auto const plain = shapeEval.Measure(tree);
+    auto const plain = plainEval.Measure(tree);
     REQUIRE(plain.Measurements.size() == 1);
     REQUIRE(plain.Measurements[0].Bound.has_value());
     auto const [plo, phi] = *plain.Measurements[0].Bound;
 
-    shapeEval.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
     auto const bisected = shapeEval.Measure(tree);
     REQUIRE(bisected.Measurements.size() == 1);
     REQUIRE(bisected.Measurements[0].Bound.has_value());
@@ -448,8 +343,7 @@ TEST_CASE("ShapeConstrainedEvaluator - bisected interval tightens a dependency-p
     CHECK((blo > plo || bhi < phi));
 }
 
-TEST_CASE("ShapeConstrainedEvaluator - bisected interval accepts a model naive interval wrongly rejects",
-    "[shape-constraints]")
+TEST_CASE("ShapeCertifier - bisected interval accepts a model naive interval wrongly rejects", "[shape-constraints]")
 {
     // Same dependency-problem tree as the tightening test above: f(X1) =
     // (X1-1)*(X1-1) over [0,10], true range [0,81]. Naive interval
@@ -482,12 +376,10 @@ TEST_CASE("ShapeConstrainedEvaluator - bisected interval accepts a model naive i
         .Sign = std::nullopt,
         .Bound = std::pair { Operon::Scalar { -1 }, Operon::Scalar { 1000 } } });
 
-    Operon::ShapeConstrainedEvaluator shapeEval(&nmse, &dtable, cs);
+    CanonicalShape plainEval(&nmse, &dtable, cs, Operon::Scalar { 1 }, { .Mode = ShapeBoundMode::Interval });
+    CHECK_FALSE(plainEval.Feasible(tree));
 
-    shapeEval.SetBoundMode(ShapeBoundMode::Interval);
-    CHECK_FALSE(shapeEval.Feasible(tree));
-
-    shapeEval.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
+    CanonicalShape shapeEval(&nmse, &dtable, cs, Operon::Scalar { 1 }, { .Mode = ShapeBoundMode::Bisected });
     CHECK(shapeEval.Feasible(tree));
 }
 
@@ -506,8 +398,9 @@ namespace {
         using IE = Operon::IntervalEvaluator<Operon::Scalar>;
         auto const directBound = [&]() -> std::pair<Operon::Scalar, Operon::Scalar> {
             IE ie(&tree, dom);
-            auto const iv = ie.Evaluate(tree.GetCoefficients());
-            return { iv.inf(), iv.sup() };
+            auto const iv = ie(tree.GetCoefficients());
+            REQUIRE(iv);
+            return { iv->inf(), iv->sup() };
         };
         if (depth <= 0) {
             return directBound();
@@ -576,9 +469,10 @@ namespace {
                 leafDom[axes[axis]] = { lo + cell * step, lo + (cell + Operon::Scalar { 1 }) * step };
             }
             IE ie(&tree, leafDom);
-            auto const seg = ie.Evaluate(coeff);
-            resLo = std::min(resLo, seg.inf());
-            resHi = std::max(resHi, seg.sup());
+            auto const seg = ie(coeff);
+            REQUIRE(seg);
+            resLo = std::min(resLo, seg->inf());
+            resHi = std::max(resHi, seg->sup());
         }
         return { resLo, resHi };
     }
@@ -630,7 +524,7 @@ TEST_CASE("Wide interval evaluator preserves packed tree lanes", "[shape-constra
         { x2, pack.lower_data(1), pack.upper_data(1) },
     };
     WI evaluator(&tree, domains);
-    auto const packed = evaluator.TryEvaluate(tree.GetCoefficients(), overrides);
+    auto const packed = evaluator(tree.GetCoefficients(), overrides);
     REQUIRE(packed);
 
     alignas(W) std::array<S, Pack::width> lower {};
@@ -644,7 +538,7 @@ TEST_CASE("Wide interval evaluator preserves packed tree lanes", "[shape-constra
             { x2, { leaf[1].inf(), leaf[1].sup() } },
         };
         Operon::IntervalEvaluator<S> scalar(&tree, scalarDomains);
-        auto const expected = scalar.TryEvaluate(tree.GetCoefficients());
+        auto const expected = scalar(tree.GetCoefficients());
         REQUIRE(expected);
         CHECK(lower[lane] == Catch::Approx(expected->inf()).margin(1e-4F));
         CHECK(upper[lane] == Catch::Approx(expected->sup()).margin(1e-4F));
@@ -691,11 +585,9 @@ TEST_CASE("Bisected interval bound agrees with a scalar leaf-by-leaf reference",
             .Sign = std::nullopt,
             .Bound = std::pair { Operon::Scalar { -1e6 }, Operon::Scalar { 1e6 } } });
 
-        Operon::ShapeConstrainedEvaluator shapeEval(&nmse, &dtable, cs);
-        shapeEval.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
-
         for (int depth = 0; depth <= 6; ++depth) {
-            shapeEval.SetBoundOptions({ .BisectionDepth = depth });
+            CanonicalShape shapeEval(&nmse, &dtable, cs, Operon::Scalar { 1 },
+                { .Mode = ShapeBoundMode::Bisected, .BisectionDepth = depth });
             auto const r = shapeEval.Measure(tree);
             REQUIRE(r.Measurements.size() == 1);
             REQUIRE(r.Measurements[0].Bound.has_value());
@@ -751,9 +643,8 @@ TEST_CASE("Bisected interval endpoints enclose the split domain", "[shape-constr
         .Sign = std::nullopt,
         .Bound = std::pair { -std::numeric_limits<S>::max(), std::numeric_limits<S>::max() } });
 
-    Operon::ShapeConstrainedEvaluator shapeEval(&nmse, &dtable, cs);
-    shapeEval.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
-    shapeEval.SetBoundOptions({ .BisectionDepth = 3 });
+    CanonicalShape shapeEval(
+        &nmse, &dtable, cs, Operon::Scalar { 1 }, { .Mode = ShapeBoundMode::Bisected, .BisectionDepth = 3 });
 
     auto const r = shapeEval.Measure(tree);
     REQUIRE(r.Measurements.size() == 1);
@@ -803,16 +694,15 @@ TEST_CASE("Bisected interval falls back to the direct bound when a sub-box is ou
         .Sign = std::nullopt,
         .Bound = std::pair { Operon::Scalar { -1000 }, Operon::Scalar { 1000 } } });
 
-    Operon::ShapeConstrainedEvaluator shapeEval(&nmse, &dtable, cs);
+    CanonicalShape plainEval(&nmse, &dtable, cs, Operon::Scalar { 1 }, { .Mode = ShapeBoundMode::Interval });
+    CanonicalShape shapeEval(
+        &nmse, &dtable, cs, Operon::Scalar { 1 }, { .Mode = ShapeBoundMode::Bisected, .BisectionDepth = 3 });
 
-    shapeEval.SetBoundMode(ShapeBoundMode::Interval);
-    auto const plain = shapeEval.Measure(tree);
+    auto const plain = plainEval.Measure(tree);
     REQUIRE(plain.Measurements.size() == 1);
     REQUIRE(plain.Measurements[0].Bound.has_value());
     auto const [plo, phi] = *plain.Measurements[0].Bound;
 
-    shapeEval.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
-    shapeEval.SetBoundOptions({ .BisectionDepth = 3 });
     auto const bisected = shapeEval.Measure(tree);
     REQUIRE(bisected.Measurements.size() == 1);
     REQUIRE(bisected.Measurements[0].Bound.has_value());
@@ -854,16 +744,15 @@ TEST_CASE(
         .Sign = std::nullopt,
         .Bound = std::pair { Operon::Scalar { -1000 }, Operon::Scalar { 1000 } } });
 
-    Operon::ShapeConstrainedEvaluator shapeEval(&nmse, &dtable, cs);
-    shapeEval.SetBoundMode(ShapeBoundMode::Interval);
-    auto const plain = shapeEval.Measure(tree);
+    CanonicalShape plainEval(&nmse, &dtable, cs, Operon::Scalar { 1 }, { .Mode = ShapeBoundMode::Interval });
+    CanonicalShape shapeEval(
+        &nmse, &dtable, cs, Operon::Scalar { 1 }, { .Mode = ShapeBoundMode::Bisected, .BisectionDepth = 3 });
+    auto const plain = plainEval.Measure(tree);
     REQUIRE(plain.Measurements.size() == 1);
     CHECK_FALSE(plain.Measurements[0].Certified);
     CHECK_FALSE(plain.Feasible);
     CHECK(plain.Violation == Catch::Approx(1.0));
 
-    shapeEval.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
-    shapeEval.SetBoundOptions({ .BisectionDepth = 3 });
     auto const bisected = shapeEval.Measure(tree);
     REQUIRE(bisected.Measurements.size() == 1);
     CHECK_FALSE(bisected.Measurements[0].Certified);
@@ -914,16 +803,15 @@ TEST_CASE(
         .Sign = std::nullopt,
         .Bound = std::pair { Operon::Scalar { -10 }, Operon::Scalar { 10 } } });
 
-    Operon::ShapeConstrainedEvaluator shapeEval(&nmse, &dtable, cs);
+    CanonicalShape plainEval(&nmse, &dtable, cs, Operon::Scalar { 1 }, { .Mode = ShapeBoundMode::Interval });
+    CanonicalShape shapeEval(
+        &nmse, &dtable, cs, Operon::Scalar { 1 }, { .Mode = ShapeBoundMode::Bisected, .BisectionDepth = 3 });
 
-    shapeEval.SetBoundMode(ShapeBoundMode::Interval);
-    auto const plain = shapeEval.Measure(tree);
+    auto const plain = plainEval.Measure(tree);
     REQUIRE(plain.Measurements.size() == 1);
     REQUIRE(plain.Measurements[0].Bound.has_value());
     auto const [plo, phi] = *plain.Measurements[0].Bound;
 
-    shapeEval.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
-    shapeEval.SetBoundOptions({ .BisectionDepth = 3 });
     auto const bisected = shapeEval.Measure(tree);
     REQUIRE(bisected.Measurements.size() == 1);
     REQUIRE(bisected.Measurements[0].Bound.has_value());
@@ -936,13 +824,8 @@ TEST_CASE(
     CHECK(static_cast<double>(bhi) == static_cast<double>(phi));
 }
 
-// Both bisection-depth knobs are validated by the SetBoundOptions setters
-// of both evaluator classes (mirroring SetBoundMode's contract), and a
-// options change drops the cached feasibility/measurement entries that
-// were computed under the previous depths -- the memo key covers the bound
-// mode but not the options, so a stale cache would keep answering with the
-// old bisection depth's bound.
-TEST_CASE("SetBoundOptions validates bisection depths and invalidates cached measurements", "[shape-constraints]")
+// The bisection depth is fixed at construction and takes effect in the bound.
+TEST_CASE("Bisection depth is applied to the bisected bound", "[shape-constraints]")
 {
     constexpr auto nrow = std::size_t { 5 };
     constexpr auto ncol = std::size_t { 2 };
@@ -973,39 +856,21 @@ TEST_CASE("SetBoundOptions validates bisection depths and invalidates cached mea
         .Bound = std::pair {
             Operon::Scalar { -25 } / Operon::Scalar { 100 }, Operon::Scalar { 25 } / Operon::Scalar { 100 } } });
 
-    Operon::ShapeConstrainedEvaluator sce(&nmse, &dtable, cs);
-    Operon::ShapeViolationEvaluator sve(&problem, &dtable, cs);
+    auto const makeBisected
+        = [&](int depth) { return ShapeBoundOptions { .Mode = ShapeBoundMode::Bisected, .BisectionDepth = depth }; };
 
-    // (a) validation, both classes, both knobs.
-    CHECK_THROWS_AS(sce.SetBoundOptions({ .BisectionDepth = -1 }), std::invalid_argument);
-    CHECK_THROWS_AS(sce.SetBoundOptions({ .BisectionDepth = 25 }), std::invalid_argument);
-    CHECK_THROWS_AS(sce.SetBoundOptions({ .AffineBisectionMaxDepth = -1 }), std::invalid_argument);
-    CHECK_THROWS_AS(sce.SetBoundOptions({ .AffineBisectionMaxDepth = 25 }), std::invalid_argument);
-    CHECK_THROWS_AS(sve.SetBoundOptions({ .BisectionDepth = -1 }), std::invalid_argument);
-    CHECK_THROWS_AS(sve.SetBoundOptions({ .AffineBisectionMaxDepth = 25 }), std::invalid_argument);
-    CHECK_NOTHROW(sce.SetBoundOptions({ .BisectionDepth = 0 }));
-    CHECK_NOTHROW(sce.SetBoundOptions({ .BisectionDepth = 20 }));
-    CHECK_NOTHROW(sve.SetBoundOptions({ .AffineBisectionMaxDepth = 20 }));
-    // An options value that failed validation must not have been applied.
-    CHECK(sce.BoundOptions().BisectionDepth == 20);
+    CanonicalShape sce3(&nmse, &dtable, cs, Operon::Scalar { 1 }, makeBisected(3));
+    CanonicalShape sve3(&problem, &dtable, cs, Operon::Scalar { 1 }, makeBisected(3));
+    CHECK_FALSE(sce3.Feasible(tree)); // [-1, 1] vs [-0.25, 0.25]
+    CHECK(static_cast<double>(sve3.RawViolation(tree)) == Catch::Approx(1.5).margin(1e-6)); // 0.75 + 0.75
 
-    // (b) cache invalidation: Feasible()/RawViolation() answers computed
-    // under depth 3 must be recomputed after the depth changes to 5.
-    sce.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
-    sve.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
-
-    sce.SetBoundOptions({ .BisectionDepth = 3 });
-    CHECK_FALSE(sce.Feasible(tree)); // [-1, 1] vs [-0.25, 0.25]
-    sve.SetBoundOptions({ .BisectionDepth = 3 });
-    CHECK(static_cast<double>(sve.RawViolation(tree)) == Catch::Approx(1.5).margin(1e-6)); // 0.75 + 0.75
-
-    sce.SetBoundOptions({ .BisectionDepth = 5 });
-    CHECK(sce.Feasible(tree)); // [-0.25, 0.25] -- recomputed, not the stale depth-3 entry
-    sve.SetBoundOptions({ .BisectionDepth = 5 });
-    CHECK(static_cast<double>(sve.RawViolation(tree)) == Catch::Approx(0.0).margin(1e-12));
+    CanonicalShape sce5(&nmse, &dtable, cs, Operon::Scalar { 1 }, makeBisected(5));
+    CanonicalShape sve5(&problem, &dtable, cs, Operon::Scalar { 1 }, makeBisected(5));
+    CHECK(sce5.Feasible(tree)); // [-0.25, 0.25]
+    CHECK(static_cast<double>(sve5.RawViolation(tree)) == Catch::Approx(0.0).margin(1e-12));
 }
 
-TEST_CASE("ShapeConstrainedEvaluator - balanced bisection resolves multi-axis dependency", "[shape-constraints]")
+TEST_CASE("ShapeCertifier - balanced bisection resolves multi-axis dependency", "[shape-constraints]")
 {
     constexpr auto nrow = std::size_t { 5 };
     constexpr auto ncol = std::size_t { 3 };
@@ -1033,9 +898,8 @@ TEST_CASE("ShapeConstrainedEvaluator - balanced bisection resolves multi-axis de
         .Sign = std::nullopt,
         .Bound = std::pair { Operon::Scalar { -24 }, Operon::Scalar { 24 } } });
 
-    Operon::ShapeConstrainedEvaluator shapeEval(&nmse, &dtable, cs);
-    shapeEval.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
-    shapeEval.SetBoundOptions({ .BisectionDepth = 6 });
+    CanonicalShape shapeEval(
+        &nmse, &dtable, cs, Operon::Scalar { 1 }, { .Mode = ShapeBoundMode::Bisected, .BisectionDepth = 6 });
     auto const summary = shapeEval.Measure(tree);
     REQUIRE(summary.Measurements.size() == 1);
     REQUIRE(summary.Measurements[0].Bound.has_value());
@@ -1047,25 +911,7 @@ TEST_CASE("ShapeConstrainedEvaluator - balanced bisection resolves multi-axis de
     CHECK(summary.Feasible);
 }
 
-TEST_CASE("Shape cache memo key includes a reference target", "[shape-constraints]")
-{
-    Fixture fx;
-    auto const x1 = fx.ds.GetVariable("X1").value().Hash;
-    auto const x2 = fx.ds.GetVariable("X2").value().Hash;
-    auto x = Node(NodeType::Variable, x1);
-    auto y = Node(NodeType::Variable, x2);
-    auto add = Node::Function(static_cast<Hash>(BuiltinOp::Add), 2);
-    auto const refX = Tree({ x, y, Node::Ref(0), add }).UpdateNodes();
-    auto const refY = Tree({ x, y, Node::Ref(1), add }).UpdateNodes();
-
-    CHECK(detail::HashTreeForMemo(refX) != detail::HashTreeForMemo(refY));
-    CHECK(detail::HashTreeForMemo(refX, static_cast<Hash>(ShapeBoundMode::Combined))
-        != detail::HashTreeForMemo(refX, static_cast<Hash>(ShapeBoundMode::Interval)));
-    CHECK(detail::HashTreeForMemo(refX, static_cast<Hash>(ShapeBoundMode::Interval))
-        != detail::HashTreeForMemo(refX, static_cast<Hash>(ShapeBoundMode::Interval | ShapeBoundMode::Bisected)));
-}
-
-TEST_CASE("ShapeConstrainedEvaluator - negative linear scale flips derivative constraints", "[shape-constraints]")
+TEST_CASE("ShapeCertifier - negative linear scale flips derivative constraints", "[shape-constraints]")
 {
     Fixture fx;
     auto negated = InfixParser::ParseOrThrow("X2 - X1", fx.ds);
@@ -1081,15 +927,15 @@ TEST_CASE("ShapeConstrainedEvaluator - negative linear scale flips derivative co
     cs.Constraints.push_back(
         { .Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = -1, .Bound = std::nullopt });
 
-    Operon::ShapeConstrainedEvaluator scaled(&fx.nmse, &fx.dtable, cs);
+    CanonicalShape scaled(&fx.nmse, &fx.dtable, cs);
     CHECK_FALSE(scaled.Feasible(negated));
 
     fx.problem.SetLinearScalingEnabled(false);
-    Operon::ShapeConstrainedEvaluator raw(&fx.nmse, &fx.dtable, cs);
+    CanonicalShape raw(&fx.nmse, &fx.dtable, cs);
     CHECK(raw.Feasible(negated));
 }
 
-TEST_CASE("ShapeConstrainedEvaluator - negative linear scale swaps derivative bound endpoints", "[shape-constraints]")
+TEST_CASE("ShapeCertifier - negative linear scale swaps derivative bound endpoints", "[shape-constraints]")
 {
     Fixture fx;
     auto negated = InfixParser::ParseOrThrow("X2 - X1", fx.ds);
@@ -1111,7 +957,7 @@ TEST_CASE("ShapeConstrainedEvaluator - negative linear scale swaps derivative bo
         .Sign = std::nullopt,
         .Bound = std::pair { Operon::Scalar { -1.5F }, Operon::Scalar { -0.5F } } });
 
-    Operon::ShapeConstrainedEvaluator scaled(&fx.nmse, &fx.dtable, cs);
+    CanonicalShape scaled(&fx.nmse, &fx.dtable, cs);
     CHECK_FALSE(scaled.Feasible(negated));
 
     auto const measurement = scaled.Measure(negated);
@@ -1119,11 +965,11 @@ TEST_CASE("ShapeConstrainedEvaluator - negative linear scale swaps derivative bo
     CHECK(measurement.Measurements[0].Violation > 0.0F);
 
     fx.problem.SetLinearScalingEnabled(false);
-    Operon::ShapeConstrainedEvaluator raw(&fx.nmse, &fx.dtable, cs);
+    CanonicalShape raw(&fx.nmse, &fx.dtable, cs);
     CHECK(raw.Feasible(negated));
 }
 
-TEST_CASE("ShapeConstrainedEvaluator - offset shifts identity bound constraints", "[shape-constraints]")
+TEST_CASE("ShapeCertifier - offset shifts identity bound constraints", "[shape-constraints]")
 {
     constexpr auto nrow = std::size_t { 5 };
     constexpr auto ncol = std::size_t { 2 };
@@ -1153,16 +999,15 @@ TEST_CASE("ShapeConstrainedEvaluator - offset shifts identity bound constraints"
         .Sign = std::nullopt,
         .Bound = std::pair { Operon::Scalar { 0 }, Operon::Scalar { 1 } } });
 
-    Operon::ShapeConstrainedEvaluator scaled(&nmse, &dtable, cs);
+    CanonicalShape scaled(&nmse, &dtable, cs);
     CHECK_FALSE(scaled.Feasible(tree));
 
     problem.SetLinearScalingEnabled(false);
-    Operon::ShapeConstrainedEvaluator raw(&nmse, &dtable, cs);
+    CanonicalShape raw(&nmse, &dtable, cs);
     CHECK(raw.Feasible(tree));
 }
 
-TEST_CASE(
-    "ShapeConstrainedEvaluator and ShapeViolationEvaluator report directly fitted scaled bounds", "[shape-constraints]")
+TEST_CASE("ShapeCertifier reports directly fitted scaled bounds under the canonical transform", "[shape-constraints]")
 {
     Fixture fx;
     auto tree = InfixParser::ParseOrThrow("2 * (X1 - X2) + 3", fx.ds);
@@ -1181,14 +1026,14 @@ TEST_CASE(
         .Sign = std::nullopt,
         .Bound = std::pair { Operon::Scalar { -100 }, Operon::Scalar { 100 } } });
 
-    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
+    CanonicalShape sce(&fx.nmse, &fx.dtable, cs);
     auto const constrained = sce.Measure(tree);
     REQUIRE(constrained.Measurements.size() == 1);
     REQUIRE(constrained.Measurements[0].Bound);
     CHECK(constrained.Measurements[0].Bound->first == Catch::Approx(expectedLo));
     CHECK(constrained.Measurements[0].Bound->second == Catch::Approx(expectedHi));
 
-    Operon::ShapeViolationEvaluator sve(&fx.problem, &fx.dtable, cs);
+    CanonicalShape sve(&fx.problem, &fx.dtable, cs);
     auto const violation = sve.Measure(tree);
     REQUIRE(violation.Measurements.size() == 1);
     REQUIRE(violation.Measurements[0].Bound);
@@ -1196,8 +1041,7 @@ TEST_CASE(
     CHECK(violation.Measurements[0].Bound->second == Catch::Approx(expectedHi));
 }
 
-TEST_CASE(
-    "ShapeConstrainedEvaluator - derivative through an unsupported op is not falsely feasible", "[shape-constraints]")
+TEST_CASE("ShapeCertifier - derivative through an unsupported op is not falsely feasible", "[shape-constraints]")
 {
     // f(x) = abs(X1): Abs has no registered symbolic derivative rule
     // (tree_diff.cpp intentionally leaves it unregistered, non-smooth).
@@ -1214,11 +1058,11 @@ TEST_CASE(
     cs.Constraints.push_back(
         { .Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt });
 
-    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
+    CanonicalShape sce(&fx.nmse, &fx.dtable, cs);
     CHECK_FALSE(sce.Feasible(tree));
 }
 
-TEST_CASE("ShapeConstrainedEvaluator - identically-zero derivative satisfies either sign", "[shape-constraints]")
+TEST_CASE("ShapeCertifier - identically-zero derivative satisfies either sign", "[shape-constraints]")
 {
     // f(X2) = X2 does not reference X1 at all -> d/dX1 is identically
     // zero (BuildVariableGradientDag's NoGrad root path, no
@@ -1233,33 +1077,167 @@ TEST_CASE("ShapeConstrainedEvaluator - identically-zero derivative satisfies eit
     cs.Constraints.push_back(
         { .Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt });
 
-    Operon::ShapeConstrainedEvaluator nonDecreasing(&fx.nmse, &fx.dtable, cs);
+    CanonicalShape nonDecreasing(&fx.nmse, &fx.dtable, cs);
     CHECK(nonDecreasing.Feasible(tree));
 
     cs.Constraints[0].Sign = -1;
-    Operon::ShapeConstrainedEvaluator nonIncreasing(&fx.nmse, &fx.dtable, cs);
+    CanonicalShape nonIncreasing(&fx.nmse, &fx.dtable, cs);
     CHECK(nonIncreasing.Feasible(tree));
 }
 
-TEST_CASE("ShapeConstrainedEvaluator - unknown variable in domains throws", "[shape-constraints]")
+TEST_CASE("IntervalEvaluator returns multiple VariableGradientDag roots from one traversal", "[shape-constraints]")
+{
+    Fixture fx;
+    auto tree = InfixParser::ParseOrThrow("X1 * X1 * X2", fx.ds);
+    auto const x1 = fx.ds.GetVariable("X1").value().Hash;
+    auto const x2 = fx.ds.GetVariable("X2").value().Hash;
+    auto const coeff = tree.GetCoefficients();
+    auto const dag = BuildVariableGradientDag(tree, coeff);
+    auto const x1Index = std::ranges::find(dag.Variables, x1);
+    auto const x2Index = std::ranges::find(dag.Variables, x2);
+    REQUIRE(x1Index != dag.Variables.end());
+    REQUIRE(x2Index != dag.Variables.end());
+
+    Operon::Vector<std::size_t> roots { dag.OriginalSize - 1,
+        dag.Roots[static_cast<std::size_t>(std::distance(dag.Variables.begin(), x1Index))],
+        dag.Roots[static_cast<std::size_t>(std::distance(dag.Variables.begin(), x2Index))] };
+    REQUIRE(
+        std::ranges::none_of(roots, [](std::size_t root) { return root == std::numeric_limits<std::size_t>::max(); }));
+
+    IntervalEvaluator<Scalar>::DomainMap domains;
+    domains.insert_or_assign(x1, std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    domains.insert_or_assign(x2, std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    IntervalEvaluator<Scalar> fused(&tree, domains);
+    fused.SetNodes(dag.Nodes);
+    Operon::Vector<IntervalEvaluator<Scalar>::Interval> fusedBounds(roots.size());
+    auto const evaluation
+        = fused.EvaluateAll(coeff, [&](Operon::Span<IntervalEvaluator<Scalar>::Interval const> values) {
+              for (std::size_t i = 0; i < roots.size(); ++i) {
+                  fusedBounds[i] = values[roots[i]];
+              }
+          });
+    REQUIRE(evaluation);
+
+    for (std::size_t i = 0; i < roots.size(); ++i) {
+        Tree sliced(
+            Operon::Vector<Node>(dag.Nodes.begin(), dag.Nodes.begin() + static_cast<std::ptrdiff_t>(roots[i]) + 1));
+        sliced.UpdateNodes();
+        IntervalEvaluator<Scalar> individual(&sliced, domains);
+        auto const individualBound = individual(sliced.GetCoefficients());
+        REQUIRE(individualBound);
+        CHECK(fusedBounds[i].inf() == Catch::Approx(individualBound->inf()));
+        CHECK(fusedBounds[i].sup() == Catch::Approx(individualBound->sup()));
+    }
+}
+
+TEST_CASE("BuildVariableGradientDag filters unreferenced variables", "[shape-constraints]")
+{
+    Fixture fx;
+    auto tree = InfixParser::ParseOrThrow("X1 * X1 * X2", fx.ds);
+    auto const x1 = fx.ds.GetVariable("X1").value().Hash;
+    auto const x2 = fx.ds.GetVariable("X2").value().Hash;
+    auto const coeff = tree.GetCoefficients();
+    auto const full = BuildVariableGradientDag(tree, coeff);
+    Operon::Vector<Operon::Hash> filter { x1 };
+    auto const filtered = BuildVariableGradientDag(tree, coeff, filter);
+
+    auto const fullX1 = std::ranges::find(full.Variables, x1);
+    auto const fullX2 = std::ranges::find(full.Variables, x2);
+    REQUIRE(fullX1 != full.Variables.end());
+    REQUIRE(fullX2 != full.Variables.end());
+    REQUIRE(filtered.Variables.size() == 1);
+    CHECK(filtered.Variables[0] == x1);
+    auto const fullIndex = static_cast<std::size_t>(std::distance(full.Variables.begin(), fullX1));
+    CHECK(filtered.Certain[0] == full.Certain[fullIndex]);
+    Tree fullDerivative(Operon::Vector<Node>(
+        full.Nodes.begin(), full.Nodes.begin() + static_cast<std::ptrdiff_t>(full.Roots[fullIndex]) + 1));
+    Tree filteredDerivative(Operon::Vector<Node>(
+        filtered.Nodes.begin(), filtered.Nodes.begin() + static_cast<std::ptrdiff_t>(filtered.Roots[0]) + 1));
+    fullDerivative.UpdateNodes();
+    filteredDerivative.UpdateNodes();
+
+    IntervalEvaluator<Scalar>::DomainMap domains;
+    domains.insert_or_assign(x1, std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    domains.insert_or_assign(x2, std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    IntervalEvaluator<Scalar> fullEvaluator(&fullDerivative, domains);
+    IntervalEvaluator<Scalar> filteredEvaluator(&filteredDerivative, domains);
+    auto const fullBound = fullEvaluator(fullDerivative.GetCoefficients());
+    auto const filteredBound = filteredEvaluator(filteredDerivative.GetCoefficients());
+
+    REQUIRE(fullBound);
+    REQUIRE(filteredBound);
+    CHECK(filteredBound->inf() == Catch::Approx(fullBound->inf()));
+    CHECK(filteredBound->sup() == Catch::Approx(fullBound->sup()));
+}
+
+TEST_CASE("ShapeCertifier certifies a single first-derivative constraint", "[shape-constraints]")
+{
+    Fixture fx;
+    auto tree = InfixParser::ParseOrThrow("X1 * X1 * X2", fx.ds);
+    fx.problem.SetLinearScalingEnabled(false);
+
+    Operon::ShapeConstraintSet constraints;
+    constraints.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    constraints.Domains.insert_or_assign("X2", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    constraints.Constraints.push_back({ .Op = ShapeConstraintOp::FirstDerivative,
+        .Variable = "X1",
+        .Sign = std::nullopt,
+        .Bound = std::pair { Operon::Scalar { 2 }, Operon::Scalar { 50 } } });
+
+    CanonicalShape penalty(&fx.problem, &fx.dtable, constraints);
+    auto const measurement = penalty.Measure(tree);
+
+    REQUIRE(measurement.Measurements.size() == 1);
+    REQUIRE(measurement.Measurements[0].Certified);
+    REQUIRE(measurement.Measurements[0].Bound);
+    CHECK(measurement.Measurements[0].Bound->first == Catch::Approx(2));
+    CHECK(measurement.Measurements[0].Bound->second == Catch::Approx(50));
+    CHECK(measurement.Violation == Catch::Approx(0));
+}
+
+TEST_CASE("ShapeCertifier handles a fused single-derivative failure as unknown", "[shape-constraints]")
+{
+    Fixture fx;
+    auto tree = InfixParser::ParseOrThrow("1 / X1", fx.ds);
+    fx.problem.SetLinearScalingEnabled(false);
+
+    Operon::ShapeConstraintSet constraints;
+    constraints.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { -1 }, Operon::Scalar { 1 } });
+    constraints.Domains.insert_or_assign("X2", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    constraints.Constraints.push_back({ .Op = ShapeConstraintOp::FirstDerivative,
+        .Variable = "X1",
+        .Sign = std::nullopt,
+        .Bound = std::pair { Operon::Scalar { -100 }, Operon::Scalar { 100 } } });
+
+    CanonicalShape penalty(
+        &fx.problem, &fx.dtable, constraints, Operon::Scalar { 2.5 }, { .Mode = ShapeBoundMode::Interval });
+    auto const measurement = penalty.Measure(tree);
+
+    REQUIRE(measurement.Measurements.size() == 1);
+    CHECK_FALSE(measurement.Measurements[0].Certified);
+    CHECK(measurement.Measurements[0].Violation == Catch::Approx(2.5));
+    CHECK_FALSE(measurement.Feasible);
+}
+
+TEST_CASE("ShapeCertifier - unknown variable in domains throws", "[shape-constraints]")
 {
     Fixture fx;
     Operon::ShapeConstraintSet cs;
     cs.Domains.insert_or_assign("NotAColumn", std::pair { Operon::Scalar { 0 }, Operon::Scalar { 1 } });
-    CHECK_THROWS_AS(Operon::ShapeConstrainedEvaluator(&fx.nmse, &fx.dtable, cs), std::invalid_argument);
+    CHECK_THROWS_AS(CanonicalShape(&fx.nmse, &fx.dtable, cs), std::invalid_argument);
 }
 
-TEST_CASE("ShapeConstrainedEvaluator - constraint variable missing from domains throws", "[shape-constraints]")
+TEST_CASE("ShapeCertifier - constraint variable missing from domains throws", "[shape-constraints]")
 {
     Fixture fx;
     Operon::ShapeConstraintSet cs;
     // No domains entry for X1 at all.
     cs.Constraints.push_back(
         { .Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt });
-    CHECK_THROWS_AS(Operon::ShapeConstrainedEvaluator(&fx.nmse, &fx.dtable, cs), std::invalid_argument);
+    CHECK_THROWS_AS(CanonicalShape(&fx.nmse, &fx.dtable, cs), std::invalid_argument);
 }
 
-TEST_CASE("ShapeConstrainedEvaluator - problem input variable missing from domains throws", "[shape-constraints]")
+TEST_CASE("ShapeCertifier - problem input variable missing from domains throws", "[shape-constraints]")
 {
     Fixture fx;
     Operon::ShapeConstraintSet cs;
@@ -1269,13 +1247,11 @@ TEST_CASE("ShapeConstrainedEvaluator - problem input variable missing from domai
         .Sign = std::nullopt,
         .Bound = std::pair { Operon::Scalar { -4 }, Operon::Scalar { 4 } } });
 
-    CHECK_THROWS_WITH(
-        Operon::ShapeConstrainedEvaluator(&fx.nmse, &fx.dtable, cs), Catch::Matchers::ContainsSubstring("X2"));
-    CHECK_THROWS_WITH(
-        Operon::ShapeViolationEvaluator(&fx.problem, &fx.dtable, cs), Catch::Matchers::ContainsSubstring("X2"));
+    CHECK_THROWS_WITH(CanonicalShape(&fx.nmse, &fx.dtable, cs), Catch::Matchers::ContainsSubstring("X2"));
+    CHECK_THROWS_WITH(CanonicalShape(&fx.problem, &fx.dtable, cs), Catch::Matchers::ContainsSubstring("X2"));
 }
 
-TEST_CASE("ShapeConstrainedEvaluator - domain error (e.g. division by zero-containing interval) is treated as "
+TEST_CASE("ShapeCertifier - domain error (e.g. division by zero-containing interval) is treated as "
           "infeasible, not a crash",
     "[shape-constraints]")
 {
@@ -1295,7 +1271,7 @@ TEST_CASE("ShapeConstrainedEvaluator - domain error (e.g. division by zero-conta
         .Sign = std::nullopt,
         .Bound = std::pair { Operon::Scalar { -100 }, Operon::Scalar { 100 } } });
 
-    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
+    CanonicalShape sce(&fx.nmse, &fx.dtable, cs);
     auto const measurement = sce.Measure(tree);
     REQUIRE(measurement.Measurements.size() == 1);
     CHECK_FALSE(measurement.Measurements[0].Certified);
@@ -1303,8 +1279,8 @@ TEST_CASE("ShapeConstrainedEvaluator - domain error (e.g. division by zero-conta
     CHECK_FALSE(sce.Feasible(tree));
 }
 
-TEST_CASE("ShapeConstrainedEvaluator - a throwing user-registered rule is treated as infeasible, not a crash",
-    "[shape-constraints]")
+TEST_CASE(
+    "ShapeCertifier - a throwing user-registered rule is treated as infeasible, not a crash", "[shape-constraints]")
 {
     // A throwing user-registered rule must degrade to an uncertified
     // bound (see the file-top comment in shape_constrained_evaluator.cpp),
@@ -1331,18 +1307,17 @@ TEST_CASE("ShapeConstrainedEvaluator - a throwing user-registered rule is treate
         return Tree({ var, Node::Function(hash, 1) }).UpdateNodes();
     };
 
-    auto const assertDegradesToUncertified
-        = [&](Operon::ShapeConstrainedEvaluator const& sce, Operon::Tree const& tree) {
-              Operon::ShapeConstraintMeasurementSummary measurement;
-              REQUIRE_NOTHROW(measurement = sce.Measure(tree));
-              REQUIRE(measurement.Measurements.size() == 1);
-              CHECK_FALSE(measurement.Measurements[0].Certified);
-              CHECK(measurement.Measurements[0].Violation == Catch::Approx(1.0)); // unknownViolation default
-              CHECK_FALSE(measurement.Feasible);
-              bool feasible = true;
-              REQUIRE_NOTHROW(feasible = sce.Feasible(tree));
-              CHECK_FALSE(feasible);
-          };
+    auto const assertDegradesToUncertified = [&](CanonicalShape const& sce, Operon::Tree const& tree) {
+        Operon::ShapeConstraintMeasurementSummary measurement;
+        REQUIRE_NOTHROW(measurement = sce.Measure(tree));
+        REQUIRE(measurement.Measurements.size() == 1);
+        CHECK_FALSE(measurement.Measurements[0].Certified);
+        CHECK(measurement.Measurements[0].Violation == Catch::Approx(1.0)); // unknownViolation default
+        CHECK_FALSE(measurement.Feasible);
+        bool feasible = true;
+        REQUIRE_NOTHROW(feasible = sce.Feasible(tree));
+        CHECK_FALSE(feasible);
+    };
 
     SECTION("affine rule returning tl::unexpected, combined mode: degrades to uncertified")
     {
@@ -1354,8 +1329,7 @@ TEST_CASE("ShapeConstrainedEvaluator - a throwing user-registered rule is treate
                 invoked = true;
                 return tl::unexpected("user affine rule failed");
             });
-        Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
-        sce.SetBoundMode(ShapeBoundMode::Combined);
+        CanonicalShape sce(&fx.nmse, &fx.dtable, cs, Operon::Scalar { 1 }, { .Mode = ShapeBoundMode::Combined });
         assertDegradesToUncertified(sce, makeTree(hash));
         CHECK(
             invoked); // proves the callback's tl::unexpected genuinely propagated, not a missing-registry short-circuit
@@ -1371,8 +1345,7 @@ TEST_CASE("ShapeConstrainedEvaluator - a throwing user-registered rule is treate
                 invoked = true;
                 return tl::unexpected("user interval rule failed");
             });
-        Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
-        sce.SetBoundMode(ShapeBoundMode::Combined);
+        CanonicalShape sce(&fx.nmse, &fx.dtable, cs, Operon::Scalar { 1 }, { .Mode = ShapeBoundMode::Combined });
         assertDegradesToUncertified(sce, makeTree(hash));
         CHECK(invoked);
     }
@@ -1387,14 +1360,13 @@ TEST_CASE("ShapeConstrainedEvaluator - a throwing user-registered rule is treate
                 invoked = true;
                 return tl::unexpected("user interval rule failed");
             });
-        Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
-        sce.SetBoundMode(ShapeBoundMode::Interval);
+        CanonicalShape sce(&fx.nmse, &fx.dtable, cs, Operon::Scalar { 1 }, { .Mode = ShapeBoundMode::Interval });
         assertDegradesToUncertified(sce, makeTree(hash));
         CHECK(invoked);
     }
 }
 
-TEST_CASE("ShapeConstrainedEvaluator - certifies constant integer powers of a negative base", "[shape-constraints]")
+TEST_CASE("ShapeCertifier - certifies constant integer powers of a negative base", "[shape-constraints]")
 {
     // A fully constant subtree (degenerate base AND exponent) dispatches
     // AffineEvaluator's Pow rule to pow(ctx, base, Scalar exponent), whose
@@ -1423,7 +1395,7 @@ TEST_CASE("ShapeConstrainedEvaluator - certifies constant integer powers of a ne
         .Sign = std::nullopt,
         .Bound = std::pair { Operon::Scalar { -1 }, Operon::Scalar { 1 } } });
 
-    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
+    CanonicalShape sce(&fx.nmse, &fx.dtable, cs);
     auto const measurement = sce.Measure(tree);
     REQUIRE(measurement.Measurements.size() == 1);
     CHECK(measurement.Measurements[0].Certified);
@@ -1434,7 +1406,7 @@ TEST_CASE("ShapeConstrainedEvaluator - certifies constant integer powers of a ne
     CHECK(sce.Feasible(tree));
 }
 
-TEST_CASE("ShapeConstrainedEvaluator - a NaN bound endpoint (Scale==0 times an unbounded raw interval) is not falsely "
+TEST_CASE("ShapeCertifier - a NaN bound endpoint (Scale==0 times an unbounded raw interval) is not falsely "
           "feasible",
     "[shape-constraints]")
 {
@@ -1479,7 +1451,7 @@ TEST_CASE("ShapeConstrainedEvaluator - a NaN bound endpoint (Scale==0 times an u
         .Sign = std::nullopt,
         .Bound = std::pair { Operon::Scalar { 0 }, Operon::Scalar { 1 } } });
 
-    Operon::ShapeConstrainedEvaluator sce(&nmse, &dtable, cs);
+    CanonicalShape sce(&nmse, &dtable, cs);
     CHECK_FALSE(sce.Feasible(tree));
 }
 
@@ -1500,20 +1472,12 @@ TEST_CASE("ShapeConstraintPolicy validation covers GP and NSGA2 mode rules", "[s
             isNsga2));
     };
 
-    SECTION("GP accepts only hard-reject, penalty, feasibility-first, and allowed GP combinations")
+    SECTION("GP accepts only hard-reject and penalty")
     {
         valid(E::HardReject, false);
         valid(E::Penalty, false);
-        valid(E::FeasibilityFirst, false);
-        valid(E::HardReject | E::FeasibilityFirst, false);
-        valid(E::Penalty | E::FeasibilityFirst, false);
-
-        invalid(E::HardReject | E::Penalty, false);
         invalid(E::ExtraObjective, false);
-        invalid(E::Penalty | E::ExtraObjective, false);
-        invalid(E::HardReject | E::ExtraObjective, false);
-        invalid(E::FeasibilityFirst | E::ExtraObjective, false);
-        invalid(E::HardReject | E::Penalty | E::ExtraObjective, false);
+        invalid(E::PenaltyAndExtraObjective, false);
     }
 
     SECTION("NSGA2 accepts hard-reject, penalty, extra-objective, and penalty plus extra-objective")
@@ -1521,24 +1485,9 @@ TEST_CASE("ShapeConstraintPolicy validation covers GP and NSGA2 mode rules", "[s
         valid(E::HardReject, true);
         valid(E::Penalty, true);
         valid(E::ExtraObjective, true);
-        valid(E::Penalty | E::ExtraObjective, true);
-
-        invalid(E::HardReject | E::Penalty, true);
-        invalid(E::HardReject | E::ExtraObjective, true);
-        invalid(E::FeasibilityFirst, true);
-        invalid(E::HardReject | E::FeasibilityFirst, true);
-        invalid(E::Penalty | E::FeasibilityFirst, true);
-        invalid(E::ExtraObjective | E::FeasibilityFirst, true);
-        invalid(E::HardReject | E::Penalty | E::ExtraObjective, true);
+        valid(E::PenaltyAndExtraObjective, true);
     }
 
-    CHECK(Operon::ValidatePolicy(
-        { .Enforcement = E::None, .UnknownViolation = Operon::Scalar { 1 }, .PenaltyWeight = Operon::Scalar { 1 } },
-        false));
-    CHECK(Operon::ValidatePolicy({ .Enforcement = static_cast<E>(1U << 9U),
-                                     .UnknownViolation = Operon::Scalar { 1 },
-                                     .PenaltyWeight = Operon::Scalar { 1 } },
-        false));
     CHECK(Operon::ValidatePolicy({ .Enforcement = E::HardReject,
                                      .UnknownViolation = Operon::Scalar { -1 },
                                      .PenaltyWeight = Operon::Scalar { 1 } },
@@ -1564,103 +1513,20 @@ TEST_CASE("ParseShapeEnforcement parses CLI enforcement tokens", "[shape-constra
     CHECK(Operon::ParseShapeEnforcement("hard-reject") == E::HardReject);
     CHECK(Operon::ParseShapeEnforcement("penalty") == E::Penalty);
     CHECK(Operon::ParseShapeEnforcement("extra-objective") == E::ExtraObjective);
-    CHECK(Operon::ParseShapeEnforcement("feasibility-first") == E::FeasibilityFirst);
-    CHECK(Operon::ParseShapeEnforcement("penalty,feasibility-first") == (E::Penalty | E::FeasibilityFirst));
-    CHECK(Operon::ParseShapeEnforcement("penalty,extra-objective") == (E::Penalty | E::ExtraObjective));
-    CHECK(Operon::ParseShapeEnforcement("hard-reject,hard-reject") == E::HardReject);
+    CHECK(Operon::ParseShapeEnforcement("penalty,extra-objective") == E::PenaltyAndExtraObjective);
+    CHECK(Operon::ParseShapeEnforcement("extra-objective,penalty") == E::PenaltyAndExtraObjective);
 
+    CHECK_THROWS_AS(Operon::ParseShapeEnforcement("hard-reject,penalty"), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeEnforcement("hard-reject,hard-reject"), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeEnforcement("penalty,penalty"), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeEnforcement("feasibility-first"), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeEnforcement("penalty,feasibility-first"), std::invalid_argument);
     CHECK_THROWS_AS(Operon::ParseShapeEnforcement(""), std::invalid_argument);
     CHECK_THROWS_AS(Operon::ParseShapeEnforcement("penalty,"), std::invalid_argument);
     CHECK_THROWS_AS(Operon::ParseShapeEnforcement("unknown"), std::invalid_argument);
 }
 
-TEST_CASE("Shape constraint CLI-adjacent composition works for representative enforcement modes", "[shape-constraints]")
-{
-    Fixture fx;
-    auto const path = WriteShapeConfig("composition", R"json({
-        "domains": { "X1": [1, 5], "X2": [1, 5] },
-        "constraints": [ { "op": "derivative", "variable": "X1", "order": 1, "sign": 1 } ]
-    })json");
-    auto result = Operon::LoadShapeConstraints(path.string());
-    REQUIRE(result); // outer Cli::Result
-    REQUIRE(*result); // inner std::optional
-    auto const& loaded = **result;
-
-    auto requireValid = [](Operon::ShapeConstraintPolicy const& policy, bool isNsga2) {
-        if (auto error = Operon::ValidatePolicy(policy, isNsga2)) {
-            throw std::invalid_argument(*error);
-        }
-    };
-
-    SECTION("GP hard-reject constructs the rejecting evaluator")
-    {
-        Operon::ShapeConstraintPolicy policy { .Enforcement = Operon::ParseShapeEnforcement("hard-reject"),
-            .UnknownViolation = Operon::Scalar { 1 },
-            .PenaltyWeight = Operon::Scalar { 1 } };
-        REQUIRE_NOTHROW(requireValid(policy, false));
-        Operon::ShapeConstrainedEvaluator gated(&fx.nmse, &fx.dtable, loaded);
-        CHECK(gated.Feasible(fx.tree));
-    }
-
-    SECTION("GP penalty constructs the violation evaluator and summed aggregate")
-    {
-        Operon::ShapeConstraintPolicy policy {
-            .Enforcement = Operon::ParseShapeEnforcement("penalty"),
-            .UnknownViolation = Operon::Scalar { 2 },
-            .PenaltyWeight = Operon::Scalar { 3 },
-        };
-        REQUIRE_NOTHROW(requireValid(policy, false));
-        Operon::ShapeViolationEvaluator violation(
-            &fx.problem, &fx.dtable, loaded, policy.PenaltyWeight, policy.UnknownViolation);
-        Operon::MultiEvaluator aggregate(&fx.problem);
-        aggregate.Add(&fx.nmse);
-        aggregate.Add(&violation);
-        aggregate.SetAggregateType(Operon::MultiEvaluator::AggregateType::Sum);
-        CHECK(violation.RawViolation(fx.tree) == Catch::Approx(0.0));
-    }
-
-    SECTION("GP feasibility-first constructs the comparator-side violation evaluator")
-    {
-        Operon::ShapeConstraintPolicy policy { .Enforcement = Operon::ParseShapeEnforcement("feasibility-first"),
-            .UnknownViolation = Operon::Scalar { 1 },
-            .PenaltyWeight = Operon::Scalar { 1 } };
-        REQUIRE_NOTHROW(requireValid(policy, false));
-        fx.problem.SetLinearScalingEnabled(false);
-        Operon::ShapeViolationEvaluator violation(
-            &fx.problem, &fx.dtable, loaded, Operon::Scalar { 1 }, policy.UnknownViolation);
-        Operon::FeasibilityFirstComparison comp(
-            [&violation](Operon::Tree const& t) { return violation.Measure(t).Feasible; });
-        auto feasible = Fixture::MakeIndividual(fx.tree);
-        feasible.Fitness = { 10.0F };
-        auto infeasible = Fixture::MakeIndividual(InfixParser::ParseOrThrow("X2 - X1", fx.ds));
-        infeasible.Fitness = { 0.1F };
-        CHECK(comp(feasible, infeasible));
-    }
-
-    SECTION("NSGA2 extra-objective constructs the added shape objective")
-    {
-        Operon::ShapeConstraintPolicy policy { .Enforcement = Operon::ParseShapeEnforcement("extra-objective"),
-            .UnknownViolation = Operon::Scalar { 1 },
-            .PenaltyWeight = Operon::Scalar { 1 } };
-        REQUIRE_NOTHROW(requireValid(policy, true));
-        Operon::ShapeViolationEvaluator extra(
-            &fx.problem, &fx.dtable, loaded, Operon::Scalar { 1 }, policy.UnknownViolation);
-        Operon::MultiEvaluator objectives(&fx.problem);
-        objectives.Add(&fx.nmse);
-        objectives.Add(&extra);
-        CHECK(extra.RawViolation(fx.tree) == Catch::Approx(0.0));
-    }
-
-    SECTION("invalid CLI mode combination is rejected by the same validation step")
-    {
-        Operon::ShapeConstraintPolicy policy { .Enforcement = Operon::ParseShapeEnforcement("penalty,extra-objective"),
-            .UnknownViolation = Operon::Scalar { 1 },
-            .PenaltyWeight = Operon::Scalar { 1 } };
-        CHECK_THROWS_AS(requireValid(policy, false), std::invalid_argument);
-    }
-}
-
-TEST_CASE("ShapeViolationEvaluator - sign constraint violation magnitudes", "[shape-constraints]")
+TEST_CASE("ShapeCertifier - sign constraint violation magnitudes", "[shape-constraints]")
 {
     Fixture fx;
     fx.problem.SetLinearScalingEnabled(false);
@@ -1671,7 +1537,7 @@ TEST_CASE("ShapeViolationEvaluator - sign constraint violation magnitudes", "[sh
         { .Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt });
 
     auto bad = InfixParser::ParseOrThrow("X2 - X1", fx.ds);
-    Operon::ShapeViolationEvaluator sve(&fx.problem, &fx.dtable, cs, Operon::Scalar { 3 });
+    CanonicalShape sve(&fx.problem, &fx.dtable, cs);
     auto m = sve.Measure(bad);
     REQUIRE(m.Measurements.size() == 1);
     CHECK_FALSE(m.Feasible);
@@ -1679,18 +1545,12 @@ TEST_CASE("ShapeViolationEvaluator - sign constraint violation magnitudes", "[sh
     CHECK(m.Measurements[0].Violation == Catch::Approx(1.0));
     CHECK(sve.RawViolation(bad) == Catch::Approx(1.0));
 
-    auto ind = Fixture::MakeIndividual(bad);
-    std::vector<Operon::Scalar> buf(fx.problem.TrainingRange().Size());
-    auto fit = sve(fx.rng, ind, buf);
-    REQUIRE(fit.size() == 1);
-    CHECK(fit[0] == Catch::Approx(3.0));
-
     cs.Constraints[0].Sign = -1;
-    Operon::ShapeViolationEvaluator mirror(&fx.problem, &fx.dtable, cs);
+    CanonicalShape mirror(&fx.problem, &fx.dtable, cs);
     CHECK(mirror.RawViolation(fx.tree) == Catch::Approx(1.0));
 }
 
-TEST_CASE("ShapeViolationEvaluator - bound constraint violation magnitude", "[shape-constraints]")
+TEST_CASE("ShapeCertifier - bound constraint violation magnitude", "[shape-constraints]")
 {
     Fixture fx;
     Operon::ShapeConstraintSet cs;
@@ -1701,7 +1561,7 @@ TEST_CASE("ShapeViolationEvaluator - bound constraint violation magnitude", "[sh
         .Sign = std::nullopt,
         .Bound = std::pair { Operon::Scalar { -1 }, Operon::Scalar { 1 } } });
 
-    Operon::ShapeViolationEvaluator sve(&fx.problem, &fx.dtable, cs);
+    CanonicalShape sve(&fx.problem, &fx.dtable, cs);
     auto m = sve.Measure(fx.tree);
     REQUIRE(m.Measurements.size() == 1);
     REQUIRE(m.Measurements[0].Bound);
@@ -1711,8 +1571,7 @@ TEST_CASE("ShapeViolationEvaluator - bound constraint violation magnitude", "[sh
     CHECK_FALSE(m.Feasible);
 }
 
-TEST_CASE(
-    "ShapeViolationEvaluator - identity, first-derivative, and second-derivative measurements", "[shape-constraints]")
+TEST_CASE("ShapeCertifier - identity, first-derivative, and second-derivative measurements", "[shape-constraints]")
 {
     Fixture fx;
     Operon::ShapeConstraintSet cs;
@@ -1729,7 +1588,7 @@ TEST_CASE(
     cs.Constraints.push_back(
         { .Op = ShapeConstraintOp::SecondDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt });
 
-    Operon::ShapeViolationEvaluator sve(&fx.problem, &fx.dtable, cs);
+    CanonicalShape sve(&fx.problem, &fx.dtable, cs);
     auto m = sve.Measure(fx.tree);
     REQUIRE(m.Measurements.size() == 3);
     CHECK(m.Feasible);
@@ -1744,47 +1603,13 @@ TEST_CASE(
     secondDerivativeOnly.Constraints.push_back(
         { .Op = ShapeConstraintOp::SecondDerivative, .Variable = "X1", .Sign = -1, .Bound = std::nullopt });
     fx.problem.SetLinearScalingEnabled(false);
-    Operon::ShapeViolationEvaluator violated(&fx.problem, &fx.dtable, secondDerivativeOnly);
+    CanonicalShape violated(&fx.problem, &fx.dtable, secondDerivativeOnly);
     auto v = violated.Measure(square);
     CHECK_FALSE(v.Feasible);
     CHECK(v.Violation == Catch::Approx(2.0));
 }
 
-TEST_CASE("ShapeViolationEvaluator - Measure() uses stable cached results across Prepare()", "[shape-constraints]")
-{
-    Fixture fx;
-    Operon::ShapeConstraintSet cs;
-    cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
-    cs.Domains.insert_or_assign("X2", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
-    cs.Constraints.push_back({ .Op = ShapeConstraintOp::Identity,
-        .Variable = "",
-        .Sign = std::nullopt,
-        .Bound = std::pair { Operon::Scalar { -1 }, Operon::Scalar { 1 } } });
-    cs.Constraints.push_back(
-        { .Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt });
-
-    Operon::ShapeViolationEvaluator sve(&fx.problem, &fx.dtable, cs);
-    auto const first = sve.Measure(fx.tree);
-    auto const second = sve.Measure(fx.tree);
-
-    auto checkSame = [](auto const& lhs, auto const& rhs) {
-        REQUIRE(lhs.Measurements.size() == rhs.Measurements.size());
-        CHECK(lhs.Feasible == rhs.Feasible);
-        CHECK(lhs.Violation == rhs.Violation);
-        for (std::size_t i = 0; i < lhs.Measurements.size(); ++i) {
-            CHECK(lhs.Measurements[i].Certified == rhs.Measurements[i].Certified);
-            CHECK(lhs.Measurements[i].Bound == rhs.Measurements[i].Bound);
-            CHECK(lhs.Measurements[i].Violation == rhs.Measurements[i].Violation);
-        }
-    };
-    checkSame(first, second);
-
-    std::vector<Operon::Individual> pop { Fixture::MakeIndividual(fx.tree) };
-    sve.Prepare(pop);
-    checkSame(first, sve.Measure(fx.tree));
-}
-
-TEST_CASE("ShapeViolationEvaluator - unknown violation and empty constraint set", "[shape-constraints]")
+TEST_CASE("ShapeCertifier - unknown violation and empty constraint set", "[shape-constraints]")
 {
     Fixture fx;
     auto unknownTree = InfixParser::ParseOrThrow("abs(X1)", fx.ds);
@@ -1795,7 +1620,7 @@ TEST_CASE("ShapeViolationEvaluator - unknown violation and empty constraint set"
     cs.Constraints.push_back(
         { .Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt });
 
-    Operon::ShapeViolationEvaluator sve(&fx.problem, &fx.dtable, cs, Operon::Scalar { 1 }, Operon::Scalar { 2.5 });
+    CanonicalShape sve(&fx.problem, &fx.dtable, cs, Operon::Scalar { 2.5 });
     auto m = sve.Measure(unknownTree);
     REQUIRE(m.Measurements.size() == 1);
     CHECK_FALSE(m.Measurements[0].Certified);
@@ -1803,7 +1628,7 @@ TEST_CASE("ShapeViolationEvaluator - unknown violation and empty constraint set"
     CHECK(m.Violation == Catch::Approx(2.5));
 
     cs.Constraints.clear();
-    Operon::ShapeViolationEvaluator empty(&fx.problem, &fx.dtable, cs);
+    CanonicalShape empty(&fx.problem, &fx.dtable, cs);
     auto e = empty.Measure(fx.tree);
     CHECK(e.Feasible);
     CHECK(e.Measurements.empty());
@@ -1811,7 +1636,7 @@ TEST_CASE("ShapeViolationEvaluator - unknown violation and empty constraint set"
     CHECK(empty.RawViolation(fx.tree) == Catch::Approx(0.0));
 }
 
-TEST_CASE("ShapeConstrainedEvaluator - constructor rejects malformed constraints", "[shape-constraints]")
+TEST_CASE("ShapeCertifier - constructor rejects malformed constraints", "[shape-constraints]")
 {
     Fixture fx;
     auto withOneConstraint = [](Operon::ShapeConstraint c) {
@@ -1824,12 +1649,12 @@ TEST_CASE("ShapeConstrainedEvaluator - constructor rejects malformed constraints
 
     // neither Sign nor Bound set
     CHECK_THROWS_AS(
-        Operon::ShapeConstrainedEvaluator(&fx.nmse, &fx.dtable,
+        CanonicalShape(&fx.nmse, &fx.dtable,
             withOneConstraint(
                 { .Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::nullopt })),
         std::invalid_argument);
     // both set
-    CHECK_THROWS_AS(Operon::ShapeConstrainedEvaluator(&fx.nmse, &fx.dtable,
+    CHECK_THROWS_AS(CanonicalShape(&fx.nmse, &fx.dtable,
                         withOneConstraint({ .Op = ShapeConstraintOp::Identity,
                             .Variable = "",
                             .Sign = 1,
@@ -1837,86 +1662,16 @@ TEST_CASE("ShapeConstrainedEvaluator - constructor rejects malformed constraints
         std::invalid_argument);
     // invalid sign
     CHECK_THROWS_AS(
-        Operon::ShapeConstrainedEvaluator(&fx.nmse, &fx.dtable,
+        CanonicalShape(&fx.nmse, &fx.dtable,
             withOneConstraint({ .Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = 2, .Bound = std::nullopt })),
         std::invalid_argument);
     // lo > hi
-    CHECK_THROWS_AS(Operon::ShapeConstrainedEvaluator(&fx.nmse, &fx.dtable,
+    CHECK_THROWS_AS(CanonicalShape(&fx.nmse, &fx.dtable,
                         withOneConstraint({ .Op = ShapeConstraintOp::Identity,
                             .Variable = "",
                             .Sign = std::nullopt,
                             .Bound = std::pair { Operon::Scalar { 5 }, Operon::Scalar { 1 } } })),
         std::invalid_argument);
-}
-
-TEST_CASE("FeasibilityFirstComparison - feasible precedes infeasible regardless of fitness", "[shape-constraints]")
-{
-    Fixture fx;
-    Operon::ShapeConstraintSet cs;
-    cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
-    cs.Domains.insert_or_assign("X2", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
-    cs.Constraints.push_back({ .Op = ShapeConstraintOp::FirstDerivative,
-        .Variable = "X1",
-        .Sign = 1,
-        .Bound = std::nullopt }); // true: f is non-decreasing in X1
-
-    fx.problem.SetLinearScalingEnabled(false);
-    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
-    Operon::FeasibilityFirstComparison comp([&sce](Operon::Tree const& t) { return sce.Feasible(t); });
-
-    auto feasibleWorseFit = Fixture::MakeIndividual(fx.tree); // satisfies the constraint
-    feasibleWorseFit.Fitness = { 10.0F };
-
-    auto infeasibleBetterFit = InfixParser::ParseOrThrow("X2 - X1", fx.ds); // violates: non-increasing in X1
-    auto infeasibleInd = Fixture::MakeIndividual(infeasibleBetterFit);
-    infeasibleInd.Fitness = { 0.01F };
-
-    CHECK(comp(feasibleWorseFit, infeasibleInd)); // feasible wins despite worse fitness
-    CHECK_FALSE(comp(infeasibleInd, feasibleWorseFit));
-
-    // equal feasibility -> falls back to the wrapped comparator (fitness order)
-    auto feasibleBetterFit = Fixture::MakeIndividual(fx.tree);
-    feasibleBetterFit.Fitness = { 1.0F };
-    CHECK(comp(feasibleBetterFit, feasibleWorseFit));
-}
-
-TEST_CASE("ShapeConstrainedEvaluator - Prepare() populates the feasibility cache correctly", "[shape-constraints]")
-{
-    // The memoization itself lives in ShapeConstrainedEvaluator::Feasible()
-    // now (populated by Prepare() and by Evaluate()), not in
-    // FeasibilityFirstComparison -- this checks Prepare()'s cache-fill and
-    // cache-clear-and-rebuild behavior stays functionally correct, i.e.
-    // doesn't silently return a stale/wrong answer for either the
-    // just-prepared population or an unrelated tree asked about later.
-    Fixture fx;
-    Operon::ShapeConstraintSet cs;
-    cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
-    cs.Domains.insert_or_assign("X2", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
-    cs.Constraints.push_back({ .Op = ShapeConstraintOp::FirstDerivative,
-        .Variable = "X1",
-        .Sign = 1,
-        .Bound = std::nullopt }); // true for X1 - X2
-
-    fx.problem.SetLinearScalingEnabled(false);
-    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
-
-    auto infeasibleTree = InfixParser::ParseOrThrow("X2 - X1", fx.ds); // false: non-increasing in X1
-    std::vector<Operon::Individual> pop { Fixture::MakeIndividual(fx.tree), Fixture::MakeIndividual(infeasibleTree) };
-    sce.Prepare(pop);
-
-    CHECK(sce.Feasible(fx.tree));
-    CHECK_FALSE(sce.Feasible(infeasibleTree));
-
-    // A second Prepare() with a different population clears and rebuilds
-    // the cache; trees from the first population must still resolve
-    // correctly afterward (Feasible() computes fresh on a miss, doesn't
-    // require having been in the most recent Prepare() call).
-    auto other = InfixParser::ParseOrThrow("X1", fx.ds);
-    std::vector<Operon::Individual> pop2 { Fixture::MakeIndividual(other) };
-    sce.Prepare(pop2);
-    CHECK(sce.Feasible(other));
-    CHECK(sce.Feasible(fx.tree));
-    CHECK_FALSE(sce.Feasible(infeasibleTree));
 }
 
 TEST_CASE("SCRATCH pappus-fix false-feasibility repro", "[.][shape-constraints-scratch]")
@@ -1940,7 +1695,7 @@ TEST_CASE("SCRATCH pappus-fix false-feasibility repro", "[.][shape-constraints-s
         Operon::Evaluator<DTable> nmse(&problem, &dtable, Operon::NMSE {});
 
         auto tree = InfixParser::ParseOrThrow(model, ds);
-        Operon::ShapeConstrainedEvaluator sce(&nmse, &dtable, loaded);
+        CanonicalShape sce(&nmse, &dtable, loaded);
         auto feasible = sce.Feasible(tree);
         WARN(label << " Feasible()=" << feasible << " (expected false -- independent check found a real violation)");
         CHECK_FALSE(feasible);
@@ -2036,7 +1791,7 @@ TEST_CASE("SCRATCH ind333 sign-wrong derivative bound repro", "[.][shape-constra
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
     Operon::Evaluator<DTable> nmse(&problem, &dtable, Operon::NMSE {});
-    Operon::ShapeConstrainedEvaluator sce(&nmse, &dtable, loaded);
+    CanonicalShape sce(&nmse, &dtable, loaded);
     auto const summary = sce.Measure(tree);
     REQUIRE(summary.Measurements.size() == 4);
     auto const& dn = summary.Measurements[0]; // d/dn, sign >= 0 required
@@ -2106,11 +1861,15 @@ TEST_CASE("SCRATCH ind431/ind450 affine-vs-interval bound comparison", "[.][shap
         dtree.UpdateNodes();
 
         Operon::AffineEvaluator<Operon::Scalar> ae(&dtree, domains);
-        auto const affineRaw = ae.Evaluate(dtree.GetCoefficients()).to_interval();
+        auto const affineResult = ae(dtree.GetCoefficients());
+        REQUIRE(affineResult);
+        auto const affineRaw = affineResult->to_interval();
 
         Operon::IntervalEvaluator<Operon::Scalar> ie(
             &dtree, Operon::IntervalEvaluator<Operon::Scalar>::DomainMap { domains });
-        auto const intervalRaw = ie.Evaluate(dtree.GetCoefficients());
+        auto const intervalResult = ie(dtree.GetCoefficients());
+        REQUIRE(intervalResult);
+        auto const intervalRaw = *intervalResult;
 
         // Apply the scale factor manually (matches TransformBound's
         // ApplyToDerivativeInterval for a pure scale multiply -- offset drops
@@ -2126,6 +1885,565 @@ TEST_CASE("SCRATCH ind431/ind450 affine-vs-interval bound comparison", "[.][shap
 
         WARN(c.label << " d/dn (scaled): affine=[" << affLo << ", " << affHi << "] "
                      << "operon-interval=[" << intLo << ", " << intHi << "]");
+    }
+}
+
+// Pins the certifier's bound plumbing against an independent oracle: for a mixed Identity / d/dX1 / d2/dX1^2 constraint
+// set, every reported bound must equal what the corresponding evaluator gives for the same tree or hand-sliced
+// derivative tree, in each backend mode. A regression in the shared derivative slicing or in a mode's policy shows up
+// here instead of in a downstream search run.
+TEST_CASE("ShapeCertifier - bounds match the evaluators in every bound mode", "[shape-constraints]")
+{
+    using IE = IntervalEvaluator<Scalar>;
+    using AE = AffineEvaluator<Scalar>;
+
+    Fixture fx;
+    auto const tree = InfixParser::ParseOrThrow("(X1 - 2) * (X1 - 2) * X2", fx.ds);
+    auto const x1 = fx.ds.GetVariable("X1").value().Hash;
+    auto const x2 = fx.ds.GetVariable("X2").value().Hash;
+
+    auto const derivativeSlice = [](Tree const& t, Operon::Hash variable) {
+        auto const dag = BuildVariableGradientDag(t, t.GetCoefficients());
+        auto const it = std::ranges::find(dag.Variables, variable);
+        REQUIRE(it != dag.Variables.end());
+        auto const root = dag.Roots[static_cast<std::size_t>(std::distance(dag.Variables.begin(), it))];
+        REQUIRE(root != std::numeric_limits<std::size_t>::max());
+        Tree sliced(Operon::Vector<Node>(dag.Nodes.begin(), dag.Nodes.begin() + static_cast<std::ptrdiff_t>(root) + 1));
+        sliced.UpdateNodes();
+        return sliced;
+    };
+    auto const d1 = derivativeSlice(tree, x1);
+    auto const d2 = derivativeSlice(d1, x1);
+    std::array<Tree const*, 3> const trees { &tree, &d1, &d2 };
+
+    IE::DomainMap domains;
+    domains.insert_or_assign(x1, std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    domains.insert_or_assign(x2, std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+
+    auto const intervalBound = [&](Tree const& t) {
+        auto const result = IE(&t, domains)(t.GetCoefficients());
+        REQUIRE(result);
+        return *result;
+    };
+    auto const affineBound = [&](Tree const& t) {
+        auto const result = AE(&t, domains)(t.GetCoefficients());
+        REQUIRE(result);
+        return result->to_interval();
+    };
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    cs.Domains.insert_or_assign("X2", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    cs.Constraints.push_back({ .Op = ShapeConstraintOp::Identity,
+        .Variable = "",
+        .Sign = std::nullopt,
+        .Bound = std::pair { Operon::Scalar { -1e6 }, Operon::Scalar { 1e6 } } });
+    cs.Constraints.push_back(
+        { .Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt });
+    cs.Constraints.push_back(
+        { .Op = ShapeConstraintOp::SecondDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt });
+
+    auto const measure = [&](ShapeBoundMode mode) {
+        Operon::ShapeCertifier certifier(
+            &fx.problem, &fx.dtable, cs, Operon::Scalar { 1 }, { .Mode = mode, .BisectionDepth = 3 });
+        auto summary = certifier.Measure(tree, std::nullopt);
+        REQUIRE(summary.Measurements.size() == trees.size());
+        return summary;
+    };
+    constexpr Operon::Scalar tol { 1e-4F };
+
+    auto const violationOf = [&](std::size_t i, IE::Interval const& b) -> Operon::Scalar {
+        auto const& c = cs.Constraints[i];
+        if (c.Sign) {
+            return *c.Sign > 0 ? std::max(Operon::Scalar { 0 }, -b.inf()) : std::max(Operon::Scalar { 0 }, b.sup());
+        }
+        return std::max(Operon::Scalar { 0 }, c.Bound->first - b.inf())
+            + std::max(Operon::Scalar { 0 }, b.sup() - c.Bound->second);
+    };
+
+    // d/dX1 = 2 (X1 - 2) X2 reaches -10 at (1, 5), so the non-decreasing constraint is genuinely violated in every
+    // mode: a sound enclosure cannot report less than 10, and the set is infeasible.
+    constexpr Operon::Scalar minFirstDerivativeViolation { 10 };
+
+    // The summary of each exact-oracle mode: bounds, per-constraint violation, total violation and feasibility.
+    auto const checkExact = [&](ShapeBoundMode mode, auto const& expectedBound) {
+        auto const summary = measure(mode);
+        Operon::Scalar total { 0 };
+        bool feasible = true;
+        for (std::size_t i = 0; i < trees.size(); ++i) {
+            auto const& m = summary.Measurements[i];
+            REQUIRE(m.Certified);
+            REQUIRE(m.Bound);
+            auto const expected = expectedBound(*trees[i]);
+            CHECK(m.Bound->first == Catch::Approx(expected.inf()).margin(tol));
+            CHECK(m.Bound->second == Catch::Approx(expected.sup()).margin(tol));
+            auto const violation = violationOf(i, expected);
+            CHECK(m.Violation == Catch::Approx(violation).margin(tol));
+            total += violation;
+            feasible = feasible && violation == Operon::Scalar { 0 };
+        }
+        CHECK(summary.Violation == Catch::Approx(total).margin(tol));
+        CHECK(summary.Feasible == feasible);
+        CHECK_FALSE(summary.Feasible);
+        CHECK(summary.Measurements[1].Violation >= minFirstDerivativeViolation - 1e-3F);
+        CHECK(summary.Measurements[0].Violation == Operon::Scalar { 0 });
+    };
+
+    // Interval mode bounds the second derivative with the second-order interval jet over the original tree (no
+    // materialized derivative trees); its enclosure of d2/dX1^2 = 2 X2 must also contain the true range [2, 10].
+    SECTION("Interval equals the interval evaluator, and the second derivative the second-order interval jet")
+    {
+        auto const jet
+            = IntervalSecondOrderJetEvaluator<Scalar>(&tree, domains, std::vector { x1 })(tree.GetCoefficients());
+        REQUIRE(jet);
+        REQUIRE(jet->Status[0] == IntervalJetStatus::Certain);
+        CHECK(jet->Second[0].inf() <= 2.0F);
+        CHECK(jet->Second[0].sup() >= 10.0F);
+        checkExact(ShapeBoundMode::Interval,
+            [&](Tree const& t) -> IE::Interval { return &t == &d2 ? jet->Second[0] : intervalBound(t); });
+    }
+
+    SECTION("Interval with the TightenRange rescue keeps the symbolic second-derivative bound")
+    {
+        Operon::ShapeCertifier certifier(&fx.problem, &fx.dtable, cs, Operon::Scalar { 1 },
+            { .Mode = ShapeBoundMode::Interval, .BisectionDepth = 3, .UseTightenRangeFallback = true });
+        auto const summary = certifier.Measure(tree, std::nullopt);
+        REQUIRE(summary.Measurements.size() == trees.size());
+        for (std::size_t i = 0; i < trees.size(); ++i) {
+            auto const& m = summary.Measurements[i];
+            REQUIRE(m.Certified);
+            REQUIRE(m.Bound);
+            auto const expected = intervalBound(*trees[i]);
+            CHECK(m.Bound->first == Catch::Approx(expected.inf()).margin(tol));
+            CHECK(m.Bound->second == Catch::Approx(expected.sup()).margin(tol));
+        }
+    }
+
+    SECTION("Affine equals the affine evaluator") { checkExact(ShapeBoundMode::Affine, affineBound); }
+
+    SECTION("Combined is the intersection of both evaluators")
+    {
+        checkExact(ShapeBoundMode::Combined, [&](Tree const& t) {
+            auto const a = affineBound(t);
+            auto const b = intervalBound(t);
+            auto const lo = std::max(a.inf(), b.inf());
+            auto const hi = std::min(a.sup(), b.sup());
+            REQUIRE(lo <= hi);
+            return IE::Interval(lo, hi);
+        });
+    }
+
+    SECTION("Bisected stays inside the direct interval bound and still reports the violation")
+    {
+        auto const summary = measure(ShapeBoundMode::Bisected);
+        Operon::Scalar total { 0 };
+        for (std::size_t i = 0; i < trees.size(); ++i) {
+            auto const& m = summary.Measurements[i];
+            REQUIRE(m.Certified);
+            REQUIRE(m.Bound);
+            auto const direct = intervalBound(*trees[i]);
+            CHECK(m.Bound->first >= direct.inf() - tol);
+            CHECK(m.Bound->second <= direct.sup() + tol);
+            auto const reported = violationOf(i, IE::Interval(m.Bound->first, m.Bound->second));
+            CHECK(m.Violation == Catch::Approx(reported).margin(tol));
+            CHECK(m.Violation <= violationOf(i, direct) + tol);
+            total += reported;
+        }
+        CHECK(summary.Violation == Catch::Approx(total).margin(tol));
+        CHECK_FALSE(summary.Feasible);
+        CHECK(summary.Measurements[1].Violation >= minFirstDerivativeViolation - 1e-3F);
+        CHECK(summary.Measurements[0].Violation == Operon::Scalar { 0 });
+    }
+}
+
+namespace {
+    // A Problem over the input columns X1..Xn plus a trailing target column, for trees with many variables.
+    struct WideFixture {
+        static constexpr auto Nrow { 8 };
+
+        Eigen::Array<Operon::Scalar, -1, -1> data;
+        Operon::Dataset ds;
+        DispatchTable<Operon::Scalar> dtable;
+        Operon::Problem problem;
+
+        explicit WideFixture(int variables)
+            : data(Eigen::Array<Operon::Scalar, -1, -1>::Constant(Nrow, variables + 1, Operon::Scalar { 1.5 }))
+            , ds(gsl::not_null { data.data() }, Nrow, variables + 1)
+            , problem(&ds)
+        {
+            problem.SetTrainingRange({ 0, Nrow });
+            problem.SetTestRange({ 0, Nrow });
+            problem.SetTarget("X" + std::to_string(variables + 1));
+        }
+    };
+
+    auto BoundConstraint(ShapeConstraintOp op, std::string variable) -> Operon::ShapeConstraint
+    {
+        return { .Op = op,
+            .Variable = std::move(variable),
+            .Sign = std::nullopt,
+            .Bound = std::pair { Operon::Scalar { -1e6 }, Operon::Scalar { 1e6 } } };
+    }
+
+    using SecondOrderEvaluator = IntervalSecondOrderJetEvaluator<Operon::Scalar>;
+
+    // The jet enclosure of d2 tree / d variable^2 over `domains`, one direction.
+    auto SingleDirectionSecondDerivative(Tree const& tree, SecondOrderEvaluator::DomainMap const& domains,
+        Operon::Hash variable) -> SecondOrderEvaluator::Interval
+    {
+        auto const result = SecondOrderEvaluator(&tree, domains, std::vector { variable })(tree.GetCoefficients());
+        REQUIRE(result);
+        REQUIRE(result->Status[0] == IntervalJetStatus::Certain);
+        return result->Second[0];
+    }
+} // namespace
+namespace {
+    using FirstOrderEvaluator = IntervalJetEvaluator<Operon::Scalar>;
+
+    auto SingleDirectionFirstDerivative(Tree const& tree, FirstOrderEvaluator::DomainMap const& domains,
+        Operon::Hash variable) -> FirstOrderEvaluator::Interval
+    {
+        auto const result = FirstOrderEvaluator(&tree, domains, std::vector { variable })(tree.GetCoefficients());
+        REQUIRE(result);
+        REQUIRE(result->Status[0] == IntervalJetStatus::Certain);
+        return result->Derivative[0];
+    }
+} // namespace
+
+TEST_CASE("ShapeCertifier - Interval-mode first derivatives batch duplicate and chunked jet directions",
+    "[shape-constraints][interval-jet]")
+{
+    constexpr int Variables = 6;
+    WideFixture fx(Variables);
+    auto const tree = InfixParser::ParseOrThrow(
+        "X1 * X1 + X2 * X2 * X2 + exp(X3) + X4 * X4 * X4 * X4 + sin(X5) + X6 * X6 * X6", fx.ds);
+
+    Operon::ShapeConstraintSet cs;
+    FirstOrderEvaluator::DomainMap domains;
+    std::array<Operon::Hash, Variables> hashes {};
+    for (int i = 0; i < Variables; ++i) {
+        auto const name = "X" + std::to_string(i + 1);
+        cs.Domains.insert_or_assign(name, std::pair { Operon::Scalar { 1 }, Operon::Scalar { 2 } });
+        hashes[static_cast<std::size_t>(i)] = fx.ds.GetVariable(name).value().Hash;
+        domains.insert_or_assign(
+            hashes[static_cast<std::size_t>(i)], std::pair { Operon::Scalar { 1 }, Operon::Scalar { 2 } });
+    }
+
+    // Six distinct directions take two four-wide passes. X2 is deliberately duplicated and Identity is interleaved.
+    constexpr std::array<int, 8> order { 2, 0, 6, 1, 5, 3, 4, 2 }; // 0 = Identity, otherwise variable index
+    for (auto const v : order) {
+        cs.Constraints.push_back(v == 0 ? BoundConstraint(ShapeConstraintOp::Identity, "")
+                                        : BoundConstraint(ShapeConstraintOp::FirstDerivative, "X" + std::to_string(v)));
+    }
+
+    Operon::ShapeCertifier certifier(
+        &fx.problem, &fx.dtable, cs, Operon::Scalar { 1 }, { .Mode = ShapeBoundMode::Interval });
+    auto const summary = certifier.Measure(tree, std::nullopt);
+    REQUIRE(summary.Measurements.size() == order.size());
+    for (std::size_t i = 0; i < order.size(); ++i) {
+        auto const& measurement = summary.Measurements[i];
+        REQUIRE(measurement.Certified);
+        REQUIRE(measurement.Bound);
+        if (order[i] == 0) {
+            auto const value = IntervalEvaluator<Scalar>(&tree, domains)(tree.GetCoefficients());
+            REQUIRE(value);
+            CHECK(measurement.Bound->first == value->inf());
+            CHECK(measurement.Bound->second == value->sup());
+            continue;
+        }
+        auto const expected
+            = SingleDirectionFirstDerivative(tree, domains, hashes[static_cast<std::size_t>(order[i] - 1)]);
+        CHECK(measurement.Bound->first == expected.inf());
+        CHECK(measurement.Bound->second == expected.sup());
+    }
+    CHECK(summary.Measurements[0].Bound == summary.Measurements[7].Bound);
+}
+
+TEST_CASE("ShapeCertifier - first-order jet uncertainty is isolated by direction", "[shape-constraints][interval-jet]")
+{
+    Fixture fx;
+    auto const tree = InfixParser::ParseOrThrow("abs(X2) + X1 * X1", fx.ds);
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    cs.Domains.insert_or_assign("X2", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    cs.Constraints.push_back(BoundConstraint(ShapeConstraintOp::FirstDerivative, "X1"));
+    cs.Constraints.push_back(BoundConstraint(ShapeConstraintOp::FirstDerivative, "X2"));
+
+    Operon::ShapeCertifier certifier(
+        &fx.problem, &fx.dtable, cs, Operon::Scalar { 2.5 }, { .Mode = ShapeBoundMode::Interval });
+    auto const summary = certifier.Measure(tree, std::nullopt);
+    REQUIRE(summary.Measurements.size() == 2);
+    REQUIRE(summary.Measurements[0].Certified);
+    REQUIRE(summary.Measurements[0].Bound);
+    CHECK(summary.Measurements[0].Bound->first == Catch::Approx(2.0).margin(1e-4));
+    CHECK(summary.Measurements[0].Bound->second == Catch::Approx(10.0).margin(1e-4));
+    CHECK_FALSE(summary.Measurements[1].Certified);
+    CHECK(summary.Measurements[1].Violation == Catch::Approx(2.5));
+}
+TEST_CASE("ShapeCertifier - first-order jet failure falls back without contaminating another direction",
+    "[shape-constraints][interval-jet]")
+{
+    Fixture fx;
+    auto const tree = InfixParser::ParseOrThrow("sqrt(X1) + X2", fx.ds);
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 0 }, Operon::Scalar { 0 } });
+    cs.Domains.insert_or_assign("X2", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    cs.Constraints.push_back(BoundConstraint(ShapeConstraintOp::FirstDerivative, "X1"));
+    cs.Constraints.push_back(BoundConstraint(ShapeConstraintOp::FirstDerivative, "X2"));
+
+    Operon::ShapeCertifier certifier(
+        &fx.problem, &fx.dtable, cs, Operon::Scalar { 2.5 }, { .Mode = ShapeBoundMode::Interval });
+    auto const summary = certifier.Measure(tree, std::nullopt);
+    REQUIRE(summary.Measurements.size() == 2);
+    CHECK_FALSE(summary.Measurements[0].Certified);
+    CHECK(summary.Measurements[0].Violation == Catch::Approx(2.5));
+    REQUIRE(summary.Measurements[1].Certified);
+    REQUIRE(summary.Measurements[1].Bound);
+    CHECK(summary.Measurements[1].Bound->first == Catch::Approx(1.0));
+    CHECK(summary.Measurements[1].Bound->second == Catch::Approx(1.0));
+}
+
+TEST_CASE("ShapeCertifier - Interval-mode second derivatives are enclosed by the second-order jet",
+    "[shape-constraints][second-order-jet]")
+{
+    Fixture fx;
+    auto const tree = InfixParser::ParseOrThrow("(X1 - 2) * (X1 - 2) * X2", fx.ds);
+    auto const x1 = fx.ds.GetVariable("X1").value().Hash;
+    auto const x2 = fx.ds.GetVariable("X2").value().Hash;
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    cs.Domains.insert_or_assign("X2", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    cs.Constraints.push_back(BoundConstraint(ShapeConstraintOp::SecondDerivative, "X1"));
+    cs.Constraints.push_back(BoundConstraint(ShapeConstraintOp::SecondDerivative, "X2"));
+
+    SecondOrderEvaluator::DomainMap domains;
+    domains.insert_or_assign(x1, std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    domains.insert_or_assign(x2, std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+
+    Operon::ShapeCertifier certifier(
+        &fx.problem, &fx.dtable, cs, Operon::Scalar { 1 }, { .Mode = ShapeBoundMode::Interval });
+    auto const summary = certifier.Measure(tree, std::nullopt);
+    REQUIRE(summary.Measurements.size() == 2);
+
+    // d2/dX1^2 = 2 X2 in [2, 10]; the tree is linear in X2, so d2/dX2^2 is exactly 0
+    auto const& first = summary.Measurements[0];
+    REQUIRE(first.Certified);
+    REQUIRE(first.Bound);
+    CHECK(first.Bound->first <= 2.0F);
+    CHECK(first.Bound->second >= 10.0F);
+    auto const expectedFirst = SingleDirectionSecondDerivative(tree, domains, x1);
+    CHECK(first.Bound->first == expectedFirst.inf());
+    CHECK(first.Bound->second == expectedFirst.sup());
+
+    auto const& second = summary.Measurements[1];
+    REQUIRE(second.Certified);
+    REQUIRE(second.Bound);
+    CHECK(second.Bound->first == 0.0F);
+    CHECK(second.Bound->second == 0.0F);
+    CHECK(summary.Feasible);
+}
+
+TEST_CASE("ShapeCertifier - repeated variables and Identity constraints map to the right jet directions",
+    "[shape-constraints][second-order-jet]")
+{
+    Fixture fx;
+    auto const tree = InfixParser::ParseOrThrow("X1 * X1 * X2 + sin(X2)", fx.ds);
+    auto const x1 = fx.ds.GetVariable("X1").value().Hash;
+    auto const x2 = fx.ds.GetVariable("X2").value().Hash;
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    cs.Domains.insert_or_assign("X2", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    // 0 d2/dX2^2, 1 value, 2 d2/dX1^2, 3 d2/dX2^2 again, 4 d/dX1 (symbolic dag), 5 d2/dX1^2 again
+    cs.Constraints.push_back(BoundConstraint(ShapeConstraintOp::SecondDerivative, "X2"));
+    cs.Constraints.push_back(BoundConstraint(ShapeConstraintOp::Identity, ""));
+    cs.Constraints.push_back(BoundConstraint(ShapeConstraintOp::SecondDerivative, "X1"));
+    cs.Constraints.push_back(BoundConstraint(ShapeConstraintOp::SecondDerivative, "X2"));
+    cs.Constraints.push_back(BoundConstraint(ShapeConstraintOp::FirstDerivative, "X1"));
+    cs.Constraints.push_back(BoundConstraint(ShapeConstraintOp::SecondDerivative, "X1"));
+
+    SecondOrderEvaluator::DomainMap domains;
+    domains.insert_or_assign(x1, std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    domains.insert_or_assign(x2, std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    auto const expectedX1 = SingleDirectionSecondDerivative(tree, domains, x1);
+    auto const expectedX2 = SingleDirectionSecondDerivative(tree, domains, x2);
+    // d2/dX1^2 = 2 X2 in [2, 10] and d2/dX2^2 = -sin(X2) in [-1, 1] over [1, 5]: distinct, so a swapped direction
+    // mapping cannot pass unnoticed
+    REQUIRE(expectedX1.inf() <= 2.0F);
+    REQUIRE(expectedX1.sup() >= 10.0F);
+    REQUIRE(expectedX2.inf() <= -1.0F);
+    REQUIRE(expectedX2.sup() >= 1.0F);
+    REQUIRE(expectedX1.sup() > expectedX2.sup());
+
+    Operon::ShapeCertifier certifier(
+        &fx.problem, &fx.dtable, cs, Operon::Scalar { 1 }, { .Mode = ShapeBoundMode::Interval });
+    auto const summary = certifier.Measure(tree, std::nullopt);
+    REQUIRE(summary.Measurements.size() == 6);
+    for (auto const& m : summary.Measurements) {
+        REQUIRE(m.Certified);
+        REQUIRE(m.Bound);
+    }
+    CHECK(summary.Feasible);
+
+    for (auto const i : { std::size_t { 0 }, std::size_t { 3 } }) {
+        CHECK(summary.Measurements[i].Bound->first == expectedX2.inf());
+        CHECK(summary.Measurements[i].Bound->second == expectedX2.sup());
+    }
+    for (auto const i : { std::size_t { 2 }, std::size_t { 5 } }) {
+        CHECK(summary.Measurements[i].Bound->first == expectedX1.inf());
+        CHECK(summary.Measurements[i].Bound->second == expectedX1.sup());
+    }
+
+    // the Identity constraint is still the plain interval bound of the tree (it never takes a jet direction)
+    IntervalEvaluator<Scalar>::DomainMap intervalDomains;
+    intervalDomains.insert_or_assign(x1, std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    intervalDomains.insert_or_assign(x2, std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    auto const value = IntervalEvaluator<Scalar>(&tree, intervalDomains)(tree.GetCoefficients());
+    REQUIRE(value);
+    CHECK(summary.Measurements[1].Bound->first == value->inf());
+    CHECK(summary.Measurements[1].Bound->second == value->sup());
+
+    // d/dX1 = 2 X1 X2 in [2, 50] (symbolic derivative dag)
+    CHECK(summary.Measurements[4].Bound->first <= 2.0F);
+    CHECK(summary.Measurements[4].Bound->second >= 50.0F);
+
+    // the same set with the constraints reversed maps each bound to the same variable
+    auto reversed = cs;
+    std::ranges::reverse(reversed.Constraints);
+    Operon::ShapeCertifier reversedCertifier(
+        &fx.problem, &fx.dtable, reversed, Operon::Scalar { 1 }, { .Mode = ShapeBoundMode::Interval });
+    auto const reversedSummary = reversedCertifier.Measure(tree, std::nullopt);
+    REQUIRE(reversedSummary.Measurements.size() == 6);
+    for (std::size_t i = 0; i < 6; ++i) {
+        auto const& a = summary.Measurements[5 - i];
+        auto const& b = reversedSummary.Measurements[i];
+        REQUIRE(b.Certified);
+        CHECK(a.Bound->first == b.Bound->first);
+        CHECK(a.Bound->second == b.Bound->second);
+    }
+}
+
+TEST_CASE("ShapeCertifier - more distinct second-derivative variables than jet directions",
+    "[shape-constraints][second-order-jet]")
+{
+    constexpr int Variables = 6;
+    WideFixture fx(Variables);
+    auto const tree = InfixParser::ParseOrThrow(
+        "X1 * X1 + 2 * X2 * X2 * X2 + exp(X3) + X4 * X4 * X4 * X4 + sin(X5) + X6 * X6 * X6", fx.ds);
+
+    Operon::ShapeConstraintSet cs;
+    SecondOrderEvaluator::DomainMap domains;
+    std::array<Operon::Hash, Variables> hashes {};
+    for (int i = 0; i < Variables; ++i) {
+        auto const name = "X" + std::to_string(i + 1);
+        cs.Domains.insert_or_assign(name, std::pair { Operon::Scalar { 1 }, Operon::Scalar { 2 } });
+        hashes[static_cast<std::size_t>(i)] = fx.ds.GetVariable(name).value().Hash;
+        domains.insert_or_assign(
+            hashes[static_cast<std::size_t>(i)], std::pair { Operon::Scalar { 1 }, Operon::Scalar { 2 } });
+    }
+
+    // six distinct variables (two jet passes), one repeated, the Identity constraint between them
+    constexpr std::array<int, 8> order { 6, 1, 5, 0, 2, 4, 3, 6 }; // 0 = Identity, else the variable's index
+    for (auto const v : order) {
+        cs.Constraints.push_back(v == 0
+                ? BoundConstraint(ShapeConstraintOp::Identity, "")
+                : BoundConstraint(ShapeConstraintOp::SecondDerivative, "X" + std::to_string(v)));
+    }
+
+    Operon::ShapeCertifier certifier(
+        &fx.problem, &fx.dtable, cs, Operon::Scalar { 1 }, { .Mode = ShapeBoundMode::Interval });
+    auto const summary = certifier.Measure(tree, std::nullopt);
+    REQUIRE(summary.Measurements.size() == order.size());
+
+    // true ranges of d2/dXv^2 over [1, 2]: 2, 12 X2 in [12, 24], exp(X3) in [e, e^2], 12 X4^2 in [12, 48],
+    // -sin(X5) in [-1, -sin(1)], 6 X6 in [6, 12]
+    std::array<std::pair<double, double>, Variables + 1> const truth { { { 0.0, 0.0 }, { 2.0, 2.0 }, { 12.0, 24.0 },
+        { std::exp(1.0), std::exp(2.0) }, { 12.0, 48.0 }, { -1.0, -std::sin(1.0) }, { 6.0, 12.0 } } };
+    for (std::size_t i = 0; i < order.size(); ++i) {
+        auto const& m = summary.Measurements[i];
+        REQUIRE(m.Certified);
+        REQUIRE(m.Bound);
+        if (order[i] == 0) {
+            continue;
+        }
+        INFO("constraint " << i << ": d2/dX" << order[i] << "^2");
+        auto const variable = hashes[static_cast<std::size_t>(order[i] - 1)];
+        auto const expected = SingleDirectionSecondDerivative(tree, domains, variable);
+        CHECK(m.Bound->first == expected.inf());
+        CHECK(m.Bound->second == expected.sup());
+        auto const [lo, hi] = truth[static_cast<std::size_t>(order[i])];
+        CHECK(static_cast<double>(m.Bound->first) <= lo + 1e-4);
+        CHECK(static_cast<double>(m.Bound->second) >= hi - 1e-4);
+    }
+}
+
+TEST_CASE("ShapeCertifier - an unsupported operation only makes the directions it depends on uncertain",
+    "[shape-constraints][second-order-jet]")
+{
+    Fixture fx;
+    auto const tree = InfixParser::ParseOrThrow("abs(X2) + X1 * X1", fx.ds);
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    cs.Domains.insert_or_assign("X2", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    cs.Constraints.push_back(BoundConstraint(ShapeConstraintOp::SecondDerivative, "X1"));
+    cs.Constraints.push_back(BoundConstraint(ShapeConstraintOp::SecondDerivative, "X2"));
+
+    for (auto const mode : { ShapeBoundMode::Interval, ShapeBoundMode::Combined }) {
+        DYNAMIC_SECTION("mode " << static_cast<int>(mode))
+        {
+            Operon::ShapeCertifier certifier(&fx.problem, &fx.dtable, cs, Operon::Scalar { 2.5 }, { .Mode = mode });
+            auto const summary = certifier.Measure(tree, std::nullopt);
+            REQUIRE(summary.Measurements.size() == 2);
+            REQUIRE(summary.Measurements[0].Certified);
+            CHECK(summary.Measurements[0].Bound->first == Catch::Approx(2.0).margin(1e-4));
+            CHECK(summary.Measurements[0].Bound->second == Catch::Approx(2.0).margin(1e-4));
+            CHECK_FALSE(summary.Measurements[1].Certified);
+            CHECK(summary.Measurements[1].Violation == Catch::Approx(2.5));
+            CHECK_FALSE(summary.Feasible);
+        }
+    }
+}
+
+TEST_CASE("ShapeCertifier - second-derivative bounds enclose the true range in every bound mode",
+    "[shape-constraints][second-order-jet]")
+{
+    Fixture fx;
+    auto const tree = InfixParser::ParseOrThrow("sin(X1) * X2 + exp(X1 / 5) / (X2 + 1)", fx.ds);
+
+    // d2/dX1^2 = -sin(X1) X2 + exp(X1 / 5) / (25 (X2 + 1)) over [1, 5]^2, sampled on a grid
+    double lo = std::numeric_limits<double>::infinity();
+    double hi = -lo;
+    constexpr int Grid = 64;
+    for (int i = 0; i <= Grid; ++i) {
+        for (int j = 0; j <= Grid; ++j) {
+            auto const x = 1.0 + 4.0 * i / Grid;
+            auto const y = 1.0 + 4.0 * j / Grid;
+            auto const d2 = -std::sin(x) * y + std::exp(x / 5.0) / (25.0 * (y + 1.0));
+            lo = std::min(lo, d2);
+            hi = std::max(hi, d2);
+        }
+    }
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    cs.Domains.insert_or_assign("X2", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    cs.Constraints.push_back(BoundConstraint(ShapeConstraintOp::SecondDerivative, "X1"));
+
+    for (auto const mode :
+        { ShapeBoundMode::Interval, ShapeBoundMode::Combined, ShapeBoundMode::Affine, ShapeBoundMode::Bisected }) {
+        DYNAMIC_SECTION("mode " << static_cast<int>(mode))
+        {
+            Operon::ShapeCertifier certifier(
+                &fx.problem, &fx.dtable, cs, Operon::Scalar { 1 }, { .Mode = mode, .BisectionDepth = 3 });
+            auto const summary = certifier.Measure(tree, std::nullopt);
+            REQUIRE(summary.Measurements.size() == 1);
+            REQUIRE(summary.Measurements[0].Certified);
+            REQUIRE(summary.Measurements[0].Bound);
+            CHECK(static_cast<double>(summary.Measurements[0].Bound->first) <= lo + 1e-4);
+            CHECK(static_cast<double>(summary.Measurements[0].Bound->second) >= hi - 1e-4);
+        }
     }
 }
 

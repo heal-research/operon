@@ -33,6 +33,7 @@
 #include <operon/core/contracts.hpp>
 #include <operon/core/grammar.hpp>
 #include <operon/core/interpreter_error.hpp>
+#include <operon/core/jet.hpp>
 #include <operon/core/memory_view.hpp>
 #include <operon/core/node.hpp>
 #include <operon/core/pset.hpp>
@@ -214,6 +215,35 @@ auto main() -> int
     if (Operon::CanonicalizeEnumerationTree(xy).Key != Operon::CanonicalizeEnumerationTree(yx).Key) {
         std::cerr << "package-consumer(core): x+y and y+x canonicalized to different keys\n";
         return EXIT_FAILURE;
+    }
+
+    // Forward-mode Jet (core/jet.hpp): d/dx [x * sin(x)] at x = 2 is
+    // sin(2) + 2 cos(2), with the tangent seeded on the first component.
+    {
+        using J = Operon::Jet<double, 2>;
+        J const x { 2.0, 0 };
+        J const y { 3.0, 1 };
+        auto const f = x * sin(x) + y;
+        if (!NearlyEqual(f.a, 2.0 * std::sin(2.0) + 3.0) || !NearlyEqual(f.v[0], std::sin(2.0) + 2.0 * std::cos(2.0))
+            || !NearlyEqual(f.v[1], 1.0)) {
+            std::cerr << "package-consumer(core): unexpected Jet value/tangent\n";
+            return EXIT_FAILURE;
+        }
+    }
+
+    // Forward-mode second-diagonal Jet (core/jet.hpp): f = x * sin(x) + y at (2, 3) has
+    // f_x = sin(2) + 2 cos(2) and f_xx = 2 cos(2) - 2 sin(2); y is linear, so f_yy = 0.
+    {
+        using J = Operon::Jet<double, 2, Operon::JetOrder::SecondDiagonal>;
+        J const x { 2.0, 0 };
+        J const y { 3.0, 1 };
+        auto const f = x * sin(x) + y;
+        if (!NearlyEqual(f.a, 2.0 * std::sin(2.0) + 3.0) || !NearlyEqual(f.v[0], std::sin(2.0) + 2.0 * std::cos(2.0))
+            || !NearlyEqual(f.w[0], 2.0 * std::cos(2.0) - 2.0 * std::sin(2.0)) || !NearlyEqual(f.v[1], 1.0)
+            || !NearlyEqual(f.w[1], 0.0)) {
+            std::cerr << "package-consumer(core): unexpected order-two Jet value/derivatives\n";
+            return EXIT_FAILURE;
+        }
     }
 
     std::cout << "package-consumer(core): OK\n";

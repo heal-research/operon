@@ -71,7 +71,7 @@ private:
 //
 //   F([a,b]) ⊆ F(m) + ∇F([a,b]) · ([a,b] − m)
 //
-// `coeff` follows the same convention as IntervalEvaluator::Evaluate: one
+// `coeff` follows the same convention as IntervalEvaluator::operator(): one
 // entry per node with Node::Optimize == true, consumed in node order.
 //
 // Falls back to the naive enclosure alone (no intersection) if the tree

@@ -35,8 +35,9 @@ auto ScalarBisectedBound(Operon::Tree const& tree, Operon::IntervalEvaluator<Ope
     using IE = Operon::IntervalEvaluator<Operon::Scalar>;
     auto const directBound = [&]() -> std::pair<Operon::Scalar, Operon::Scalar> {
         IE ie(&tree, dom);
-        auto const iv = ie.Evaluate(tree.GetCoefficients());
-        return { iv.inf(), iv.sup() };
+        auto const iv = ie(tree.GetCoefficients());
+        REQUIRE(iv);
+        return { iv->inf(), iv->sup() };
     };
     if (depth <= 0) {
         return directBound();
@@ -100,9 +101,10 @@ auto ScalarBisectedBound(Operon::Tree const& tree, Operon::IntervalEvaluator<Ope
                 = { lo + Operon::Scalar(cells[axis]) * step, lo + Operon::Scalar(cells[axis] + 1) * step };
         }
         IE ie(&tree, leafDom);
-        auto const seg = ie.Evaluate(coeff);
-        resLo = std::min(resLo, seg.inf());
-        resHi = std::max(resHi, seg.sup());
+        auto const seg = ie(coeff);
+        REQUIRE(seg);
+        resLo = std::min(resLo, seg->inf());
+        resHi = std::max(resHi, seg->sup());
     }
     return { resLo, resHi };
 }
@@ -157,7 +159,6 @@ void RunExprCase(nb::Bench& bench, ExprCase const& ec)
     problem.SetTarget(fmt::format("X{}", ncol));
     problem.SetLinearScalingEnabled(false);
     Operon::DispatchTable<Operon::Scalar> dtable;
-    Operon::Evaluator<Operon::DispatchTable<Operon::Scalar>> nmse(&problem, &dtable, Operon::NMSE {});
 
     Operon::ShapeConstraintSet cs;
     Operon::IntervalEvaluator<Operon::Scalar>::DomainMap dom;
@@ -170,8 +171,10 @@ void RunExprCase(nb::Bench& bench, ExprCase const& ec)
         .Sign = std::nullopt,
         .Bound = std::pair { Operon::Scalar { -1e6 }, Operon::Scalar { 1e6 } } });
 
-    Operon::ShapeConstrainedEvaluator shapeEval(&nmse, &dtable, cs);
-    shapeEval.SetBoundMode(Operon::ShapeBoundMode::Interval | Operon::ShapeBoundMode::Bisected);
+    auto makeShapeEval = [&](int depth) {
+        return Operon::ShapeCertifier(&problem, &dtable, cs, Operon::Scalar { 1 },
+            Operon::ShapeBoundOptions { .Mode = Operon::ShapeBoundMode::Bisected, .BisectionDepth = depth });
+    };
 
     constexpr int maxDepth = 8;
     double width0 = -1.0;
@@ -182,14 +185,14 @@ void RunExprCase(nb::Bench& bench, ExprCase const& ec)
             nb::doNotOptimizeAway(b.second);
         });
 
-        shapeEval.SetBoundOptions({ .BisectionDepth = depth });
+        auto shapeEval = makeShapeEval(depth);
         bench.run(fmt::format("{} production depth={:02d}", ec.name, depth), [&] {
-            auto r = shapeEval.Measure(tree);
+            auto r = shapeEval.MeasureCanonical(tree);
             nb::doNotOptimizeAway(r.Measurements.size());
         });
 
         auto const [scalarLo, scalarHi] = ScalarBisectedBound(tree, dom, depth);
-        auto const r = shapeEval.Measure(tree);
+        auto const r = shapeEval.MeasureCanonical(tree);
         auto const [simdLo, simdHi] = *r.Measurements[0].Bound;
         REQUIRE(static_cast<double>(scalarLo) == Catch::Approx(static_cast<double>(simdLo)).margin(1e-3));
         REQUIRE(static_cast<double>(scalarHi) == Catch::Approx(static_cast<double>(simdHi)).margin(1e-3));

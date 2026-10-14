@@ -76,6 +76,7 @@ nav:
       - Core model: guides/core-model.md
       - Execution: guides/execution.md
       - Evaluation: guides/evaluation.md
+      - Evaluator architecture review: guides/evaluator-architecture-review.md
       - Search and optimization: guides/search-optimization.md
       - Grammar enumeration: guides/grammar-enumeration.md
       - Shape constraints: guides/shape-constraints.md

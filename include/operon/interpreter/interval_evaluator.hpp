@@ -159,6 +159,7 @@ public:
     // Compiles hash-keyed bounds into slots indexed by Tree::Nodes().
     IntervalEvaluator(gsl::not_null<Operon::Tree const*> tree, DomainMap const& domains)
         : tree_(tree)
+        , nodes_(tree->Nodes())
         , domains_(domains)
     {
         RebuildDomainSlots();
@@ -180,53 +181,45 @@ public:
     void SetTree(gsl::not_null<Operon::Tree const*> tree)
     {
         tree_ = tree;
+        nodes_ = tree->Nodes();
+        RebuildDomainSlots();
+    }
+
+    // Retargets this evaluator at a borrowed postfix node sequence. `nodes`
+    // must remain valid until SetTree or SetNodes is called again.
+    void SetNodes(Operon::Span<Node const> nodes)
+    {
+        nodes_ = nodes;
         RebuildDomainSlots();
     }
 
     // Non-owning lane bounds for one variable. Lo and Hi must remain valid through
-    // TryEvaluate; evaluators copy their values and never retain pointers.
+    // operator(); evaluators copy their values and never retain pointers.
     struct LaneOverride {
         Operon::Hash Hash;
         Operon::Scalar const* Lo;
         Operon::Scalar const* Hi;
     };
 
-    // Non-throwing evaluation with caller-provided per-lane variable bounds. User-registered interval callbacks
-    // return tl::expected directly (no exception path to catch here).
-    [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff,
-        std::span<LaneOverride const> overrides) const -> tl::expected<Interval, std::string>
+    // Evaluates once, then exposes every node value to `inspect`. The span is
+    // valid only for the duration of the callback and avoids copying selected
+    // roots out of the evaluator's reused primal buffer.
+    template <typename F>
+    [[nodiscard]] auto EvaluateAll(Operon::Span<Operon::Scalar const> coeff, F&& inspect) const
+        -> tl::expected<void, std::string>
     {
-        return TryEvaluateImpl(coeff, overrides);
-    }
-    [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff, Operon::Hash hash, Scalar const& lo,
-        Scalar const& hi) const -> tl::expected<Interval, std::string>
-    {
-        LaneOverride const override { hash, reinterpret_cast<Operon::Scalar const*>(&lo),
-            reinterpret_cast<Operon::Scalar const*>(&hi) };
-        return TryEvaluate(coeff, std::span { &override, 1 });
-    }
-
-    // Evaluates the tree. `coeff` has one entry per node with
-    // `Node::Optimize == true`, in node order, always Operon::Scalar-typed.
-    [[nodiscard]] auto Evaluate(Operon::Span<Operon::Scalar const> coeff) const -> Interval
-    {
-        auto result = TryEvaluate(coeff);
-        if (!result) {
-            throw std::runtime_error(result.error());
+        auto evaluated = (*this)(coeff);
+        if (!evaluated) {
+            return tl::unexpected(std::move(evaluated.error()));
         }
-        return std::move(*result);
-    }
-    // Non-throwing evaluation, including from user-registered callbacks, which signal failure via tl::expected
-    // rather than throwing. Callers should never need their own try/catch around this.
-    [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff) const
-        -> tl::expected<Interval, std::string>
-    {
-        return TryEvaluateImpl(coeff, {});
+        std::forward<F>(inspect)(Operon::Span<Interval const> { primal_.data(), primal_.size() });
+        return {};
     }
 
-private:
-    [[nodiscard]] auto TryEvaluateImpl(Operon::Span<Operon::Scalar const> coeff,
-        std::span<LaneOverride const> overrides) const -> tl::expected<Interval, std::string>
+    // Evaluates the tree. Never throws: an unmapped node, a missing domain or a failing user-registered callback
+    // comes back as the error string. `overrides` replaces the domain of the named variables with per-lane bounds.
+    [[nodiscard]] auto operator()(Operon::Span<Operon::Scalar const> coeff,
+        std::span<LaneOverride const> overrides = {}) const -> tl::expected<Interval, std::string>
     {
         std::size_t coefficientIndex = 0;
         auto const weight = [&](Node const& node) {
@@ -258,9 +251,10 @@ private:
         };
 
         return detail::EvaluatePostOrder<detail::IntervalPostOrderPolicy<Scalar>>(
-            tree_->Nodes(), primal_, typename detail::IntervalPostOrderPolicy<Scalar>::Context {}, weight, bindLeaf);
+            nodes_, primal_, typename detail::IntervalPostOrderPolicy<Scalar>::Context {}, weight, bindLeaf);
     }
 
+private:
     [[nodiscard]] static auto LoadOverride(Operon::Scalar const* value) -> Scalar
     {
         if constexpr (std::same_as<Scalar, Operon::Scalar>) {
@@ -272,7 +266,7 @@ private:
 
     void RebuildDomainSlots()
     {
-        auto const& nodes = tree_->Nodes();
+        auto const& nodes = nodes_;
         domainSlots_.clear();
         domainSlots_.reserve(nodes.size());
         for (auto const& node : nodes) {
@@ -287,6 +281,7 @@ private:
     };
 
     gsl::not_null<Operon::Tree const*> tree_;
+    Operon::Span<Node const> nodes_;
     DomainMap domains_;
     std::vector<DomainSlot> domainSlots_;
     mutable std::vector<Interval> primal_; // reused across Evaluate calls

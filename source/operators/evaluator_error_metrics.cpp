@@ -108,9 +108,12 @@ auto ErrorMetric::FiniteSubset(Operon::Span<Operon::Scalar const> x, Operon::Spa
         return RootMeanSquaredErrorFinite(x, y);
     case ErrorType::MAE:
         return MeanAbsoluteErrorFinite(x, y);
+    case ErrorType::R2:
+        return R2ScoreFinite(x, y);
+    case ErrorType::C2:
+        return SquaredCorrelationFinite(x, y);
     default:
-        throw std::runtime_error(
-            "ErrorMetric::FiniteSubset: SSE, MSE, NMSE, RMSE and MAE support skipping non-finite rows");
+        throw std::runtime_error("unknown error metric");
     }
 }
 
@@ -128,9 +131,12 @@ auto ErrorMetric::FiniteSubset(Operon::Span<Operon::Scalar const> x, Operon::Spa
         return RootMeanSquaredErrorFinite(x, y, w);
     case ErrorType::MAE:
         return MeanAbsoluteErrorFinite(x, y, w);
+    case ErrorType::R2:
+        return R2ScoreFinite(x, y, w);
+    case ErrorType::C2:
+        return SquaredCorrelationFinite(x, y, w);
     default:
-        throw std::runtime_error(
-            "ErrorMetric::FiniteSubset: SSE, MSE, NMSE, RMSE and MAE support skipping non-finite rows");
+        throw std::runtime_error("unknown error metric");
     }
 }
 } // namespace Operon

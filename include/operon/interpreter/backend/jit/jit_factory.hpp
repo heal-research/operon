@@ -7,11 +7,13 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string_view>
 
 #include "operon/core/dispatch.hpp"
 #include "operon/core/problem.hpp"
 #include "operon/operators/evaluator.hpp"
+#include "operon/operators/shape_constrained_evaluator.hpp"
 #include "operon/operon_export.hpp"
 #include "operon/optimizer/optimizer.hpp"
 
@@ -36,9 +38,13 @@ struct JitObjects {
 // metric is already resolved by the caller (no string parsing here).
 // maxLength is the tree size used to size the Zobrist table; jitMaxLength/jitMinVisits
 // gate per-tree compilation.
+// When `shape` is given, mode "all" builds ShapeConstrainedValueEvaluator<JitEvaluator> (before type erasure) as
+// .Evaluator: the one object is both the constrained objective and the JitEvaluator the optimizer uses. Mode "jac"
+// keeps its Jacobian-only JitEvaluator unconstrained and leaves .Evaluator null, so the caller builds the
+// constrained interpreter evaluator.
 OPERON_EXPORT auto MakeJitObjects(std::string_view mode, Operon::Problem& problem, Operon::ScalarDispatch const& dtable,
     Operon::ErrorMetric const& metric, int maxLength, int jitMaxLength, std::size_t jitMinVisits, std::size_t seed,
-    std::size_t cacheMaxAge = 0) -> JitObjects;
+    std::size_t cacheMaxAge = 0, std::optional<Operon::ShapeConstraintSpec> const& shape = std::nullopt) -> JitObjects;
 
 } // namespace Operon::JIT
 

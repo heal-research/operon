@@ -38,7 +38,7 @@ problem.ConfigurePrimitiveSet(PrimitiveSet::Full);
 
 A problem contains a target, input-variable hashes, train/test/validation `Range`s, primitive vocabulary, and linear-scaling flags. The borrowed-dataset constructor transfers no ownership. `SetTarget` updates default inputs; `SetInputs` disables that default until `SetDefaultInputs()` is called. `TargetValues(range)` and `Weights(range)` are range-local views.
 
-`SetLinearScalingOmitsNonFinite()` is caller-coordinated with evaluator-level non-finite handling. Mismatching these policies can fit different scales during scoring and certification.
+`SetLinearScalingOmitsNonFinite()` declares the single policy under which a linear-scaling transform is fitted: the interpreter and JIT evaluators, shape certification, the exporters and reporting all use it, so scoring and certification cannot fit different scales. An evaluator's `skipNonFinite` option is scoring-only and is rejected at construction while linear scaling is enabled unless this policy omits non-finite rows.
 
 ## `Tree` and `Individual`
 

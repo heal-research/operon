@@ -6,6 +6,7 @@
 
 #include <array>
 #include <fmt/format.h>
+#include <iostream>
 #include <numbers>
 #include <random>
 #include <vector>

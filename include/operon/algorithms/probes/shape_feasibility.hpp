@@ -14,12 +14,15 @@ namespace Operon {
 
 // Emits shape-constraint search-dynamics signals for hard-reject runs:
 // feasible fractions in the current parent/offspring buffers, plus the
-// ShapeConstrainedEvaluator's cumulative and per-report rejection counts.
+// shape-constrained evaluator's cumulative and per-report rejection counts.
+// Feasibility is measured per individual under its canonical transform
+// (one prediction pass each), so this opt-in probe costs real evaluation time.
 class ShapeFeasibilityProbe final : public GenerationProbe {
 public:
     auto operator()(ProbeContext& ctx) -> void override
     {
-        auto const* eval = dynamic_cast<ShapeConstrainedEvaluator const*>(ctx.Algorithm().GetGenerator()->Evaluator());
+        auto const* evaluator = ctx.Algorithm().GetGenerator()->Evaluator();
+        auto const* eval = dynamic_cast<detail::ShapeConstraintEnforcer const*>(evaluator);
         if (eval == nullptr) {
             return;
         }
@@ -27,7 +30,7 @@ public:
         auto const parent = CountFeasible(ctx.Parents(), *eval);
         auto const offspring = CountFeasible(ctx.Offspring(), *eval);
         auto const total = eval->Violations();
-        auto const calls = eval->CallCount.load();
+        auto const calls = evaluator->CallCount.load();
         auto const delta = total - lastViolations_;
         auto const callDelta = calls - lastCalls_;
         lastViolations_ = total;
@@ -60,12 +63,15 @@ private:
         }
     };
 
-    static auto CountFeasible(Operon::Span<Operon::Individual const> pop, ShapeConstrainedEvaluator const& eval)
+    static auto CountFeasible(Operon::Span<Operon::Individual const> pop, detail::ShapeConstraintEnforcer const& eval)
         -> Count
     {
         Count count { .Total = pop.size() };
         for (auto const& ind : pop) {
-            if (!ind.Genotype.Empty() && eval.Feasible(ind.Genotype)) {
+            if (ind.Genotype.Empty()) {
+                continue;
+            }
+            if (eval.Certifier().MeasureCanonical(ind.Genotype).Feasible) {
                 ++count.Feasible;
             }
         }

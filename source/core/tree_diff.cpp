@@ -9,6 +9,9 @@
 #include <bit>
 #include <cstdint>
 #include <limits>
+#include <memory_resource>
+#include <numeric>
+#include <optional>
 #include <stdexcept>
 
 #include "operon/core/contracts.hpp"
@@ -34,11 +37,22 @@ namespace {
     // how Deriv() is written, not something this function itself enforces.
     auto Mix(uint64_t a, uint64_t b) -> uint64_t { return a ^ (b * 0x9e3779b97f4a7c15ULL + (a << 6U) + (a >> 2U)); }
 
-    // Append a derivative node (always Optimize=false) and record its hash.
-    void Push(Nodes& dag, Hashes& h, Node n, uint64_t hash)
+    // Append a derivative node (always Optimize=false) and record its hash. The node is constructed directly in
+    // the dag's storage (callers fill in the remaining fields through the returned reference): building it in a
+    // temporary and copying it in costs a store-forwarding stall, which showed up as the single hottest line.
+    auto Push(Nodes& dag, Hashes& h, NodeType type, Operon::Hash nodeHash, uint64_t hash) -> Node&
     {
+        auto& n = dag.emplace_back(type, nodeHash);
         n.Optimize = false;
+        h.push_back(hash);
+        return n;
+    }
+
+    // Append a copy of `n` (always Optimize=false) and record its hash.
+    void Push(Nodes& dag, Hashes& h, Node const& n, uint64_t hash)
+    {
         dag.push_back(n);
+        dag.back().Optimize = false;
         h.push_back(hash);
     }
 
@@ -48,7 +62,7 @@ namespace {
     {
         EXPECT(target <= std::numeric_limits<uint16_t>::max());
         auto hash = Mix(static_cast<uint64_t>(NodeType::Ref), h[target]);
-        Push(dag, h, Node::Ref(static_cast<uint16_t>(target)), hash);
+        Push(dag, h, NodeType::Ref, Node::DefaultHash(NodeType::Ref), hash).RefTo = static_cast<uint16_t>(target);
         return dag.size() - 1;
     }
 
@@ -57,15 +71,15 @@ namespace {
     auto GetVar(Nodes& dag, Memo& memo, Hashes& h, Node const& origNode, std::size_t origIdx) -> std::size_t
     {
         auto varHash = Mix(static_cast<uint64_t>(NodeType::Variable), Mix(origNode.HashValue, ~origIdx));
-        if (auto it = memo.find(varHash); it != memo.end()) {
+        auto [it, inserted] = memo.try_emplace(varHash, std::size_t { 0 });
+        if (!inserted) {
             return it->second;
         }
         Node col = origNode;
         col.Value = 1.0F;
-        col.Optimize = false;
         auto idx = dag.size();
         Push(dag, h, col, varHash);
-        memo.insert_or_assign(varHash, idx);
+        it->second = idx;
         return idx;
     }
 
@@ -73,12 +87,13 @@ namespace {
     auto GetConst(Nodes& dag, Memo& memo, Hashes& h, Scalar val) -> std::size_t
     {
         auto hash = Mix(static_cast<uint64_t>(NodeType::Constant), std::bit_cast<uint64_t>(static_cast<double>(val)));
-        if (auto it = memo.find(hash); it != memo.end()) {
+        auto [it, inserted] = memo.try_emplace(hash, std::size_t { 0 });
+        if (!inserted) {
             return it->second;
         }
         auto idx = dag.size();
-        Push(dag, h, Node::Constant(val), hash);
-        memo.insert_or_assign(hash, idx);
+        Push(dag, h, NodeType::Constant, Node::DefaultHash(NodeType::Constant), hash).Value = val;
+        it->second = idx;
         return idx;
     }
 
@@ -88,14 +103,16 @@ namespace {
     auto MakeUnary(Nodes& dag, Memo& memo, Hashes& h, BuiltinOp op, std::size_t a) -> std::size_t
     {
         auto opHash = Mix(static_cast<uint64_t>(op), h[a]);
-        if (auto it = memo.find(opHash); it != memo.end()) {
+        auto [it, inserted] = memo.try_emplace(opHash, std::size_t { 0 });
+        if (!inserted) {
             return it->second;
         }
         AppendRef(dag, h, a);
-        auto n = Node::Function(static_cast<Operon::Hash>(op), 1); // sets Arity=Length=1
         auto idx = dag.size();
-        Push(dag, h, n, opHash);
-        memo.insert_or_assign(opHash, idx);
+        auto& n = Push(dag, h, NodeType::Function, static_cast<Operon::Hash>(op), opHash);
+        n.Arity = 1;
+        n.Length = 1;
+        it->second = idx;
         return idx;
     }
 
@@ -108,20 +125,22 @@ namespace {
     auto MakeBinary(Nodes& dag, Memo& memo, Hashes& h, BuiltinOp op, std::size_t a, std::size_t b) -> std::size_t
     {
         auto opHash = Mix(Mix(static_cast<uint64_t>(op), h[a]), h[b]);
-        if (auto it = memo.find(opHash); it != memo.end()) {
+        auto [it, inserted] = memo.try_emplace(opHash, std::size_t { 0 });
+        if (!inserted) {
             return it->second;
         }
         AppendRef(dag, h, b); // farther child first
         AppendRef(dag, h, a); // nearer child second
-        auto n = Node::Function(static_cast<Operon::Hash>(op), 2); // sets Arity=Length=2
         auto idx = dag.size();
-        Push(dag, h, n, opHash);
-        memo.insert_or_assign(opHash, idx);
+        auto& n = Push(dag, h, NodeType::Function, static_cast<Operon::Hash>(op), opHash);
+        n.Arity = 2;
+        n.Length = 2;
+        it->second = idx;
         return idx;
     }
 
     // Sum a list of non-zero terms via a left-associative chain of binary Add nodes.
-    auto AddTerms(Nodes& dag, Memo& memo, Hashes& h, Operon::Vector<std::size_t> const& terms) -> std::size_t
+    auto AddTerms(Nodes& dag, Memo& memo, Hashes& h, Operon::Span<std::size_t const> terms) -> std::size_t
     {
         if (terms.empty()) {
             return Zero;
@@ -307,16 +326,70 @@ namespace {
         // VariableValue mode: node i's live weight (coeff-derived if Optimize),
         // empty means use orig[i].Value directly.
         Operon::Span<Operon::Scalar const> effectiveValues {};
+        // VariableValue mode: dependsOnTarget[i] != 0 iff node i's value depends on `hash`. Empty disables the
+        // pruning below. A subtree that does not depend on the target differentiates to Zero without creating
+        // any dag node, so skipping it is output-identical and avoids a per-node allocation walk.
+        Operon::Span<std::uint8_t const> dependsOnTarget {};
+        // Scratch memory for the transient child/term index lists built while recursing. BuildVariableGradientDag
+        // points this at a per-call monotonic arena; the default is plain heap allocation.
+        std::pmr::memory_resource* arena { std::pmr::get_default_resource() };
+    };
+
+    // Index list for the transient child/term lists built while recursing. Almost every list has at most a handful
+    // of entries, so those live inline; longer ones spill into a vector drawn from the arena.
+    class IndexList {
+    public:
+        static constexpr std::size_t InlineCapacity = 4;
+
+        explicit IndexList(std::pmr::memory_resource* arena) : spill_(arena) {}
+
+        void reserve(std::size_t n)
+        {
+            if (n > InlineCapacity) {
+                spill_.reserve(n);
+            }
+        }
+
+        void push_back(std::size_t v)
+        {
+            if (size_ < InlineCapacity) {
+                inline_[size_] = v;
+            } else {
+                if (size_ == InlineCapacity) {
+                    spill_.assign(inline_.begin(), inline_.end());
+                }
+                spill_.push_back(v);
+            }
+            ++size_;
+        }
+
+        [[nodiscard]] auto size() const -> std::size_t { return size_; }
+        [[nodiscard]] auto data() const -> std::size_t const*
+        {
+            return size_ > InlineCapacity ? spill_.data() : inline_.data();
+        }
+        [[nodiscard]] auto begin() const -> std::size_t const* { return data(); }
+        [[nodiscard]] auto end() const -> std::size_t const* { return data() + size_; }
+        auto operator[](std::size_t i) const -> std::size_t { return data()[i]; }
+        operator Operon::Span<std::size_t const>() const
+        {
+            return { data(), size_ };
+        } // NOLINT(google-explicit-constructor)
+
+    private:
+        std::array<std::size_t, InlineCapacity> inline_;
+        std::pmr::vector<std::size_t> spill_;
+        std::size_t size_ { 0 };
     };
 
     // Forward declaration for mutual recursion.
     auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h, std::size_t i, DerivTarget const& target)
         -> std::size_t;
 
-    // Collect child indices of orig[i] into a small vector.
-    auto ChildIndices(Nodes const& orig, std::size_t i) -> Operon::Vector<std::size_t>
+    // Collect child indices of orig[i] (nearest child first), allocated from `arena`.
+    auto ChildIndices(Nodes const& orig, std::size_t i, std::pmr::memory_resource* arena) -> IndexList
     {
-        Operon::Vector<std::size_t> cs;
+        IndexList cs { arena };
         cs.reserve(orig[i].Arity);
         for (auto c : Subtree<Node const> { Operon::Span<Node const> { orig }, i }.Indices()) {
             cs.push_back(c);
@@ -333,6 +406,10 @@ namespace {
         -> std::size_t
     {
         auto const& n = orig[i];
+
+        if (!target.dependsOnTarget.empty() && target.dependsOnTarget[i] == 0) {
+            return Zero;
+        }
 
         // --- leaves ---
         if (n.IsConstant()) {
@@ -387,12 +464,13 @@ namespace {
             return MakeBinary(dag, memo, h, BuiltinOp::Mul, c, x);
         };
 
-        auto const children = ChildIndices(orig, i);
+        auto const children = ChildIndices(orig, i, target.arena);
         auto const arity = static_cast<std::size_t>(n.Arity);
 
         // --- n-ary Add: d(Σ jk)/dc = Σ d(jk)/dc ---
         if (n.IsAddition()) {
-            Operon::Vector<std::size_t> terms;
+            IndexList terms { target.arena };
+            terms.reserve(arity);
             for (auto c : children) {
                 auto dc = Deriv(orig, dag, memo, h, c, target);
                 if (dc != Zero) {
@@ -404,7 +482,8 @@ namespace {
 
         // --- n-ary Mul: product rule ---
         if (n.IsMultiplication()) {
-            Operon::Vector<std::size_t> terms;
+            IndexList terms { target.arena };
+            terms.reserve(arity);
             for (std::size_t m = 0; m < arity; ++m) {
                 auto dm = Deriv(orig, dag, memo, h, children[m], target);
                 if (dm == Zero) {
@@ -437,8 +516,9 @@ namespace {
             // arity >= 2: treat as +first - rest (this covers plain binary
             // subtraction too: with only two children, "the rest" is just the
             // second child).
-            Operon::Vector<std::size_t> pos;
-            Operon::Vector<std::size_t> neg;
+            IndexList pos { target.arena };
+            IndexList neg { target.arena };
+            neg.reserve(arity);
             for (std::size_t m = 0; m < arity; ++m) {
                 auto dm = Deriv(orig, dag, memo, h, children[m], target);
                 if (dm == Zero) {
@@ -523,7 +603,7 @@ namespace {
             }
             // Fresh, unweighted j^k, recomputed from children.
             auto powJK = MakeBinary(dag, memo, h, BuiltinOp::Pow, j, k);
-            Operon::Vector<std::size_t> terms;
+            IndexList terms { target.arena };
             if (dj != Zero) {
                 // d/dj: k * j^k / j = k * result / j
                 auto ki = MakeBinary(dag, memo, h, BuiltinOp::Mul, k, powJK); // k * result
@@ -561,7 +641,7 @@ namespace {
                     return Zero;
                 }
                 auto [fpj, fpk] = (*rule)(dag, memo, h, i, j, k);
-                Operon::Vector<std::size_t> terms;
+                IndexList terms { target.arena };
                 if (dj != Zero && fpj != Zero) {
                     terms.push_back(MakeBinary(dag, memo, h, BuiltinOp::Mul, fpj, dj));
                 }
@@ -665,45 +745,37 @@ namespace {
         return false;
     }
 
-    auto HasUnsupportedDependentOp(Nodes const& orig, std::size_t root, Operon::Hash variable) -> bool
-    {
-        Operon::Vector<bool> depends(orig.size(), false);
-        Operon::Vector<bool> unsupported(orig.size(), false);
+    constexpr std::uint8_t DependsOnVariable = 1; // node's value depends on the target variable
+    constexpr std::uint8_t UnsupportedOnPath = 2; // ...and that dependency path hits an op without a derivative rule
 
+    // Fills flags[i] for every node: DependsOnVariable iff node i's value depends on a Variable node with hash
+    // `variable`; UnsupportedOnPath (only ever set together with DependsOnVariable) iff, additionally, node i or
+    // something on a dependent path below it has no differentiation rule. flags must hold orig.size() entries.
+    // Returns whether the root's dependency path hits an unsupported op.
+    auto AnalyzeDependence(Nodes const& orig, Operon::Hash variable, Operon::Span<std::uint8_t> flags) -> bool
+    {
         for (std::size_t i = 0; i < orig.size(); ++i) {
             auto const& n = orig[i];
+            std::uint8_t f = 0;
             if (n.IsVariable()) {
-                depends[i] = n.HashValue == variable;
+                f = n.HashValue == variable ? DependsOnVariable : 0;
             } else if (n.IsRef()) {
-                depends[i] = depends[orig[i].RefTo];
+                f = flags[n.RefTo];
             } else if (!n.IsConstant()) {
-                for (auto c : ChildIndices(orig, i)) {
-                    if (depends[c]) {
-                        depends[i] = true;
-                        break;
+                std::uint8_t childFlags = 0;
+                for (auto c : Subtree<Node const> { Operon::Span<Node const> { orig }, i }.Indices()) {
+                    childFlags |= flags[c];
+                }
+                if ((childFlags & DependsOnVariable) != 0) {
+                    f = DependsOnVariable;
+                    if ((childFlags & UnsupportedOnPath) != 0 || !HasDifferentiationRule(n)) {
+                        f |= UnsupportedOnPath;
                     }
                 }
             }
-
-            if (!depends[i] || n.IsConstant() || n.IsVariable()) {
-                continue;
-            }
-            if (n.IsRef()) {
-                unsupported[i] = unsupported[orig[i].RefTo];
-                continue;
-            }
-            unsupported[i] = !HasDifferentiationRule(n);
-            if (!unsupported[i]) {
-                for (auto c : ChildIndices(orig, i)) {
-                    if (unsupported[c]) {
-                        unsupported[i] = true;
-                        break;
-                    }
-                }
-            }
+            flags[i] = f;
         }
-
-        return unsupported[root];
+        return (flags[orig.size() - 1] & UnsupportedOnPath) != 0;
     }
 
     // DifferentiateFirstOrder's analog for BuildVariableGradientDag: collects
@@ -711,59 +783,70 @@ namespace {
     // distinct hash.
     auto DifferentiateVariableGradient(Tree const& tree, Nodes& dag, Memo& memo, Hashes& h,
         Operon::Vector<Operon::Hash>& variables, Operon::Vector<std::size_t>& roots, Operon::Vector<bool>& certain,
-        Operon::Span<Operon::Scalar const> coeff) -> void
+        Operon::Span<Operon::Scalar const> coeff, Operon::Span<Operon::Hash const> variableFilter) -> void
     {
         RegisterBuiltinSymbolicDerivs();
 
         auto const& orig = tree.Nodes();
         auto const n = orig.size();
 
-        dag = orig;
+        // Per-call scratch: the transient index lists and weight/dependency tables below all come from a
+        // monotonic arena over a stack buffer (heap fallback for large trees), so a typical call performs
+        // no allocations for them.
+        alignas(std::max_align_t) std::array<std::byte, 8192> arenaBuffer;
+        std::pmr::monotonic_buffer_resource arena { arenaBuffer.data(), arenaBuffer.size() };
+
+        dag.clear();
         dag.reserve(n * 8);
+        dag.insert(dag.end(), orig.begin(), orig.end());
 
         memo.clear();
         h.clear();
         h.reserve(n * 8);
-        for (std::size_t i = 0; i < n; ++i) {
-            h.push_back(static_cast<uint64_t>(i));
-        }
+        h.resize(n);
+        std::iota(h.begin(), h.end(), uint64_t { 0 });
 
+        // One pass over the nodes: collect the distinct (filtered) variable hashes and precompute each node's live
+        // weight from coeff, matching how IntervalEvaluator/Interpreter consume it (Optimize==true nodes in
+        // order). The weight selection is branchless: Optimize flags are unpredictable and this loop is hot.
         variables.clear();
+        variables.reserve(variableFilter.empty() ? std::min<std::size_t>(n, 8) : std::min(n, variableFilter.size()));
+        std::pmr::vector<Operon::Scalar> effectiveValues { &arena };
+        bool const haveCoeff = !coeff.empty();
+        if (haveCoeff) {
+            effectiveValues.resize(n);
+        }
+        std::size_t ci = 0;
         for (std::size_t i = 0; i < n; ++i) {
-            if (!orig[i].IsVariable()) {
-                continue;
+            auto const& nd = orig[i];
+            if (haveCoeff) {
+                bool const optimized = nd.Optimize;
+                effectiveValues[i] = optimized ? coeff[std::min(ci, coeff.size() - 1)] : nd.Value;
+                ci += optimized ? 1 : 0;
             }
-            if (std::ranges::find(variables, orig[i].HashValue) == variables.end()) {
-                variables.push_back(orig[i].HashValue);
+            if (nd.IsVariable()
+                && (variableFilter.empty() || std::ranges::find(variableFilter, nd.HashValue) != variableFilter.end())
+                && std::ranges::find(variables, nd.HashValue) == variables.end()) {
+                variables.push_back(nd.HashValue);
             }
         }
-
-        // Precompute each node's live weight from coeff, matching how
-        // IntervalEvaluator/Interpreter consume it (Optimize==true nodes in order).
-        Operon::Vector<Operon::Scalar> effectiveValues;
-        if (!coeff.empty()) {
-            effectiveValues.resize(n);
-            std::size_t ci = 0;
-            for (std::size_t i = 0; i < n; ++i) {
-                if (orig[i].Optimize) {
-                    EXPECT(ci < coeff.size());
-                    effectiveValues[i] = coeff[ci++];
-                } else {
-                    effectiveValues[i] = orig[i].Value;
-                }
-            }
+        if (haveCoeff) {
+            EXPECT(ci <= coeff.size());
         }
 
         roots.resize(variables.size(), Zero);
         certain.resize(variables.size(), true);
         for (std::size_t vi = 0; vi < variables.size(); ++vi) {
+            std::pmr::vector<std::uint8_t> depends(n, &arena);
+            certain[vi] = !AnalyzeDependence(orig, variables[vi], depends);
             DerivTarget const target {
                 .kind = DerivTarget::Kind::VariableValue,
                 .hash = variables[vi],
                 .effectiveValues = effectiveValues,
+                .dependsOnTarget = depends,
+                .arena = &arena,
             };
             roots[vi] = Deriv(orig, dag, memo, h, n - 1, target);
-            certain[vi] = !HasUnsupportedDependentOp(orig, n - 1, variables[vi]);
         }
     }
 
@@ -883,12 +966,60 @@ auto BuildHessianDag(Tree const& tree) -> HessianDag
     return result;
 }
 
-auto BuildVariableGradientDag(Tree const& tree, Operon::Span<Operon::Scalar const> coeff) -> VariableGradientDag
+auto BuildVariableGradientDag(Tree const& tree, Operon::Span<Operon::Scalar const> coeff,
+    Operon::Span<Operon::Hash const> variableFilter) -> VariableGradientDag
 {
+    // The hash-consing table and the hash array are pure scratch (nothing from them escapes into the result), so
+    // every thread keeps one pair alive across calls instead of regrowing them each time. Derivative rules are
+    // arbitrary user callbacks, so a nested call made while the pair is leased falls back to a private pair.
+    struct Scratch {
+        Memo memo;
+        Hashes h;
+        bool busy { false };
+    };
+    // Bounds on what a thread retains after a call, so one huge tree doesn't pin memory or make every later
+    // memo.clear() memset a huge bucket array.
+    constexpr std::size_t MaxRetainedBuckets = 1U << 12U;
+    constexpr std::size_t MaxRetainedHashes = 1U << 14U;
+    thread_local Scratch shared;
+
+    struct Lease {
+        Scratch& scratch;
+        bool owned; // true iff `scratch` is the thread's shared instance
+        Lease(Scratch& s, bool isShared) : scratch(s), owned(isShared)
+        {
+            if (owned) {
+                scratch.busy = true;
+            }
+        }
+        Lease(Lease const&) = delete;
+        auto operator=(Lease const&) -> Lease& = delete;
+        ~Lease()
+        {
+            if (!owned) {
+                return;
+            }
+            scratch.busy = false;
+            if (scratch.memo.bucket_count() > MaxRetainedBuckets) {
+                scratch.memo = Memo {};
+            }
+            if (scratch.h.capacity() > MaxRetainedHashes) {
+                scratch.h = Hashes {};
+            }
+        }
+    };
+
+    // The private pair is only built on the (rare) nested-call path: a default-constructed Memo allocates buckets.
+    std::optional<Scratch> fallback;
+    bool const useShared = !shared.busy;
+    if (!useShared) {
+        fallback.emplace();
+    }
+    Lease const lease { useShared ? shared : *fallback, useShared };
+
     VariableGradientDag dag;
-    Memo memo;
-    Hashes h;
-    DifferentiateVariableGradient(tree, dag.Nodes, memo, h, dag.Variables, dag.Roots, dag.Certain, coeff);
+    DifferentiateVariableGradient(tree, dag.Nodes, lease.scratch.memo, lease.scratch.h, dag.Variables, dag.Roots,
+        dag.Certain, coeff, variableFilter);
     dag.OriginalSize = tree.Nodes().size();
     return dag;
 }

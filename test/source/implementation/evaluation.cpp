@@ -113,9 +113,9 @@ TEST_CASE("Batch evaluation", "[interpreter]")
         trees.push_back(creator(rng, 20, 10, 20));
     }
 
-    // Should not throw
-    REQUIRE_NOTHROW(Operon::EvaluateTrees(trees, &ds, range, { result.data(), result.size() }));
-    REQUIRE_NOTHROW(Operon::EvaluateTrees(trees, &ds, range));
+    // Should succeed
+    REQUIRE(Operon::EvaluateTrees(trees, &ds, range, { result.data(), result.size() }));
+    REQUIRE(Operon::EvaluateTrees(trees, &ds, range));
 }
 
 TEST_CASE("Batch evaluation reports typed failures", "[interpreter]")
@@ -132,13 +132,13 @@ TEST_CASE("Batch evaluation reports typed failures", "[interpreter]")
     Operon::Vector<Operon::Tree> trees { tree };
     Operon::Vector<Operon::Scalar> result(range.Size());
 
-    auto intoBuffer = Operon::TryEvaluateTrees(trees, &ds, range, { result.data(), result.size() });
+    auto intoBuffer = Operon::EvaluateTrees(trees, &ds, range, { result.data(), result.size() });
     REQUIRE_FALSE(intoBuffer.has_value());
     CHECK(intoBuffer.error().Index == 0);
     CHECK(intoBuffer.error().Error.Kind == InterpreterError::Code::MissingPrimitive);
     CHECK(intoBuffer.error().Error.Hash == missingPrimitive);
 
-    auto allocated = Operon::TryEvaluateTrees(trees, &ds, range);
+    auto allocated = Operon::EvaluateTrees(trees, &ds, range);
     REQUIRE_FALSE(allocated.has_value());
     CHECK(allocated.error().Index == 0);
     CHECK(allocated.error().Error.Kind == InterpreterError::Code::MissingPrimitive);
@@ -152,7 +152,7 @@ TEST_CASE("Batch evaluation validates output size", "[interpreter]")
     auto trees = Operon::Vector<Operon::Tree> { Operon::Tree { Operon::Node::Constant(1) } };
     Operon::Vector<Operon::Scalar> result(range.Size() - 1);
 
-    auto evaluated = Operon::TryEvaluateTrees(trees, &ds, range, { result.data(), result.size() });
+    auto evaluated = Operon::EvaluateTrees(trees, &ds, range, { result.data(), result.size() });
     REQUIRE_FALSE(evaluated);
     CHECK(evaluated.error().Error.Kind == InterpreterError::Code::InvalidOutputSize);
     CHECK(evaluated.error().Error.ExpectedSize == range.Size());

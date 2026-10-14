@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -13,6 +14,7 @@
 #include "operon/core/problem.hpp"
 #include "operon/hash/zobrist.hpp"
 #include "operon/operators/evaluator.hpp"
+#include "operon/operators/shape_constrained_evaluator.hpp"
 #include "operon/optimizer/optimizer.hpp"
 
 namespace Operon::CLI {
@@ -29,10 +31,11 @@ struct JitObjects {
 
 // Resolve objective string → ErrorMetric, then delegate to Operon::JIT::MakeJitObjects.
 // Returns .Error=true (with a message to stderr) when built without HAVE_ASMJIT.
-// In "jac" mode, .Evaluator is null — caller must create the interpreter evaluator.
+// In "jac" mode, .Evaluator is null — caller must create the interpreter evaluator (constrained, if `shape` is set).
+// With `shape`, mode "all" returns ShapeConstrainedValueEvaluator<JitEvaluator> as .Evaluator.
 // .Zobrist is a JitZobrist; assign to config.Cache if --transposition-cache is set.
 auto MakeJitObjects(std::string_view jitMode, Operon::Problem& problem, Operon::ScalarDispatch const& dtable,
     std::string const& objective, int jitMaxLength, std::size_t jitMinVisits, int maxLength, std::size_t seed,
-    std::size_t cacheMaxAge = 0) -> JitObjects;
+    std::size_t cacheMaxAge = 0, std::optional<Operon::ShapeConstraintSpec> const& shape = std::nullopt) -> JitObjects;
 
 } // namespace Operon::CLI

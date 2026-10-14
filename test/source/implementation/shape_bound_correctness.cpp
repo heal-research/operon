@@ -13,7 +13,7 @@
 // bound for at least one constraint) by operon's shape constraint gate.
 //
 // For each case we compute four enclosures on the same (tree, domain-box):
-//   (a) operon `AffineEvaluator` (raw `Evaluate(coeffs).to_interval()`,
+//   (a) operon `AffineEvaluator` (raw `(*eval(coeffs)).to_interval()`,
 //       captured before the tree_diff / shape-constraint wrapper runs)
 //   (b) operon `IntervalEvaluator` (independent pappus::interval path)
 //   (c) pappus `evaluate_bisected(f, x, depth)` at depths {0, 2, 4, 8, 12}
@@ -167,7 +167,8 @@ namespace {
                 d[var_hashes[i]] = std::pair<S, S> { bx[i].inf(), bx[i].sup() };
             }
             IE eval(&tree, typename IE::DomainMap { d });
-            return eval.Evaluate(tree.GetCoefficients());
+            auto r = eval(tree.GetCoefficients());
+            return r ? *r : Interval::empty();
         };
         pappus_box init;
         init.reserve(var_hashes.size());
@@ -226,16 +227,15 @@ namespace {
                 // rather than unioned in / propagated out, or it silently
                 // corrupts (or aborts) the WHOLE bisected result even when the
                 // sibling sub-box is sound.
-                try {
-                    auto r = eval.Evaluate(tree.GetCoefficients());
-                    auto result = r.to_interval();
-                    if (!std::isfinite(result.inf()) || !std::isfinite(result.sup())) {
-                        return Interval::empty();
-                    }
-                    return result;
-                } catch (std::exception const&) {
+                auto r = eval(tree.GetCoefficients());
+                if (!r) {
                     return Interval::empty();
                 }
+                auto result = r->to_interval();
+                if (!std::isfinite(result.inf()) || !std::isfinite(result.sup())) {
+                    return Interval::empty();
+                }
+                return result;
             }();
             if (d <= 0) {
                 return iv;
@@ -290,14 +290,13 @@ namespace {
         S maxAbsCenter = S { 0 };
         bool affineThrew = false;
         std::string affineErr;
-        try {
-            AE eval(&tree, AE::DomainMap { domains_by_hash });
-            auto r = eval.Evaluate(coeffs);
-            affineRaw = r.to_interval();
-            maxAbsCenter = eval.MaxAbsCenter();
-        } catch (std::exception const& e) {
+        AE aeEval(&tree, AE::DomainMap { domains_by_hash });
+        if (auto r = aeEval(coeffs)) {
+            affineRaw = r->to_interval();
+            maxAbsCenter = aeEval.MaxAbsCenter();
+        } else {
             affineThrew = true;
-            affineErr = e.what();
+            affineErr = r.error();
         }
         auto const illConditionedRatio = (affineRaw && affineRaw->diameter() > 0)
             ? maxAbsCenter * std::numeric_limits<S>::epsilon() / affineRaw->diameter() * S { 2 }
@@ -307,12 +306,12 @@ namespace {
         std::optional<Interval> intervalRaw;
         bool intervalThrew = false;
         std::string intervalErr;
-        try {
-            IE eval(&tree, typename IE::DomainMap { domains_by_hash });
-            intervalRaw = eval.Evaluate(coeffs);
-        } catch (std::exception const& e) {
+        IE ieEval(&tree, typename IE::DomainMap { domains_by_hash });
+        if (auto r = ieEval(coeffs)) {
+            intervalRaw = *r;
+        } else {
             intervalThrew = true;
-            intervalErr = e.what();
+            intervalErr = r.error();
         }
 
         // (c) bisected affine at depths {0, 2, 4, 8, 12}
@@ -431,15 +430,14 @@ namespace {
 
         using DTable = Operon::DispatchTable<Operon::Scalar>;
         DTable dtable;
-        Operon::Evaluator<DTable> nmse(&problem, &dtable, Operon::NMSE {});
-        Operon::ShapeConstrainedEvaluator sce(&nmse, &dtable, cs);
         // This file's whole purpose is diagnosing AffineEvaluator's default (a)
         // enclosure against (b)/(c)/(d) -- pin Combined explicitly so the
         // affineThrew/affineRaw/illConditionedRatio-derived "reason" strings
         // below stay accurate regardless of the library's own default, which is
         // now Interval (see ShapeBoundMode's doc comment).
-        sce.SetBoundMode(ShapeBoundMode::Combined);
-        auto const summary = sce.Measure(tree);
+        Operon::ShapeCertifier sce(&problem, &dtable, cs, Operon::Scalar { 1 },
+            Operon::ShapeBoundOptions { .Mode = ShapeBoundMode::Combined });
+        auto const summary = sce.MeasureCanonical(tree);
 
         for (std::size_t i = 0; i < summary.Measurements.size(); ++i) {
             auto const& m = summary.Measurements[i];

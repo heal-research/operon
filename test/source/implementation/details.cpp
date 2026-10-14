@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <iterator>
+#include <sstream>
+#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -209,6 +211,20 @@ TEST_CASE("Problem target selection refreshes default inputs", "[core]")
     problem.SetInputs(std::vector<Operon::Hash> { x1 });
     problem.SetTarget("X2");
     CHECK(problem.GetInputs() == std::vector<Operon::Hash> { x1 });
+}
+
+TEST_CASE("Problem input selection consumes single-pass ranges once", "[core]")
+{
+    Operon::Dataset dataset { { "X1", "Y", "X2" }, { { 1.0F }, { 2.0F }, { 3.0F } } };
+    Operon::Problem problem { &dataset };
+    std::istringstream names { "X1 X2" };
+    auto inputs
+        = std::ranges::subrange { std::istream_iterator<std::string> { names }, std::istream_iterator<std::string> {} };
+
+    problem.SetInputs(inputs);
+
+    CHECK(problem.GetInputs()
+        == std::vector<Operon::Hash> { dataset.GetVariable("X1")->Hash, dataset.GetVariable("X2")->Hash });
 }
 
 TEST_CASE("Tree rejects mismatched coefficient spans", "[core]")

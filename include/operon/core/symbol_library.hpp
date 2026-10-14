@@ -11,8 +11,8 @@
 
 #include "dispatch.hpp"
 #include "node.hpp"
+#include "operon/core/jet.hpp"
 #include "operon/hash/hash.hpp"
-#include "operon/interpreter/dual.hpp"
 #include "pset.hpp"
 
 // symbol_library.hpp: scalar-lambda adapters for registering user-defined
@@ -26,7 +26,7 @@
 //     weight accumulation during the reverse/forward trace).
 //
 // If no derivative is provided, one is generated automatically via
-// ceres::Jet<T,1> (forward-mode AD with a single tangent component).
+// Jet<T,1> (forward-mode AD with a single tangent component).
 // The lambda must accept a generic (auto) argument for this to work —
 // if it is typed to T specifically, provide an explicit derivative instead.
 
@@ -118,7 +118,7 @@ auto MakeBinaryDiff(DFa derivA, DFb derivB) -> typename DTable::template Callabl
 }
 
 // Generate a batched CallableDiff<T> for a unary function using forward-mode
-// AD (ceres::Jet<T,1>).  The primal lambda must accept a generic argument
+// AD (Jet<T,1>).  The primal lambda must accept a generic argument
 // (i.e., use auto or be templated) so it can be instantiated with Jet<T,1>.
 template <typename DTable, typename T, typename F>
 auto MakeUnaryAutoDiff(F primal) -> typename DTable::template CallableDiff<T>
@@ -126,7 +126,7 @@ auto MakeUnaryAutoDiff(F primal) -> typename DTable::template CallableDiff<T>
     constexpr auto S = DTable::template BatchSize<T>;
     return [fn = std::move(primal)](Operon::Vector<Node> const& /*nodes*/, Backend::View<T const, S> primal,
                Backend::View<T> trace, int /*i*/, int j) {
-        using Jet = ceres::Jet<T, 1>;
+        using Jet = Operon::Jet<T, 1>;
         auto* res = Backend::Ptr(trace, j);
         auto const* pj = Backend::Ptr(primal, j);
         for (auto s = 0UL; s < S; ++s) {
@@ -136,14 +136,14 @@ auto MakeUnaryAutoDiff(F primal) -> typename DTable::template CallableDiff<T>
 }
 
 // Generate a batched CallableDiff<T> for a binary function using forward-mode
-// AD (ceres::Jet<T,1>).  Seeds one argument at a time; called once per child.
+// AD (Jet<T,1>).  Seeds one argument at a time; called once per child.
 template <typename DTable, typename T, typename F>
 auto MakeBinaryAutoDiff(F primal) -> typename DTable::template CallableDiff<T>
 {
     constexpr auto S = DTable::template BatchSize<T>;
     return [fn = std::move(primal)](Operon::Vector<Node> const& nodes, Backend::View<T const, S> primal,
                Backend::View<T> trace, int i, int j) {
-        using Jet = ceres::Jet<T, 1>;
+        using Jet = Operon::Jet<T, 1>;
         auto const first = i - 1;
         auto const second = first - static_cast<int>(nodes[first].Length) - 1;
         auto* res = Backend::Ptr(trace, j);
@@ -204,7 +204,7 @@ auto MakeNaryCallable(F primal) -> typename DTable::template Callable<T>
 }
 
 // Generate a batched CallableDiff<T> for an n-ary reduce function using
-// forward-mode AD (ceres::Jet<T,1>): re-runs the same fold with the target
+// forward-mode AD (Jet<T,1>): re-runs the same fold with the target
 // child (index j) seeded with unit tangent and every other child at zero
 // tangent, so a single primal lambda covers every child's partial without a
 // separate derivative rule per argument position.
@@ -214,7 +214,7 @@ auto MakeNaryAutoDiff(F primal) -> typename DTable::template CallableDiff<T>
     constexpr auto S = DTable::template BatchSize<T>;
     return [fn = std::move(primal)](Operon::Vector<Node> const& nodes, Backend::View<T const, S> primal,
                Backend::View<T> trace, int i, int j) {
-        using Jet = ceres::Jet<T, 1>;
+        using Jet = Operon::Jet<T, 1>;
         auto const children = ChildIndices(nodes, static_cast<size_t>(i));
         auto* res = Backend::Ptr(trace, j);
         for (auto s = 0UL; s < S; ++s) {

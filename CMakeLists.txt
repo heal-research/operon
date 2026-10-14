@@ -131,6 +131,7 @@ set(operon_core_headers
     "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/contracts.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/grammar.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/interpreter_error.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/jet.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/memory_view.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/node.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/pset.hpp"

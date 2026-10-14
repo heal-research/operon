@@ -207,10 +207,12 @@ template <std::floating_point T> auto FastTanh(eve::wide<T> a) -> eve::wide<T>
         // otherwise return -1 or 1 instead of NaN.
         return eve::if_else(eve::is_nan(a), eve::nan(eve::as<W> {}), result);
     } else {
-        // 19/18-degree rational minimax, ~2 ULP on [-18.7,18.7].
+        // 19/18-degree rational minimax, within ~7 ULP on [-18.7,18.7] (measured against long double tanh).
         // Ported from Eigen's ptanh_double (rminimax-optimised coefficients).
         auto x = eve::clamp(a, T(-17.6610191624600077), T(17.6610191624600077));
-        auto tiny = eve::abs(a) < T(0.0004);
+        // The rational is accurate down to tiny arguments; `x` itself is only used where x^3/3 drops below
+        // double rounding (relative error x^2/3), i.e. |x| < 1e-8. (The float threshold 4e-4 would cost ~4e8 ULP.)
+        auto tiny = eve::abs(a) < T(1e-8);
         auto x2 = x * x;
         auto p = eve::fma(x2, W { T(2.6158007860482230e-23) }, W { T(7.6534862268749319e-19) });
         p = eve::fma(x2, p, W { T(3.1309488231386680e-15) });
@@ -220,7 +222,8 @@ template <std::floating_point T> auto FastTanh(eve::wide<T> a) -> eve::wide<T>
         p = eve::fma(x2, p, W { T(9.3839087674268880e-05) });
         p = eve::fma(x2, p, W { T(5.9809711724441161e-03) });
         p = eve::fma(x2, p, W { T(1.5184719640284322e-01) });
-        p = x * p;
+        // alpha_1 = 1: the odd numerator is x * (1 + alpha_3 x^2 + ... + alpha_19 x^18).
+        p = x * eve::fma(x2, p, W { T(1.0) });
         auto q = eve::fma(x2, W { T(6.463747022670968018e-21) }, W { T(5.782506856739003571e-17) });
         q = eve::fma(x2, q, W { T(1.293019623712687916e-13) });
         q = eve::fma(x2, q, W { T(1.123643448069621992e-10) });

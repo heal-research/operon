@@ -4,18 +4,22 @@
 #ifndef OPERON_OPERATORS_SHAPE_CONSTRAINED_EVALUATOR_HPP
 #define OPERON_OPERATORS_SHAPE_CONSTRAINED_EVALUATOR_HPP
 
-#include "operon/core/constraint.hpp"
-#include "operon/core/dispatch.hpp"
-#include "operon/hash/zobrist.hpp"
-#include "operon/operators/evaluator.hpp"
-#include "operon/operon_export.hpp"
+#include <atomic>
+#include <cstddef>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <tl/expected.hpp>
+#include <tuple>
+#include <utility>
+#include <vector>
 
-namespace tf {
-class Executor;
-} // NOLINT(readability-identifier-naming) -- Taskflow's own namespace
+#include "operon/core/concepts.hpp"
+#include "operon/core/constraint.hpp"
+#include "operon/core/dispatch.hpp"
+#include "operon/operators/evaluator.hpp"
+#include "operon/operon_export.hpp"
 
 namespace Operon {
 
@@ -31,30 +35,16 @@ struct ShapeConstraintMeasurementSummary {
     Operon::Vector<ShapeConstraintMeasurement> Measurements {};
 };
 
-enum class ShapeConstraintEnforcement : unsigned {
-    None = 0U,
-    HardReject = 1U << 0U,
-    Penalty = 1U << 1U,
-    ExtraObjective = 1U << 2U,
-    FeasibilityFirst = 1U << 3U,
+// HardReject: an infeasible individual receives the worst value on every objective.
+// Penalty: primary objective += PenaltyWeight * violation.
+// ExtraObjective: violation is appended as the last objective.
+// PenaltyAndExtraObjective: both of the above (NSGA2 only).
+enum class ShapeConstraintEnforcement : std::uint8_t {
+    HardReject,
+    Penalty,
+    ExtraObjective,
+    PenaltyAndExtraObjective,
 };
-
-[[nodiscard]] constexpr auto operator|(ShapeConstraintEnforcement lhs, ShapeConstraintEnforcement rhs) noexcept
-    -> ShapeConstraintEnforcement
-{
-    return static_cast<ShapeConstraintEnforcement>(static_cast<unsigned>(lhs) | static_cast<unsigned>(rhs));
-}
-
-[[nodiscard]] constexpr auto operator&(ShapeConstraintEnforcement lhs, ShapeConstraintEnforcement rhs) noexcept
-    -> ShapeConstraintEnforcement
-{
-    return static_cast<ShapeConstraintEnforcement>(static_cast<unsigned>(lhs) & static_cast<unsigned>(rhs));
-}
-
-[[nodiscard]] constexpr auto HasFlag(ShapeConstraintEnforcement value, ShapeConstraintEnforcement flag) noexcept -> bool
-{
-    return (value & flag) != ShapeConstraintEnforcement::None;
-}
 
 struct ShapeConstraintPolicy {
     ShapeConstraintEnforcement Enforcement { ShapeConstraintEnforcement::HardReject };
@@ -62,238 +52,260 @@ struct ShapeConstraintPolicy {
     Operon::Scalar PenaltyWeight { 1 };
 };
 
-// Backend(s) TryAffineBound uses to bound a constraint. Interval (default) uses
-// plain interval arithmetic only -- ties or beats Combined on the paper's full
-// matrix (see RESULTS.md) at ~24% less work per Measure() call, with none of
-// affine's ill-conditioned/uncertified failure modes. Combined intersects
-// affine and interval; Affine isolates the affine backend alone (confirmed
-// non-competitive -- kept only so run_bound_mode_ablation*.sh can still
-// reproduce that published cell by name). Bisected recursively bisects the
-// domain and unions per-sub-box results; currently only supported combined
-// with Interval.
-enum class ShapeBoundMode : unsigned {
-    Combined = 0U,
-    Interval = 1U << 0U,
-    Affine = 1U << 1U,
-    Bisected = 1U << 2U,
+// Bound backend. Interval (default): plain interval arithmetic. Affine: affine arithmetic only. Combined:
+// intersection of affine and interval. Bisected: interval arithmetic unioned over 2^BisectionDepth sub-boxes.
+enum class ShapeBoundMode : std::uint8_t {
+    Combined,
+    Interval,
+    Affine,
+    Bisected,
 };
 
-[[nodiscard]] constexpr auto operator|(ShapeBoundMode lhs, ShapeBoundMode rhs) noexcept -> ShapeBoundMode
-{
-    return static_cast<ShapeBoundMode>(static_cast<unsigned>(lhs) | static_cast<unsigned>(rhs));
-}
-
-[[nodiscard]] constexpr auto operator&(ShapeBoundMode lhs, ShapeBoundMode rhs) noexcept -> ShapeBoundMode
-{
-    return static_cast<ShapeBoundMode>(static_cast<unsigned>(lhs) & static_cast<unsigned>(rhs));
-}
-
-[[nodiscard]] constexpr auto HasFlag(ShapeBoundMode value, ShapeBoundMode flag) noexcept -> bool
-{
-    return (value & flag) != ShapeBoundMode::Combined;
-}
-
-// Tuning knobs for the affine/interval bound machinery. Defaults match this file's previous behavior exactly.
 struct ShapeBoundOptions {
-    // Interval-only bisection (ShapeBoundMode::Bisected): 2^BisectionDepth uniform sub-boxes along the widest
-    // referenced axis (leaf count, not recursion levels, hence not tied to SIMD width). Multi-axis trees
-    // bisect over a balanced grid evaluated scalar/unbatched, independently capped well below this value.
+    ShapeBoundMode Mode { ShapeBoundMode::Interval };
+    // Bisected mode: 2^BisectionDepth uniform sub-boxes along the widest referenced axis (leaf count, not
+    // recursion levels, hence not tied to SIMD width). Multi-axis trees bisect over a balanced grid evaluated
+    // scalar/unbatched, independently capped well below this value.
     int BisectionDepth { 3 };
-    // Affine-mode fallback: max bisection depth when the direct
-    // affine/interval intersection fails on the whole domain. 0 disables it.
-    int AffineBisectionMaxDepth { 0 };
-    // Flags an affine bound as uncertified when the float32 rounding-error
-    // floor implied by the largest intermediate center exceeds this many
-    // times the final radius.
-    Operon::Scalar AffineIllConditionedThreshold { 4 };
-    // Opt-in TightenRange rescue path for bounds the direct/bisection paths
-    // couldn't certify.
+    // Opt-in TightenRange rescue path for bounds the direct/bisection paths couldn't certify.
     bool UseTightenRangeFallback { false };
 };
-inline void ValidateShapeBoundOptions(ShapeBoundOptions const& options)
-{
-    if (options.BisectionDepth < 0 || options.BisectionDepth > 20 || options.AffineBisectionMaxDepth < 0
-        || options.AffineBisectionMaxDepth > 20) {
-        throw std::invalid_argument("bisection depths must be in [0, 20]");
-    }
-}
 
 [[nodiscard]] OPERON_EXPORT auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2)
     -> std::optional<std::string>;
 [[nodiscard]] OPERON_EXPORT auto ParseShapeEnforcement(std::string const& str) -> ShapeConstraintEnforcement;
-// Parsed shape-bound backend and optional bisection depth. A bare bisected
-// mode leaves the depth unset so callers can honor their explicit CLI option;
-// `bisected:N` supplies an explicit depth.
-struct ShapeBoundModeConfig {
-    ShapeBoundMode Mode { ShapeBoundMode::Combined };
-    std::optional<int> BisectionDepth;
-};
-// Rejects Interval+Affine, or Bisected without Interval. Shared by the
-// parser and SetBoundMode setters so programmatic modes obey the same rules.
-[[nodiscard]] OPERON_EXPORT auto ValidateShapeBoundMode(ShapeBoundMode mode) -> std::optional<std::string>;
-[[nodiscard]] OPERON_EXPORT auto ParseShapeBoundModeConfig(std::string const& str) -> ShapeBoundModeConfig;
-// Compatibility wrapper for callers that only need the backend flags.
-[[nodiscard]] OPERON_EXPORT auto ParseShapeBoundMode(std::string const& str) -> ShapeBoundMode;
+// Parses exactly one token: `combined`, `interval`, `affine`, `bisected` (uses `bisectionDepth`) or `bisected:N`
+// (N in [0, 20] overrides `bisectionDepth`). Throws std::invalid_argument on anything else, or if
+// `bisectionDepth` is outside [0, 20].
+[[nodiscard]] OPERON_EXPORT auto ParseShapeBoundOptions(std::string const& str, int bisectionDepth)
+    -> ShapeBoundOptions;
 
-// Wraps an inner EvaluatorBase (typically NMSE-with-linear-scaling) with the shape-constraint check from
-// Kronberger et al. 2021 Algorithm 1: bound the model's output and requested partial derivatives over the
-// constraint set's domain box via AffineEvaluator (tighter than the paper's plain interval arithmetic); if a
-// bound proves a constraint can't hold everywhere in the box, every objective gets WorstValue() instead of
-// calling the inner evaluator. A derivative constraint's bound uses BuildVariableGradientDag (tree_diff.hpp) to
-// get a standalone derivative tree, evaluated the same way as the identity case (see the .cpp).
+// Shape-constraint configuration (constraint set, domain boxes, bound backend and options). It is not an
+// evaluator and never evaluates predictions on behalf of search: enforcement passes it
+// the exact transform that the evaluated model applies (`Measure`). `MeasureCanonical` is a standalone,
+// reporting-only entry point that fits the canonical transform itself (one prediction pass under
+// Problem::LinearScalingOmitsNonFinite -- the policy every evaluator, the exporter and
+// ShapeConstrainedValueEvaluator certification share).
 //
-// Pessimistic in the paper's own sense (Sec. 3.1): only accepts a constraint the enclosure proves holds
-// everywhere, so overestimation can reject an actually-feasible model. Documented tradeoff, not a bug.
-class OPERON_EXPORT ShapeConstrainedEvaluator final : public EvaluatorBase {
+// Bound semantics follow Kronberger et al. 2021 Algorithm 1: bound the model's output and requested partial
+// derivatives over the constraint set's domain box; only a constraint the enclosure proves holds everywhere is
+// accepted (Sec. 3.1), so overestimation can reject an actually-feasible model. A derivative constraint's bound
+// uses BuildVariableGradientDag (tree_diff.hpp) to get a standalone derivative tree.
+class OPERON_EXPORT ShapeCertifier {
 public:
-    // `constraints`' variable names are resolved against `evaluator`'s Problem/Dataset once, at construction --
-    // throws std::invalid_argument if a referenced variable isn't a dataset column, or has no `constraints.Domains`
+    // `constraints`' variable names are resolved against `problem`'s Dataset once, at construction -- throws
+    // std::invalid_argument if a referenced variable isn't a dataset column, or has no `constraints.Domains`
     // entry. `constraints.Domains` must cover every variable the tree can reference, not just constraint
     // variables: a derivative bound still walks the whole original tree internally (BuildVariableGradientDag's
-    // dag carries the full tree as a prefix).
-    ShapeConstrainedEvaluator(gsl::not_null<EvaluatorBase const*> evaluator,
-        gsl::not_null<Operon::ScalarDispatch const*> dtable, ShapeConstraintSet constraints);
+    // dag carries the full tree as a prefix). `unknownViolation` (finite, non-negative) is the violation assigned
+    // to a constraint whose bound cannot be certified.
+    // `bound.BisectionDepth` must be in [0, 20] (std::invalid_argument otherwise).
+    ShapeCertifier(gsl::not_null<Operon::Problem const*> problem, gsl::not_null<Operon::ScalarDispatch const*> dtable,
+        ShapeConstraintSet constraints, Operon::Scalar unknownViolation = Operon::Scalar { 1 },
+        ShapeBoundOptions bound = {});
 
-    [[nodiscard]] auto WorstValue() const noexcept -> double { return worstValue_; }
-    void SetWorstValue(double value) { worstValue_ = value; }
-
-    [[nodiscard]] auto BoundMode() const noexcept -> ShapeBoundMode { return boundMode_; }
-    // Throws std::invalid_argument if `mode` fails ValidateShapeBoundMode
-    // (e.g. Bisected without Interval) -- see that function's comment.
-    void SetBoundMode(ShapeBoundMode mode);
-
-    [[nodiscard]] auto BoundOptions() const noexcept -> ShapeBoundOptions const& { return boundOptions_; }
-    // Throws std::invalid_argument if either bisection depth fails ValidateShapeBoundOptions (negative, or deep
-    // enough that the 2^depth leaf arithmetic stops being exact). Also clears the feasibility cache: its memo key
-    // covers the bound mode but NOT the options, so entries computed under the previous depths would otherwise
-    // keep answering Feasible() as if those depths were still set.
-    void SetBoundOptions(ShapeBoundOptions options)
-    {
-        ValidateShapeBoundOptions(options);
-        boundOptions_ = options;
-        feasibleCache_.Clear();
-    }
-
-    // The tf::Executor Prepare() uses to parallelize its Feasible() pre-warm across `pop` -- normally the
-    // caller's own GP/NSGA2 executor (see Reporter for the same reuse pattern), not a private one. Unset
-    // (nullptr, default) means Prepare() runs sequentially.
-    void SetExecutor(tf::Executor& executor) noexcept { taskExecutor_ = &executor; }
-
-    // Individuals rejected by the constraint check so far (paper's Sec. 5.1 "constraint violations" figure).
-    // Accumulates over this evaluator's lifetime; EvaluatorBase::Reset() does not clear it.
-    [[nodiscard]] auto Violations() const noexcept -> std::size_t { return violations_.load(); }
-
-    // Delegates to the wrapped evaluator's Evaluate, then fits (a,b) from those values
-    // (or its own tree-overload pass, if the wrapped evaluator isn't value-based) and
-    // populates feasibleCache_ for this tree.
-    auto Evaluate(Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf) const
-        -> tl::expected<std::optional<EvaluatedBuffer>, InterpreterError> override;
-
-    // Feasible (per the cache Evaluate just populated) -> wrapped evaluator's Score;
-    // infeasible -> WorstValue.
-    auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const ->
-        typename EvaluatorBase::ReturnType override;
-
-    auto ObjectiveCount() const -> std::size_t override { return evaluator_->ObjectiveCount(); }
-
-    // Delegates to the inner evaluator's Prepare(), then bulk-computes and caches Feasible() for every individual
-    // in `pop`, parallelized over `taskExecutor_` (see ParallelForPopulation in the .cpp for the corun()
-    // rationale). Cleared and rebuilt each call, so it always reflects the most recent `pop`.
-    auto Prepare(Operon::Span<Individual const> pop) const -> void override;
-
-    auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t, std::size_t> override
-    {
-        return evaluator_->Stats();
-    }
-    auto BudgetExhausted() const -> bool override { return evaluator_->BudgetExhausted(); }
-
-    // The same box-bounding check Evaluate() uses, exposed standalone so a caller can ask whether a tree
-    // satisfies the constraints without scoring it (and without counting toward Violations()/CallCount). Not
-    // the paper's separate Sec. 5.1 point-sampling violation-rate methodology.
-    //
-    // Checks the Prepare()-populated cache first; a miss computes and stores the result, safe concurrently.
-    [[nodiscard]] auto Feasible(Operon::Tree const& tree) const -> bool;
-    // Certifies from `values`, already produced by the wrapped evaluator, instead of rerunning the interpreter
-    // through Feasible's tree-based scaling fit. Populates the same cache entry.
-    [[nodiscard]] auto FeasibleFromValues(Operon::Tree const& tree, Operon::Span<Operon::Scalar> values) const -> bool;
-    [[nodiscard]] auto Measure(Operon::Tree const& tree, Operon::Scalar unknownViolation = Operon::Scalar { 1 }) const
+    // Measures `tree` under exactly `transform` (`nullopt`: scaling disabled); safe to call concurrently.
+    [[nodiscard]] auto Measure(Operon::Tree const& tree, std::optional<Operon::LinearScaling> const& transform) const
         -> ShapeConstraintMeasurementSummary;
 
-private:
-    gsl::not_null<EvaluatorBase const*> evaluator_;
-    gsl::not_null<Operon::ScalarDispatch const*> dtable_;
-    ShapeConstraintSet constraints_;
-    // constraintVarHash_[i] is constraints_.Constraints[i].Variable's resolved
-    // Dataset hash (default Operon::Hash{} for an Identity constraint, which
-    // has no variable) — resolved once at construction so Feasible() never
-    // does string lookups on the hot path.
-    Operon::Vector<Operon::Hash> constraintVarHash_;
-    Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> domainsByHash_;
-    double worstValue_ { 1.0 };
-    ShapeBoundMode boundMode_ { ShapeBoundMode::Interval };
-    ShapeBoundOptions boundOptions_ {};
-    tf::Executor* taskExecutor_ { nullptr };
-    mutable std::atomic_size_t violations_ { 0 };
-
-    struct FeasibleData {
-        ShapeConstraintMeasurementSummary Value {};
-    };
-    mutable ZobristCache<CacheEntry<FeasibleData>> feasibleCache_;
-};
-
-// Computes shape-constraint violation as a standalone objective from a
-// Problem plus ScalarDispatch; it does not wrap or delegate to another evaluator.
-class OPERON_EXPORT ShapeViolationEvaluator final : public EvaluatorBase {
-public:
-    ShapeViolationEvaluator(gsl::not_null<Operon::Problem const*> problem,
-        gsl::not_null<Operon::ScalarDispatch const*> dtable, ShapeConstraintSet constraints,
-        Operon::Scalar weight = Operon::Scalar { 1 }, Operon::Scalar unknownViolation = Operon::Scalar { 1 });
-
-    [[nodiscard]] auto Weight() const noexcept -> Operon::Scalar { return weight_; }
-    [[nodiscard]] auto UnknownViolation() const noexcept -> Operon::Scalar { return unknownViolation_; }
-    [[nodiscard]] auto BoundMode() const noexcept -> ShapeBoundMode { return boundMode_; }
-    // See ShapeConstrainedEvaluator::SetBoundMode -- same validation contract.
-    void SetBoundMode(ShapeBoundMode mode);
-    [[nodiscard]] auto BoundOptions() const noexcept -> ShapeBoundOptions const& { return boundOptions_; }
-    // See ShapeConstrainedEvaluator::SetBoundOptions -- same validation contract, and Measure()'s memo key covers
-    // the bound mode but not the options, so the measurement cache is cleared here too.
-    void SetBoundOptions(ShapeBoundOptions options)
-    {
-        ValidateShapeBoundOptions(options);
-        boundOptions_ = options;
-        measurementCache_.Clear();
-    }
-    [[nodiscard]] auto RawViolation(Operon::Tree const& tree, Operon::Span<Operon::Scalar> scratch = {}) const
-        -> Operon::Scalar;
-    [[nodiscard]] auto Measure(Operon::Tree const& tree, Operon::Span<Operon::Scalar> scratch = {}) const
+    // Reporting / standalone use only: fits the canonical transform of `tree` (one interpreter pass; `scratch`,
+    // if large enough, is reused as the output buffer) and measures under it. Search never calls this.
+    [[nodiscard]] auto MeasureCanonical(Operon::Tree const& tree, Operon::Span<Operon::Scalar> scratch = {}) const
         -> ShapeConstraintMeasurementSummary;
-
-    // See ShapeConstrainedEvaluator::SetExecutor — Prepare()'s population
-    // Measure() pre-warm reuses the caller's executor the same way.
-    void SetExecutor(tf::Executor& executor) noexcept { taskExecutor_ = &executor; }
-
-    auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> /*evaluated*/) const ->
-        typename EvaluatorBase::ReturnType override;
-    auto ObjectiveCount() const -> std::size_t override { return 1; }
-    auto Prepare(Operon::Span<Individual const> pop) const -> void override;
 
 private:
     gsl::not_null<Operon::Problem const*> problem_;
     gsl::not_null<Operon::ScalarDispatch const*> dtable_;
     ShapeConstraintSet constraints_;
+    // constraintVarHash_[i] is constraints_.Constraints[i].Variable's resolved
+    // Dataset hash (default Operon::Hash{} for an Identity constraint, which
+    // has no variable) — resolved once at construction so Measure() never
+    // does string lookups on the hot path.
     Operon::Vector<Operon::Hash> constraintVarHash_;
     Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> domainsByHash_;
-    Operon::Scalar weight_ { 1 };
     Operon::Scalar unknownViolation_ { 1 };
-    ShapeBoundMode boundMode_ { ShapeBoundMode::Interval };
-    ShapeBoundOptions boundOptions_ {};
-    tf::Executor* taskExecutor_ { nullptr };
-
-    struct MeasurementData {
-        ShapeConstraintMeasurementSummary Value {};
-    };
-    mutable ZobristCache<CacheEntry<MeasurementData>> measurementCache_;
+    ShapeBoundOptions bound_ {};
 };
+
+// Everything a shape-constrained adapter needs besides its base evaluator.
+struct ShapeConstraintSpec {
+    ShapeConstraintSet Constraints;
+    ShapeConstraintPolicy Policy {};
+    // Structural post-objectives (e.g. tree length), appended after the primary score in this order. Restricted to
+    // TreePropertyEvaluator, whose prediction phase is sealed, so a post-objective can never add a prediction pass.
+    std::vector<gsl::not_null<TreePropertyEvaluator const*>> Structural {};
+    // Fitness assigned to every objective of a hard-rejected individual.
+    double WorstValue { 1.0 };
+    ShapeBoundOptions Bound {};
+};
+
+namespace detail {
+
+    // The evaluator-independent half of every ShapeConstrainedValueEvaluator: the certifier, the policy, the
+    // structural post-objectives and all enforcement and bookkeeping that does not depend on the base evaluator
+    // type, so the adapter template stays a thin shell. It is an implementation detail, here only because the
+    // adapter template needs its complete type: it is not an evaluator and cannot be constructed or driven on its
+    // own. Its public members are the read/configure access generic code (CLI, probes) reaches with
+    // `dynamic_cast<detail::ShapeConstraintEnforcer const*>(evaluator)`; the enforcement steps are protected and
+    // called only by the adapter.
+    class OPERON_EXPORT ShapeConstraintEnforcer {
+    public:
+        ShapeConstraintEnforcer(ShapeConstraintEnforcer const&) = delete;
+        auto operator=(ShapeConstraintEnforcer const&) -> ShapeConstraintEnforcer& = delete;
+        ShapeConstraintEnforcer(ShapeConstraintEnforcer&&) = delete;
+        auto operator=(ShapeConstraintEnforcer&&) -> ShapeConstraintEnforcer& = delete;
+
+        [[nodiscard]] auto Certifier() const noexcept -> ShapeCertifier const& { return certifier_; }
+        [[nodiscard]] auto Certifier() noexcept -> ShapeCertifier& { return certifier_; }
+        [[nodiscard]] auto Policy() const noexcept -> ShapeConstraintPolicy const& { return policy_; }
+
+        [[nodiscard]] auto WorstValue() const noexcept -> double { return worstValue_; }
+        void SetWorstValue(double value) { worstValue_ = value; }
+
+        // Individuals rejected by HardReject so far (paper's Sec. 5.1 "constraint violations" figure). Accumulates
+        // over this evaluator's lifetime; EvaluatorBase::Reset() does not clear it.
+        [[nodiscard]] auto Violations() const noexcept -> std::size_t { return violations_.load(); }
+
+    protected:
+        // Throws std::invalid_argument if a structural objective has more than one objective, if the policy is
+        // invalid for both GP and NSGA2, or if the constraints fail ShapeCertifier validation.
+        ShapeConstraintEnforcer(gsl::not_null<Operon::Problem const*> problem,
+            gsl::not_null<Operon::ScalarDispatch const*> dtable, ShapeConstraintSpec spec);
+        ~ShapeConstraintEnforcer() = default;
+
+        // Width of the constrained objective vector: primary, structural objectives, optional violation.
+        [[nodiscard]] auto ShapeObjectiveCount() const noexcept -> std::size_t;
+
+        // Prepares the structural objectives.
+        void ShapePrepare(Operon::Span<Individual const> pop) const;
+
+        // Residual evaluations, Jacobian evaluations and cost-function time accumulated by the structural
+        // objectives.
+        [[nodiscard]] auto ShapeStructuralStats() const -> std::tuple<std::size_t, std::size_t, std::size_t>;
+
+        // Measures `tree` under exactly the transform the evaluated prediction carries, before the base
+        // evaluator's score rewrites the buffer. Throws std::logic_error if `evaluated` is empty.
+        [[nodiscard]] auto ShapeCertify(Operon::Tree const& tree, std::optional<EvaluatedBuffer> const& evaluated) const
+            -> ShapeConstraintMeasurementSummary;
+
+        // HardReject of an infeasible summary: counts it and returns WorstValue for the whole vector (structural
+        // objectives are not evaluated). Empty when the summary does not reject.
+        [[nodiscard]] auto ShapeReject(ShapeConstraintMeasurementSummary const& summary) const
+            -> std::optional<EvaluatorBase::ReturnType>;
+
+        // Assembles the constrained vector from the base evaluator's single-objective `primary` score: a failed or
+        // non-finite score gives ErrMax for the whole vector; Penalty adds PenaltyWeight * violation to the
+        // primary; structural objectives follow, through their operator(); and ExtraObjective appends the
+        // violation last (NSGP order: error, length, violation).
+        [[nodiscard]] auto ShapeAssemble(Operon::RandomGenerator& rng, Operon::Individual const& ind,
+            Operon::Span<Operon::Scalar> buf, ShapeConstraintMeasurementSummary const& summary,
+            EvaluatorBase::ReturnType const& primary) const -> EvaluatorBase::ReturnType;
+
+    private:
+        std::vector<gsl::not_null<TreePropertyEvaluator const*>> structural_;
+        ShapeCertifier certifier_;
+        ShapeConstraintPolicy policy_;
+        double worstValue_ { 1.0 };
+        mutable std::atomic_size_t violations_ { 0 };
+    };
+
+} // namespace detail
+
+// The one-pass shape-constrained composition, as a derived typed adapter over a concrete value evaluator
+// `BaseEvaluator` (an interpreter evaluator with any scoring metric, MDL/FBF/likelihood, or the JIT evaluator).
+// The adapter *is* the value evaluator and owns the complete constrained objective vector
+//
+//     [ primary (+ penalty), structural post-objectives..., (violation) ]
+//
+// so that prediction evaluation, the fitted transform, shape measurement and enforcement all happen inside one
+// operator() invocation of the one evaluator object:
+//
+//  * the base evaluator's prediction phase runs exactly once and yields the exact transform it will apply;
+//  * the certifier measures the model under that transform before the base evaluator's score rewrites the buffer;
+//  * HardReject returns WorstValue for the whole vector (structural objectives are not evaluated), a failed
+//    prediction or score returns ErrMax for the whole vector, Penalty adds PenaltyWeight * violation to the
+//    primary score, and ExtraObjective appends the measured violation last (NSGP order: error, length, violation).
+//
+// It exposes no execution method besides the inherited, final EvaluatorBase::operator(): its overrides of the
+// protected phases call `BaseEvaluator`'s own phases on `this`, so no evaluator reaches into another and no
+// runtime child is erased. Structural post-objectives are TreePropertyEvaluators, whose prediction phase is sealed,
+// so they can never add a second prediction pass.
+//
+// Fitness describes the evaluated model, error and shape alike. Under non-Lamarckian local search the optimized
+// coefficients are what gets scored and certified; the restored genotype is not re-certified (use
+// ShapeCertifier::MeasureCanonical to certify an exported model). An adapter bypasses the structural
+// transposition cache (StructuralFitnessReusable() is false) because a structural hit carries no coefficient
+// identity.
+//
+// Adapters cannot nest: a constrained adapter is not a Concepts::ValueEvaluator (it sets `IsShapeConstrained`), and
+// the class is final. Build one over the concrete evaluator before erasing it to EvaluatorBase (see
+// MakeValueEvaluator).
+template <Concepts::ValueEvaluator BaseEvaluator>
+class ShapeConstrainedValueEvaluator final : public BaseEvaluator, public detail::ShapeConstraintEnforcer {
+public:
+    static constexpr bool IsShapeConstrained = true;
+
+    // `baseArgs` construct the `BaseEvaluator`. `dtable` is the dispatch table the certifier fits canonical
+    // transforms with (reporting-only `MeasureCanonical`).
+    template <typename... BaseArgs>
+    explicit ShapeConstrainedValueEvaluator(
+        ShapeConstraintSpec spec, gsl::not_null<Operon::ScalarDispatch const*> dtable, BaseArgs&&... baseArgs)
+        : BaseEvaluator(std::forward<BaseArgs>(baseArgs)...)
+        , detail::ShapeConstraintEnforcer(this->GetProblem(), dtable, std::move(spec))
+    {
+    }
+
+    [[nodiscard]] auto ObjectiveCount() const -> std::size_t override { return this->ShapeObjectiveCount(); }
+
+    [[nodiscard]] auto StructuralFitnessReusable() const -> bool override { return false; }
+
+    // Prepares the base evaluator and the structural objectives.
+    auto Prepare(Operon::Span<Individual const> pop) const -> void override
+    {
+        BaseEvaluator::Prepare(pop);
+        this->ShapePrepare(pop);
+    }
+
+    auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t, std::size_t> override
+    {
+        auto [residual, jacobian, calls, costFunctionTime] = BaseEvaluator::Stats();
+        auto const [structuralResidual, structuralJacobian, structuralTime] = this->ShapeStructuralStats();
+        return std::tuple { residual + structuralResidual, jacobian + structuralJacobian, calls,
+            costFunctionTime + structuralTime };
+    }
+
+    auto BudgetExhausted() const -> bool override
+    {
+        auto const [residual, jacobian, calls, costFunctionTime] = Stats();
+        return residual + jacobian >= this->Budget();
+    }
+
+protected:
+    auto Score(Operon::RandomGenerator& rng, Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf,
+        std::optional<EvaluatedBuffer> evaluated) const -> typename EvaluatorBase::ReturnType override
+    {
+        auto const summary = this->ShapeCertify(ind.Genotype, evaluated);
+        if (auto rejected = this->ShapeReject(summary)) {
+            return std::move(*rejected);
+        }
+        auto const primary = BaseEvaluator::Score(rng, ind, buf, std::move(evaluated));
+        return this->ShapeAssemble(rng, ind, buf, summary, primary);
+    }
+};
+
+// Builds `Leaf` -- a value evaluator constructed from `leafArgs` -- or, when `shape` is given, its
+// ShapeConstrainedValueEvaluator, and returns it type-erased. The typed adapter is constructed before the erasure,
+// so the set of supported branches stays the closed set of callers' `Leaf` types.
+template <Concepts::ValueEvaluator Leaf, typename... LeafArgs>
+[[nodiscard]] auto MakeValueEvaluator(std::optional<ShapeConstraintSpec> const& shape,
+    gsl::not_null<Operon::ScalarDispatch const*> dtable, LeafArgs&&... leafArgs) -> std::unique_ptr<EvaluatorBase>
+{
+    if (shape) {
+        return std::make_unique<ShapeConstrainedValueEvaluator<Leaf>>(
+            ShapeConstraintSpec { *shape }, dtable, std::forward<LeafArgs>(leafArgs)...);
+    }
+    return std::make_unique<Leaf>(std::forward<LeafArgs>(leafArgs)...);
+}
 
 } // namespace Operon
 
