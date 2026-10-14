@@ -43,9 +43,9 @@ invocation the base evaluator's prediction phase runs once, the `ShapeCertifier`
 transform that phase fitted (before the base evaluator's score rewrites the buffer), and the adapter enforces the
 policy. See [Shape constraints](shape-constraints.md) and the [architecture review](evaluator-architecture-review.md).
 
-The adapter must be the evaluator handed to the algorithm, so that the non-Lamarckian restoration step reaches it:
-`MultiEvaluator::Add` rejects it with `std::invalid_argument`. It already includes its structural objectives
-(`ShapeConstraintSpec::Structural`), so it needs no composition.
+The adapter must be the evaluator handed to the algorithm: `MultiEvaluator::Add` rejects it with
+`std::invalid_argument`. It already includes its structural objectives (`ShapeConstraintSpec::Structural`), so it needs
+no composition. Non-Lamarckian restoration only restores the stored coefficients; it does not re-certify them.
 
 ## Built-in objective building blocks
 
@@ -57,4 +57,4 @@ Every standard error metric follows the algorithm's minimization convention. If 
 and `C2`, is computed over that common finite subset; omitted rows add a configurable penalty. The `R2` and `C2`
 penalty is dimensionless, while residual metrics scale it to their error units.
 
-`ObjectiveCount()` tells population algorithms the required fitness-vector width. `Prepare(population)` is the per-generation hook for cached or population-level state; the shape-constrained adapter keeps the published completions of the live population. `ResidualEvaluations`, `JacobianEvaluations`, and `CallCount` are atomic counters; `operator()` increments `CallCount` exactly once per call, including a failed one, so a custom `Score` must not increment it again. A custom evaluator should preserve the base failure behavior rather than translating execution errors into ordinary scores.
+`ObjectiveCount()` tells population algorithms the required fitness-vector width. `Prepare(population)` is the per-generation hook for cached or population-level state; the shape-constrained adapter prepares its base and structural evaluators and keeps no certification cache. `ResidualEvaluations`, `JacobianEvaluations`, and `CallCount` are atomic counters; `operator()` increments `CallCount` exactly once per call, including a failed one, so a custom `Score` must not increment it again. A custom evaluator should preserve the base failure behavior rather than translating execution errors into ordinary scores.

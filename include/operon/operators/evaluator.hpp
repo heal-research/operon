@@ -105,10 +105,9 @@ auto OPERON_EXPORT FitLeastSquares(Operon::Span<double const> estimated, Operon:
 struct EvaluatorBase;
 
 // Lifecycle step for a non-Lamarckian local search: restores `stored` as `ind`'s genotype coefficients after the
-// optimized coefficients were evaluated into `ind.Fitness`. A shape-constrained evaluator
-// (ShapeConstrainedValueEvaluator) certifies the stored genotype here with its single certification-only pass.
-// `buf` is the caller-owned scratch buffer used by operator() calls. This is a lifecycle hook, not an evaluator
-// execution path: it never re-scores the error.
+// optimized coefficients were evaluated into `ind.Fitness`. The default only calls SetCoefficients; the restored
+// coefficients are not re-certified. `buf` is the caller-owned scratch buffer used by operator() calls. This is a
+// lifecycle hook, not an evaluator execution path: it never re-scores the error.
 OPERON_EXPORT auto RestoreNonLamarckianCoefficients(Operon::Individual& ind, Operon::EvaluatorBase const& evaluator,
     Operon::Span<Operon::Scalar const> stored, Operon::Span<Operon::Scalar> buf) -> void;
 

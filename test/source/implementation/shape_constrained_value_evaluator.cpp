@@ -702,7 +702,6 @@ TEST_CASE("MultiEvaluator rejects a shape-constrained adapter as a child", "[sha
         } catch (std::invalid_argument const& e) {
             auto const message = std::string { e.what() };
             CHECK(message.find("ShapeConstrainedValueEvaluator") != std::string::npos);
-            CHECK(message.find("restoration") != std::string::npos);
         }
     }
 

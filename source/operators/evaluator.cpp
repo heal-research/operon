@@ -245,13 +245,12 @@ auto DiversityEvaluator::Score(Operon::RandomGenerator& rng, Operon::Individual 
 
 auto MultiEvaluator::Add(EvaluatorBase const* evaluator) -> void
 {
-    // The adapter's restoration hook is only reachable through the evaluator the algorithm holds, never through a
-    // composition's operator() dispatch: reject the unsupported composition deterministically.
+    // The adapter owns the complete constrained objective vector: reject the unsupported composition
+    // deterministically.
     if (dynamic_cast<detail::ShapeConstraintEnforcer const*>(evaluator) != nullptr) {
         throw std::invalid_argument(
             "MultiEvaluator: a ShapeConstrainedValueEvaluator cannot be a child. It already owns the complete "
-            "constrained objective vector (structural objectives included), and inside a composition its "
-            "non-Lamarckian restoration step would be skipped; hand it to the algorithm directly");
+            "constrained objective vector (structural objectives included); hand it to the algorithm directly");
     }
     evaluators_.emplace_back(evaluator);
 }

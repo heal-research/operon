@@ -53,7 +53,7 @@ With a configuration, the default is `hard-reject`:
 
 Use `--shape-enforcement` to select one mode supported by the chosen algorithm: `hard-reject`, `penalty`, `extra-objective`, or `penalty,extra-objective` (also accepted as `extra-objective,penalty`); the modes are mutually exclusive alternatives, not combinable flags. GP supports `hard-reject` and `penalty`; its default is `hard-reject`. NSGA-II supports all four; its default is `hard-reject`.
 
-NSGA-II objectives are always `[error, tree length, shape violation]` in that order: `penalty` folds the weighted violation into the error, and `extra-objective` appends the measured violation as the last objective (`penalty,extra-objective` does both). Under `hard-reject` an infeasible candidate receives `--shape-worst-value` on every objective.
+NSGA-II objectives are `[error, tree length]`, plus a trailing shape-violation objective for `extra-objective` and `penalty,extra-objective`. `penalty` folds the weighted violation into the error, and `extra-objective` appends the measured violation as the last objective (`penalty,extra-objective` does both). Under `hard-reject` an infeasible candidate receives `--shape-worst-value` on every objective.
 
 ## Evaluation cost
 
