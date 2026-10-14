@@ -26,8 +26,6 @@ namespace {
     using Status = Operon::IntervalJetStatus;
     using JE = Operon::IntervalJetEvaluator<S>;
 
-    constexpr auto Inf = std::numeric_limits<S>::infinity();
-
     auto MakeEvaluator(Operon::Tree const& tree, DomainMap const& domains, std::vector<Operon::Hash> const& vars) -> JE
     {
         return JE { &tree, domains, vars };
