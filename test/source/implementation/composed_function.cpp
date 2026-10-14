@@ -455,13 +455,11 @@ TEST_CASE("Composed function: unary interval/affine mini-evaluator", "[composed-
 TEST_CASE("Composed function: chained-Add symbolic diff (hash-consing regression)", "[composed-function]")
 {
     // Regression test for a real hash-consing collision found via code
-    // review (2026-07-21): tree_diff.cpp assigns h[i]=i for the original
-    // tree's own nodes (h[0]=0 is normal there), and BuiltinOp::Add==0 too
-    // — DiffMix(Add, h[0]=0) collapsed to exactly 0 and stayed 0 through a
-    // second Add combining with it, making DiffMakeBinary's memo spuriously
-    // treat Add(innerSum, x) as identical to Add(x, x). Fixed by salting
-    // DiffMix so (0,0) is no longer a fixed point. Without the fix, this
-    // computed 3*exp(2x) instead of 3*exp(3x).
+    // review (2026-07-21): the derivative dag's memo was keyed by a 64-bit
+    // hash in which Mix(Add, h[0]=0) collapsed to 0, so Add(innerSum, x) was
+    // spuriously treated as identical to Add(x, x) and exp(x+x+x) came out as
+    // 3*exp(2x) instead of 3*exp(3x). The memo is now keyed by exact
+    // structure, which this test keeps covering.
     Operon::Dataset ds(std::vector<std::string> { "x" }, std::vector<std::vector<Operon::Scalar>> { { 1.3F } });
     Operon::DispatchTable<Operon::Scalar> dtable;
     Operon::Range const range { 0, ds.Rows<std::size_t>() };

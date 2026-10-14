@@ -44,8 +44,10 @@ namespace {
         return n;
     }
 
-    // Identity of operand `a` for hash-consing. A Ref slot stands for its target, so two Ref slots pointing at the
-    // same node are the same operand; a Ref chain keeps its depth, so a Ref never equals its own target.
+    // Identity of operand `a` for hash-consing: the node it ultimately points at plus how many Ref hops lead there.
+    // Two Ref slots pointing at the same node are the same operand (so e.g. cos(x) is built once however many Ref
+    // slots to x feed it), while a Ref slot is still distinct from its own target. A Ref target is a 16-bit index,
+    // so a chain has fewer than 2^17 hops and the 24-bit depth / 40-bit index split cannot overflow.
     auto Operand(Nodes const& dag, std::size_t a) -> std::uint64_t
     {
         std::uint64_t depth = 0;
@@ -53,7 +55,7 @@ namespace {
             a = dag[a].RefTo;
             ++depth;
         }
-        return (depth << 56U) | a;
+        return (depth << 40U) | a;
     }
 
     // Append a Ref node pointing to `target`; NOT hash-consed (each occurrence
