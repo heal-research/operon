@@ -1798,4 +1798,55 @@ TEST_CASE("BuildVariableGradientDag - a zero constant never aliases the first or
     }
 }
 
+TEST_CASE("BuildVariableGradientDag - filtering the second differentiation drops other directions only", "[tree_diff]")
+{
+    Dataset const ds(
+        std::vector<std::string> { "X", "Y" }, std::vector<std::vector<Operon::Scalar>> { { 1.3F }, { 0.8F } });
+    auto const xHash = ds.GetVariable("X")->Hash;
+    auto const yHash = ds.GetVariable("Y")->Hash;
+    auto const variable = [](Operon::Hash hash, Operon::Scalar weight) {
+        Node n { NodeType::Variable, hash };
+        n.Value = weight;
+        n.Optimize = true;
+        return n;
+    };
+
+    // f(x, y) = (2x * 0.5y) * sin(x) = x y sin(x): non-unit weights, x occurs twice. The first derivative with
+    // respect to x still contains both x and y, so filtering the second differentiation to {x} removes the y
+    // direction. f_xx = y (2 cos(x) - x sin(x)).
+    Operon::Vector<Node> nodes;
+    nodes.push_back(variable(xHash, 2.0F));
+    nodes.push_back(variable(yHash, 0.5F));
+    nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Mul), 2));
+    nodes.push_back(variable(xHash, 1.0F));
+    nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Sin), 1));
+    nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Mul), 2));
+    Tree tree { nodes };
+    tree.UpdateNodes();
+    REQUIRE(tree.Validate());
+
+    auto const dag1 = BuildVariableGradientDag(tree, tree.GetCoefficients());
+    auto const d1 = SliceDagRoot(dag1.Nodes, dag1.Roots[VariableIndex(dag1, xHash)]);
+    REQUIRE(std::ranges::any_of(d1.Nodes(), [&](Node const& n) { return n.IsVariable() && n.HashValue == yHash; }));
+    REQUIRE(std::ranges::any_of(d1.Nodes(), [](Node const& n) { return n.IsRef(); }));
+
+    auto const unfiltered = BuildVariableGradientDag(d1, d1.GetCoefficients());
+    auto const filtered = BuildVariableGradientDag(d1, d1.GetCoefficients(), std::vector<Operon::Hash> { xHash });
+    REQUIRE(unfiltered.Variables.size() == 2);
+    REQUIRE(filtered.Variables.size() == 1);
+    auto const kU = VariableIndex(unfiltered, xHash);
+    auto const kF = VariableIndex(filtered, xHash);
+    REQUIRE(unfiltered.Certain[kU]);
+    REQUIRE(filtered.Certain[kF]);
+
+    auto const x = 1.3;
+    auto const y = 0.8;
+    auto const expected = y * (2.0 * std::cos(x) - x * std::sin(x));
+    auto const dU = SliceDagRoot(unfiltered.Nodes, unfiltered.Roots[kU]);
+    auto const dF = SliceDagRoot(filtered.Nodes, filtered.Roots[kF]);
+    CHECK(EvalAt(dU, ds) == Catch::Approx(expected).epsilon(1e-4));
+    CHECK(EvalAt(dF, ds) == EvalAt(dU, ds));
+    CHECK(filtered.Nodes.size() < unfiltered.Nodes.size());
+}
+
 } // namespace Operon::Test
