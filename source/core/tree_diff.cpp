@@ -31,9 +31,9 @@ namespace {
     // Mix two 64-bit hashes (Boost-style but with a larger multiplier). The first argument is salted: unsalted,
     // Mix(0, 0) == 0 is a fixed point, and NodeType::Constant == BuiltinOp::Add == 0, so the hash of a zero
     // constant (and of Add(0, 0)) equals the identity hash h[0] == 0 of original node 0. The memo is keyed by
-    // hash alone, so Mul(0, x0) was then taken for Mul(x0, x0) -- reachable whenever a differentiated tree puts a
-    // leaf at index 0 next to a literal zero (a zero weight or constant), e.g. in a first-derivative slice that is
-    // differentiated again. (composed_function.hpp's DiffMix carries the same salt.)
+    // hash alone, so Mul(0, x0) was then taken for Mul(x0, x0) -- reachable whenever the differentiated tree has
+    // a leaf at index 0 next to a literal zero (a zero weight or constant). (composed_function.hpp's DiffMix
+    // carries the same salt.)
     auto Mix(uint64_t a, uint64_t b) -> uint64_t
     {
         a += 0x9e3779b97f4a7c15ULL;
