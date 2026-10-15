@@ -18,8 +18,6 @@
 #include "operon/core/types.hpp"
 #include "operon/formatter/formatter.hpp"
 #include "operon/interpreter/interpreter.hpp"
-#include "operon/interpreter/interval_evaluator.hpp"
-#include "operon/interpreter/range_tightening.hpp"
 #include "operon/operators/evaluator.hpp"
 #include "operon/operators/linear_scaling.hpp"
 #include "operon/operators/shape_constrained_evaluator.hpp"
@@ -59,10 +57,7 @@ auto ParseOptions(int argc, char** argv) noexcept -> tl::expected<cxxopts::Parse
         "the parsed model",
         cxxopts::value<std::string>())("shape-bisection-depth",
         "Maximum domain bisection depth for shape bounds (0-20)",
-        cxxopts::value<int>()->default_value("3"))("tighten-range",
-        "With --shape-constraints-config, also print TightenRange's mean-value-form bound alongside the naive one, per "
-        "constraint",
-        cxxopts::value<bool>()->default_value("false"))("shape-bound-mode",
+        cxxopts::value<int>()->default_value("3"))("shape-bound-mode",
         "Shape bound backend: interval (default), combined, affine, bisected or bisected:N (depth 0-20)",
         cxxopts::value<std::string>()->default_value("interval"))("sample-check",
         "With --shape-constraints-config, also Monte-Carlo sample N points from the domain box per constraint and "
@@ -202,20 +197,6 @@ auto ConstraintTreeFor(Operon::ShapeConstraint const& c, Operon::Tree const& mod
     return SliceToTree(dag2, dag2.Roots[*i2]);
 }
 
-auto BuildDomainMap(Operon::ShapeConstraintSet const& constraints, Operon::Dataset const& ds)
-    -> Operon::IntervalEvaluator<Operon::Scalar>::DomainMap
-{
-    Operon::IntervalEvaluator<Operon::Scalar>::DomainMap domains;
-    for (auto const& [name, bound] : constraints.Domains) {
-        auto v = ds.GetVariable(name);
-        if (!v) {
-            throw std::invalid_argument(fmt::format("domain references unknown variable '{}'", name));
-        }
-        domains.insert_or_assign(v->Hash, bound);
-    }
-    return domains;
-}
-
 auto PrintTargetAnalysis(cxxopts::ParseResult const& result, Operon::Dataset& ds, Operon::Range range,
     Operon::ScalarDispatch const& dtable, std::string const& format, Operon::Tree& model) -> Operon::Cli::Result<void>
 {
@@ -298,18 +279,12 @@ auto PrintTargetAnalysis(cxxopts::ParseResult const& result, Operon::Dataset& ds
         auto const summary = shapeEval.MeasureCanonical(model);
         fmt::print("shape_feasible {} shape_violation {}\n", summary.Feasible, summary.Violation);
 
-        bool const tighten = result["tighten-range"].as<bool>();
         bool const sampleCheck = result.contains("sample-check");
-        Operon::IntervalEvaluator<Operon::Scalar>::DomainMap const domains = (tighten || sampleCheck)
-            ? BuildDomainMap(*constraints, ds)
-            : Operon::IntervalEvaluator<Operon::Scalar>::DomainMap {};
-        // Shared across both tighten and sample-check: m.Bound is the
-        // scaled bound (TransformBound applies the same fitted linear
-        // scaling used to check feasibility), so any raw-tree quantity
-        // compared against it must go through the identical transform
+        // m.Bound is the scaled bound (TransformBound applies the same fitted linear scaling used to check
+        // feasibility), so any raw-tree quantity compared against it must go through the identical transform
         // or the two columns compare different quantities.
         std::optional<Operon::LinearScaling> const scaling
-            = (tighten || sampleCheck) ? Operon::FitLinearScaling(model, problem, dtable, range) : std::nullopt;
+            = sampleCheck ? Operon::FitLinearScaling(model, problem, dtable, range) : std::nullopt;
         std::size_t const nSamples = sampleCheck ? result["sample-check"].as<std::size_t>() : 0;
         Operon::RandomGenerator sampleRng { 0 };
         // Fixed sample columns built once from the constraints' declared
@@ -342,34 +317,11 @@ auto PrintTargetAnalysis(cxxopts::ParseResult const& result, Operon::Dataset& ds
             if (m.Bound) {
                 fmt::print(" bound [{}:{}]", m.Bound->first, m.Bound->second);
             }
-            std::optional<Operon::Tree> ctreeStorage;
-            if (tighten || sampleCheck) {
+            if (sampleCheck) {
                 auto const& c = constraints->Constraints[i];
                 auto const variable
                     = c.Op == Operon::ShapeConstraintOp::Identity ? Operon::Hash {} : ds.GetVariable(c.Variable)->Hash;
-                ctreeStorage = ConstraintTreeFor(c, model, variable);
-            }
-            if (tighten) {
-                if (auto const& ctree = ctreeStorage) {
-                    auto tr = Operon::TightenRange(*ctree, domains, ctree->GetCoefficients());
-                    if (scaling) {
-                        auto const& c = constraints->Constraints[i];
-                        auto const [lo, hi] = c.Op == Operon::ShapeConstraintOp::Identity
-                            ? scaling->ApplyToValueInterval(tr.inf(), tr.sup())
-                            : scaling->ApplyToDerivativeInterval(tr.inf(), tr.sup());
-                        tr = Operon::IntervalEvaluator<Operon::Scalar>::Interval(lo, hi);
-                    }
-                    if (std::isfinite(tr.inf()) && std::isfinite(tr.sup())) {
-                        fmt::print(" tightened [{}:{}]", tr.inf(), tr.sup());
-                    } else {
-                        fmt::print(" tightened non-finite");
-                    }
-                } else {
-                    fmt::print(" tightened n/a (identically-zero or uncertifiable derivative)");
-                }
-            }
-            if (sampleCheck) {
-                if (auto const& ctree = ctreeStorage) {
+                if (auto const ctree = ConstraintTreeFor(c, model, variable)) {
                     using Interpreter = Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>;
                     auto valsResult = Interpreter::Evaluate(*ctree, *sampleDs, sampleRange);
                     if (!valsResult) {
@@ -384,16 +336,15 @@ auto PrintTargetAnalysis(cxxopts::ParseResult const& result, Operon::Dataset& ds
                         auto const [mn, mx]
                             = std::ranges::minmax(vals | std::views::filter([](auto v) { return std::isfinite(v); }));
                         // Sampled values come from the raw (unscaled)
-                        // constraint tree, same as TightenRange's `tr`
-                        // above -- apply the identical linear-scaling
-                        // transform so this compares in the same units
-                        // as `bound` (m.Bound, always scaled). Without
-                        // this the reported range looks unsound against
-                        // a scaled model even though nothing is wrong.
+                        // constraint tree -- apply the fitted
+                        // linear-scaling transform so this compares in
+                        // the same units as `bound` (m.Bound, always
+                        // scaled). Without this the reported range looks
+                        // unsound against a scaled model even though
+                        // nothing is wrong.
                         double slo = mn;
                         double shi = mx;
                         if (scaling) {
-                            auto const& c = constraints->Constraints[i];
                             auto const [lo, hi] = c.Op == Operon::ShapeConstraintOp::Identity
                                 ? scaling->ApplyToValueInterval(slo, shi)
                                 : scaling->ApplyToDerivativeInterval(slo, shi);
