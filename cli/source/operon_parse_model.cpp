@@ -4,11 +4,14 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <fstream>
 #include <limits>
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
+#include <vector>
 
 #include "cli_error.hpp"
 #include "operon/core/dispatch.hpp"
@@ -68,13 +71,50 @@ auto ParseOptions(int argc, char** argv) noexcept -> tl::expected<cxxopts::Parse
         cxxopts::value<std::string>())(
         "debug", "Show some debugging information", cxxopts::value<bool>()->default_value("false"))("format",
         "Format string (see https://fmt.dev/latest/syntax.html)",
-        cxxopts::value<std::string>()->default_value(":>#8.4g"))("help", "Print help");
+        cxxopts::value<std::string>()->default_value(":>#8.4g"))("help", "Print help")(
+        "infix", "Model in infix form (positional)", cxxopts::value<std::string>());
 
-    opts.allow_unrecognised_options();
+    opts.parse_positional({ "infix" });
+    opts.positional_help("<infix>");
+
+    // cxxopts reads a token such as "-X1 + 1" as a group of short options. An infix expression that starts with
+    // a single '-' is therefore moved behind a "--" separator, where it is positional by construction.
+    std::vector<std::string> args(argv, argv + argc);
+    std::unordered_set<std::string> valued;
+    for (auto const& o : opts.group_help("").options) {
+        if (!o.is_boolean) {
+            valued.insert(o.l.begin(), o.l.end());
+        }
+    }
+    std::optional<std::string> dashed;
+    for (std::size_t i = 1; i < args.size(); ++i) {
+        auto const& t = args[i];
+        if (t == "--") {
+            break;
+        }
+        if (t.starts_with("--")) {
+            if (t.find('=') == std::string::npos && valued.contains(t.substr(2))) {
+                ++i;
+            }
+        } else if (t.size() > 1 && t.front() == '-') {
+            dashed = t;
+            args.erase(args.begin() + static_cast<std::ptrdiff_t>(i));
+            break;
+        }
+    }
+    if (dashed) {
+        args.emplace_back("--");
+        args.push_back(*dashed);
+    }
+    std::vector<char const*> cargs;
+    cargs.reserve(args.size());
+    for (auto const& a : args) {
+        cargs.push_back(a.c_str());
+    }
 
     cxxopts::ParseResult result;
     try {
-        result = opts.parse(argc, argv);
+        result = opts.parse(static_cast<int>(cargs.size()), cargs.data());
     } catch (cxxopts::exceptions::parsing const& ex) {
         fmt::print(stderr, "error: {}. rerun with --help to see available options.\n", ex.what());
         return tl::make_unexpected(ParseError::UnknownError);
@@ -90,7 +130,7 @@ auto ParseOptions(int argc, char** argv) noexcept -> tl::expected<cxxopts::Parse
         return tl::make_unexpected(ParseError::MissingDataset);
     }
 
-    if (result.unmatched().empty()) {
+    if (!result.contains("infix")) {
         fmt::print(stderr, "error: no infix string was provided.\n");
         return tl::make_unexpected(ParseError::MissingInfix);
     }
@@ -389,7 +429,7 @@ auto Run(int argc, char** argv) -> int
     auto const& result = out.value();
 
     Operon::Dataset ds(result["dataset"].as<std::string>(), /*hasHeader=*/true);
-    auto infix = result.unmatched().front();
+    auto infix = result["infix"].as<std::string>();
     auto parsed = Operon::InfixParser::Parse(infix, ds);
     if (!parsed) {
         return Operon::Cli::Report(
