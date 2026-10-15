@@ -68,8 +68,6 @@ struct ShapeBoundOptions {
     // weighted by domain width (see detail::BisectionSplits). The depth is independently capped well below this
     // value when more than one variable is split.
     int BisectionDepth { 3 };
-    // Opt-in TightenRange rescue path for bounds the direct/bisection paths couldn't certify.
-    bool UseTightenRangeFallback { false };
 };
 
 [[nodiscard]] OPERON_EXPORT auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2)

@@ -27,7 +27,6 @@
 #include "operon/interpreter/interval_evaluator.hpp"
 #include "operon/interpreter/interval_jet_evaluator.hpp"
 #include "operon/interpreter/interval_second_order_jet_evaluator.hpp"
-#include "operon/interpreter/range_tightening.hpp"
 #include "operon/operators/linear_scaling.hpp"
 
 namespace Operon {
@@ -59,13 +58,6 @@ namespace {
             return std::nullopt;
         }
         return static_cast<std::size_t>(std::distance(dag.Variables.begin(), it));
-    }
-
-    // True if `b` holds a finite interval -- used to detect NaN/inf enclosures from domain errors or
-    // degenerate affine forms without a try/catch at each call site.
-    auto IsFiniteBound(BoundResult const& b) -> bool
-    {
-        return b.has_value() && std::isfinite(b->inf()) && std::isfinite(b->sup());
     }
 
     auto EvaluateIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& domains)
@@ -355,7 +347,7 @@ namespace {
     }
 
     // The affine+interval intersection path (Combined or Affine mode).
-    auto ComputeDirectAffineBound(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae, ShapeBoundMode mode)
+    auto ComputeBound(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae, ShapeBoundOptions const& opts)
         -> BoundResult
     {
         // Affine forms cannot represent every interval enclosure. In particular, a zero-crossing denominator is
@@ -406,7 +398,7 @@ namespace {
         // tight as either alone -- take it whenever the interval fallback succeeds and doesn't contradict
         // affine (a non-overlapping result means one bound is unsound, not that the intersection is empty --
         // fall back to the affine bound alone).
-        if (mode == ShapeBoundMode::Affine) {
+        if (opts.Mode == ShapeBoundMode::Affine) {
             return bound;
         }
         if (auto ibound = IntervalBound(); ibound) {
@@ -419,37 +411,6 @@ namespace {
         return bound;
     }
 
-    // Opt-in (default off, opts.UseTightenRangeFallback). A targeted probe (see
-    // operon-publications shape-constraints-reproduction/TIGHTENRANGE_RESCUE_FINDING.md) measured its rescue
-    // rate here near zero: TightenRange degrades to the already-failing naive bound on exactly the pathological
-    // derivative-slice trees this rescue role invokes it on. Kept opt-in since it's real, tested infrastructure
-    // that costs nothing when unset.
-    auto ComputeBound(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae, ShapeBoundOptions const& opts)
-        -> BoundResult
-    {
-        auto direct = ComputeDirectAffineBound(tree, ae, opts.Mode);
-        if (IsFiniteBound(direct)) {
-            return direct;
-        }
-
-        if (opts.UseTightenRangeFallback) {
-            // TightenRange runs IntervalEvaluator internally, which throws for an op hash with no registered
-            // interval rule -- unlike every other path in this file, it isn't pre-adapted to BoundResult's
-            // exception-free contract, so wrap it here rather than let it escape into the caller's worker-thread
-            // evaluation loop.
-            try {
-                auto tr = TightenRange(tree, ae.Domains(), tree.GetCoefficients());
-                if (std::isfinite(tr.inf()) && std::isfinite(tr.sup())) {
-                    return tr;
-                }
-            } catch (std::exception const&) {
-                // fall through to the bisection fallback (or the uncertified direct bound)
-            }
-        }
-
-        return direct;
-    }
-
     // Interval-only bound (Interval or Bisected mode): no AffineEvaluator is built (that was ~24% wasted work per
     // Measure() call). BisectedIntervalBound has its own fallback via directBound(). `ie` is shared across the
     // constraints of a bound set; SetTree retargets it at `tree` (the identity tree or a derivative slice)
@@ -457,29 +418,11 @@ namespace {
     auto ComputeBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>& ie, ShapeBoundOptions const& opts)
         -> BoundResult
     {
-        auto const IntervalBound = [&]() -> BoundResult {
-            ie.SetTree(&tree);
-            return ie(tree.GetCoefficients());
-        };
-
-        auto direct = opts.Mode == ShapeBoundMode::Bisected
-            ? BisectedIntervalBound(tree, ie.Domains(), opts.BisectionDepth)
-            : IntervalBound();
-        if (IsFiniteBound(direct)) {
-            return direct;
+        if (opts.Mode == ShapeBoundMode::Bisected) {
+            return BisectedIntervalBound(tree, ie.Domains(), opts.BisectionDepth);
         }
-
-        if (opts.UseTightenRangeFallback) {
-            try {
-                auto tr = TightenRange(tree, ie.Domains(), tree.GetCoefficients());
-                if (std::isfinite(tr.inf()) && std::isfinite(tr.sup())) {
-                    return tr;
-                }
-            } catch (std::exception const&) {
-                // fall through to the uncertified direct bound
-            }
-        }
-        return direct;
+        ie.SetTree(&tree);
+        return ie(tree.GetCoefficients());
     }
 
     // The bound for one derivative constraint: the (possibly twice-)differentiated tree -- an identically-zero
@@ -510,8 +453,8 @@ namespace {
             return d1 ? ComputeBound(*d1, evaluator, opts) : zero();
         }
 
-        // SecondDerivative (symbolic path: Affine, Combined, Bisected, the TightenRange rescue, and whatever the
-        // Interval-mode second-order jet pass -- SecondDerivativeJetBounds -- does not decide): differentiate the
+        // SecondDerivative (symbolic path: Affine, Combined, Bisected, and whatever the Interval-mode second-order
+        // jet pass -- SecondDerivativeJetBounds -- does not decide): differentiate the
         // materialized first-derivative tree again, same variable both times — mixed partials aren't needed
         // by any constraint in this codebase's problem set.
         if (!d1) {
@@ -834,12 +777,11 @@ namespace {
             summary.Measurements.push_back(m);
         };
 
-        // Interval mode only (and without the TightenRange rescue, whose fallback bounds come from materialized
-        // derivative trees): derivative constraints are bounded by the corresponding batched jet pass over the
+        // Interval mode only: derivative constraints are bounded by the corresponding batched jet pass over the
         // original tree. Every other mode, and every constraint a jet pass does not decide, uses BoundFor.
         std::optional<FirstDerivativeJetBounds> firstDerivativeJet;
         std::optional<SecondDerivativeJetBounds> secondDerivativeJet;
-        if (opts.Mode == ShapeBoundMode::Interval && !opts.UseTightenRangeFallback) {
+        if (opts.Mode == ShapeBoundMode::Interval) {
             FirstDerivativeJetBounds firstCandidate(constraints, constraintVarHash);
             if (!firstCandidate.Empty()) {
                 firstDerivativeJet.emplace(std::move(firstCandidate));

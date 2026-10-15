@@ -231,7 +231,6 @@ TEST_CASE("ParseShapeBoundOptions parses single tokens and bisected depths", "[s
     auto const bare = Operon::ParseShapeBoundOptions("bisected", 4);
     CHECK(bare.Mode == ShapeBoundMode::Bisected);
     CHECK(bare.BisectionDepth == 4);
-    CHECK_FALSE(bare.UseTightenRangeFallback);
     auto const explicitDepth = Operon::ParseShapeBoundOptions("bisected:7", 4);
     CHECK(explicitDepth.Mode == ShapeBoundMode::Bisected);
     CHECK(explicitDepth.BisectionDepth == 7);
@@ -1973,22 +1972,6 @@ TEST_CASE("ShapeCertifier - bounds match the evaluators in every bound mode", "[
         CHECK(jet->Second[0].sup() >= 10.0F);
         checkExact(ShapeBoundMode::Interval,
             [&](Tree const& t) -> IE::Interval { return &t == &d2 ? jet->Second[0] : intervalBound(t); });
-    }
-
-    SECTION("Interval with the TightenRange rescue keeps the symbolic second-derivative bound")
-    {
-        Operon::ShapeCertifier certifier(&fx.problem, &fx.dtable, cs, Operon::Scalar { 1 },
-            { .Mode = ShapeBoundMode::Interval, .BisectionDepth = 3, .UseTightenRangeFallback = true });
-        auto const summary = certifier.Measure(tree, std::nullopt);
-        REQUIRE(summary.Measurements.size() == trees.size());
-        for (std::size_t i = 0; i < trees.size(); ++i) {
-            auto const& m = summary.Measurements[i];
-            REQUIRE(m.Certified);
-            REQUIRE(m.Bound);
-            auto const expected = intervalBound(*trees[i]);
-            CHECK(m.Bound->first == Catch::Approx(expected.inf()).margin(tol));
-            CHECK(m.Bound->second == Catch::Approx(expected.sup()).margin(tol));
-        }
     }
 
     SECTION("Affine equals the affine evaluator") { checkExact(ShapeBoundMode::Affine, affineBound); }

@@ -1225,12 +1225,6 @@ auto RandomSpecs(std::size_t count, std::uint64_t seed) -> std::vector<TreeSpec>
     return specs;
 }
 
-auto EnvSize(char const* name, std::size_t fallback) -> std::size_t
-{
-    auto const* value = std::getenv(name); // NOLINT(concurrency-mt-unsafe)
-    return value != nullptr ? static_cast<std::size_t>(std::strtoull(value, nullptr, 10)) : fallback;
-}
-
 // ---- statistics and reporting ----------------------------------------------------------------------------------
 
 struct Group {
@@ -1595,30 +1589,14 @@ void PrintCorpusTable(std::vector<InstanceRecord> const& records)
     }
 }
 
-void WriteCsv(std::string const& path, std::vector<InstanceRecord> const& records)
-{
-    std::ofstream out(path);
-    out << "name,scenario,kind,axes,tree_length,equal_widths,depth,strategy,width,w0,w_best,w_worst,leaves,splits\n";
-    for (auto const& r : records) {
-        for (auto const& d : r.Depths) {
-            for (std::size_t i = 0; i < kStrategies.size(); ++i) {
-                auto const& s = d.Strategies[i];
-                out << fmt::format("{},{},{},{},{},{},{},{},{:.9g},{:.9g},{:.9g},{:.9g},{},{}\n", r.Name, r.Scenario,
-                    KindName(r.Kind), r.Axes, r.TreeLength, r.EqualWidths ? 1 : 0, d.Depth, kStrategies[i].Name,
-                    s.Width, r.W0, d.WBest, d.WWorst, s.Leaves, fmt::join(s.Splits, "/"));
-            }
-        }
-    }
-}
-
 } // namespace
 
 TEST_CASE("Bisection allocation oracle: regret of allocation strategies",
     "[performance][shape-constraints][bisection][oracle][.bisection-oracle]")
 {
-    auto const treeCount = EnvSize("OPERON_ORACLE_TREES", 1000);
-    auto const seed = EnvSize("OPERON_ORACLE_SEED", 1234);
-    auto const threads = EnvSize("OPERON_ORACLE_THREADS", std::max(1U, std::thread::hardware_concurrency()));
+    constexpr std::size_t treeCount = 1000;
+    constexpr std::size_t seed = 1234;
+    auto const threads = std::max(1U, std::thread::hardware_concurrency());
 
     std::vector<TreeSpec> specs;
     for (auto const& c : kCorpus) {
@@ -1723,10 +1701,6 @@ TEST_CASE("Bisection allocation oracle: regret of allocation strategies",
     PrintFeasibilityMatrix(random, std::nullopt);
 
     PrintOracleGaps(random, 12);
-
-    if (auto const* path = std::getenv("OPERON_ORACLE_CSV"); path != nullptr) { // NOLINT(concurrency-mt-unsafe)
-        WriteCsv(path, random);
-    }
 }
 
 TEST_CASE("Bisection strategy corpus: tightness and runtime", "[performance][shape-constraints][bisection][strategy]")

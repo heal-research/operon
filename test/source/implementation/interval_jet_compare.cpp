@@ -1140,22 +1140,14 @@ namespace {
         return true;
 #endif
     }
-
-    auto EnvCount(char const* name, std::size_t fallback) -> std::size_t
-    {
-        if (auto const* s = std::getenv(name); s != nullptr && *s != '\0') {
-            return static_cast<std::size_t>(std::strtoull(s, nullptr, 10));
-        }
-        return fallback;
-    }
 } // namespace
 
 TEST_CASE("Interval jet vs symbolic dag: scaling with the number of constrained variables K", "[.interval-jet-scaling]")
 {
     constexpr std::array<std::size_t, 3> DatasetVars { 8, 16, 32 };
     constexpr std::array<std::size_t, 6> Lengths { 20, 40, 80, 160, 320, 640 };
-    auto const treesPerCell = EnvCount("OPERON_JET_SCALING_TREES", 100);
-    auto const domainMode = EnvCount("OPERON_JET_SCALING_DOMAINS", 3); // bit 0: positive boxes, bit 1: mixed boxes
+    constexpr std::size_t treesPerCell = 100;
+    constexpr std::size_t domainMode = 3; // bit 0: positive boxes, bit 1: mixed boxes
     constexpr std::size_t MinTrees = 30;
     constexpr std::size_t MaxAttempts = 60'000;
 
