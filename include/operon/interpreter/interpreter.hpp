@@ -622,11 +622,12 @@ public:
         auto const nNodes = std::ssize(nodes);
         auto const& dt = dtable_.get();
         for (auto const& n : nodes) {
-            if (n.IsVariable() && !dataset_->GetVariable(n.HashValue)) {
+            // Membership tests only: GetVariable and TryGetFunction would copy a Variable and a std::function.
+            if (n.IsVariable() && !dataset_->FindVariableName(n.HashValue)) {
                 return tl::unexpected(
                     InterpreterError { .Kind = InterpreterError::Code::MissingVariable, .Hash = n.HashValue });
             }
-            if (!n.IsLeaf() && !dt->template TryGetFunction<T>(n.HashValue)) {
+            if (!n.IsLeaf() && !dt->Contains(n.HashValue)) {
                 return tl::unexpected(
                     InterpreterError { .Kind = InterpreterError::Code::MissingPrimitive, .Hash = n.HashValue });
             }
@@ -643,14 +644,18 @@ public:
         std::ranges::fill_n(primal_.data(), S * nNodes, T { 0 });
         context_.clear();
         context_.reserve(nNodes);
+        // Trace passes rebind with requireDerivatives = true, so prediction never reads these.
+        using Derivative = std::optional<Dispatch::CallableDiff<T, BatchSize> const>;
         for (int64_t i = 0; i < nNodes; ++i) {
             auto const& n = nodes[i];
             auto variableValues = n.IsVariable()
                 ? std::tuple_element_t<1, Data>(
                       dataset_->GetValues(n.HashValue).subspan(range.Start(), range.Size()).data(), nRows)
                 : std::tuple_element_t<1, Data> {};
-            context_.emplace_back(T { n.Value }, variableValues, dt->template TryGetFunction<T>(n.HashValue),
-                dt->template TryGetDerivative<T>(n.HashValue));
+            auto const derivative = requireDerivatives ? Derivative { dt->template TryGetDerivative<T>(n.HashValue) }
+                                                       : Derivative {};
+            context_.emplace_back(
+                T { n.Value }, variableValues, dt->template TryGetFunction<T>(n.HashValue), derivative);
         }
         derivativesBound_ = requireDerivatives;
         range_ = range;
