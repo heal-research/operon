@@ -248,6 +248,27 @@ TEST_CASE("ParseShapeBoundOptions parses single tokens and bisected depths", "[s
     CHECK_THROWS_AS(Operon::ParseShapeBoundOptions("interval", 21), std::invalid_argument);
 }
 
+TEST_CASE("ParseShapeBoundOptions parses jet and jet:N", "[shape-constraints][jet-bisection]")
+{
+    auto const bare = Operon::ParseShapeBoundOptions("jet", 4);
+    CHECK(bare.Mode == ShapeBoundMode::JetBisected);
+    CHECK(bare.BisectionDepth == 4);
+    auto const explicitDepth = Operon::ParseShapeBoundOptions("jet:3", 4);
+    CHECK(explicitDepth.Mode == ShapeBoundMode::JetBisected);
+    CHECK(explicitDepth.BisectionDepth == 3);
+    CHECK(Operon::ParseShapeBoundOptions("jet:0", 7).BisectionDepth == 0);
+    CHECK(Operon::ParseShapeBoundOptions("jet:20", 0).BisectionDepth == 20);
+    CHECK(Operon::ParseShapeBoundOptions("bisected:3", 4).Mode == ShapeBoundMode::Bisected);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundOptions("jet:21", 3), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundOptions("jet:-1", 3), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundOptions("jet:x", 3), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundOptions("jet:", 3), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundOptions("jet:3x", 3), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundOptions("jet,interval", 3), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundOptions("jets", 3), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundOptions("jet", 21), std::invalid_argument);
+}
+
 TEST_CASE("ParseShapeBoundOptions: explicit bisected:N overrides the default depth", "[shape-constraints]")
 {
     CHECK(Operon::ParseShapeBoundOptions("bisected", 4).BisectionDepth == 4);
@@ -2535,6 +2556,219 @@ TEST_CASE("Bisection schedule stays balanced on deeply shared expressions", "[sh
         CHECK(result[0].second == 3);
         CHECK(result[1].second == 3);
     }
+}
+
+namespace {
+
+    // One expression with its domain box and, per constraint of `JetCase::Constraints()`, an analytic reference
+    // (nullptr when none is given): Identity, d/dX1, d2/dX1^2, d/dX2, d2/dX2^2.
+    struct JetCase {
+        using F = double (*)(double, double);
+        char const* Expression;
+        std::pair<Operon::Scalar, Operon::Scalar> X1;
+        std::pair<Operon::Scalar, Operon::Scalar> X2;
+        std::array<F, 5> Truth;
+        bool StrictlyTighterFirstX1; // depth > 0 is strictly tighter than Interval on d/dX1 (dependency problem)
+    };
+
+    auto JetCases() -> std::array<JetCase, 3>
+    {
+        return { {
+            // X1 repeated three times; d/dX1 = 3 X1^2 on [-1, 1]: whole-box jet gives [-3, 3], bisection [0, 3].
+            { "X1 * X1 * X1", { -1, 1 }, { 1, 2 },
+                { [](double x, double) { return x * x * x; }, [](double x, double) { return 3 * x * x; },
+                    [](double x, double) { return 6 * x; }, [](double, double) { return 0.0; },
+                    [](double, double) { return 0.0; } },
+                true },
+            // X1 repeated inside a product, X2 once.
+            { "sin(X1) * X1 + X2", { -1, 2 }, { 1, 2 },
+                { [](double x, double y) { return std::sin(x) * x + y; },
+                    [](double x, double) { return std::cos(x) * x + std::sin(x); },
+                    [](double x, double) { return -std::sin(x) * x + 2 * std::cos(x); },
+                    [](double, double) { return 1.0; }, [](double, double) { return 0.0; } },
+                false },
+            // two variables, X2 repeated through the quotient.
+            { "exp(X1 * X2) / (1 + X2 * X2)", { 0.5F, 2 }, { 0.5F, 2 },
+                { [](double x, double y) { return std::exp(x * y) / (1 + y * y); },
+                    [](double x, double y) { return y * std::exp(x * y) / (1 + y * y); },
+                    [](double x, double y) { return y * y * std::exp(x * y) / (1 + y * y); },
+                    [](double x, double y) {
+                        return std::exp(x * y) * (x * (1 + y * y) - 2 * y) / ((1 + y * y) * (1 + y * y));
+                    },
+                    nullptr },
+                false },
+        } };
+    }
+
+    // Dataset X1, X2, X3 (target); raw (unscaled) bounds.
+    struct JetBisectionFixture {
+        Eigen::Array<Operon::Scalar, -1, -1> data { 4, 3 };
+        Operon::Dataset ds;
+        Operon::Problem problem;
+        DispatchTable<Operon::Scalar> dtable;
+
+        JetBisectionFixture()
+            : ds([&]() -> Operon::Dataset {
+                data << 1, 1, 1, 2, 1, 2, 1, 2, 3, 2, 2, 4;
+                return Operon::Dataset(gsl::not_null { data.data() }, 4, 3);
+            }())
+            , problem(&ds)
+        {
+            problem.SetTrainingRange({ 0, 4 });
+            problem.SetTestRange({ 0, 4 });
+            problem.SetTarget("X3");
+            problem.SetLinearScalingEnabled(false);
+        }
+
+        [[nodiscard]] static auto Constraints(JetCase const& jc) -> Operon::ShapeConstraintSet
+        {
+            Operon::ShapeConstraintSet cs;
+            cs.Domains.insert_or_assign("X1", jc.X1);
+            cs.Domains.insert_or_assign("X2", jc.X2);
+            auto const permissive = std::pair { Operon::Scalar { -1e9 }, Operon::Scalar { 1e9 } };
+            cs.Constraints.push_back({ .Op = ShapeConstraintOp::Identity, .Bound = permissive });
+            for (auto const* variable : { "X1", "X2" }) {
+                cs.Constraints.push_back(
+                    { .Op = ShapeConstraintOp::FirstDerivative, .Variable = variable, .Bound = permissive });
+                cs.Constraints.push_back(
+                    { .Op = ShapeConstraintOp::SecondDerivative, .Variable = variable, .Bound = permissive });
+            }
+            // order: Identity, d/dX1, d2/dX1^2, d/dX2, d2/dX2^2
+            return cs;
+        }
+
+        [[nodiscard]] auto Measure(JetCase const& jc, Operon::ShapeBoundOptions const& opts) const
+            -> Operon::ShapeConstraintMeasurementSummary
+        {
+            auto const tree = InfixParser::ParseOrThrow(jc.Expression, ds);
+            Operon::ShapeCertifier certifier(&problem, &dtable, Constraints(jc), Operon::Scalar { 1 }, opts);
+            return certifier.MeasureCanonical(tree);
+        }
+    };
+
+} // namespace
+
+TEST_CASE("JetBisected at depth 0 equals Interval", "[shape-constraints][jet-bisection]")
+{
+    JetBisectionFixture fx;
+    for (auto const& jc : JetCases()) {
+        INFO(jc.Expression);
+        auto const interval = fx.Measure(jc, { .Mode = ShapeBoundMode::Interval });
+        for (auto const& opts :
+            { Operon::ParseShapeBoundOptions("jet:0", 5), Operon::ParseShapeBoundOptions("jet", 0) }) {
+            auto const jet = fx.Measure(jc, opts);
+            REQUIRE(jet.Measurements.size() == interval.Measurements.size());
+            for (std::size_t k = 0; k < jet.Measurements.size(); ++k) {
+                INFO("constraint " << k);
+                CHECK(jet.Measurements[k].Certified == interval.Measurements[k].Certified);
+                REQUIRE(jet.Measurements[k].Bound.has_value() == interval.Measurements[k].Bound.has_value());
+                if (jet.Measurements[k].Bound) {
+                    CHECK(jet.Measurements[k].Bound->first == interval.Measurements[k].Bound->first);
+                    CHECK(jet.Measurements[k].Bound->second == interval.Measurements[k].Bound->second);
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("JetBisected bounds are sound, never wider than Interval, and tighter under the dependency problem",
+    "[shape-constraints][jet-bisection]")
+{
+    JetBisectionFixture fx;
+    constexpr auto Samples = 241;
+    for (auto const& jc : JetCases()) {
+        INFO(jc.Expression);
+        auto const interval = fx.Measure(jc, { .Mode = ShapeBoundMode::Interval });
+        REQUIRE(interval.Measurements.size() == 5);
+
+        for (int depth = 1; depth <= 4; ++depth) {
+            INFO("depth " << depth);
+            auto const jet = fx.Measure(jc, { .Mode = ShapeBoundMode::JetBisected, .BisectionDepth = depth });
+            REQUIRE(jet.Measurements.size() == 5);
+            for (std::size_t k = 0; k < 5; ++k) {
+                INFO("constraint " << k);
+                auto const& m = jet.Measurements[k];
+                auto const& base = interval.Measurements[k];
+                REQUIRE(m.Certified);
+                REQUIRE(base.Certified);
+                auto const [lo, hi] = *m.Bound;
+                auto const [baseLo, baseHi] = *base.Bound;
+                // contained in the whole-box (depth 0) bound, up to float rounding
+                auto const slack = 1e-5 * (1.0 + std::max(std::abs(double { baseLo }), std::abs(double { baseHi })));
+                CHECK(double { lo } >= double { baseLo } - slack);
+                CHECK(double { hi } <= double { baseHi } + slack);
+
+                // contains a dense sample of the true values
+                if (jc.Truth[k] == nullptr) {
+                    continue;
+                }
+                auto lowest = std::numeric_limits<double>::infinity();
+                auto highest = -std::numeric_limits<double>::infinity();
+                for (auto i = 0; i < Samples; ++i) {
+                    for (auto j = 0; j < Samples; ++j) {
+                        auto const x = double { jc.X1.first }
+                            + (double { jc.X1.second } - double { jc.X1.first }) * i / (Samples - 1);
+                        auto const y = double { jc.X2.first }
+                            + (double { jc.X2.second } - double { jc.X2.first }) * j / (Samples - 1);
+                        auto const v = jc.Truth[k](x, y);
+                        lowest = std::min(lowest, v);
+                        highest = std::max(highest, v);
+                    }
+                }
+                auto const tol = 1e-5 * (1.0 + std::max(std::abs(lowest), std::abs(highest)));
+                CHECK(double { lo } <= lowest + tol);
+                CHECK(double { hi } >= highest - tol);
+
+                if (jc.StrictlyTighterFirstX1 && k == 1) {
+                    CHECK(lo > baseLo);
+                    CHECK(hi <= baseHi);
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("JetBisected bound shrinks monotonically with depth on a single-axis expression",
+    "[shape-constraints][jet-bisection]")
+{
+    JetBisectionFixture fx;
+    auto const jc = JetCases()[0]; // X1 only: the leaf boxes of depth d + 1 refine those of depth d
+    auto previous = fx.Measure(jc, { .Mode = ShapeBoundMode::JetBisected, .BisectionDepth = 0 });
+    for (int depth = 1; depth <= 6; ++depth) {
+        auto const current = fx.Measure(jc, { .Mode = ShapeBoundMode::JetBisected, .BisectionDepth = depth });
+        for (std::size_t k = 0; k < 5; ++k) {
+            INFO("depth " << depth << " constraint " << k);
+            REQUIRE(current.Measurements[k].Bound);
+            REQUIRE(previous.Measurements[k].Bound);
+            auto const [lo, hi] = *current.Measurements[k].Bound;
+            auto const [prevLo, prevHi] = *previous.Measurements[k].Bound;
+            auto const slack = 1e-5F * (1.0F + std::max(std::abs(prevLo), std::abs(prevHi)));
+            CHECK(lo >= prevLo - slack);
+            CHECK(hi <= prevHi + slack);
+        }
+        previous = current;
+    }
+}
+
+TEST_CASE(
+    "JetBisected falls back to the whole-box result when a sub-box is undecided", "[shape-constraints][jet-bisection]")
+{
+    // 1 / X1 over a box containing 0 has no finite derivative enclosure on any sub-box touching 0 either.
+    JetBisectionFixture fx;
+    JetCase const jc { "1 / X1 + X1", { -1, 1 }, { 1, 2 }, {}, false };
+    auto const interval = fx.Measure(jc, { .Mode = ShapeBoundMode::Interval });
+    auto const jet = fx.Measure(jc, { .Mode = ShapeBoundMode::JetBisected, .BisectionDepth = 3 });
+    REQUIRE(jet.Measurements.size() == interval.Measurements.size());
+    for (std::size_t k = 0; k < jet.Measurements.size(); ++k) {
+        INFO("constraint " << k);
+        CHECK(jet.Measurements[k].Certified == interval.Measurements[k].Certified);
+        REQUIRE(jet.Measurements[k].Bound.has_value() == interval.Measurements[k].Bound.has_value());
+        if (jet.Measurements[k].Bound) {
+            CHECK(jet.Measurements[k].Bound->first == interval.Measurements[k].Bound->first);
+            CHECK(jet.Measurements[k].Bound->second == interval.Measurements[k].Bound->second);
+        }
+    }
+    CHECK_FALSE(jet.Measurements[1].Certified);
 }
 
 } // namespace Operon::Test

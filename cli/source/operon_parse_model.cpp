@@ -61,7 +61,7 @@ auto ParseOptions(int argc, char** argv) noexcept -> tl::expected<cxxopts::Parse
         cxxopts::value<std::string>())("shape-bisection-depth",
         "Maximum domain bisection depth for shape bounds (0-20)",
         cxxopts::value<int>()->default_value("3"))("shape-bound-mode",
-        "Shape bound backend: interval (default), combined, affine, bisected or bisected:N (depth 0-20)",
+        "Shape bound backend: interval (default), combined, affine, bisected, bisected:N, jet or jet:N (depth 0-20)",
         cxxopts::value<std::string>()->default_value("interval"))("sample-check",
         "With --shape-constraints-config, also Monte-Carlo sample N points from the domain box per constraint and "
         "print the observed [min:max], as an independent soundness cross-check on the printed bound",

@@ -190,7 +190,13 @@ namespace {
             return plan;
         }
 
-        [[nodiscard]] auto LeafDomains(DomainMap const& domains, std::size_t leaf) const -> DomainMap
+        // The box of leaf `leaf`: bit b of `leaf` selects the lower/upper half of the axis the b-th bisection of the
+        // schedule splits. With `pinOuterEndpoints` the outermost endpoints of every axis are clamped to the domain
+        // itself, so that the union of all leaf boxes provably covers the whole box despite the rounding of
+        // (hi - lo) / 2^splits; the interval route leaves this off (its leaf boxes are part of the bisected:N
+        // semantics), the jet route turns it on.
+        [[nodiscard]] auto LeafDomains(DomainMap const& domains, std::size_t leaf, bool pinOuterEndpoints = false) const
+            -> DomainMap
         {
             auto result = domains;
             Operon::Vector<int> cells(Axes.size());
@@ -203,8 +209,17 @@ namespace {
                 auto const [lo, hi] = domains.at(Axes[axis]);
                 auto const step = (hi - lo) / Operon::Scalar(std::size_t { 1 } << Splits[axis]);
                 auto const cell = Operon::Scalar(cells[axis]);
-                result[Axes[axis]] = { pappus::fp::ropd<pappus::fp::op_add>(lo, cell * step),
-                    pappus::fp::ropu<pappus::fp::op_add>(lo, (cell + Operon::Scalar { 1 }) * step) };
+                auto cellLo = pappus::fp::ropd<pappus::fp::op_add>(lo, cell * step);
+                auto cellHi = pappus::fp::ropu<pappus::fp::op_add>(lo, (cell + Operon::Scalar { 1 }) * step);
+                if (pinOuterEndpoints) {
+                    if (cells[axis] == 0) {
+                        cellLo = lo;
+                    }
+                    if (cells[axis] + 1 == (1 << Splits[axis])) {
+                        cellHi = std::max(cellHi, hi);
+                    }
+                }
+                result[Axes[axis]] = { cellLo, cellHi };
             }
             return result;
         }
@@ -418,7 +433,7 @@ namespace {
     auto ComputeBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>& ie, ShapeBoundOptions const& opts)
         -> BoundResult
     {
-        if (opts.Mode == ShapeBoundMode::Bisected) {
+        if (opts.Mode == ShapeBoundMode::Bisected || opts.Mode == ShapeBoundMode::JetBisected) {
             return BisectedIntervalBound(tree, ie.Domains(), opts.BisectionDepth);
         }
         ie.SetTree(&tree);
@@ -547,6 +562,78 @@ namespace {
         return Interval(lo, hi);
     }
 
+    // Runs one jet pass of `Evaluator` (differentiating `variables`) and returns its Bounds; `Field` selects the
+    // per-direction enclosure the caller consumes (Bounds::Derivative or Bounds::Second).
+    //
+    // Without a `plan` this is the single whole-box pass (ShapeBoundMode::Interval). With a plan it is the
+    // JetBisected route: one pass per leaf box of the plan (scalar, one evaluator per leaf), and the enclosure of a
+    // direction is the hull of its per-leaf enclosures. A direction is decided by its leaves only if every leaf
+    // reports Certain with a finite enclosure; otherwise (a leaf failed, overflowed, or hit an op with no rule) the
+    // direction takes the whole-box pass's status and enclosure instead. That fallback is exactly what Interval
+    // mode computes, so it is sound, and the bisected bound is never wider than Interval mode's. (The alternative,
+    // the bisected derivative DAG at the same depth, is also sound but may be wider than the whole-box jet bound.)
+    // Each leaf is a subset of the whole box, so a leaf failure normally implies the whole-box pass fails too and
+    // the constraint then falls through to the symbolic path, as in Interval mode.
+    template <typename Evaluator, auto Field>
+    auto EvaluateJetLeaves(Tree const& tree, IntervalSubdivisionPlan::DomainMap const& domains,
+        IntervalSubdivisionPlan const* plan, Operon::Span<Operon::Hash const> variables,
+        Operon::Span<Operon::Scalar const> coefficients) -> std::optional<typename Evaluator::Bounds>
+    {
+        using Bounds = typename Evaluator::Bounds;
+        auto const wholeBox = [&]() -> std::optional<Bounds> {
+            Evaluator evaluator(&tree, domains, variables);
+            if (auto result = evaluator(coefficients)) {
+                return *result;
+            }
+            return std::nullopt;
+        };
+        if (plan == nullptr) {
+            return wholeBox();
+        }
+
+        Bounds hull;
+        hull.Directions = variables.size();
+        Operon::Vector<bool> decided(variables.size(), true);
+        auto undecided = std::size_t { 0 };
+        auto const nLeaves = std::size_t { 1 } << plan->Depth;
+        for (std::size_t leaf = 0; leaf < nLeaves && undecided < variables.size(); ++leaf) {
+            auto const leafDomains = plan->LeafDomains(domains, leaf, /*pinOuterEndpoints=*/true);
+            Evaluator evaluator(&tree, leafDomains, variables);
+            auto const result = evaluator(coefficients);
+            for (std::size_t k = 0; k < variables.size(); ++k) {
+                if (!decided[k]) {
+                    continue;
+                }
+                auto const ok = result && result->Status[k] == IntervalJetStatus::Certain
+                    && std::isfinite((*result.*Field)[k].inf()) && std::isfinite((*result.*Field)[k].sup());
+                if (!ok) {
+                    decided[k] = false;
+                    ++undecided;
+                    continue;
+                }
+                auto const& enclosure = (*result.*Field)[k];
+                (hull.*Field)[k] = leaf == 0 ? enclosure
+                                             : Interval(std::min((hull.*Field)[k].inf(), enclosure.inf()),
+                                                   std::max((hull.*Field)[k].sup(), enclosure.sup()));
+                hull.Status[k] = IntervalJetStatus::Certain;
+            }
+        }
+        if (undecided == 0) {
+            return hull;
+        }
+        auto const whole = wholeBox();
+        for (std::size_t k = 0; k < variables.size(); ++k) {
+            if (decided[k]) {
+                continue;
+            }
+            hull.Status[k] = whole ? whole->Status[k] : IntervalJetStatus::Failed;
+            if (whole) {
+                (hull.*Field)[k] = (*whole.*Field)[k];
+            }
+        }
+        return hull;
+    }
+
     // Interval-mode bounds of FirstDerivative constraints through IntervalJetEvaluator. The variable selection and
     // lazy chunk evaluation deliberately mirror SecondDerivativeJetBounds below: duplicate constraints reuse one
     // direction, Identity never consumes one, and each pass has at most four directions. Failed/non-finite results
@@ -557,9 +644,10 @@ namespace {
         static_assert(std::is_same_v<Evaluator::Interval, Interval>);
         static constexpr std::size_t MaxDirections = Evaluator::MaxDirections;
 
-        FirstDerivativeJetBounds(
-            ShapeConstraintSet const& constraints, Operon::Vector<Operon::Hash> const& constraintVarHash)
+        FirstDerivativeJetBounds(ShapeConstraintSet const& constraints,
+            Operon::Vector<Operon::Hash> const& constraintVarHash, IntervalSubdivisionPlan const* plan = nullptr)
             : direction_(constraints.Constraints.size(), NoDirection)
+            , plan_(plan)
         {
             for (std::size_t i = 0; i < constraints.Constraints.size(); ++i) {
                 auto const hash = constraintVarHash[i];
@@ -591,9 +679,8 @@ namespace {
                 chunk.Evaluated = true;
                 auto const first = chunkIndex * MaxDirections;
                 auto const count = std::min(MaxDirections, variables_.size() - first);
-                Evaluator evaluator(
-                    &tree, domains, Operon::Span<Operon::Hash const> { variables_.data() + first, count });
-                if (auto result = evaluator(coefficients)) {
+                if (auto result = EvaluateJetLeaves<Evaluator, &Evaluator::Bounds::Derivative>(tree, domains, plan_,
+                        Operon::Span<Operon::Hash const> { variables_.data() + first, count }, coefficients)) {
                     chunk.Result = *result;
                 }
             }
@@ -628,6 +715,7 @@ namespace {
         Operon::Vector<Operon::Hash> variables_;
         Operon::Vector<std::size_t> direction_;
         Operon::Vector<Chunk> chunks_;
+        IntervalSubdivisionPlan const* plan_ { nullptr }; // null: whole-box pass (Interval mode)
     };
 
     // Interval-mode bounds of the SecondDerivative constraints through IntervalSecondOrderJetEvaluator: one
@@ -644,9 +732,10 @@ namespace {
         static_assert(std::is_same_v<Evaluator::Interval, Interval>);
         static constexpr std::size_t MaxDirections = Evaluator::MaxDirections;
 
-        SecondDerivativeJetBounds(
-            ShapeConstraintSet const& constraints, Operon::Vector<Operon::Hash> const& constraintVarHash)
+        SecondDerivativeJetBounds(ShapeConstraintSet const& constraints,
+            Operon::Vector<Operon::Hash> const& constraintVarHash, IntervalSubdivisionPlan const* plan = nullptr)
             : direction_(constraints.Constraints.size(), NoDirection)
+            , plan_(plan)
         {
             for (std::size_t i = 0; i < constraints.Constraints.size(); ++i) {
                 auto const hash = constraintVarHash[i];
@@ -682,9 +771,8 @@ namespace {
                 chunk.Evaluated = true;
                 auto const first = chunkIndex * MaxDirections;
                 auto const count = std::min(MaxDirections, variables_.size() - first);
-                Evaluator evaluator(
-                    &tree, domains, Operon::Span<Operon::Hash const> { variables_.data() + first, count });
-                if (auto result = evaluator(coefficients)) {
+                if (auto result = EvaluateJetLeaves<Evaluator, &Evaluator::Bounds::Second>(tree, domains, plan_,
+                        Operon::Span<Operon::Hash const> { variables_.data() + first, count }, coefficients)) {
                     chunk.Result = *result;
                 }
             }
@@ -720,6 +808,7 @@ namespace {
         Operon::Vector<Operon::Hash> variables_;
         Operon::Vector<std::size_t> direction_; // per constraint: index into variables_, or NoDirection
         Operon::Vector<Chunk> chunks_;
+        IntervalSubdivisionPlan const* plan_ { nullptr }; // null: whole-box pass (Interval mode)
     };
 
     auto MeasureConstraints(ShapeConstraintSet const& constraints,
@@ -777,16 +866,33 @@ namespace {
             summary.Measurements.push_back(m);
         };
 
-        // Interval mode only: derivative constraints are bounded by the corresponding batched jet pass over the
-        // original tree. Every other mode, and every constraint a jet pass does not decide, uses BoundFor.
+        // Interval and JetBisected modes: derivative constraints are bounded by the corresponding batched jet pass
+        // over the original tree (whole box, or the union over the leaf boxes of `plan`). Every other mode, and
+        // every constraint a jet pass does not decide, uses BoundFor.
+        //
+        // The plan is made from the original tree and the full domain map: all derivative directions of a chunk
+        // share one jet pass per leaf, so one leaf schedule serves every constraint. No plan (depth 0, or no
+        // splittable axis) leaves a single whole-box pass, identical to Interval mode.
+        auto const jetMode = opts.Mode == ShapeBoundMode::Interval || opts.Mode == ShapeBoundMode::JetBisected;
+        std::optional<IntervalSubdivisionPlan> plan;
+        if (opts.Mode == ShapeBoundMode::JetBisected) {
+            plan = IntervalSubdivisionPlan::Make(tree, domainsByHash, opts.BisectionDepth);
+        }
+        auto const* planPtr = plan ? &*plan : nullptr;
+        // A derivative constraint the jet pass does not decide goes to the symbolic whole-box bound (as in Interval
+        // mode): in JetBisected mode only the Identity constraint is bisected, so BoundFor must not bisect.
+        auto derivativeOpts = opts;
+        if (opts.Mode == ShapeBoundMode::JetBisected) {
+            derivativeOpts.Mode = ShapeBoundMode::Interval;
+        }
         std::optional<FirstDerivativeJetBounds> firstDerivativeJet;
         std::optional<SecondDerivativeJetBounds> secondDerivativeJet;
-        if (opts.Mode == ShapeBoundMode::Interval) {
-            FirstDerivativeJetBounds firstCandidate(constraints, constraintVarHash);
+        if (jetMode) {
+            FirstDerivativeJetBounds firstCandidate(constraints, constraintVarHash, planPtr);
             if (!firstCandidate.Empty()) {
                 firstDerivativeJet.emplace(std::move(firstCandidate));
             }
-            SecondDerivativeJetBounds secondCandidate(constraints, constraintVarHash);
+            SecondDerivativeJetBounds secondCandidate(constraints, constraintVarHash, planPtr);
             if (!secondCandidate.Empty()) {
                 secondDerivativeJet.emplace(std::move(secondCandidate));
             }
@@ -812,7 +918,7 @@ namespace {
                         continue;
                     }
                 }
-                Apply(i, BoundFor(c.Op, constraintVarHash[i], evaluator, SharedDag1(), opts));
+                Apply(i, BoundFor(c.Op, constraintVarHash[i], evaluator, SharedDag1(), derivativeOpts));
             }
         };
 
@@ -820,7 +926,8 @@ namespace {
         // constructing it, sharing one IntervalEvaluator across every constraint in this set instead (same
         // reasoning as the AffineEvaluator sharing just below: skips a per-constraint domainSlots_/primal_
         // regrowth that profiling showed as real allocation churn).
-        if (opts.Mode == ShapeBoundMode::Interval || opts.Mode == ShapeBoundMode::Bisected) {
+        if (opts.Mode == ShapeBoundMode::Interval || opts.Mode == ShapeBoundMode::Bisected
+            || opts.Mode == ShapeBoundMode::JetBisected) {
             IntervalEvaluator<Operon::Scalar> ie(&tree, domainsByHash);
 
             BoundEach(ie);
@@ -887,9 +994,12 @@ auto ParseShapeBoundOptions(std::string const& str, int bisectionDepth) -> Shape
         options.Mode = ShapeBoundMode::Affine;
     } else if (str == "bisected") {
         options.Mode = ShapeBoundMode::Bisected;
-    } else if (str.starts_with("bisected:")) {
-        options.Mode = ShapeBoundMode::Bisected;
-        auto const depthText = str.substr(std::string_view { "bisected:" }.size());
+    } else if (str == "jet") {
+        options.Mode = ShapeBoundMode::JetBisected;
+    } else if (str.starts_with("bisected:") || str.starts_with("jet:")) {
+        auto const prefixSize = str.find(':') + 1;
+        options.Mode = str.starts_with("jet:") ? ShapeBoundMode::JetBisected : ShapeBoundMode::Bisected;
+        auto const depthText = str.substr(prefixSize);
         std::size_t consumed = 0;
         int depth = 0;
         try {

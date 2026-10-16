@@ -235,7 +235,8 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         cxxopts::value<double>()->default_value("1.0"))("shape-bisection-depth",
         "Maximum domain bisection depth for shape bounds (0-20)",
         cxxopts::value<int>()->default_value("3"))("shape-bound-mode",
-        "Shape-constraint bound backend: interval (default), combined, affine, bisected or bisected:N (depth 0-20)",
+        "Shape-constraint bound backend: interval (default), combined, affine, bisected, bisected:N, jet or jet:N "
+        "(depth 0-20)",
         cxxopts::value<std::string>()->default_value("interval"))("debug", "Debug mode (more information displayed)")(
         "help", "Print help")("version", "Print version and program information");
     return opts;

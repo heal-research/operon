@@ -52,19 +52,24 @@ struct ShapeConstraintPolicy {
     Operon::Scalar PenaltyWeight { 1 };
 };
 
-// Bound backend. Interval (default): plain interval arithmetic. Affine: affine arithmetic only. Combined:
-// intersection of affine and interval. Bisected: interval arithmetic unioned over 2^BisectionDepth sub-boxes.
+// Bound backend. Interval (default): plain interval arithmetic (jet passes for derivative constraints). Affine:
+// affine arithmetic only. Combined: intersection of affine and interval. Bisected: interval arithmetic unioned over
+// 2^BisectionDepth sub-boxes (derivative constraints bisect their symbolic derivative DAG). JetBisected: derivative
+// constraints use the Interval-mode jet passes run on each of the 2^BisectionDepth sub-boxes and unioned (a
+// constraint with an undecided sub-box falls back to the whole-box bound); Identity constraints are bisected as in
+// Bisected. Depth 0 equals Interval.
 enum class ShapeBoundMode : std::uint8_t {
     Combined,
     Interval,
     Affine,
     Bisected,
+    JetBisected,
 };
 
 struct ShapeBoundOptions {
     ShapeBoundMode Mode { ShapeBoundMode::Interval };
-    // Bisected mode: 2^BisectionDepth uniform sub-boxes (leaf count, not recursion levels, hence not tied to SIMD
-    // width). The depth is spent on the variables whose repeated occurrences cause the dependency problem,
+    // Bisected/JetBisected mode: 2^BisectionDepth uniform sub-boxes (leaf count, not recursion levels, hence not tied
+    // to SIMD width). The depth is spent on the variables whose repeated occurrences cause the dependency problem,
     // weighted by domain width (see detail::BisectionSplits). The depth is independently capped well below this
     // value when more than one variable is split.
     int BisectionDepth { 3 };
@@ -73,9 +78,9 @@ struct ShapeBoundOptions {
 [[nodiscard]] OPERON_EXPORT auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2)
     -> std::optional<std::string>;
 [[nodiscard]] OPERON_EXPORT auto ParseShapeEnforcement(std::string const& str) -> ShapeConstraintEnforcement;
-// Parses exactly one token: `combined`, `interval`, `affine`, `bisected` (uses `bisectionDepth`) or `bisected:N`
-// (N in [0, 20] overrides `bisectionDepth`). Throws std::invalid_argument on anything else, or if
-// `bisectionDepth` is outside [0, 20].
+// Parses exactly one token: `combined`, `interval`, `affine`, `bisected` (uses `bisectionDepth`), `bisected:N`,
+// `jet` (uses `bisectionDepth`) or `jet:N` (N in [0, 20] overrides `bisectionDepth`). Throws std::invalid_argument
+// on anything else, or if `bisectionDepth` is outside [0, 20].
 [[nodiscard]] OPERON_EXPORT auto ParseShapeBoundOptions(std::string const& str, int bisectionDepth)
     -> ShapeBoundOptions;
 
