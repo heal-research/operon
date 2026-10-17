@@ -257,7 +257,7 @@ TEST_CASE("ShapeConstrainedValueEvaluator construction rejects policies and stru
         ShapeConstraintSpec spec { .Constraints = IncreasingInX1(),
             .Policy = hard,
             .WorstValue = 9.0,
-            .Bound = { .Mode = ShapeBoundMode::Bisected, .BisectionDepth = 5 } };
+            .Bound = { .Mode = ShapeBoundMode::Interval, .BisectionDepth = 5 } };
         CountingGate const gate { std::move(spec), &fx.dtable, &fx.problem, &fx.dtable, Operon::NMSE {} };
         CHECK(gate.WorstValue() == 9.0);
 

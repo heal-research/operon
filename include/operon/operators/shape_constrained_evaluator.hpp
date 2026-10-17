@@ -53,8 +53,7 @@ struct ShapeConstraintPolicy {
 };
 
 // Bound backend. Interval (default): plain interval arithmetic (jet passes for derivative constraints). Affine:
-// affine arithmetic only. Combined: intersection of affine and interval. Bisected: interval arithmetic unioned over
-// 2^BisectionDepth sub-boxes (derivative constraints bisect their symbolic derivative DAG).
+// affine arithmetic only. Combined: intersection of affine and interval.
 //
 // With BisectionDepth N > 0 every mode is subdivided: the bound is the hull, over the 2^N sub-boxes of the uniform
 // subdivision of the domain box, of the mode's own whole-box bound. Interval runs the jet passes of derivative
@@ -67,7 +66,6 @@ enum class ShapeBoundMode : std::uint8_t {
     Combined,
     Interval,
     Affine,
-    Bisected,
 };
 
 struct ShapeBoundOptions {
@@ -215,11 +213,12 @@ namespace detail {
         mutable std::atomic_size_t violations_ { 0 };
     };
 
-    // The bisection schedule of the Bisected interval bound: for every variable that receives splits, how many times
-    // its domain is halved (the leaves are the product grid, 2^(sum of the halvings)). The total is `depth`, except
-    // that it is capped at 12 when more than one variable is reachable. Empty when `depth` is not in [1, 20] or no
-    // variable of `tree` has a domain of positive width that the expression evaluates. Exposed so that reference
-    // implementations of the leaf evaluation (tests, benchmarks) can follow the production schedule.
+    // The bisection schedule of the subdivided bounds (ShapeBoundOptions::BisectionDepth): for every variable that
+    // receives splits, how many times its domain is halved (the leaves are the product grid, 2^(sum of the halvings)).
+    // The total is `depth`, except that it is capped at 12 when more than one variable is reachable. Empty when
+    // `depth` is not in [1, 20] or no variable of `tree` has a domain of positive width that the expression
+    // evaluates. Exposed so that reference implementations of the leaf evaluation (tests, benchmarks) can follow the
+    // production schedule.
     OPERON_EXPORT auto BisectionSplits(Tree const& tree,
         Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> const& domains, int depth)
         -> std::vector<std::pair<Operon::Hash, int>>;

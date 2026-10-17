@@ -481,17 +481,14 @@ namespace {
         });
     }
 
-    // Interval-only bound (Interval or Bisected mode): no AffineEvaluator is built (that was ~24% wasted work per
-    // Measure() call). BisectedIntervalBound has its own fallback via directBound(). `ie` is shared across the
+    // Interval-only bound: no AffineEvaluator is built (that was ~24% wasted work per Measure() call).
+    // BisectedIntervalBound has its own fallback via directBound(). `ie` is shared across the
     // constraints of a bound set; SetTree retargets it at `tree` (the identity tree or a derivative slice)
-    // instead of constructing a fresh evaluator per call. A `plan` subdivides the bound.
-    auto ComputeBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>& ie, ShapeBoundOptions const& opts,
+    // instead of constructing a fresh evaluator per call. A `plan` subdivides the bound. The options are unused: the
+    // signature matches the affine overload so that BoundFor serves both backends.
+    auto ComputeBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>& ie, ShapeBoundOptions const& /*opts*/,
         IntervalSubdivisionPlan const* plan) -> BoundResult
     {
-        if (opts.Mode == ShapeBoundMode::Bisected) {
-            auto const own = IntervalSubdivisionPlan::Make(tree, ie.Domains(), opts.BisectionDepth);
-            return BisectedIntervalBound(tree, ie.Domains(), own ? &*own : nullptr);
-        }
         if (plan != nullptr) {
             return BisectedIntervalBound(tree, ie.Domains(), plan);
         }
@@ -527,7 +524,7 @@ namespace {
             return d1 ? ComputeBound(*d1, evaluator, opts, plan) : zero();
         }
 
-        // SecondDerivative (symbolic path: Affine, Combined, Bisected, and whatever the Interval-mode second-order
+        // SecondDerivative (symbolic path: Affine, Combined, and whatever the Interval-mode second-order
         // jet pass -- SecondDerivativeJetBounds -- does not decide): differentiate the
         // materialized first-derivative tree again, same variable both times — mixed partials aren't needed
         // by any constraint in this codebase's problem set.
@@ -630,8 +627,8 @@ namespace {
     // only if every leaf reports Certain with a finite enclosure; otherwise (a leaf failed, overflowed, or hit an op
     // with no rule) the direction takes the whole-box pass's status and enclosure instead. That fallback is exactly
     // what depth 0 computes, so it is sound, and the subdivided bound is never wider than the whole-box one. (The
-    // alternative, the bisected derivative DAG at the same depth, is also sound but may be wider than the whole-box
-    // jet bound.)
+    // alternative, bisecting the symbolic derivative DAG, is also sound but may be wider than the whole-box jet
+    // bound.)
     // Each leaf is a subset of the whole box, so a leaf failure normally implies the whole-box pass fails too and
     // the constraint then falls through to the symbolic path, as in Interval mode.
     template <typename Evaluator, auto Field>
@@ -929,11 +926,8 @@ namespace {
         // Every mode bounds the model over the 2^BisectionDepth leaf boxes of one subdivision plan, made from the
         // original tree and the full domain map: all derivative directions of a chunk share one jet pass per leaf,
         // so one leaf schedule serves every constraint. No plan (depth 0, or no splittable axis) is the whole-box
-        // bound. Bisected derives its own plan per bounded tree.
-        std::optional<IntervalSubdivisionPlan> plan;
-        if (opts.Mode != ShapeBoundMode::Bisected) {
-            plan = IntervalSubdivisionPlan::Make(tree, domainsByHash, opts.BisectionDepth);
-        }
+        // bound.
+        auto const plan = IntervalSubdivisionPlan::Make(tree, domainsByHash, opts.BisectionDepth);
         auto const* planPtr = plan ? &*plan : nullptr;
         // Interval mode: derivative constraints are bounded by the corresponding batched jet pass over the original
         // tree (whole box, or the hull over the leaf boxes of `plan`). Every other mode, and every constraint a jet
@@ -979,11 +973,11 @@ namespace {
             }
         };
 
-        // Interval-only mode (with or without Bisected) never touches AffineEvaluator's affine machinery -- skip
+        // Interval mode never touches AffineEvaluator's affine machinery -- skip
         // constructing it, sharing one IntervalEvaluator across every constraint in this set instead (same
         // reasoning as the AffineEvaluator sharing just below: skips a per-constraint domainSlots_/primal_
         // regrowth that profiling showed as real allocation churn).
-        if (opts.Mode == ShapeBoundMode::Interval || opts.Mode == ShapeBoundMode::Bisected) {
+        if (opts.Mode == ShapeBoundMode::Interval) {
             IntervalEvaluator<Operon::Scalar> ie(&tree, domainsByHash);
 
             BoundEach(ie);
