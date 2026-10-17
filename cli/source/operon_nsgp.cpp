@@ -108,8 +108,7 @@ auto main(int argc, char** argv) -> int
 
     auto symbolic = result["symbolic"].as<bool>();
     try {
-        shapeBoundOptions = Operon::ParseShapeBoundOptions(
-            result["shape-bound-mode"].as<std::string>(), result["shape-bisection-depth"].as<int>());
+        shapeBoundOptions = Operon::ParseShapeBoundOptions(result["shape-bound-mode"].as<std::string>());
         for (const auto& kv : result.arguments()) {
             const auto& key = kv.key();
             const auto& value = kv.value();

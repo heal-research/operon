@@ -54,35 +54,34 @@ struct ShapeConstraintPolicy {
 
 // Bound backend. Interval (default): plain interval arithmetic (jet passes for derivative constraints). Affine:
 // affine arithmetic only. Combined: intersection of affine and interval. Bisected: interval arithmetic unioned over
-// 2^BisectionDepth sub-boxes (derivative constraints bisect their symbolic derivative DAG). JetBisected: derivative
-// constraints use the Interval-mode jet passes run on each of the 2^BisectionDepth sub-boxes and unioned (a
-// constraint with an undecided sub-box falls back to the whole-box bound); Identity constraints are bisected as in
-// Bisected. Depth 0 equals Interval.
+// 2^BisectionDepth sub-boxes (derivative constraints bisect their symbolic derivative DAG). Interval with
+// BisectionDepth N > 0: the bound is the hull, over the 2^N sub-boxes of the uniform subdivision of the domain box,
+// of the whole-box interval bound; derivative constraints run the jet passes on each sub-box (a constraint with an
+// undecided sub-box falls back to the whole-box bound) and Identity constraints are evaluated per sub-box.
+// Depth 0 is the whole box.
 enum class ShapeBoundMode : std::uint8_t {
     Combined,
     Interval,
     Affine,
     Bisected,
-    JetBisected,
 };
 
 struct ShapeBoundOptions {
     ShapeBoundMode Mode { ShapeBoundMode::Interval };
-    // Bisected/JetBisected mode: 2^BisectionDepth uniform sub-boxes (leaf count, not recursion levels, hence not tied
-    // to SIMD width). The depth is spent on the variables whose repeated occurrences cause the dependency problem,
+    // 2^BisectionDepth uniform sub-boxes (leaf count, not recursion levels, hence not tied to SIMD width); 0 is the
+    // whole box. The depth is spent on the variables whose repeated occurrences cause the dependency problem,
     // weighted by domain width (see detail::BisectionSplits). The depth is independently capped well below this
-    // value when more than one variable is split.
-    int BisectionDepth { 3 };
+    // value when more than one variable is split. Must be in [0, 20].
+    int BisectionDepth { 0 };
 };
 
 [[nodiscard]] OPERON_EXPORT auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2)
     -> std::optional<std::string>;
 [[nodiscard]] OPERON_EXPORT auto ParseShapeEnforcement(std::string const& str) -> ShapeConstraintEnforcement;
-// Parses exactly one token: `combined`, `interval`, `affine`, `bisected` (uses `bisectionDepth`), `bisected:N`,
-// `jet` (uses `bisectionDepth`) or `jet:N` (N in [0, 20] overrides `bisectionDepth`). Throws std::invalid_argument
-// on anything else, or if `bisectionDepth` is outside [0, 20].
-[[nodiscard]] OPERON_EXPORT auto ParseShapeBoundOptions(std::string const& str, int bisectionDepth)
-    -> ShapeBoundOptions;
+// Parses a bound mode token `mode` or `mode:N`, where `mode` is `combined`, `interval` or `affine` and N in [0, 20]
+// is the subdivision depth (see ShapeBoundOptions::BisectionDepth; a missing N means 0). Throws
+// std::invalid_argument on anything else.
+[[nodiscard]] OPERON_EXPORT auto ParseShapeBoundOptions(std::string const& str) -> ShapeBoundOptions;
 
 // Shape-constraint configuration (constraint set, domain boxes, bound backend and options). It is not an
 // evaluator and never evaluates predictions on behalf of search: enforcement passes it

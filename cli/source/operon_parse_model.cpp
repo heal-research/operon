@@ -58,10 +58,9 @@ auto ParseOptions(int argc, char** argv) noexcept -> tl::expected<cxxopts::Parse
         cxxopts::value<int>()->default_value("0"))("shape-constraints-config",
         "Path to a JSON shape-constraints config; when set with --target, also prints affine-certified feasibility for "
         "the parsed model",
-        cxxopts::value<std::string>())("shape-bisection-depth",
-        "Maximum domain bisection depth for shape bounds (0-20)",
-        cxxopts::value<int>()->default_value("3"))("shape-bound-mode",
-        "Shape bound backend: interval (default), combined, affine, bisected, bisected:N, jet or jet:N (depth 0-20)",
+        cxxopts::value<std::string>())("shape-bound-mode",
+        "Shape bound backend: interval (default), combined or affine, each with an optional subdivision depth :N "
+        "(0-20; the hull over the 2^N sub-boxes of the domain box, 0 or no suffix is the whole box), e.g. interval:4",
         cxxopts::value<std::string>()->default_value("interval"))("sample-check",
         "With --shape-constraints-config, also Monte-Carlo sample N points from the domain box per constraint and "
         "print the observed [min:max], as an independent soundness cross-check on the printed bound",
@@ -314,8 +313,7 @@ auto PrintTargetAnalysis(cxxopts::ParseResult const& result, Operon::Dataset& ds
 
     if (constraints) {
         Operon::ShapeCertifier shapeEval { &problem, &dtable, *constraints, Operon::Scalar { 1 },
-            Operon::ParseShapeBoundOptions(
-                result["shape-bound-mode"].as<std::string>(), result["shape-bisection-depth"].as<int>()) };
+            Operon::ParseShapeBoundOptions(result["shape-bound-mode"].as<std::string>()) };
         auto const summary = shapeEval.MeasureCanonical(model);
         fmt::print("shape_feasible {} shape_violation {}\n", summary.Feasible, summary.Violation);
 

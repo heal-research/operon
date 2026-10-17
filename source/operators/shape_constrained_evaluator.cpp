@@ -4,6 +4,7 @@
 #include "operon/operators/shape_constrained_evaluator.hpp"
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <cstring>
 #include <iterator>
@@ -193,8 +194,8 @@ namespace {
         // The box of leaf `leaf`: bit b of `leaf` selects the lower/upper half of the axis the b-th bisection of the
         // schedule splits. With `pinOuterEndpoints` the outermost endpoints of every axis are clamped to the domain
         // itself, so that the union of all leaf boxes provably covers the whole box despite the rounding of
-        // (hi - lo) / 2^splits; the interval route leaves this off (its leaf boxes are part of the bisected:N
-        // semantics), the jet route turns it on.
+        // (hi - lo) / 2^splits; the interval identity route (BisectedIntervalBound) leaves this off, the jet route
+        // turns it on.
         [[nodiscard]] auto LeafDomains(DomainMap const& domains, std::size_t leaf, bool pinOuterEndpoints = false) const
             -> DomainMap
         {
@@ -433,7 +434,8 @@ namespace {
     auto ComputeBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>& ie, ShapeBoundOptions const& opts)
         -> BoundResult
     {
-        if (opts.Mode == ShapeBoundMode::Bisected || opts.Mode == ShapeBoundMode::JetBisected) {
+        if (opts.Mode == ShapeBoundMode::Bisected
+            || (opts.Mode == ShapeBoundMode::Interval && opts.BisectionDepth > 0)) {
             return BisectedIntervalBound(tree, ie.Domains(), opts.BisectionDepth);
         }
         ie.SetTree(&tree);
@@ -565,13 +567,14 @@ namespace {
     // Runs one jet pass of `Evaluator` (differentiating `variables`) and returns its Bounds; `Field` selects the
     // per-direction enclosure the caller consumes (Bounds::Derivative or Bounds::Second).
     //
-    // Without a `plan` this is the single whole-box pass (ShapeBoundMode::Interval). With a plan it is the
-    // JetBisected route: one pass per leaf box of the plan (scalar, one evaluator per leaf), and the enclosure of a
-    // direction is the hull of its per-leaf enclosures. A direction is decided by its leaves only if every leaf
-    // reports Certain with a finite enclosure; otherwise (a leaf failed, overflowed, or hit an op with no rule) the
-    // direction takes the whole-box pass's status and enclosure instead. That fallback is exactly what Interval
-    // mode computes, so it is sound, and the bisected bound is never wider than Interval mode's. (The alternative,
-    // the bisected derivative DAG at the same depth, is also sound but may be wider than the whole-box jet bound.)
+    // Without a `plan` this is the single whole-box pass (ShapeBoundMode::Interval, depth 0). With a plan it is the
+    // subdivided route (Interval, depth > 0): one pass per leaf box of the plan (scalar, one evaluator per leaf),
+    // and the enclosure of a direction is the hull of its per-leaf enclosures. A direction is decided by its leaves
+    // only if every leaf reports Certain with a finite enclosure; otherwise (a leaf failed, overflowed, or hit an op
+    // with no rule) the direction takes the whole-box pass's status and enclosure instead. That fallback is exactly
+    // what depth 0 computes, so it is sound, and the subdivided bound is never wider than the whole-box one. (The
+    // alternative, the bisected derivative DAG at the same depth, is also sound but may be wider than the whole-box
+    // jet bound.)
     // Each leaf is a subset of the whole box, so a leaf failure normally implies the whole-box pass fails too and
     // the constraint then falls through to the symbolic path, as in Interval mode.
     template <typename Evaluator, auto Field>
@@ -866,24 +869,24 @@ namespace {
             summary.Measurements.push_back(m);
         };
 
-        // Interval and JetBisected modes: derivative constraints are bounded by the corresponding batched jet pass
-        // over the original tree (whole box, or the union over the leaf boxes of `plan`). Every other mode, and
-        // every constraint a jet pass does not decide, uses BoundFor.
+        // Interval mode: derivative constraints are bounded by the corresponding batched jet pass over the original
+        // tree (whole box, or the union over the leaf boxes of `plan` when BisectionDepth > 0). Every other mode,
+        // and every constraint a jet pass does not decide, uses BoundFor.
         //
         // The plan is made from the original tree and the full domain map: all derivative directions of a chunk
         // share one jet pass per leaf, so one leaf schedule serves every constraint. No plan (depth 0, or no
-        // splittable axis) leaves a single whole-box pass, identical to Interval mode.
-        auto const jetMode = opts.Mode == ShapeBoundMode::Interval || opts.Mode == ShapeBoundMode::JetBisected;
+        // splittable axis) leaves a single whole-box pass.
+        auto const jetMode = opts.Mode == ShapeBoundMode::Interval;
         std::optional<IntervalSubdivisionPlan> plan;
-        if (opts.Mode == ShapeBoundMode::JetBisected) {
+        if (jetMode) {
             plan = IntervalSubdivisionPlan::Make(tree, domainsByHash, opts.BisectionDepth);
         }
         auto const* planPtr = plan ? &*plan : nullptr;
-        // A derivative constraint the jet pass does not decide goes to the symbolic whole-box bound (as in Interval
-        // mode): in JetBisected mode only the Identity constraint is bisected, so BoundFor must not bisect.
+        // A derivative constraint the jet pass does not decide goes to the symbolic whole-box bound: in Interval
+        // mode only the Identity constraint is subdivided, so BoundFor must not subdivide.
         auto derivativeOpts = opts;
-        if (opts.Mode == ShapeBoundMode::JetBisected) {
-            derivativeOpts.Mode = ShapeBoundMode::Interval;
+        if (jetMode) {
+            derivativeOpts.BisectionDepth = 0;
         }
         std::optional<FirstDerivativeJetBounds> firstDerivativeJet;
         std::optional<SecondDerivativeJetBounds> secondDerivativeJet;
@@ -926,8 +929,7 @@ namespace {
         // constructing it, sharing one IntervalEvaluator across every constraint in this set instead (same
         // reasoning as the AffineEvaluator sharing just below: skips a per-constraint domainSlots_/primal_
         // regrowth that profiling showed as real allocation churn).
-        if (opts.Mode == ShapeBoundMode::Interval || opts.Mode == ShapeBoundMode::Bisected
-            || opts.Mode == ShapeBoundMode::JetBisected) {
+        if (opts.Mode == ShapeBoundMode::Interval || opts.Mode == ShapeBoundMode::Bisected) {
             IntervalEvaluator<Operon::Scalar> ie(&tree, domainsByHash);
 
             BoundEach(ie);
@@ -979,41 +981,37 @@ auto ParseShapeEnforcement(std::string const& str) -> ShapeConstraintEnforcement
     throw std::invalid_argument(fmt::format("unable to parse shape-enforcement argument '{}'", str));
 }
 
-auto ParseShapeBoundOptions(std::string const& str, int bisectionDepth) -> ShapeBoundOptions
+auto ParseShapeBoundOptions(std::string const& str) -> ShapeBoundOptions
 {
-    if (bisectionDepth < 0 || bisectionDepth > 20) {
-        throw std::invalid_argument("bisection depth must be in [0, 20]");
-    }
+    auto const colon = str.find(':');
+    auto const name = str.substr(0, colon);
     ShapeBoundOptions options {};
-    options.BisectionDepth = bisectionDepth;
-    if (str == "combined") {
+    if (name == "combined") {
         options.Mode = ShapeBoundMode::Combined;
-    } else if (str == "interval") {
+    } else if (name == "interval") {
         options.Mode = ShapeBoundMode::Interval;
-    } else if (str == "affine") {
+    } else if (name == "affine") {
         options.Mode = ShapeBoundMode::Affine;
-    } else if (str == "bisected") {
-        options.Mode = ShapeBoundMode::Bisected;
-    } else if (str == "jet") {
-        options.Mode = ShapeBoundMode::JetBisected;
-    } else if (str.starts_with("bisected:") || str.starts_with("jet:")) {
-        auto const prefixSize = str.find(':') + 1;
-        options.Mode = str.starts_with("jet:") ? ShapeBoundMode::JetBisected : ShapeBoundMode::Bisected;
-        auto const depthText = str.substr(prefixSize);
-        std::size_t consumed = 0;
+    } else {
+        throw std::invalid_argument(fmt::format("unable to parse shape-bound-mode argument '{}': expected combined, "
+                                                "interval or affine, optionally followed by :N with N in [0, 20] "
+                                                "(for example interval, interval:4, affine:2)",
+            str));
+    }
+    if (colon != std::string::npos) {
+        auto const depthText = std::string_view { str }.substr(colon + 1);
         int depth = 0;
-        try {
-            depth = std::stoi(depthText, &consumed);
-        } catch (std::exception const&) {
-            throw std::invalid_argument(fmt::format("unable to parse shape-bound-mode depth '{}'", depthText));
+        auto const [end, ec] = std::from_chars(depthText.data(), depthText.data() + depthText.size(), depth);
+        if (ec != std::errc {} || end != depthText.data() + depthText.size()) {
+            throw std::invalid_argument(fmt::format("unable to parse shape-bound-mode depth '{}' in '{}': expected "
+                                                    "an integer in [0, 20]",
+                depthText, str));
         }
-        if (consumed != depthText.size() || depth < 0 || depth > 20) {
+        if (depth < 0 || depth > 20) {
             throw std::invalid_argument(
-                fmt::format("shape-bound-mode bisection depth must be in [0, 20] (got '{}')", depthText));
+                fmt::format("shape-bound-mode depth must be in [0, 20] (got '{}' in '{}')", depthText, str));
         }
         options.BisectionDepth = depth;
-    } else {
-        throw std::invalid_argument(fmt::format("unable to parse shape-bound-mode argument '{}'", str));
     }
     return options;
 }
@@ -1050,6 +1048,10 @@ ShapeCertifier::ShapeCertifier(gsl::not_null<Operon::Problem const*> problem,
     }
     if (bound_.BisectionDepth < 0 || bound_.BisectionDepth > 20) {
         throw std::invalid_argument("bisection depth must be in [0, 20]");
+    }
+    if (bound_.BisectionDepth > 0
+        && (bound_.Mode == ShapeBoundMode::Affine || bound_.Mode == ShapeBoundMode::Combined)) {
+        throw std::invalid_argument("subdivision depth is not supported by the affine and combined bound modes");
     }
     ResolveShapeConstraintContext(problem_, constraints_, constraintVarHash_, domainsByHash_, "ShapeCertifier");
 }
