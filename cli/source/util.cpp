@@ -232,10 +232,10 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         "non-negative)",
         cxxopts::value<double>()->default_value("1.0"))("shape-worst-value",
         "Fitness value assigned by hard-reject shape enforcement to infeasible individuals (finite)",
-        cxxopts::value<double>()->default_value("1.0"))("shape-bisection-depth",
-        "Maximum domain bisection depth for shape bounds (0-20)",
-        cxxopts::value<int>()->default_value("3"))("shape-bound-mode",
-        "Shape-constraint bound backend: interval (default), combined, affine, bisected or bisected:N (depth 0-20)",
+        cxxopts::value<double>()->default_value("1.0"))("shape-bound-mode",
+        "Shape-constraint bound backend: interval (default), combined or affine, each with an optional subdivision "
+        "depth :N (0-20; the bound is the hull over the 2^N sub-boxes of the domain box, 0 or no suffix is the whole "
+        "box), e.g. interval:4",
         cxxopts::value<std::string>()->default_value("interval"))("debug", "Debug mode (more information displayed)")(
         "help", "Print help")("version", "Print version and program information");
     return opts;
