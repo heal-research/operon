@@ -2618,12 +2618,19 @@ namespace {
             cs.Domains.insert_or_assign("X1", jc.X1);
             cs.Domains.insert_or_assign("X2", jc.X2);
             auto const permissive = std::pair { Operon::Scalar { -1e9 }, Operon::Scalar { 1e9 } };
-            cs.Constraints.push_back({ .Op = ShapeConstraintOp::Identity, .Bound = permissive });
+            cs.Constraints.push_back({ .Op = ShapeConstraintOp::Identity,
+                .Variable = "",
+                .Sign = std::nullopt,
+                .Bound = permissive });
             for (auto const* variable : { "X1", "X2" }) {
-                cs.Constraints.push_back(
-                    { .Op = ShapeConstraintOp::FirstDerivative, .Variable = variable, .Bound = permissive });
-                cs.Constraints.push_back(
-                    { .Op = ShapeConstraintOp::SecondDerivative, .Variable = variable, .Bound = permissive });
+                cs.Constraints.push_back({ .Op = ShapeConstraintOp::FirstDerivative,
+                    .Variable = variable,
+                    .Sign = std::nullopt,
+                    .Bound = permissive });
+                cs.Constraints.push_back({ .Op = ShapeConstraintOp::SecondDerivative,
+                    .Variable = variable,
+                    .Sign = std::nullopt,
+                    .Bound = permissive });
             }
             // order: Identity, d/dX1, d2/dX1^2, d/dX2, d2/dX2^2
             return cs;
