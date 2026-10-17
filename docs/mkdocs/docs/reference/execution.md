@@ -105,7 +105,7 @@ type and however it is type-erased; the adapter already owns the complete constr
 structural objectives (pass them in `ShapeConstraintSpec::Structural`). Ordinary children keep generic `operator()`
 dispatch.
 
-`Interval` is the default bound mode. `Combined` intersects interval and affine bounds; `Affine` uses affine arithmetic alone; `Bisected` uses interval arithmetic over `2^BisectionDepth` sub-boxes. With `Interval`, a `BisectionDepth` of `N > 0` bounds the model over the hull of the `2^N` sub-boxes of the domain box (`0`, the default, is the whole box). The mode and `BisectionDepth` (in `[0, 20]`, validated by the `ShapeCertifier` constructor) are set through `ShapeBoundOptions`; `ParseShapeBoundOptions` reads the `mode[:N]` form used by `--shape-bound-mode`. A failure to certify is not proof that the mathematical constraint fails—enclosures are conservative.
+`Interval` is the default bound mode. `Combined` intersects interval and affine bounds; `Affine` uses affine arithmetic alone; `Bisected` uses interval arithmetic over `2^BisectionDepth` sub-boxes. With `Interval`, `Combined` or `Affine`, a `BisectionDepth` of `N > 0` bounds the model over the hull of the `2^N` sub-boxes of the domain box (`0`, the default, is the whole box); `Affine` and `Combined` intersect that hull with the whole-box bound. The mode and `BisectionDepth` (in `[0, 20]`, validated by the `ShapeCertifier` constructor) are set through `ShapeBoundOptions`; `ParseShapeBoundOptions` reads the `mode[:N]` form used by `--shape-bound-mode`. A failure to certify is not proof that the mathematical constraint fails—enclosures are conservative.
 
 ## Coefficient optimization
 

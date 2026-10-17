@@ -277,9 +277,6 @@ TEST_CASE("Bisection depth is validated at the certifier boundary", "[shape-cons
     CHECK_NOTHROW(make(0));
     CHECK_NOTHROW(make(20));
     CHECK_THROWS_AS(make(21), std::invalid_argument);
-    CHECK_THROWS_AS(Operon::ShapeCertifier(&fx.problem, &fx.dtable, cs, Operon::Scalar { 1 },
-                        Operon::ShapeBoundOptions { .Mode = ShapeBoundMode::Affine, .BisectionDepth = 2 }),
-        std::invalid_argument);
 }
 
 TEST_CASE("ShapeCertifier - bisected interval tightens a dependency-problem bound", "[shape-constraints]")
@@ -2009,6 +2006,37 @@ TEST_CASE("ShapeCertifier - bounds match the evaluators in every bound mode", "[
         CHECK(summary.Measurements[1].Violation >= minFirstDerivativeViolation - 1e-3F);
         CHECK(summary.Measurements[0].Violation == Operon::Scalar { 0 });
     }
+
+    // mode:3 stays inside the same mode's whole-box bound (depth 0), reports the violation of the bound it returns, and
+    // still finds the constraint set infeasible.
+    auto const checkSubdivided = [&](ShapeBoundMode mode) {
+        auto const whole = measure(mode);
+        auto const summary = measure(mode, 3);
+        Operon::Scalar total { 0 };
+        for (std::size_t i = 0; i < trees.size(); ++i) {
+            auto const& m = summary.Measurements[i];
+            auto const& w = whole.Measurements[i];
+            REQUIRE(m.Certified);
+            REQUIRE(m.Bound);
+            REQUIRE(w.Bound);
+            CHECK(m.Bound->first >= w.Bound->first - tol);
+            CHECK(m.Bound->second <= w.Bound->second + tol);
+            auto const reported = violationOf(i, IE::Interval(m.Bound->first, m.Bound->second));
+            CHECK(m.Violation == Catch::Approx(reported).margin(tol));
+            CHECK(m.Violation <= w.Violation + tol);
+            total += reported;
+        }
+        CHECK(summary.Violation == Catch::Approx(total).margin(tol));
+        CHECK_FALSE(summary.Feasible);
+        CHECK(summary.Measurements[1].Violation >= minFirstDerivativeViolation - 1e-3F);
+        CHECK(summary.Measurements[0].Violation == Operon::Scalar { 0 });
+    };
+
+    SECTION("Interval:3 stays inside the whole-box interval bound") { checkSubdivided(ShapeBoundMode::Interval); }
+
+    SECTION("Affine:3 stays inside the whole-box affine bound") { checkSubdivided(ShapeBoundMode::Affine); }
+
+    SECTION("Combined:3 stays inside the whole-box combined bound") { checkSubdivided(ShapeBoundMode::Combined); }
 }
 
 namespace {
@@ -2388,7 +2416,8 @@ TEST_CASE("ShapeCertifier - second-derivative bounds enclose the true range in e
 
     for (auto const [mode, depth] : { std::pair { ShapeBoundMode::Interval, 0 },
              std::pair { ShapeBoundMode::Interval, 3 }, std::pair { ShapeBoundMode::Combined, 0 },
-             std::pair { ShapeBoundMode::Affine, 0 }, std::pair { ShapeBoundMode::Bisected, 3 } }) {
+             std::pair { ShapeBoundMode::Combined, 3 }, std::pair { ShapeBoundMode::Affine, 0 },
+             std::pair { ShapeBoundMode::Affine, 3 }, std::pair { ShapeBoundMode::Bisected, 3 } }) {
         DYNAMIC_SECTION("mode " << static_cast<int>(mode) << " depth " << depth)
         {
             Operon::ShapeCertifier certifier(
@@ -2581,8 +2610,10 @@ namespace {
     }
 
     // The bound modes that accept a subdivision depth, with their CLI names.
-    constexpr std::array<std::pair<ShapeBoundMode, char const*>, 1> SubdividedModes { {
+    constexpr std::array<std::pair<ShapeBoundMode, char const*>, 3> SubdividedModes { {
         { ShapeBoundMode::Interval, "interval" },
+        { ShapeBoundMode::Affine, "affine" },
+        { ShapeBoundMode::Combined, "combined" },
     } };
 
     // Dataset X1, X2, X3 (target); raw (unscaled) bounds.

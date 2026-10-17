@@ -226,8 +226,10 @@ namespace {
         }
     };
 
-    auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, int depth)
-        -> BoundResult
+    // The interval bound of `tree` over the hull of the leaf boxes of `plan` (SIMD over the leaves for a single axis
+    // and for packed multi-axis leaves); the whole-box bound when `plan` is null or a leaf has no finite bound.
+    auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom,
+        IntervalSubdivisionPlan const* plan) -> BoundResult
     {
         using WScalar = eve::wide<Operon::Scalar>;
         constexpr int WSize = static_cast<int>(eve::cardinal_v<WScalar>);
@@ -237,8 +239,7 @@ namespace {
             return ie(tree.GetCoefficients());
         };
 
-        auto const plan = IntervalSubdivisionPlan::Make(tree, dom, depth);
-        if (!plan) {
+        if (plan == nullptr) {
             return directBound();
         }
 
@@ -362,8 +363,8 @@ namespace {
         }
     }
 
-    // The affine+interval intersection path (Combined or Affine mode).
-    auto ComputeBound(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae, ShapeBoundOptions const& opts)
+    // The whole-box affine+interval intersection bound (Combined or Affine mode).
+    auto WholeBoxBound(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae, ShapeBoundOptions const& opts)
         -> BoundResult
     {
         // Affine forms cannot represent every interval enclosure. In particular, a zero-crossing denominator is
@@ -427,16 +428,72 @@ namespace {
         return bound;
     }
 
+    // The bound of a mode subdivided by `plan`: the hull, over the leaf boxes of the plan, of the mode's own bound on
+    // the leaf (`leafBound` maps a leaf domain map to that bound), intersected with the whole-box bound `wholeBox`.
+    // The leaf boxes cover the domain box (pinOuterEndpoints), so the hull is a sound enclosure; the whole-box
+    // bound is one too, hence so is their intersection, and it is never wider than the whole-box bound -- which
+    // matters for affine arithmetic, whose enclosures are not inclusion-isotone: a sub-box can come out wider than
+    // the whole box. A leaf without a finite bound (or an exception) gives up on subdividing: the result is the
+    // whole-box bound. Disjoint hull and whole-box bound mean one of them is unsound; the whole-box bound is
+    // returned.
+    template <typename LeafBound>
+    auto SubdividedBound(IntervalSubdivisionPlan const& plan, IntervalSubdivisionPlan::DomainMap const& domains,
+        BoundResult wholeBox, LeafBound&& leafBound) -> BoundResult
+    {
+        std::optional<Interval> hull;
+        try {
+            auto const nLeaves = std::size_t { 1 } << plan.Depth;
+            for (std::size_t leaf = 0; leaf < nLeaves; ++leaf) {
+                auto const bound = leafBound(plan.LeafDomains(domains, leaf, /*pinOuterEndpoints=*/true));
+                if (!bound || bound->is_empty() || !std::isfinite(bound->inf()) || !std::isfinite(bound->sup())) {
+                    return wholeBox;
+                }
+                hull = hull ? Interval(std::min(hull->inf(), bound->inf()), std::max(hull->sup(), bound->sup()))
+                            : *bound;
+            }
+        } catch (std::exception const&) {
+            return wholeBox;
+        }
+        if (!hull) {
+            return wholeBox;
+        }
+        if (!wholeBox) {
+            return *hull;
+        }
+        auto const lo = std::max(hull->inf(), wholeBox->inf());
+        auto const hi = std::min(hull->sup(), wholeBox->sup());
+        return lo <= hi ? BoundResult { Interval(lo, hi) } : wholeBox;
+    }
+
+    // The Combined/Affine bound of `tree`: the whole-box bound, or with a `plan` the bound subdivided over it. `ae`
+    // is shared across the constraints of a bound set (SetTree retargets it at `tree`); each leaf box gets an
+    // evaluator of its own.
+    auto ComputeBound(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae, ShapeBoundOptions const& opts,
+        IntervalSubdivisionPlan const* plan) -> BoundResult
+    {
+        auto wholeBox = WholeBoxBound(tree, ae, opts);
+        if (plan == nullptr) {
+            return wholeBox;
+        }
+        return SubdividedBound(*plan, ae.Domains(), std::move(wholeBox), [&](IntervalSubdivisionPlan::DomainMap leaf) {
+            AffineEvaluator<Operon::Scalar> leafEvaluator(&tree, std::move(leaf));
+            return WholeBoxBound(tree, leafEvaluator, opts);
+        });
+    }
+
     // Interval-only bound (Interval or Bisected mode): no AffineEvaluator is built (that was ~24% wasted work per
     // Measure() call). BisectedIntervalBound has its own fallback via directBound(). `ie` is shared across the
     // constraints of a bound set; SetTree retargets it at `tree` (the identity tree or a derivative slice)
-    // instead of constructing a fresh evaluator per call.
-    auto ComputeBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>& ie, ShapeBoundOptions const& opts)
-        -> BoundResult
+    // instead of constructing a fresh evaluator per call. A `plan` subdivides the bound.
+    auto ComputeBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>& ie, ShapeBoundOptions const& opts,
+        IntervalSubdivisionPlan const* plan) -> BoundResult
     {
-        if (opts.Mode == ShapeBoundMode::Bisected
-            || (opts.Mode == ShapeBoundMode::Interval && opts.BisectionDepth > 0)) {
-            return BisectedIntervalBound(tree, ie.Domains(), opts.BisectionDepth);
+        if (opts.Mode == ShapeBoundMode::Bisected) {
+            auto const own = IntervalSubdivisionPlan::Make(tree, ie.Domains(), opts.BisectionDepth);
+            return BisectedIntervalBound(tree, ie.Domains(), own ? &*own : nullptr);
+        }
+        if (plan != nullptr) {
+            return BisectedIntervalBound(tree, ie.Domains(), plan);
         }
         ie.SetTree(&tree);
         return ie(tree.GetCoefficients());
@@ -454,7 +511,7 @@ namespace {
     // `variable`, so it holds only the nodes that root depends on), which IS variable-specific.
     template <typename Evaluator>
     auto BoundFor(ShapeConstraintOp op, Operon::Hash variable, Evaluator& evaluator, VariableGradientDag const& dag1,
-        ShapeBoundOptions const& opts) -> BoundResult
+        ShapeBoundOptions const& opts, IntervalSubdivisionPlan const* plan) -> BoundResult
     {
         auto const zero = [] { return BoundResult(Interval(Operon::Scalar { 0 }, Operon::Scalar { 0 })); };
 
@@ -467,7 +524,7 @@ namespace {
         }
         auto d1 = SliceToTree(dag1, dag1.Roots[*i1]);
         if (op == ShapeConstraintOp::FirstDerivative) {
-            return d1 ? ComputeBound(*d1, evaluator, opts) : zero();
+            return d1 ? ComputeBound(*d1, evaluator, opts, plan) : zero();
         }
 
         // SecondDerivative (symbolic path: Affine, Combined, Bisected, and whatever the Interval-mode second-order
@@ -489,7 +546,7 @@ namespace {
             return tl::unexpected("variable derivative involves an op with no differentiation rule");
         }
         auto d2 = SliceToTree(dag2, dag2.Roots[*i2]);
-        return d2 ? ComputeBound(*d2, evaluator, opts) : zero();
+        return d2 ? ComputeBound(*d2, evaluator, opts, plan) : zero();
     }
 
     auto ResolveShapeConstraintContext(gsl::not_null<Operon::Problem const*> problem,
@@ -869,25 +926,22 @@ namespace {
             summary.Measurements.push_back(m);
         };
 
-        // Interval mode: derivative constraints are bounded by the corresponding batched jet pass over the original
-        // tree (whole box, or the union over the leaf boxes of `plan` when BisectionDepth > 0). Every other mode,
-        // and every constraint a jet pass does not decide, uses BoundFor.
-        //
-        // The plan is made from the original tree and the full domain map: all derivative directions of a chunk
-        // share one jet pass per leaf, so one leaf schedule serves every constraint. No plan (depth 0, or no
-        // splittable axis) leaves a single whole-box pass.
-        auto const jetMode = opts.Mode == ShapeBoundMode::Interval;
+        // Every mode bounds the model over the 2^BisectionDepth leaf boxes of one subdivision plan, made from the
+        // original tree and the full domain map: all derivative directions of a chunk share one jet pass per leaf,
+        // so one leaf schedule serves every constraint. No plan (depth 0, or no splittable axis) is the whole-box
+        // bound. Bisected derives its own plan per bounded tree.
         std::optional<IntervalSubdivisionPlan> plan;
-        if (jetMode) {
+        if (opts.Mode != ShapeBoundMode::Bisected) {
             plan = IntervalSubdivisionPlan::Make(tree, domainsByHash, opts.BisectionDepth);
         }
         auto const* planPtr = plan ? &*plan : nullptr;
-        // A derivative constraint the jet pass does not decide goes to the symbolic whole-box bound: in Interval
-        // mode only the Identity constraint is subdivided, so BoundFor must not subdivide.
-        auto derivativeOpts = opts;
-        if (jetMode) {
-            derivativeOpts.BisectionDepth = 0;
-        }
+        // Interval mode: derivative constraints are bounded by the corresponding batched jet pass over the original
+        // tree (whole box, or the hull over the leaf boxes of `plan`). Every other mode, and every constraint a jet
+        // pass does not decide, uses BoundFor. A derivative constraint the jet pass does not decide goes to the
+        // symbolic whole-box bound in Interval mode (only the Identity constraint is subdivided there); Combined and
+        // Affine subdivide the derivative tree itself.
+        auto const jetMode = opts.Mode == ShapeBoundMode::Interval;
+        auto const* derivativePlan = jetMode ? nullptr : planPtr;
         std::optional<FirstDerivativeJetBounds> firstDerivativeJet;
         std::optional<SecondDerivativeJetBounds> secondDerivativeJet;
         if (jetMode) {
@@ -906,7 +960,7 @@ namespace {
             for (std::size_t i = 0; i < constraints.Constraints.size(); ++i) {
                 auto const& c = constraints.Constraints[i];
                 if (c.Op == ShapeConstraintOp::Identity) {
-                    Apply(i, ComputeBound(tree, evaluator, opts));
+                    Apply(i, ComputeBound(tree, evaluator, opts, planPtr));
                     continue;
                 }
                 if (firstDerivativeJet && c.Op == ShapeConstraintOp::FirstDerivative) {
@@ -921,7 +975,7 @@ namespace {
                         continue;
                     }
                 }
-                Apply(i, BoundFor(c.Op, constraintVarHash[i], evaluator, SharedDag1(), derivativeOpts));
+                Apply(i, BoundFor(c.Op, constraintVarHash[i], evaluator, SharedDag1(), opts, derivativePlan));
             }
         };
 
@@ -1048,10 +1102,6 @@ ShapeCertifier::ShapeCertifier(gsl::not_null<Operon::Problem const*> problem,
     }
     if (bound_.BisectionDepth < 0 || bound_.BisectionDepth > 20) {
         throw std::invalid_argument("bisection depth must be in [0, 20]");
-    }
-    if (bound_.BisectionDepth > 0
-        && (bound_.Mode == ShapeBoundMode::Affine || bound_.Mode == ShapeBoundMode::Combined)) {
-        throw std::invalid_argument("subdivision depth is not supported by the affine and combined bound modes");
     }
     ResolveShapeConstraintContext(problem_, constraints_, constraintVarHash_, domainsByHash_, "ShapeCertifier");
 }

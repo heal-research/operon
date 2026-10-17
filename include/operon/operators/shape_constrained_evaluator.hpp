@@ -54,10 +54,14 @@ struct ShapeConstraintPolicy {
 
 // Bound backend. Interval (default): plain interval arithmetic (jet passes for derivative constraints). Affine:
 // affine arithmetic only. Combined: intersection of affine and interval. Bisected: interval arithmetic unioned over
-// 2^BisectionDepth sub-boxes (derivative constraints bisect their symbolic derivative DAG). Interval with
-// BisectionDepth N > 0: the bound is the hull, over the 2^N sub-boxes of the uniform subdivision of the domain box,
-// of the whole-box interval bound; derivative constraints run the jet passes on each sub-box (a constraint with an
-// undecided sub-box falls back to the whole-box bound) and Identity constraints are evaluated per sub-box.
+// 2^BisectionDepth sub-boxes (derivative constraints bisect their symbolic derivative DAG).
+//
+// With BisectionDepth N > 0 every mode is subdivided: the bound is the hull, over the 2^N sub-boxes of the uniform
+// subdivision of the domain box, of the mode's own whole-box bound. Interval runs the jet passes of derivative
+// constraints and the interval evaluator of Identity constraints on each sub-box. Affine and Combined evaluate
+// the mode's bound (derivative constraints on their symbolic derivative tree) on each sub-box and intersect the hull
+// with the whole-box bound, so that the result is never wider than the plain mode's (affine enclosures are not
+// inclusion-isotone). A constraint with a sub-box that has no finite bound falls back to the whole-box bound.
 // Depth 0 is the whole box.
 enum class ShapeBoundMode : std::uint8_t {
     Combined,
