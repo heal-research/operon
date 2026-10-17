@@ -2768,4 +2768,67 @@ TEST_CASE("mode:N falls back to the whole-box result when a sub-box is undecided
     }
 }
 
+// The step of a leaf box is (hi - lo) / 2^splits rounded to nearest, so the top of the last cell lo + 2^splits * step
+// can fall below hi (for example lo = -2.018f, hi = 1.853f at one halving). Unless the outer endpoints are pinned to
+// the domain the point hi is in no leaf box and the bound misses f(hi).
+TEST_CASE("interval:N leaf boxes cover the top of the domain when the step rounds down",
+    "[shape-constraints][subdivision]")
+{
+    using S = Operon::Scalar;
+    auto const coversTop = [](S lo, S hi, int splits) {
+        auto const n = static_cast<S>(1 << splits);
+        auto const step = (hi - lo) / n;
+        return pappus::fp::ropu<pappus::fp::op_add>(lo, n * step) >= hi;
+    };
+    // Domains found by search for which the unpinned top falls short: single precision, then double precision.
+    constexpr std::array<std::pair<double, double>, 4> candidates { { { -2.018, 1.853 }, { -3.625, 0.211 },
+        { -0.951, 0.108 }, { -2.218, 2.914 } } };
+    SubdivisionFixture fx;
+    auto exercised = 0;
+    for (auto const& [candLo, candHi] : candidates) {
+        auto const lo = static_cast<S>(candLo);
+        auto const hi = static_cast<S>(candHi);
+        // Only a domain whose unpinned top falls short at some number of halvings exercises the pinning.
+        if (std::ranges::all_of(std::array { 0, 1, 2, 3 }, [&](int splits) { return coversTop(lo, hi, splits); })) {
+            continue;
+        }
+        ++exercised;
+        for (int depth = 1; depth <= 3; ++depth) {
+            // X1 * X2 over [lo, hi] x [1, 2]: the upper bound is 2 * hi, attained at the top of X1.
+            SubdivisionCase const jc { "X1 * X2", { lo, hi }, { 1, 2 }, {}, false };
+            auto const measured = fx.Measure(jc, { .Mode = ShapeBoundMode::Interval, .BisectionDepth = depth });
+            INFO("lo " << lo << " hi " << hi << " depth " << depth);
+            REQUIRE(measured.Measurements[0].Bound);
+            CHECK(measured.Measurements[0].Bound->second >= S { 2 } * hi);
+            CHECK(measured.Measurements[0].Bound->first <= S { 2 } * lo);
+        }
+    }
+    REQUIRE(exercised > 0);
+}
+
+// The routes that run one evaluator per leaf stop at 12 halvings, so that the largest accepted depth is not a
+// 2^20-evaluator-run bound: a single-variable model gives the same jet and affine bounds at 20 as at 12.
+TEST_CASE("per-leaf routes perform at most 12 halvings", "[shape-constraints][subdivision]")
+{
+    SubdivisionFixture fx;
+    auto const jc = SubdivisionCases()[0]; // X1 * X1 * X1: a single split variable
+    SECTION("interval jet derivatives")
+    {
+        auto const capped = fx.Measure(jc, { .Mode = ShapeBoundMode::Interval, .BisectionDepth = 12 });
+        auto const deep = fx.Measure(jc, { .Mode = ShapeBoundMode::Interval, .BisectionDepth = 20 });
+        // Identity (constraint 0) is the SIMD route and takes the full depth; the derivatives (1, 2) are jets.
+        for (std::size_t k : { 1UL, 2UL }) {
+            INFO("constraint " << k);
+            REQUIRE(capped.Measurements[k].Bound);
+            REQUIRE(deep.Measurements[k].Bound);
+            CHECK(*deep.Measurements[k].Bound == *capped.Measurements[k].Bound);
+        }
+    }
+    SECTION("affine")
+    {
+        CheckSameMeasurements(fx.Measure(jc, { .Mode = ShapeBoundMode::Affine, .BisectionDepth = 20 }),
+            fx.Measure(jc, { .Mode = ShapeBoundMode::Affine, .BisectionDepth = 12 }));
+    }
+}
+
 } // namespace Operon::Test

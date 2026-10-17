@@ -57,7 +57,9 @@ struct ShapeConstraintPolicy {
 //
 // With BisectionDepth N > 0 every mode is subdivided: the bound is the hull, over the 2^N sub-boxes of the uniform
 // subdivision of the domain box, of the mode's own whole-box bound. Interval runs the jet passes of derivative
-// constraints and the interval evaluator of Identity constraints on each sub-box. Affine and Combined evaluate
+// constraints and the interval evaluator of Identity constraints on each sub-box; a derivative constraint with a
+// sub-box that has no finite certain enclosure gets the whole-box jet result, otherwise the hull lies inside the
+// whole-box enclosure up to the rounding of the outer sub-box endpoints. Affine and Combined evaluate
 // the mode's bound (derivative constraints on their symbolic derivative tree) on each sub-box and intersect the hull
 // with the whole-box bound, so that the result is never wider than the plain mode's (affine enclosures are not
 // inclusion-isotone). A constraint with a sub-box that has no finite bound falls back to the whole-box bound.
@@ -72,8 +74,9 @@ struct ShapeBoundOptions {
     ShapeBoundMode Mode { ShapeBoundMode::Interval };
     // 2^BisectionDepth uniform sub-boxes (leaf count, not recursion levels, hence not tied to SIMD width); 0 is the
     // whole box. The depth is spent on the variables whose repeated occurrences cause the dependency problem,
-    // weighted by domain width (see detail::BisectionSplits). The depth is independently capped well below this
-    // value when more than one variable is split. Must be in [0, 20].
+    // weighted by domain width (see detail::BisectionSplits). The routes that evaluate one sub-box at a time
+    // (derivative constraints of Interval, every constraint of Affine and Combined) use at most 12 halvings; with
+    // more than one split variable so does the interval Identity route. Must be in [0, 20].
     int BisectionDepth { 0 };
 };
 
@@ -215,7 +218,8 @@ namespace detail {
 
     // The bisection schedule of the subdivided bounds (ShapeBoundOptions::BisectionDepth): for every variable that
     // receives splits, how many times its domain is halved (the leaves are the product grid, 2^(sum of the halvings)).
-    // The total is `depth`, except that it is capped at 12 when more than one variable is reachable. Empty when
+    // The total is `depth`, except that it is capped at 12 when more than one variable is reachable (the routes that
+    // evaluate one sub-box at a time use only the first 12 halvings of a deeper single-variable schedule). Empty when
     // `depth` is not in [1, 20] or no variable of `tree` has a domain of positive width that the expression
     // evaluates. Exposed so that reference implementations of the leaf evaluation (tests, benchmarks) can follow the
     // production schedule.

@@ -115,6 +115,27 @@ namespace {
 
         [[nodiscard]] auto SingleAxis() const noexcept -> bool { return Axes.size() == 1; }
 
+        // Depth cap of the routes that evaluate one scalar evaluator per leaf (jets, affine, combined). The multi-axis
+        // plans are capped at it as well; a single-axis plan may go deeper only for the SIMD interval identity route.
+        static constexpr int MaxScalarDepth = 12;
+
+        // The plan of the first `maxDepth` bisections of this one (the schedule is built greedily, so that is the plan
+        // `Make` builds for depth `maxDepth`).
+        [[nodiscard]] auto Capped(int maxDepth) const -> IntervalSubdivisionPlan
+        {
+            auto result = *this;
+            if (maxDepth >= Depth) {
+                return result;
+            }
+            result.Depth = maxDepth;
+            result.Schedule.resize(static_cast<std::size_t>(maxDepth));
+            result.Splits.assign(Axes.size(), 0);
+            for (auto const axis : result.Schedule) {
+                ++result.Splits[axis];
+            }
+            return result;
+        }
+
         // The 2^depth leaves are split along the axes by a fixed schedule of `depth` bisections. A variable that
         // occurs once in the expression is enclosed exactly by interval arithmetic and gains nothing from being
         // split; a variable that occurs several times loses the correlation between its occurrences (the dependency
@@ -172,7 +193,6 @@ namespace {
                 }
             }
 
-            constexpr int MaxScalarDepth = 12;
             plan.Depth = plan.SingleAxis() ? depth : std::min(depth, MaxScalarDepth);
             plan.Schedule.reserve(static_cast<std::size_t>(plan.Depth));
             plan.Splits.assign(plan.Axes.size(), 0);
@@ -192,12 +212,10 @@ namespace {
         }
 
         // The box of leaf `leaf`: bit b of `leaf` selects the lower/upper half of the axis the b-th bisection of the
-        // schedule splits. With `pinOuterEndpoints` the outermost endpoints of every axis are clamped to the domain
-        // itself, so that the union of all leaf boxes provably covers the whole box despite the rounding of
-        // (hi - lo) / 2^splits; the interval identity route (BisectedIntervalBound) leaves this off, the jet route
-        // turns it on.
-        [[nodiscard]] auto LeafDomains(DomainMap const& domains, std::size_t leaf, bool pinOuterEndpoints = false) const
-            -> DomainMap
+        // schedule splits. The outermost endpoints of every axis are clamped to the domain itself, so that the union
+        // of all leaf boxes provably covers the whole box despite the rounding of (hi - lo) / 2^splits (the step is
+        // rounded to nearest, so the top of the last cell can otherwise fall short of hi).
+        [[nodiscard]] auto LeafDomains(DomainMap const& domains, std::size_t leaf) const -> DomainMap
         {
             auto result = domains;
             Operon::Vector<int> cells(Axes.size());
@@ -212,13 +230,11 @@ namespace {
                 auto const cell = Operon::Scalar(cells[axis]);
                 auto cellLo = pappus::fp::ropd<pappus::fp::op_add>(lo, cell * step);
                 auto cellHi = pappus::fp::ropu<pappus::fp::op_add>(lo, (cell + Operon::Scalar { 1 }) * step);
-                if (pinOuterEndpoints) {
-                    if (cells[axis] == 0) {
-                        cellLo = lo;
-                    }
-                    if (cells[axis] + 1 == (1 << Splits[axis])) {
-                        cellHi = std::max(cellHi, hi);
-                    }
+                if (cells[axis] == 0) {
+                    cellLo = lo;
+                }
+                if (cells[axis] + 1 == (1 << Splits[axis])) {
+                    cellHi = std::max(cellHi, hi);
                 }
                 result[Axes[axis]] = { cellLo, cellHi };
             }
@@ -259,6 +275,8 @@ namespace {
                 auto acc = IntervalEvaluator<WScalar>::Interval::empty();
                 std::size_t first = 0;
                 Operon::Vector<typename IntervalEvaluator<WScalar>::LaneOverride> overrides(plan->Axes.size());
+                // Needs no pinning: pappus takes the segment width from a diameter rounded up, so the top of the last
+                // cell of an axis is at least hi, and the bottom of the first cell is exactly lo.
                 Pack pack(subdivision, 0);
                 for (; first + Pack::width <= nLeaves; first += Pack::width) {
                     pack.refill(subdivision, first);
@@ -430,12 +448,12 @@ namespace {
 
     // The bound of a mode subdivided by `plan`: the hull, over the leaf boxes of the plan, of the mode's own bound on
     // the leaf (`leafBound` maps a leaf domain map to that bound), intersected with the whole-box bound `wholeBox`.
-    // The leaf boxes cover the domain box (pinOuterEndpoints), so the hull is a sound enclosure; the whole-box
-    // bound is one too, hence so is their intersection, and it is never wider than the whole-box bound -- which
-    // matters for affine arithmetic, whose enclosures are not inclusion-isotone: a sub-box can come out wider than
-    // the whole box. A leaf without a finite bound (or an exception) gives up on subdividing: the result is the
-    // whole-box bound. Disjoint hull and whole-box bound mean one of them is unsound; the whole-box bound is
-    // returned.
+    // The leaf boxes cover the domain box (LeafDomains pins the outer endpoints), so the hull is a sound
+    // enclosure; the whole-box bound is one too, hence so is their intersection, and it is never wider than the
+    // whole-box bound -- which matters for affine arithmetic, whose enclosures are not inclusion-isotone: a
+    // sub-box can come out wider than the whole box. A leaf without a finite bound (or an exception) gives up on
+    // subdividing: the result is the whole-box bound. Disjoint hull and whole-box bound mean one of them is
+    // unsound; the whole-box bound is returned.
     template <typename LeafBound>
     auto SubdividedBound(IntervalSubdivisionPlan const& plan, IntervalSubdivisionPlan::DomainMap const& domains,
         BoundResult wholeBox, LeafBound&& leafBound) -> BoundResult
@@ -444,7 +462,7 @@ namespace {
         try {
             auto const nLeaves = std::size_t { 1 } << plan.Depth;
             for (std::size_t leaf = 0; leaf < nLeaves; ++leaf) {
-                auto const bound = leafBound(plan.LeafDomains(domains, leaf, /*pinOuterEndpoints=*/true));
+                auto const bound = leafBound(plan.LeafDomains(domains, leaf));
                 if (!bound || bound->is_empty() || !std::isfinite(bound->inf()) || !std::isfinite(bound->sup())) {
                     return wholeBox;
                 }
@@ -626,9 +644,11 @@ namespace {
     // and the enclosure of a direction is the hull of its per-leaf enclosures. A direction is decided by its leaves
     // only if every leaf reports Certain with a finite enclosure; otherwise (a leaf failed, overflowed, or hit an op
     // with no rule) the direction takes the whole-box pass's status and enclosure instead. That fallback is exactly
-    // what depth 0 computes, so it is sound, and the subdivided bound is never wider than the whole-box one. (The
-    // alternative, bisecting the symbolic derivative DAG, is also sound but may be wider than the whole-box jet
-    // bound.)
+    // what depth 0 computes, so it is sound. A decided direction is not clamped to the whole-box enclosure: leaf
+    // boxes lie inside the box, so interval inclusion keeps the hull inside the whole-box enclosure, except for the
+    // rounding of the pinned outer endpoints (a leaf may stick out of the box by one ulp at the top, see
+    // LeafDomains). (The alternative, bisecting the symbolic derivative DAG, is also sound but may be wider than
+    // the whole-box jet bound.)
     // Each leaf is a subset of the whole box, so a leaf failure normally implies the whole-box pass fails too and
     // the constraint then falls through to the symbolic path, as in Interval mode.
     template <typename Evaluator, auto Field>
@@ -654,7 +674,7 @@ namespace {
         auto undecided = std::size_t { 0 };
         auto const nLeaves = std::size_t { 1 } << plan->Depth;
         for (std::size_t leaf = 0; leaf < nLeaves && undecided < variables.size(); ++leaf) {
-            auto const leafDomains = plan->LeafDomains(domains, leaf, /*pinOuterEndpoints=*/true);
+            auto const leafDomains = plan->LeafDomains(domains, leaf);
             Evaluator evaluator(&tree, leafDomains, variables);
             auto const result = evaluator(coefficients);
             for (std::size_t k = 0; k < variables.size(); ++k) {
@@ -929,21 +949,29 @@ namespace {
         // bound.
         auto const plan = IntervalSubdivisionPlan::Make(tree, domainsByHash, opts.BisectionDepth);
         auto const* planPtr = plan ? &*plan : nullptr;
+        // Every route that evaluates one scalar evaluator per leaf (jet passes, affine, combined) works on the plan
+        // capped at MaxScalarDepth; only the interval Identity route, which is SIMD over the leaves, takes the full
+        // depth.
+        auto const cappedPlan = plan && plan->Depth > IntervalSubdivisionPlan::MaxScalarDepth
+            ? std::optional { plan->Capped(IntervalSubdivisionPlan::MaxScalarDepth) }
+            : std::nullopt;
+        auto const* scalarPlan = cappedPlan ? &*cappedPlan : planPtr;
+        auto const* identityPlan = opts.Mode == ShapeBoundMode::Interval ? planPtr : scalarPlan;
         // Interval mode: derivative constraints are bounded by the corresponding batched jet pass over the original
         // tree (whole box, or the hull over the leaf boxes of `plan`). Every other mode, and every constraint a jet
         // pass does not decide, uses BoundFor. A derivative constraint the jet pass does not decide goes to the
         // symbolic whole-box bound in Interval mode (only the Identity constraint is subdivided there); Combined and
         // Affine subdivide the derivative tree itself.
         auto const jetMode = opts.Mode == ShapeBoundMode::Interval;
-        auto const* derivativePlan = jetMode ? nullptr : planPtr;
+        auto const* derivativePlan = jetMode ? nullptr : scalarPlan;
         std::optional<FirstDerivativeJetBounds> firstDerivativeJet;
         std::optional<SecondDerivativeJetBounds> secondDerivativeJet;
         if (jetMode) {
-            FirstDerivativeJetBounds firstCandidate(constraints, constraintVarHash, planPtr);
+            FirstDerivativeJetBounds firstCandidate(constraints, constraintVarHash, scalarPlan);
             if (!firstCandidate.Empty()) {
                 firstDerivativeJet.emplace(std::move(firstCandidate));
             }
-            SecondDerivativeJetBounds secondCandidate(constraints, constraintVarHash, planPtr);
+            SecondDerivativeJetBounds secondCandidate(constraints, constraintVarHash, scalarPlan);
             if (!secondCandidate.Empty()) {
                 secondDerivativeJet.emplace(std::move(secondCandidate));
             }
@@ -954,7 +982,7 @@ namespace {
             for (std::size_t i = 0; i < constraints.Constraints.size(); ++i) {
                 auto const& c = constraints.Constraints[i];
                 if (c.Op == ShapeConstraintOp::Identity) {
-                    Apply(i, ComputeBound(tree, evaluator, opts, planPtr));
+                    Apply(i, ComputeBound(tree, evaluator, opts, identityPlan));
                     continue;
                 }
                 if (firstDerivativeJet && c.Op == ShapeConstraintOp::FirstDerivative) {
