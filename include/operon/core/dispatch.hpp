@@ -195,7 +195,7 @@ struct Dispatch {
 
 namespace detail {
     // return the index of type T in Tuple
-    template <typename T, typename... Ts> static auto constexpr TypeIndexImpl()
+    template <typename T, typename... Ts> static consteval auto TypeIndexImpl()
     {
         std::size_t i { 0 };
         for (bool x : { std::is_same_v<T, Ts>... }) {
