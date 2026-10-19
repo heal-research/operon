@@ -216,7 +216,7 @@ TEST_CASE("IntervalEvaluator: user-registered unary op round-trips and rejects d
     // static: the lambda is stored permanently in the global IntervalUnaryRules()
     // registry (there's no way to unregister it), so it must not capture a
     // reference to something with the TEST_CASE's own (shorter) lifetime.
-    static bool invoked = false;
+    static constinit bool invoked = false;
     invoked = false;
     Operon::RegisterUnaryInterval<Operon::Scalar>(
         customHash, [](Operon::IntervalEvaluator<Operon::Scalar>::Interval const& v) {
