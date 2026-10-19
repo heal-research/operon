@@ -56,7 +56,7 @@
 
 #ifdef OPERON_JET_COUNT_ALLOCATIONS
 namespace {
-std::atomic<std::size_t> gAllocations { 0 };
+constinit std::atomic<std::size_t> gAllocations { 0 };
 } // namespace
 
 void* operator new(std::size_t n)
