@@ -853,10 +853,10 @@ struct FailingGaussianCost {
     enum class Mode { Error, NonFiniteValue };
 
     using Scalar = Operon::Scalar;
-    static inline Mode FailureMode { Mode::Error };
+    static inline constinit Mode FailureMode { Mode::Error };
     static constexpr bool UsesDatasetWeights { GaussianGradientCostFunction::UsesDatasetWeights };
-    static inline std::size_t SuccessfulEvaluations { 0 };
-    static inline std::size_t InjectedFailures { 0 };
+    static inline constinit std::size_t SuccessfulEvaluations { 0 };
+    static inline constinit std::size_t InjectedFailures { 0 };
 
     FailingGaussianCost(gsl::not_null<InterpreterBase<Scalar> const*> interpreter, ConstScalarSpan target, Range range,
         RandomGenerator* rng, std::size_t batchSize, ConstScalarSpan weights)
@@ -963,7 +963,7 @@ struct CostWithNonBoolPolicy : InterpreterCostCore {
 
 struct CostWithRuntimePolicy : InterpreterCostCore {
     using InterpreterCostCore::InterpreterCostCore;
-    static inline bool UsesDatasetWeights { false };
+    static inline constinit bool UsesDatasetWeights { false };
     [[nodiscard]] auto FunctionEvaluations() const noexcept -> std::size_t { return 0; }
     [[nodiscard]] auto JacobianEvaluations() const noexcept -> std::size_t { return 0; }
 };
