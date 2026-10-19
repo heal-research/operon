@@ -235,7 +235,6 @@ auto DiversityEvaluator::Score(Operon::RandomGenerator& rng, Operon::Individual 
     auto const& values = divmap_.values();
 
     Operon::Scalar distance { 0 };
-    Operon::Vector<double> const distances(sampleSize_);
     for (auto i = 0UL; i < sampleSize_; ++i) {
         auto const& rhs = Operon::Random::Sample(rng, values.begin(), values.end())->second;
         distance += static_cast<Operon::Scalar>(Operon::Distance::Jaccard(lhs, rhs));
