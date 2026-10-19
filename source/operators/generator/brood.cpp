@@ -20,7 +20,10 @@ auto BroodOffspringGenerator::operator()(Operon::RandomGenerator& random, double
     auto makeOffspring = [&]() -> Operon::Individual {
         RecombinationResult res { .Child = {}, .Parent1 = &p1, .Parent2 = &p2 };
         OffspringGeneratorBase::Generate(random, pCrossover, pMutation, pLocal, pLamarck, buf, res);
-        return res ? res.Child.value() : *res.Parent1;
+        if (res) {
+            return std::move(res.Child).value();
+        }
+        return *res.Parent1;
     };
 
     std::vector<Individual> offspring(broodSize_);

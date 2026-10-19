@@ -9,6 +9,6 @@ auto BasicOffspringGenerator::operator()(Operon::RandomGenerator& random, double
     double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual>
 {
     auto res = OffspringGeneratorBase::Generate(random, pCrossover, pMutation, pLocal, pLamarck, buf);
-    return res.Child;
+    return std::move(res.Child);
 }
 } // namespace Operon

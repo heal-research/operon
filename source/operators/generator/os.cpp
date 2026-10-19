@@ -26,7 +26,7 @@ auto OffspringSelectionGenerator::operator()(Operon::RandomGenerator& random, do
     } else {
         accept = Operon::ParetoDominance {}(res.Child->Fitness, res.Parent1->Fitness) != Dominance::Right;
     }
-    return accept ? res.Child : std::nullopt;
+    return accept ? std::move(res.Child) : std::nullopt;
 }
 
 } // namespace Operon
