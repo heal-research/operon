@@ -61,7 +61,7 @@ namespace Operon {
     -> tl::expected<ScalarMatrixView, OperonViewStatus>;
 
 namespace detail {
-    [[nodiscard]] constexpr auto ScalarCodeFor() -> std::uint32_t
+    [[nodiscard]] consteval auto ScalarCodeFor() -> std::uint32_t
     {
         // Operon::Scalar is float or double (types.hpp); anything else is a
         // build configuration this header does not need to defend against.
