@@ -102,7 +102,14 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
     {
     }
 
-    auto Primal() const { return primal_; }
+    auto Primal() const
+    {
+        // the pool may hold more columns than this tree has nodes
+        auto const nNodes = std::ssize(tree_->Nodes());
+        return Backend::Buffer<T, BatchSize>(
+            typename Backend::Buffer<T, BatchSize>::extents_type(BatchSize, nNodes), primal_.container());
+    }
+
     auto Trace() const { return trace_; }
 
     [[nodiscard]] auto Evaluate(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> result) const
@@ -111,7 +118,7 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
         if (auto valid = ValidateCoefficients(coeff); !valid) {
             return tl::unexpected(std::move(valid.error()));
         }
-        if (context_.empty() || range_ != range) {
+        if (NeedsBind(range, false)) {
             auto bound = BindTree(range, false);
             if (!bound) {
                 return tl::unexpected(std::move(bound.error()));
@@ -124,7 +131,7 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
         UpdateCoefficients(coeff);
         auto const len = static_cast<int64_t>(range.Size());
         constexpr int64_t S = BatchSize;
-        auto* ptr = primal_.data() + ((primal_.extent(1) - 1) * S);
+        auto* ptr = primal_.data() + ((std::ssize(tree_->Nodes()) - 1) * S);
         for (auto row = 0L; row < len; row += S) {
             ForwardPass(range, row, false);
             auto const rem = std::min(S, len - row);
@@ -150,7 +157,7 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
         if (auto valid = ValidateCoefficients(coeff); !valid) {
             return tl::unexpected(std::move(valid.error()));
         }
-        if (context_.empty() || range_ != range || !derivativesBound_) {
+        if (NeedsBind(range, true)) {
             auto bound = BindTree(range, true);
             if (!bound) {
                 return tl::unexpected(std::move(bound.error()));
@@ -212,7 +219,7 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
         if (auto valid = ValidateCoefficients(coeff); !valid) {
             return tl::unexpected(std::move(valid.error()));
         }
-        if (context_.empty() || range_ != range || !derivativesBound_) {
+        if (NeedsBind(range, true)) {
             auto bound = BindTree(range, true);
             if (!bound) {
                 return tl::unexpected(std::move(bound.error()));
@@ -273,7 +280,7 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
         if (auto valid = ValidateCoefficients(coeff); !valid) {
             return tl::unexpected(std::move(valid.error()));
         }
-        if (context_.empty() || range_ != range || !derivativesBound_) {
+        if (NeedsBind(range, true)) {
             auto bound = BindTree(range, true);
             if (!bound) {
                 return tl::unexpected(std::move(bound.error()));
@@ -321,7 +328,7 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
         if (auto valid = ValidateCoefficients(coeff); !valid) {
             return tl::unexpected(std::move(valid.error()));
         }
-        if (context_.empty() || range_ != range || !derivativesBound_) {
+        if (NeedsBind(range, true)) {
             auto bound = BindTree(range, true);
             if (!bound) {
                 return tl::unexpected(std::move(bound.error()));
@@ -369,7 +376,7 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
         if (auto valid = ValidateCoefficients(coeff); !valid) {
             return tl::unexpected(std::move(valid.error()));
         }
-        if (context_.empty() || range_ != range) {
+        if (NeedsBind(range, false)) {
             auto bound = BindTree(range);
             if (!bound) {
                 return tl::unexpected(std::move(bound.error()));
@@ -431,13 +438,36 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
     using Data = std::tuple<T, std::span<T const>, std::optional<Dispatch::Callable<T, BatchSize> const>,
         std::optional<Dispatch::CallableDiff<T, BatchSize> const>>;
 
+    // One primal buffer per thread, kept between trees. Safe because every column a pass reads was
+    // written earlier in that same pass, so leftovers from another tree are never observed.
+    static auto Pool() -> Backend::Buffer<T, BatchSize>&
+    {
+        static thread_local Backend::Buffer<T, BatchSize> buffer;
+
+        return buffer;
+    }
+
+    auto EnsurePoolColumns(int64_t nNodes) const -> void
+    {
+        if (primal_.extent(1) >= nNodes) {
+            return;
+        }
+        primal_ = Backend::Buffer<T, BatchSize>(BatchSize, nNodes);
+    }
+
+    [[nodiscard]] auto NeedsBind(Operon::Range range, bool requireDerivatives) const -> bool
+    {
+        return context_.empty() || range_ != range || (requireDerivatives && !derivativesBound_);
+    }
+
     gsl::not_null<DTable const*> dtable_;
     gsl::not_null<Operon::Dataset const*> dataset_;
     gsl::not_null<Operon::Tree const*> tree_;
 
     // Mutable scratch state for forward/reverse passes; not synchronized (see thread-affinity note above).
     mutable Operon::Vector<Data> context_;
-    mutable Backend::Buffer<T, BatchSize> primal_;
+    // the thread's pooled buffer, see Pool()
+    Backend::Buffer<T, BatchSize>& primal_ { Pool() };
     mutable Backend::Buffer<T, BatchSize> trace_;
     mutable Operon::Range range_ {};
     mutable bool derivativesBound_ {};
@@ -638,9 +668,7 @@ public:
                 }
             }
         }
-        constexpr int64_t S = BatchSize;
-        primal_ = Backend::Buffer<T, S>(S, nNodes);
-        std::ranges::fill_n(primal_.data(), S * nNodes, T { 0 });
+        EnsurePoolColumns(nNodes);
         context_.clear();
         context_.reserve(nNodes);
         for (int64_t i = 0; i < nNodes; ++i) {
