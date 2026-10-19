@@ -339,7 +339,7 @@ namespace detail {
             return r;
         }
 
-        static constexpr auto BuildUnary() -> IntervalJetRuleTable<UnaryFn>
+        static consteval auto BuildUnary() -> IntervalJetRuleTable<UnaryFn>
         {
             IntervalJetRuleTable<UnaryFn> t;
             auto const set = [&](BuiltinOp op, UnaryFn fn) { t.Rules[Operon::Hash(op)] = fn; };
@@ -369,7 +369,7 @@ namespace detail {
             return t;
         }
 
-        static constexpr auto BuildBinary() -> IntervalJetRuleTable<BinaryFn>
+        static consteval auto BuildBinary() -> IntervalJetRuleTable<BinaryFn>
         {
             IntervalJetRuleTable<BinaryFn> t;
             auto const set = [&](BuiltinOp op, BinaryFn fn) { t.Rules[Operon::Hash(op)] = fn; };
