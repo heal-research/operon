@@ -441,7 +441,7 @@ auto TreeCompiler::CompileAVX2(Operon::Tree const& tree) -> std::unique_ptr<Comp
     // call relocations; see the [jit][repro] regression test.
     thread_local CodeHolder code;
     thread_local Compiler cc;
-    thread_local bool initialized = false;
+    thread_local constinit bool initialized = false;
     if (initialized) {
         code.reset();
     }
@@ -579,7 +579,7 @@ auto TreeCompiler::CompileJacobian(JacobianDag const& dag) -> std::unique_ptr<Co
         // for why this uses AsmJit's init()/reset() reuse strategy.
         thread_local CodeHolder code;
         thread_local Compiler cc;
-        thread_local bool initialized = false;
+        thread_local constinit bool initialized = false;
         if (initialized) {
             code.reset();
         }

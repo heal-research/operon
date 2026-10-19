@@ -167,18 +167,18 @@ auto JitEvaluator::Predict(Individual const& ind, Span<Scalar> values) const -> 
 
         // Rebuild column pointers from the tree (VarOrder is re-derivable since
         // the Zobrist hash structurally identifies each unique tree).
-        thread_local std::vector<Hash> varOrderBuf;
-        thread_local std::vector<float const*> colPtrs;
+        thread_local constinit std::vector<Hash> varOrderBuf;
+        thread_local constinit std::vector<float const*> colPtrs;
         varOrderBuf = VarOrder(tree);
         colPtrs.resize(varOrderBuf.size());
         for (std::size_t i = 0; i < varOrderBuf.size(); ++i) {
             colPtrs[i] = dataset->GetPaddedValues(varOrderBuf[i]) + static_cast<std::ptrdiff_t>(range.Start());
         }
 
-        thread_local std::vector<Scalar> scratch;
+        thread_local constinit std::vector<Scalar> scratch;
         scratch.resize(static_cast<std::size_t>(nRowsPad));
 
-        thread_local std::vector<Scalar> coeff;
+        thread_local constinit std::vector<Scalar> coeff;
         tree.GetCoefficients(coeff);
         ENSURE(static_cast<int>(varOrderBuf.size()) == compiled->nVars);
         ENSURE(static_cast<int>(coeff.size()) == compiled->nConsts);
@@ -187,7 +187,7 @@ auto JitEvaluator::Predict(Individual const& ind, Span<Scalar> values) const -> 
         return {};
     }
 
-    thread_local std::vector<Scalar> coeffBuf;
+    thread_local constinit std::vector<Scalar> coeffBuf;
     tree.GetCoefficients(coeffBuf);
     Interpreter<Scalar, ScalarDispatch> const interp { GetDispatchTable(), dataset, &tree };
     if (auto const evaluated = interp.Evaluate(Span<Scalar const>(coeffBuf.data(), coeffBuf.size()), range, values);
