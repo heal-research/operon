@@ -11,11 +11,11 @@ auto OffspringSelectionGenerator::operator()(Operon::RandomGenerator& random, do
     double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual>
 {
     auto res = OffspringGeneratorBase::Generate(random, pCrossover, pMutation, pLocal, pLamarck, buf);
-    if (!res || !res.Parent1) {
+    if (!res || res.Parent1 == nullptr) {
         return std::nullopt;
     }
     bool accept { false };
-    if (res.Parent2) {
+    if (res.Parent2 != nullptr) {
         Individual q {};
         for (size_t i = 0; i < q.Size(); ++i) {
             auto f1 = (*res.Parent1)[i];

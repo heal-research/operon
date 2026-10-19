@@ -18,8 +18,10 @@ namespace Operon {
 
 struct RecombinationResult {
     std::optional<Operon::Individual> Child;
-    std::optional<Operon::Individual> Parent1;
-    std::optional<Operon::Individual> Parent2;
+
+    // Non-owning: the population does not change during a generation.
+    Operon::Individual const* Parent1 { nullptr };
+    Operon::Individual const* Parent2 { nullptr };
 
     explicit operator bool() const { return Child.has_value(); }
 };
@@ -62,11 +64,11 @@ public:
         Operon::Span<Operon::Scalar> buf, RecombinationResult& res) const -> void
     {
         auto pop = FemaleSelector()->Population();
-        if (!res.Parent1) {
-            res.Parent1 = pop[(*FemaleSelector())(random)];
+        if (res.Parent1 == nullptr) {
+            res.Parent1 = &pop[(*FemaleSelector())(random)];
         }
-        if (!res.Parent2) {
-            res.Parent2 = pop[(*MaleSelector())(random)];
+        if (res.Parent2 == nullptr) {
+            res.Parent2 = &pop[(*MaleSelector())(random)];
         }
 
         res.Child = Individual { Evaluator()->ObjectiveCount() };

@@ -15,7 +15,7 @@ auto PolygenicOffspringGenerator::operator()(Operon::RandomGenerator& random, do
     // assuming the basic generator never fails
     auto makeOffspring = [&]() -> Operon::Individual {
         auto res = OffspringGeneratorBase::Generate(random, pCrossover, pMutation, pLocal, pLamarck, buf);
-        return res ? res.Child.value() : res.Parent1.value();
+        return res ? res.Child.value() : *res.Parent1;
     };
 
     std::vector<Individual> offspring(broodSize_);
