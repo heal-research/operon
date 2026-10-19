@@ -23,7 +23,7 @@ namespace {
 // Build a compile-time lookup table from infix_parser::node_type to
 // Operon::BuiltinOp. Entries without an Operon equivalent are set to the
 // NoBuiltinOp sentinel.
-constexpr auto MakeBuiltinOpMap()
+consteval auto MakeBuiltinOpMap()
 {
     constexpr auto count = static_cast<std::size_t>(infix_parser::node_type::count);
     std::array<Operon::BuiltinOp, count> map {};
