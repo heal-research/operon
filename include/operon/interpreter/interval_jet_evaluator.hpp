@@ -72,7 +72,7 @@ namespace detail {
         IntervalJetMask<K> Unsup {};
     };
 
-    constexpr auto IntervalJetWideIndex(int k) -> std::size_t
+    consteval auto IntervalJetWideIndex(int k) -> std::size_t
     {
         std::size_t i = 0;
         while (i < IntervalJetWideDirections.size() && IntervalJetWideDirections[i] != k) {
