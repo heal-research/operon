@@ -23,8 +23,9 @@ namespace Operon {
 // fComplexity = k * log(q), q = number of unique symbol types.
 inline auto WeightedComplexity(Tree const& tree) -> std::pair<double, double>
 {
-    static auto const MulHash = static_cast<Operon::Hash>(BuiltinOp::Mul);
-    static auto const ParamHash = Node { NodeType::Constant }.HashValue;
+    static constexpr auto MulHash = static_cast<Operon::Hash>(BuiltinOp::Mul);
+    // Not Node { NodeType::Constant }.HashValue: Node's constructor is not constexpr.
+    static constexpr auto ParamHash = Node::DefaultHash(NodeType::Constant);
     Operon::Set<Operon::Hash> uniqueSymbols;
     auto k = 0.0;
     for (auto const& node : tree.Nodes()) {
