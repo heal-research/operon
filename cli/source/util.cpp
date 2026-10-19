@@ -309,7 +309,7 @@ auto MaybeSaveCheckpoint(GeneticAlgorithmBase const& algo, RandomGenerator const
     }
 
     // Avoid writing the same generation twice when the run ends exactly on an interval boundary.
-    static uint64_t lastSaved = std::numeric_limits<uint64_t>::max();
+    static constinit uint64_t lastSaved = std::numeric_limits<uint64_t>::max();
     if (force && gen == lastSaved) {
         return;
     }
