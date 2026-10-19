@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -9,6 +10,7 @@
 #include <fmt/format.h>
 #include <limits>
 #include <memory>
+#include <ranges>
 #include <scn/scan.h>
 #include <sstream>
 #include <stdexcept>
@@ -27,19 +29,48 @@ using Operon::NodeType;
 
 namespace Operon {
 
-static const Operon::Map<std::string, PrimitiveSetConfig> Primitives { { "add", ToConfig(BuiltinOp::Add) },
-    { "mul", ToConfig(BuiltinOp::Mul) }, { "sub", ToConfig(BuiltinOp::Sub) }, { "div", ToConfig(BuiltinOp::Div) },
-    { "fmin", ToConfig(BuiltinOp::Fmin) }, { "fmax", ToConfig(BuiltinOp::Fmax) }, { "aq", ToConfig(BuiltinOp::Aq) },
-    { "pow", ToConfig(BuiltinOp::Pow) }, { "powabs", ToConfig(BuiltinOp::Powabs) }, { "abs", ToConfig(BuiltinOp::Abs) },
-    { "acos", ToConfig(BuiltinOp::Acos) }, { "asin", ToConfig(BuiltinOp::Asin) }, { "atan", ToConfig(BuiltinOp::Atan) },
-    { "cbrt", ToConfig(BuiltinOp::Cbrt) }, { "ceil", ToConfig(BuiltinOp::Ceil) }, { "cos", ToConfig(BuiltinOp::Cos) },
-    { "cosh", ToConfig(BuiltinOp::Cosh) }, { "exp", ToConfig(BuiltinOp::Exp) }, { "floor", ToConfig(BuiltinOp::Floor) },
-    { "log", ToConfig(BuiltinOp::Log) }, { "logabs", ToConfig(BuiltinOp::Logabs) },
-    { "log1p", ToConfig(BuiltinOp::Log1p) }, { "sin", ToConfig(BuiltinOp::Sin) }, { "sinh", ToConfig(BuiltinOp::Sinh) },
-    { "sqrt", ToConfig(BuiltinOp::Sqrt) }, { "sqrtabs", ToConfig(BuiltinOp::Sqrtabs) },
-    { "tan", ToConfig(BuiltinOp::Tan) }, { "tanh", ToConfig(BuiltinOp::Tanh) },
-    { "square", ToConfig(BuiltinOp::Square) }, { "dyn", ToConfig(NodeType::Function) },
-    { "constant", ToConfig(NodeType::Constant) }, { "variable", ToConfig(NodeType::Variable) } };
+namespace {
+
+    struct PrimitiveName {
+        std::string_view Name;
+        PrimitiveSetConfig Config;
+    };
+
+    // Sorted here so the list can stay in reading order.
+    consteval auto MakePrimitiveTable()
+    {
+        std::array table { PrimitiveName { "add", ToConfig(BuiltinOp::Add) },
+            PrimitiveName { "mul", ToConfig(BuiltinOp::Mul) }, PrimitiveName { "sub", ToConfig(BuiltinOp::Sub) },
+            PrimitiveName { "div", ToConfig(BuiltinOp::Div) }, PrimitiveName { "fmin", ToConfig(BuiltinOp::Fmin) },
+            PrimitiveName { "fmax", ToConfig(BuiltinOp::Fmax) }, PrimitiveName { "aq", ToConfig(BuiltinOp::Aq) },
+            PrimitiveName { "pow", ToConfig(BuiltinOp::Pow) }, PrimitiveName { "powabs", ToConfig(BuiltinOp::Powabs) },
+            PrimitiveName { "abs", ToConfig(BuiltinOp::Abs) }, PrimitiveName { "acos", ToConfig(BuiltinOp::Acos) },
+            PrimitiveName { "asin", ToConfig(BuiltinOp::Asin) }, PrimitiveName { "atan", ToConfig(BuiltinOp::Atan) },
+            PrimitiveName { "cbrt", ToConfig(BuiltinOp::Cbrt) }, PrimitiveName { "ceil", ToConfig(BuiltinOp::Ceil) },
+            PrimitiveName { "cos", ToConfig(BuiltinOp::Cos) }, PrimitiveName { "cosh", ToConfig(BuiltinOp::Cosh) },
+            PrimitiveName { "exp", ToConfig(BuiltinOp::Exp) }, PrimitiveName { "floor", ToConfig(BuiltinOp::Floor) },
+            PrimitiveName { "log", ToConfig(BuiltinOp::Log) }, PrimitiveName { "logabs", ToConfig(BuiltinOp::Logabs) },
+            PrimitiveName { "log1p", ToConfig(BuiltinOp::Log1p) }, PrimitiveName { "sin", ToConfig(BuiltinOp::Sin) },
+            PrimitiveName { "sinh", ToConfig(BuiltinOp::Sinh) }, PrimitiveName { "sqrt", ToConfig(BuiltinOp::Sqrt) },
+            PrimitiveName { "sqrtabs", ToConfig(BuiltinOp::Sqrtabs) },
+            PrimitiveName { "tan", ToConfig(BuiltinOp::Tan) }, PrimitiveName { "tanh", ToConfig(BuiltinOp::Tanh) },
+            PrimitiveName { "square", ToConfig(BuiltinOp::Square) },
+            PrimitiveName { "dyn", ToConfig(NodeType::Function) },
+            PrimitiveName { "constant", ToConfig(NodeType::Constant) },
+            PrimitiveName { "variable", ToConfig(NodeType::Variable) } };
+        std::ranges::sort(table, {}, &PrimitiveName::Name);
+        return table;
+    }
+
+    constexpr auto Primitives = MakePrimitiveTable();
+
+    auto FindPrimitive(std::string_view name) -> PrimitiveSetConfig const*
+    {
+        auto const it = std::ranges::lower_bound(Primitives, name, {}, &PrimitiveName::Name);
+        return it != Primitives.end() && it->Name == name ? &it->Config : nullptr;
+    }
+
+} // namespace
 
 auto Split(const std::string& s, char delimiter) -> std::vector<std::string>
 {
@@ -85,8 +116,8 @@ auto ParsePrimitiveSetConfig(const std::string& options) -> PrimitiveSetConfig
 {
     PrimitiveSetConfig config {};
     for (auto& s : Split(options, ',')) {
-        if (auto it = Primitives.find(s); it != Primitives.end()) {
-            config |= it->second;
+        if (auto const* primitive = FindPrimitive(s); primitive != nullptr) {
+            config |= *primitive;
         } else {
             throw std::runtime_error(fmt::format("Unrecognized symbol {}\n", s));
         }
