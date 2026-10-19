@@ -348,7 +348,9 @@ auto LocalSearch(Operon::RandomGenerator& random, Operon::Individual& ind, Opero
         return std::nullopt;
     }
 
-    auto c = ind.Genotype.GetCoefficients(); // save original coefficients
+    // Per-thread buffer; the snapshot is taken before the optimizer and handed back only if the Lamarckian draw fails.
+    thread_local Operon::Vector<Operon::Scalar> originals;
+    ind.Genotype.GetCoefficients(originals); // save original coefficients
     auto t0 = std::chrono::steady_clock::now();
     auto [optimizedTree, outcome] = (*coeffOptimizer)(random, std::move(ind.Genotype));
     auto t1 = std::chrono::steady_clock::now();
@@ -358,7 +360,7 @@ auto LocalSearch(Operon::RandomGenerator& random, Operon::Individual& ind, Opero
     evaluator.CostFunctionTime += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
     ind.Genotype = std::move(optimizedTree);
 
-    return BernoulliTrial { pLamarck }(random) ? std::nullopt : std::make_optional(std::move(c));
+    return BernoulliTrial { pLamarck }(random) ? std::nullopt : std::make_optional(originals);
 }
 
 auto RestoreNonLamarckianCoefficients(Operon::Individual& ind, Operon::EvaluatorBase const& evaluator,
