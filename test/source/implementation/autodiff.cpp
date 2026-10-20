@@ -134,6 +134,49 @@ TEST_CASE("Empty primitive slot is reported as a missing primitive", "[interpret
     CHECK(result.error().Hash == sinHash);
 }
 
+// The binding is cached, and BindTree() is how a changed tree or dispatch table is picked up.
+TEST_CASE("BindTree refreshes a stale binding", "[interpreter]")
+{
+    Operon::Dataset ds({ "x" }, { { 1.0F, 2.0F, 3.0F } });
+    Operon::DispatchTable<Operon::Scalar> standard;
+    Operon::DispatchTable<Operon::Scalar> dtable;
+    auto tree = Operon::InfixParser::ParseOrThrow("2 * sin(x)", ds);
+    auto const sinHash = static_cast<Operon::Hash>(Operon::BuiltinOp::Sin);
+    dtable.RegisterFunction<Operon::Scalar>(sinHash, *standard.FindFunction<Operon::Scalar>(sinHash));
+    Operon::Dataset const& dataset = ds;
+    Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> interpreter { &dtable, &dataset, &tree };
+    Operon::Range const range { 0, 3 };
+
+    REQUIRE(interpreter.Evaluate({}, range));
+    REQUIRE_FALSE(interpreter.JacRevVariable({}, range, ds.GetVariable("x")->Hash));
+
+    dtable.RegisterFunction<Operon::Scalar>(
+        sinHash, *standard.FindFunction<Operon::Scalar>(sinHash), *standard.FindDerivative<Operon::Scalar>(sinHash));
+    REQUIRE(interpreter.BindTree());
+    auto const derivative = interpreter.JacRevVariable({}, range, ds.GetVariable("x")->Hash);
+    REQUIRE(derivative);
+
+    // d/dx 2 sin(x) = 2 cos(x)
+    for (auto i = 0UL; i < 3; ++i) {
+        auto const x = ds.GetValues("x")[i];
+        CHECK((*derivative)[i] == Catch::Approx(2.0F * std::cos(x)).epsilon(1e-4));
+    }
+
+    // a changed node weight is picked up by rebinding, not by evaluating a different range
+    for (auto& node : tree.Nodes()) {
+        if (node.IsConstant()) {
+            node.Value = 3.0F;
+        }
+    }
+    REQUIRE(interpreter.BindTree());
+    auto const rebound = interpreter.Evaluate({}, Operon::Range { 1, 3 });
+    REQUIRE(rebound);
+    for (auto i = 0UL; i < 2; ++i) {
+        auto const x = ds.GetValues("x")[i + 1];
+        CHECK((*rebound)[i] == Catch::Approx(3.0F * std::sin(x)).epsilon(1e-4));
+    }
+}
+
 TEST_CASE("Interpreter reports invalid coefficient, output, and root sizes", "[autodiff]")
 {
     Operon::Dataset ds({ "x" }, { { 1.0F, 2.0F } });

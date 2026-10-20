@@ -88,6 +88,9 @@ template <typename T> struct InterpreterBase {
 };
 
 // Not thread-safe: binds lazily into mutable scratch state reused across calls. Use one instance per worker thread.
+// The first call binds the tree to the dataset and dispatch table, and later calls reuse that binding for any range.
+// The tree (structure, node weights, variable and function hashes), the dataset storage and the registered callables
+// must not change while the interpreter is in use; call BindTree() to pick such changes up.
 template <typename T = Operon::Scalar, typename DTable = ScalarDispatch>
     requires(DTable::template SupportsType<T>)
 struct Interpreter : public InterpreterBase<T> {
@@ -105,7 +108,7 @@ struct Interpreter : public InterpreterBase<T> {
     [[nodiscard]] auto Evaluate(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> result) const
         -> tl::expected<void, InterpreterError> final
     {
-        if (auto prepared = Prepare(coeff, range, /*needDerivatives=*/false); !prepared) {
+        if (auto prepared = Prepare(coeff, /*needDerivatives=*/false); !prepared) {
             return prepared;
         }
         if (auto sized = CheckOutputSize(range.Size(), result.size()); !sized) {
@@ -137,7 +140,7 @@ struct Interpreter : public InterpreterBase<T> {
     [[nodiscard]] auto JacRev(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const
         -> tl::expected<void, InterpreterError> final
     {
-        if (auto prepared = Prepare(coeff, range, /*needDerivatives=*/true); !prepared) {
+        if (auto prepared = Prepare(coeff, /*needDerivatives=*/true); !prepared) {
             return prepared;
         }
         if (auto sized = CheckOutputSize(range.Size() * coeff.size(), jacobian.size()); !sized) {
@@ -191,7 +194,7 @@ struct Interpreter : public InterpreterBase<T> {
     [[nodiscard]] auto JacFwd(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const
         -> tl::expected<void, InterpreterError> final
     {
-        if (auto prepared = Prepare(coeff, range, /*needDerivatives=*/true); !prepared) {
+        if (auto prepared = Prepare(coeff, /*needDerivatives=*/true); !prepared) {
             return prepared;
         }
         if (auto sized = CheckOutputSize(range.Size() * coeff.size(), jacobian.size()); !sized) {
@@ -244,7 +247,7 @@ struct Interpreter : public InterpreterBase<T> {
     [[nodiscard]] auto JacRevVariable(Operon::Span<T const> coeff, Operon::Range range, Operon::Hash variable,
         Operon::Span<T> result) const -> tl::expected<void, InterpreterError> final
     {
-        if (auto prepared = Prepare(coeff, range, /*needDerivatives=*/true); !prepared) {
+        if (auto prepared = Prepare(coeff, /*needDerivatives=*/true); !prepared) {
             return prepared;
         }
         if (auto sized = CheckOutputSize(range.Size(), result.size()); !sized) {
@@ -285,7 +288,7 @@ struct Interpreter : public InterpreterBase<T> {
     [[nodiscard]] auto JacFwdVariable(Operon::Span<T const> coeff, Operon::Range range, Operon::Hash variable,
         Operon::Span<T> result) const -> tl::expected<void, InterpreterError> final
     {
-        if (auto prepared = Prepare(coeff, range, /*needDerivatives=*/true); !prepared) {
+        if (auto prepared = Prepare(coeff, /*needDerivatives=*/true); !prepared) {
             return prepared;
         }
         if (auto sized = CheckOutputSize(range.Size(), result.size()); !sized) {
@@ -326,7 +329,7 @@ struct Interpreter : public InterpreterBase<T> {
     [[nodiscard]] auto EvaluateRoots(Operon::Span<T const> coeff, Operon::Range range,
         Operon::Span<std::size_t const> roots) const -> tl::expected<Eigen::Array<T, -1, -1>, InterpreterError>
     {
-        if (auto prepared = Prepare(coeff, range, /*needDerivatives=*/false); !prepared) {
+        if (auto prepared = Prepare(coeff, /*needDerivatives=*/false); !prepared) {
             return tl::unexpected(std::move(prepared.error()));
         }
         auto const nNodes = static_cast<std::size_t>(tree_->Nodes().size());
@@ -384,9 +387,9 @@ struct Interpreter : public InterpreterBase<T> {
     }
 
 private:
-    // Everything a node needs to be evaluated for the bound range: its (mutable) weight, the variable's column slice,
-    // and the resolved primitive/derivative callables (empty where not applicable: leaves have neither, and a function
-    // without a registered derivative has no Derivative).
+    // Everything a node needs to be evaluated: its (mutable) weight, the variable's whole dataset column (the evaluated
+    // range is applied per batch), and the resolved primitive/derivative callables (empty where not applicable: leaves
+    // have neither, and a function without a registered derivative has no Derivative).
     struct NodeContext {
         T Weight;
         std::span<T const> Values;
@@ -406,7 +409,6 @@ private:
     // Distinct Ref targets of the bound tree and a per-node mask of them; both stay empty for trees without Refs.
     mutable Operon::Vector<std::size_t> refTargets_;
     mutable Operon::Vector<char> isRefTarget_;
-    mutable Operon::Range range_ {};
     // First function node (in tree order) without a usable derivative, if any; Jacobian entry points report it.
     mutable std::optional<Operon::Hash> missingDerivative_;
 
@@ -444,7 +446,8 @@ private:
                 auto const* src = primal_.data() + (static_cast<int64_t>(nodes[i].RefTo) * S);
                 std::copy_n(src, S, ptr);
             } else if (nodes[i].IsVariable()) {
-                std::ranges::transform(v.subspan(row, rem), ptr, [p](auto x) { return x * p; });
+                std::ranges::transform(
+                    v.subspan(range.Start() + static_cast<std::size_t>(row), rem), ptr, [p](auto x) { return x * p; });
             } else {
                 std::invoke(f, nodes, primal_, i, rg);
 
@@ -627,11 +630,10 @@ private:
 public:
     // Full bind: validate the tree against the dataset and dispatch table, resolve every node's callables, and allocate
     // primal_. A missing derivative is only an error if requireDerivatives is set; otherwise it is remembered and
-    // reported by the Jacobian entry points.
-    auto BindTree(Operon::Range range, bool requireDerivatives = false) const -> tl::expected<void, InterpreterError>
+    // reported by the Jacobian entry points. Calling it again refreshes a stale binding.
+    auto BindTree(bool requireDerivatives = false) const -> tl::expected<void, InterpreterError>
     {
         auto const& nodes = tree_->Nodes();
-        auto const nRows = static_cast<int64_t>(range.Size());
         auto const nNodes = std::ssize(nodes);
         auto const& dt = dtable_.get();
 
@@ -645,8 +647,8 @@ public:
                     return tl::unexpected(
                         InterpreterError { .Kind = InterpreterError::Code::MissingVariable, .Hash = n.HashValue });
                 }
-                node.Values = std::span<T const>(
-                    dataset_->GetValues(n.HashValue).subspan(range.Start(), range.Size()).data(), nRows);
+                auto const column = dataset_->GetValues(n.HashValue);
+                node.Values = std::span<T const>(column.data(), column.size());
             } else if (!n.IsLeaf()) {
                 auto const* function = dt->template FindFunction<T>(n.HashValue);
                 if (function == nullptr) {
@@ -685,21 +687,20 @@ public:
                 }
             }
         }
-        range_ = range;
         return {};
     }
 
 private:
-    // Validates the coefficient count, (re)binds the tree if the range changed, and rejects a derivative request on a
-    // tree with a missing derivative.
-    [[nodiscard]] auto Prepare(Operon::Span<T const> coeff, Operon::Range range, bool needDerivatives) const
+    // Validates the coefficient count, binds the tree on first use, and rejects a derivative request on a tree with a
+    // missing derivative.
+    [[nodiscard]] auto Prepare(Operon::Span<T const> coeff, bool needDerivatives) const
         -> tl::expected<void, InterpreterError>
     {
         if (auto valid = ValidateCoefficients(coeff); !valid) {
             return valid;
         }
-        if (context_.empty() || range_ != range) {
-            if (auto bound = BindTree(range); !bound) {
+        if (context_.empty()) {
+            if (auto bound = BindTree(); !bound) {
                 return bound;
             }
         }
@@ -740,8 +741,9 @@ private:
         constexpr int64_t S = BatchSize;
         for (int64_t i = 0, j = 0; i < nNodes; ++i) {
             auto const& n = nodes[i];
-            if (!coeff.empty() && n.Optimize) {
-                context_[i].Weight = T { coeff[j++] };
+            if (n.Optimize) {
+                // empty coefficients mean the tree's own values
+                context_[i].Weight = coeff.empty() ? T { n.Value } : T { coeff[j++] };
             }
             if (n.IsConstant()) {
                 Backend::Fill<T, S>(primal_, i, context_[i].Weight);
