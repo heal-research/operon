@@ -57,16 +57,16 @@ TEST_CASE("StandardLibrary populates dispatch tables and node names consistently
         for (auto i = 0UL; i < Operon::BuiltinOpCount; ++i) {
             auto const h = static_cast<Operon::Hash>(static_cast<Operon::BuiltinOp>(i));
 
-            auto const& fDefault = dtDefault.GetFunction<Scalar>(h);
-            auto const& fRuntime = dtRuntime.GetFunction<Scalar>(h);
+            auto const& fDefault = *dtDefault.FindFunction<Scalar>(h);
+            auto const& fRuntime = *dtRuntime.FindFunction<Scalar>(h);
             auto const* pDefault = fDefault.target<FnPtr>();
             auto const* pRuntime = fRuntime.target<FnPtr>();
             REQUIRE(pDefault != nullptr);
             REQUIRE(pRuntime != nullptr);
             CHECK(*pDefault == *pRuntime);
 
-            auto const& dDefault = dtDefault.GetDerivative<Scalar>(h);
-            auto const& dRuntime = dtRuntime.GetDerivative<Scalar>(h);
+            auto const& dDefault = *dtDefault.FindDerivative<Scalar>(h);
+            auto const& dRuntime = *dtRuntime.FindDerivative<Scalar>(h);
             auto const* qDefault = dDefault.target<DfPtr>();
             auto const* qRuntime = dRuntime.target<DfPtr>();
             REQUIRE(qDefault != nullptr);

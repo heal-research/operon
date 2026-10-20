@@ -84,13 +84,54 @@ TEST_CASE("Autodiff APIs report missing derivatives", "[autodiff]")
     auto coeff = tree.GetCoefficients();
     Operon::Range const range { 0, 1 };
     auto const sinHash = tree.Nodes().back().HashValue;
-    dtable.RegisterFunction<Operon::Scalar>(sinHash, standard.GetFunction<Operon::Scalar>(sinHash));
+    dtable.RegisterFunction<Operon::Scalar>(sinHash, *standard.FindFunction<Operon::Scalar>(sinHash));
     Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> interpreter { &dtable, &ds, &tree };
     CHECK(interpreter.JacFwd(coeff, range).error().Kind == Operon::InterpreterError::Code::MissingDerivative);
     CHECK(interpreter.JacRevVariable(coeff, range, ds.GetVariable("x")->Hash).error().Kind
         == Operon::InterpreterError::Code::MissingDerivative);
     CHECK(interpreter.JacFwdVariable(coeff, range, ds.GetVariable("x")->Hash).error().Kind
         == Operon::InterpreterError::Code::MissingDerivative);
+}
+
+// Prediction needs no derivatives, so it must keep working on a tree whose derivative is missing, before and after a
+// rejected Jacobian request on the same interpreter.
+TEST_CASE("Prediction survives a rejected Jacobian request", "[autodiff]")
+{
+    Operon::Dataset ds({ "x" }, { { 0.5F, 1.0F, 2.0F } });
+    Operon::DispatchTable<Operon::Scalar> standard;
+    Operon::DispatchTable<Operon::Scalar> dtable;
+    auto tree = Operon::InfixParser::ParseOrThrow("sin(x)", ds);
+    auto const coeff = tree.GetCoefficients();
+    Operon::Range const range { 0, 3 };
+    auto const sinHash = tree.Nodes().back().HashValue;
+    dtable.RegisterFunction<Operon::Scalar>(sinHash, *standard.FindFunction<Operon::Scalar>(sinHash));
+    Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> interpreter { &dtable, &ds, &tree };
+
+    auto const before = interpreter.Evaluate(coeff, range);
+    REQUIRE(before);
+    auto const rejected = interpreter.JacRev(coeff, range);
+    REQUIRE_FALSE(rejected);
+    CHECK(rejected.error().Kind == Operon::InterpreterError::Code::MissingDerivative);
+    CHECK(rejected.error().Hash == sinHash);
+    auto const after = interpreter.Evaluate(coeff, range);
+    REQUIRE(after);
+    CHECK(*after == *before);
+}
+
+// A registered slot with no callable is as unusable as an unregistered hash.
+TEST_CASE("Empty primitive slot is reported as a missing primitive", "[interpreter]")
+{
+    Operon::Dataset ds({ "x" }, { { 1.0F } });
+    Operon::DispatchTable<Operon::Scalar> standard;
+    Operon::DispatchTable<Operon::Scalar> dtable;
+    auto tree = Operon::InfixParser::ParseOrThrow("sin(x)", ds);
+    auto const sinHash = tree.Nodes().back().HashValue;
+    dtable.RegisterFunction<Operon::Scalar>(sinHash, {});
+    Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> interpreter { &dtable, &ds, &tree };
+    auto const result = interpreter.Evaluate({}, Operon::Range { 0, 1 });
+    REQUIRE_FALSE(result);
+    CHECK(result.error().Kind == Operon::InterpreterError::Code::MissingPrimitive);
+    CHECK(result.error().Hash == sinHash);
 }
 
 TEST_CASE("Interpreter reports invalid coefficient, output, and root sizes", "[autodiff]")

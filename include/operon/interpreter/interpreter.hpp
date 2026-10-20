@@ -385,12 +385,13 @@ struct Interpreter : public InterpreterBase<T> {
 
 private:
     // Everything a node needs to be evaluated for the bound range: its (mutable) weight, the variable's column slice,
-    // and the resolved primitive/derivative callables.
+    // and the resolved primitive/derivative callables (empty where not applicable: leaves have neither, and a function
+    // without a registered derivative has no Derivative).
     struct NodeContext {
         T Weight;
         std::span<T const> Values;
-        std::optional<Dispatch::Callable<T, BatchSize> const> Function;
-        std::optional<Dispatch::CallableDiff<T, BatchSize> const> Derivative;
+        Dispatch::Callable<T, BatchSize> Function;
+        Dispatch::CallableDiff<T, BatchSize> Derivative;
     };
 
     gsl::not_null<DTable const*> dtable_;
@@ -406,7 +407,8 @@ private:
     mutable Operon::Vector<std::size_t> refTargets_;
     mutable Operon::Vector<char> isRefTarget_;
     mutable Operon::Range range_ {};
-    mutable bool derivativesBound_ {};
+    // First function node (in tree order) without a usable derivative, if any; Jacobian entry points report it.
+    mutable std::optional<Operon::Hash> missingDerivative_;
 
     // private methods
     auto ForwardPass(Operon::Range range, int row, bool trace = false) const -> void
@@ -444,12 +446,13 @@ private:
             } else if (nodes[i].IsVariable()) {
                 std::ranges::transform(v.subspan(row, rem), ptr, [p](auto x) { return x * p; });
             } else {
-                std::invoke(*f, nodes, primal_, i, rg);
+                std::invoke(f, nodes, primal_, i, rg);
 
                 // first compute the partials
-                if (trace && df) {
+                if (trace) {
+                    EXPECT(df); // Prepare rejects tracing a tree with a missing derivative
                     for (auto j : Tree::Indices(nodes, i)) {
-                        std::invoke(*df, nodes, primal_, trace_, i, j);
+                        std::invoke(df, nodes, primal_, trace_, i, j);
                     }
                 }
 
@@ -622,44 +625,53 @@ private:
     }
 
 public:
-    // Full bind: allocate primal_, build context_ with function/derivative pointers and variable data spans.
+    // Full bind: validate the tree against the dataset and dispatch table, resolve every node's callables, and allocate
+    // primal_. A missing derivative is only an error if requireDerivatives is set; otherwise it is remembered and
+    // reported by the Jacobian entry points.
     auto BindTree(Operon::Range range, bool requireDerivatives = false) const -> tl::expected<void, InterpreterError>
     {
         auto const& nodes = tree_->Nodes();
         auto const nRows = static_cast<int64_t>(range.Size());
         auto const nNodes = std::ssize(nodes);
         auto const& dt = dtable_.get();
+
+        Operon::Vector<NodeContext> context;
+        context.reserve(nNodes);
+        std::optional<Operon::Hash> missingDerivative;
         for (auto const& n : nodes) {
-            if (n.IsVariable() && !dataset_->GetVariable(n.HashValue)) {
-                return tl::unexpected(
-                    InterpreterError { .Kind = InterpreterError::Code::MissingVariable, .Hash = n.HashValue });
-            }
-            if (!n.IsLeaf() && !dt->template TryGetFunction<T>(n.HashValue)) {
-                return tl::unexpected(
-                    InterpreterError { .Kind = InterpreterError::Code::MissingPrimitive, .Hash = n.HashValue });
-            }
-            if (requireDerivatives && !n.IsLeaf()) {
-                auto derivative = dt->template TryGetDerivative<T>(n.HashValue);
-                if (!derivative || !*derivative) {
+            NodeContext node { .Weight = T { n.Value }, .Values = {}, .Function = {}, .Derivative = {} };
+            if (n.IsVariable()) {
+                if (!dataset_->FindVariableName(n.HashValue)) {
                     return tl::unexpected(
-                        InterpreterError { .Kind = InterpreterError::Code::MissingDerivative, .Hash = n.HashValue });
+                        InterpreterError { .Kind = InterpreterError::Code::MissingVariable, .Hash = n.HashValue });
+                }
+                node.Values = std::span<T const>(
+                    dataset_->GetValues(n.HashValue).subspan(range.Start(), range.Size()).data(), nRows);
+            } else if (!n.IsLeaf()) {
+                auto const* function = dt->template FindFunction<T>(n.HashValue);
+                if (function == nullptr) {
+                    return tl::unexpected(
+                        InterpreterError { .Kind = InterpreterError::Code::MissingPrimitive, .Hash = n.HashValue });
+                }
+                node.Function = *function;
+                auto const* derivative = dt->template FindDerivative<T>(n.HashValue);
+                if (derivative != nullptr) {
+                    node.Derivative = *derivative;
+                } else if (!missingDerivative) {
+                    missingDerivative = n.HashValue;
                 }
             }
+            context.push_back(std::move(node));
+        }
+        if (requireDerivatives && missingDerivative) {
+            return tl::unexpected(
+                InterpreterError { .Kind = InterpreterError::Code::MissingDerivative, .Hash = *missingDerivative });
         }
         constexpr int64_t S = BatchSize;
         primal_ = Backend::Buffer<T, S>(S, nNodes);
         std::ranges::fill_n(primal_.data(), S * nNodes, T { 0 });
-        context_.clear();
-        context_.reserve(nNodes);
-        for (int64_t i = 0; i < nNodes; ++i) {
-            auto const& n = nodes[i];
-            auto variableValues = n.IsVariable()
-                ? std::span<T const>(
-                      dataset_->GetValues(n.HashValue).subspan(range.Start(), range.Size()).data(), nRows)
-                : std::span<T const> {};
-            context_.emplace_back(T { n.Value }, variableValues, dt->template TryGetFunction<T>(n.HashValue),
-                dt->template TryGetDerivative<T>(n.HashValue));
-        }
+        context_ = std::move(context);
+        missingDerivative_ = missingDerivative;
         refTargets_.clear();
         isRefTarget_.clear();
         for (auto const& n : nodes) {
@@ -673,22 +685,27 @@ public:
                 }
             }
         }
-        derivativesBound_ = requireDerivatives;
         range_ = range;
         return {};
     }
 
 private:
-    // Validates the coefficient count and (re)binds the tree if the range changed or derivatives are needed but not
-    // yet bound.
+    // Validates the coefficient count, (re)binds the tree if the range changed, and rejects a derivative request on a
+    // tree with a missing derivative.
     [[nodiscard]] auto Prepare(Operon::Span<T const> coeff, Operon::Range range, bool needDerivatives) const
         -> tl::expected<void, InterpreterError>
     {
         if (auto valid = ValidateCoefficients(coeff); !valid) {
             return valid;
         }
-        if (context_.empty() || range_ != range || (needDerivatives && !derivativesBound_)) {
-            return BindTree(range, needDerivatives);
+        if (context_.empty() || range_ != range) {
+            if (auto bound = BindTree(range); !bound) {
+                return bound;
+            }
+        }
+        if (needDerivatives && missingDerivative_) {
+            return tl::unexpected(
+                InterpreterError { .Kind = InterpreterError::Code::MissingDerivative, .Hash = *missingDerivative_ });
         }
         return {};
     }

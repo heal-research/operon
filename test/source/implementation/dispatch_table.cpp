@@ -134,7 +134,26 @@ TEST_CASE(
     SECTION("Callable is present in the map after registration")
     {
         CHECK(dt.Contains(myHash));
-        CHECK(dt.TryGetFunction<Scalar>(myHash).has_value());
+        CHECK(dt.FindFunction<Scalar>(myHash) != nullptr);
+    }
+
+    SECTION("Find reports only usable callables")
+    {
+        // registered without a derivative: the function is usable, the derivative is not
+        CHECK(dt.FindFunction<Scalar>(myHash) != nullptr);
+        CHECK(dt.FindDerivative<Scalar>(myHash) == nullptr);
+
+        // registered with an empty function: the hash is known but there is nothing to call
+        auto const emptyHash = Operon::Hash { 0x1234 };
+        dt.RegisterFunction<Scalar>(emptyHash, {});
+        CHECK(dt.Contains(emptyHash));
+        CHECK(dt.FindFunction<Scalar>(emptyHash) == nullptr);
+
+        // not registered at all
+        auto const unknownHash = Operon::Hash { 0x5678 };
+        CHECK_FALSE(dt.Contains(unknownHash));
+        CHECK(dt.FindFunction<Scalar>(unknownHash) == nullptr);
+        CHECK(dt.FindDerivative<Scalar>(unknownHash) == nullptr);
     }
 
     SECTION("Evaluate a tree: negate(x)")

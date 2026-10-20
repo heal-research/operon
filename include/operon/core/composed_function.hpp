@@ -62,10 +62,20 @@ namespace detail {
         return ops;
     }
 
+    // The callable behind a DispatchTable::Find* result, by value. A hash the table cannot supply (unregistered, or
+    // registered without a usable callable for this scalar type) is rejected when the composed function is built.
+    template <typename Fn> auto RequireOp(Fn const* op, Operon::Hash hash) -> Fn
+    {
+        if (op == nullptr) {
+            throw std::runtime_error(fmt::format("No usable callable is registered for hash {}\n", hash));
+        }
+        return *op;
+    }
+
     // Looks up `hash` in `ops` (as built by ResolveOps above, which walks the
     // exact same body this is later consulted against — a miss here should
     // be unreachable in practice, since ResolveOps would already have thrown
-    // a descriptive error from DispatchTable::GetFunction/GetDerivative at
+    // a descriptive error from RequireOp at
     // construction time if `dt` were missing that built-in). Throws
     // std::invalid_argument rather than letting a plain `.at()` surface
     // std::out_of_range, for consistency with every other rejection path in
@@ -504,7 +514,7 @@ auto MakeComposedCallable(DTable const& dt, Tree const& body, std::size_t arity)
     using Callable = typename DTable::template Callable<T>;
 
     auto ops = detail::ResolveOps<Callable>(
-        dt, body, [](DTable const& t, Operon::Hash h) { return t.template GetFunction<T>(h); });
+        dt, body, [](DTable const& t, Operon::Hash h) { return detail::RequireOp(t.template FindFunction<T>(h), h); });
     auto const& bodyNodes = body.Nodes();
 
     return [bodyNodes, ops = std::move(ops), arity](
@@ -566,9 +576,9 @@ auto MakeComposedCallableDiff(DTable const& dt, Tree const& body, std::size_t ar
     using CallableDiff = typename DTable::template CallableDiff<T>;
 
     auto fns = detail::ResolveOps<Callable>(
-        dt, body, [](DTable const& t, Operon::Hash h) { return t.template GetFunction<T>(h); });
-    auto dfs = detail::ResolveOps<CallableDiff>(
-        dt, body, [](DTable const& t, Operon::Hash h) { return t.template GetDerivative<T>(h); });
+        dt, body, [](DTable const& t, Operon::Hash h) { return detail::RequireOp(t.template FindFunction<T>(h), h); });
+    auto dfs = detail::ResolveOps<CallableDiff>(dt, body,
+        [](DTable const& t, Operon::Hash h) { return detail::RequireOp(t.template FindDerivative<T>(h), h); });
     auto const& bodyNodes = body.Nodes();
 
     return [bodyNodes, fns = std::move(fns), dfs = std::move(dfs), arity](Operon::Vector<Node> const& outerNodes,

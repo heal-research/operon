@@ -324,34 +324,6 @@ public:
 
     template <typename Self> [[nodiscard]] auto GetMap(this Self& self) -> decltype(auto) { return (self.map_); }
 
-    // Self&, not Self&&: rejects a mutable rvalue *this, which would
-    // otherwise return a reference into an about-to-be-destroyed temporary.
-    template <typename T, typename Self>
-    [[nodiscard]] auto GetFunction(this Self& self, Operon::Hash const h) -> decltype(auto)
-    {
-        if (auto it = self.map_.find(h); it != self.map_.end()) {
-            return (std::get<static_cast<size_t>(TypeIndex<T>)>(std::get<0>(it->second)));
-        }
-        throw std::runtime_error(fmt::format("Hash value {} is not in the map\n", h));
-    }
-
-    template <typename T, typename Self>
-    [[nodiscard]] auto GetDerivative(this Self& self, Operon::Hash const h) -> decltype(auto)
-    {
-        if (auto it = self.map_.find(h); it != self.map_.end()) {
-            return (std::get<static_cast<size_t>(TypeIndex<T>)>(std::get<1>(it->second)));
-        }
-        throw std::runtime_error(fmt::format("Hash value {} is not in the map\n", h));
-    }
-
-    template <typename T> [[nodiscard]] auto Get(Operon::Hash const h) const -> std::tuple<Callable<T>, CallableDiff<T>>
-    {
-        if (auto it = map_.find(h); it != map_.end()) {
-            return std::get<static_cast<size_t>(TypeIndex<T>)>(it->second);
-        }
-        throw std::runtime_error(fmt::format("Hash value {} is not in the map\n", h));
-    }
-
     // Insert (or overwrite) the callable and derivative for one scalar type T.
     // Creates a default-constructed map entry if the hash is absent, then sets
     // only the type-slot for T, leaving other types in the entry untouched.
@@ -364,22 +336,28 @@ public:
         std::get<TypeIndex<T>>(std::get<1>(entry)) = std::move(df);
     }
 
-    template <typename T>
-    [[nodiscard]] auto TryGetFunction(Operon::Hash const h) const noexcept -> std::optional<Callable<T>>
+    // Non-owning lookups of a usable callable: nullptr if the hash is not registered, or if its slot for T is empty
+    // (another scalar type was registered, or no derivative was given). The pointer is valid until the table is
+    // modified.
+    template <typename T> [[nodiscard]] auto FindFunction(Operon::Hash const h) const noexcept -> Callable<T> const*
     {
-        if (auto it = map_.find(h); it != map_.end()) {
-            return std::optional { std::get<TypeIndex<T>>(std::get<0>(it->second)) };
+        auto const it = map_.find(h);
+        if (it == map_.end()) {
+            return nullptr;
         }
-        return {};
+        auto const& function = std::get<TypeIndex<T>>(std::get<0>(it->second));
+        return function ? &function : nullptr;
     }
 
     template <typename T>
-    [[nodiscard]] auto TryGetDerivative(Operon::Hash const h) const noexcept -> std::optional<CallableDiff<T>>
+    [[nodiscard]] auto FindDerivative(Operon::Hash const h) const noexcept -> CallableDiff<T> const*
     {
-        if (auto it = map_.find(h); it != map_.end()) {
-            return std::optional { std::get<TypeIndex<T>>(std::get<1>(it->second)) };
+        auto const it = map_.find(h);
+        if (it == map_.end()) {
+            return nullptr;
         }
-        return {};
+        auto const& derivative = std::get<TypeIndex<T>>(std::get<1>(it->second));
+        return derivative ? &derivative : nullptr;
     }
 
     [[nodiscard]] auto Contains(Operon::Hash hash) const noexcept -> bool { return map_.contains(hash); }

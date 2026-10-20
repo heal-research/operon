@@ -138,8 +138,8 @@ TEST_CASE("Node::Function() dispatches through the BuiltinOp-retargeted registry
              BuiltinOp::Sqrt, BuiltinOp::Sqrtabs, BuiltinOp::Tan, BuiltinOp::Tanh, BuiltinOp::Square }) {
         auto const hash = static_cast<Operon::Hash>(op);
         CHECK(dt.Contains(hash));
-        CHECK(dt.TryGetFunction<Operon::Scalar>(hash).has_value());
-        CHECK(dt.TryGetDerivative<Operon::Scalar>(hash).has_value());
+        CHECK(dt.FindFunction<Operon::Scalar>(hash) != nullptr);
+        CHECK(dt.FindDerivative<Operon::Scalar>(hash) != nullptr);
     }
 }
 
