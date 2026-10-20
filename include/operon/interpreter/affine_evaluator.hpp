@@ -227,86 +227,23 @@ public:
         // the scale unchanged.
         variableCache_.clear();
 
-        // Add/Mul: identity-seeded folds — no spurious affine_form copy.
-        // Every accumulation step's center is tracked into maxAbsCenter_,
-        // not just the fold's final result -- an n-ary node's intermediate
-        // accumulator can carry a much larger |center()| than either its
-        // final result or any single child (e.g. a long multiplication
-        // chain that later gets divided back down), and the ill-
-        // conditioned-fallback guard in the shape bounding (ShapeCertifier) relies on
-        // MaxAbsCenter() having seen the true worst intermediate, not just
-        // each node's own settled value.
-        auto const addFold = [&](std::size_t i) {
-            auto acc = pappus::ops::constant<Scalar>(ctx_, Scalar { 0 });
+        // Folds the children of node `i` into one accumulator, starting from `acc` (Add/Mul: the identity element;
+        // otherwise empty, so the first child seeds it). Every accumulation step's center is tracked into
+        // maxAbsCenter_, not just the fold's final result -- an n-ary node's intermediate accumulator can carry a much
+        // larger |center()| than either its final result or any single child (e.g. a long multiplication chain that
+        // later gets divided back down), and the ill-conditioned-fallback guard in the shape bounding
+        // (ShapeCertifier) relies on MaxAbsCenter() having seen the true worst intermediate, not just each node's
+        // own settled value. Add..Fmax are all n-ary (Node::IsNaryOp<BuiltinOp>), so every child is folded.
+        auto const fold = [&](std::size_t i, std::optional<Affine> acc, auto operation) {
             for (auto j : Tree::Indices(nodes, i)) {
-                acc = pappus::ops::add<Scalar>(ctx_, acc, primal_[j]);
-                maxAbsCenter_ = std::max(maxAbsCenter_, std::fabs(acc.center()));
+                if (acc) {
+                    acc = operation(*acc, primal_[j]);
+                } else {
+                    acc = primal_[j];
+                }
+                maxAbsCenter_ = std::max(maxAbsCenter_, std::fabs(acc->center()));
             }
             EXPECT(nodes[i].Arity > 0);
-            return acc;
-        };
-        auto const mulFold = [&](std::size_t i) {
-            auto acc = pappus::ops::constant<Scalar>(ctx_, Scalar { 1 });
-            for (auto j : Tree::Indices(nodes, i)) {
-                acc = pappus::ops::mul<Scalar>(ctx_, acc, primal_[j]);
-                maxAbsCenter_ = std::max(maxAbsCenter_, std::fabs(acc.center()));
-            }
-            EXPECT(nodes[i].Arity > 0);
-            return acc;
-        };
-        // Sub/Div: first-child-seeded via std::optional — no placeholder copy.
-        auto const subFold = [&](std::size_t i) {
-            std::optional<Affine> acc;
-            for (auto j : Tree::Indices(nodes, i)) {
-                if (!acc) {
-                    acc = primal_[j];
-                } else {
-                    acc = pappus::ops::sub<Scalar>(ctx_, *acc, primal_[j]);
-                }
-                maxAbsCenter_ = std::max(maxAbsCenter_, std::fabs(acc->center()));
-            }
-            EXPECT(acc.has_value()); // arity > 0 — malformed tree otherwise
-            return std::move(*acc);
-        };
-        auto const divFold = [&](std::size_t i) {
-            std::optional<Affine> acc;
-            for (auto j : Tree::Indices(nodes, i)) {
-                if (!acc) {
-                    acc = primal_[j];
-                } else {
-                    acc = pappus::ops::div<Scalar>(ctx_, *acc, primal_[j]);
-                }
-                maxAbsCenter_ = std::max(maxAbsCenter_, std::fabs(acc->center()));
-            }
-            EXPECT(acc.has_value()); // arity > 0 — malformed tree otherwise
-            return std::move(*acc);
-        };
-        // Fmin/Fmax are n-ary (Node::IsNaryOp<BuiltinOp> covers Add..Fmax). Fold
-        // all children — do NOT hardcode binary j/k indexing.
-        auto const minFold = [&](std::size_t i) {
-            std::optional<Affine> acc;
-            for (auto j : Tree::Indices(nodes, i)) {
-                if (!acc) {
-                    acc = primal_[j];
-                } else {
-                    acc = pappus::ops::min<Scalar>(ctx_, *acc, primal_[j]);
-                }
-                maxAbsCenter_ = std::max(maxAbsCenter_, std::fabs(acc->center()));
-            }
-            EXPECT(acc.has_value());
-            return std::move(*acc);
-        };
-        auto const maxFold = [&](std::size_t i) {
-            std::optional<Affine> acc;
-            for (auto j : Tree::Indices(nodes, i)) {
-                if (!acc) {
-                    acc = primal_[j];
-                } else {
-                    acc = pappus::ops::max<Scalar>(ctx_, *acc, primal_[j]);
-                }
-                maxAbsCenter_ = std::max(maxAbsCenter_, std::fabs(acc->center()));
-            }
-            EXPECT(acc.has_value());
             return std::move(*acc);
         };
 
@@ -369,25 +306,51 @@ public:
                 // other op goes through the registry.
                 switch (node.HashValue) {
                 case Operon::Hash(BuiltinOp::Add):
-                    emit(addFold(i), v);
+                    emit(fold(i, pappus::ops::constant<Scalar>(ctx_, Scalar { 0 }),
+                             [&](Affine const& lhs, Affine const& rhs) {
+                                 return pappus::ops::add<Scalar>(ctx_, lhs, rhs);
+                             }),
+                        v);
                     break;
                 case Operon::Hash(BuiltinOp::Mul):
-                    emit(mulFold(i), v);
+                    emit(fold(i, pappus::ops::constant<Scalar>(ctx_, Scalar { 1 }),
+                             [&](Affine const& lhs, Affine const& rhs) {
+                                 return pappus::ops::mul<Scalar>(ctx_, lhs, rhs);
+                             }),
+                        v);
                     break;
                 case Operon::Hash(BuiltinOp::Sub):
-                    emit(node.Arity == 1 ? pappus::ops::neg<Scalar>(primal_[i - 1]) : subFold(i), v);
+                    emit(node.Arity == 1 ? pappus::ops::neg<Scalar>(primal_[i - 1])
+                                         : fold(i, std::nullopt,
+                                               [&](Affine const& lhs, Affine const& rhs) {
+                                                   return pappus::ops::sub<Scalar>(ctx_, lhs, rhs);
+                                               }),
+                        v);
                     break;
                 case Operon::Hash(BuiltinOp::Div):
                     // Returns invalid() (NaN-poisoned), not a throw, if the
                     // denominator form contains zero (affine inv is stricter
                     // than interval inv).
-                    emit(node.Arity == 1 ? pappus::ops::inv<Scalar>(ctx_, primal_[i - 1]) : divFold(i), v);
+                    emit(node.Arity == 1 ? pappus::ops::inv<Scalar>(ctx_, primal_[i - 1])
+                                         : fold(i, std::nullopt,
+                                               [&](Affine const& lhs, Affine const& rhs) {
+                                                   return pappus::ops::div<Scalar>(ctx_, lhs, rhs);
+                                               }),
+                        v);
                     break;
                 case Operon::Hash(BuiltinOp::Fmin):
-                    emit(minFold(i), v);
+                    emit(fold(i, std::nullopt,
+                             [&](Affine const& lhs, Affine const& rhs) {
+                                 return pappus::ops::min<Scalar>(ctx_, lhs, rhs);
+                             }),
+                        v);
                     break;
                 case Operon::Hash(BuiltinOp::Fmax):
-                    emit(maxFold(i), v);
+                    emit(fold(i, std::nullopt,
+                             [&](Affine const& lhs, Affine const& rhs) {
+                                 return pappus::ops::max<Scalar>(ctx_, lhs, rhs);
+                             }),
+                        v);
                     break;
                 default:
                     // Gated on the node's actual arity (exactly 1 for unary,
