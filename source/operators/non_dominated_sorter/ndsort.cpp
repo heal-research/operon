@@ -11,9 +11,9 @@ namespace Operon {
 namespace {
     auto const Proj = [](Individual const& ind) -> Vector<Scalar> const& { return ind.Fitness; };
 
-    template <typename S> auto Wrap(Span<Individual const> pop, Scalar eps) -> NondominatedSorterBase::Result
+    template <typename Sorter> auto Wrap(Span<Individual const> pop, Scalar eps) -> NondominatedSorterBase::Result
     {
-        return S {}(pop, static_cast<double>(eps), Proj, ndsort::sorted_unique);
+        return Sorter {}(pop, static_cast<double>(eps), Proj, ndsort::sorted_unique);
     }
 } // namespace
 
