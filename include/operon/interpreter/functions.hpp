@@ -23,12 +23,23 @@ template <typename T, std::size_t S> auto Ptr(Backend::View<T, S> view, std::int
     return view.data_handle() + (i * S);
 }
 
+// Weight of a node's result. Intermediate chunks of a chunked n-ary evaluation run with unit weight (W = false); the
+// node's weight is applied once, by the final chunk.
+template <bool W> auto NodeWeight(Operon::Vector<Operon::Node> const& nodes, std::integral auto result)
+{
+    if constexpr (W) {
+        return nodes[result].Value;
+    } else {
+        return decltype(nodes[result].Value) { 1 };
+    }
+}
+
 // n-ary operations
-template <typename T, bool C, std::size_t S> struct Func<T, Operon::BuiltinOp::Add, C, S> {
+template <typename T, bool C, std::size_t S, bool W> struct Func<T, Operon::BuiltinOp::Add, C, S, W> {
     auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result,
         std::integral auto... args)
     {
-        auto const w = nodes[result].Value;
+        auto const w = NodeWeight<W>(nodes, result);
         if constexpr (C) {
             Backend::Add<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, result), Ptr<T, S>(view, args)...);
         } else {
@@ -37,11 +48,11 @@ template <typename T, bool C, std::size_t S> struct Func<T, Operon::BuiltinOp::A
     }
 };
 
-template <typename T, bool C, std::size_t S> struct Func<T, Operon::BuiltinOp::Mul, C, S> {
+template <typename T, bool C, std::size_t S, bool W> struct Func<T, Operon::BuiltinOp::Mul, C, S, W> {
     auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result,
         std::integral auto... args)
     {
-        auto const w = nodes[result].Value;
+        auto const w = NodeWeight<W>(nodes, result);
         if constexpr (C) {
             Backend::Mul<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, result), (Ptr<T, S>(view, args))...);
         } else {
@@ -50,11 +61,11 @@ template <typename T, bool C, std::size_t S> struct Func<T, Operon::BuiltinOp::M
     }
 };
 
-template <typename T, bool C, std::size_t S> struct Func<T, Operon::BuiltinOp::Sub, C, S> {
+template <typename T, bool C, std::size_t S, bool W> struct Func<T, Operon::BuiltinOp::Sub, C, S, W> {
     auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result,
         std::integral auto first, std::integral auto... args)
     {
-        auto const w = nodes[result].Value;
+        auto const w = NodeWeight<W>(nodes, result);
         if constexpr (C) {
             if constexpr (sizeof...(args) == 0) {
                 Backend::Sub<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, result), Ptr<T, S>(view, first));
@@ -72,11 +83,11 @@ template <typename T, bool C, std::size_t S> struct Func<T, Operon::BuiltinOp::S
     }
 };
 
-template <typename T, bool C, std::size_t S> struct Func<T, Operon::BuiltinOp::Div, C, S> {
+template <typename T, bool C, std::size_t S, bool W> struct Func<T, Operon::BuiltinOp::Div, C, S, W> {
     auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result,
         std::integral auto first, std::integral auto... args)
     {
-        auto const w = nodes[result].Value;
+        auto const w = NodeWeight<W>(nodes, result);
         if constexpr (C) {
             if constexpr (sizeof...(args) == 0) {
                 Backend::Div<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, result), Ptr<T, S>(view, first));
@@ -94,11 +105,11 @@ template <typename T, bool C, std::size_t S> struct Func<T, Operon::BuiltinOp::D
     }
 };
 
-template <typename T, bool C, std::size_t S> struct Func<T, Operon::BuiltinOp::Fmin, C, S> {
+template <typename T, bool C, std::size_t S, bool W> struct Func<T, Operon::BuiltinOp::Fmin, C, S, W> {
     auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result,
         std::integral auto first, std::integral auto... args)
     {
-        auto const w = nodes[result].Value;
+        auto const w = NodeWeight<W>(nodes, result);
         if constexpr (C) {
             if constexpr (sizeof...(args) == 0) {
                 Backend::Min<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, result), Ptr<T, S>(view, first));
@@ -116,11 +127,11 @@ template <typename T, bool C, std::size_t S> struct Func<T, Operon::BuiltinOp::F
     }
 };
 
-template <typename T, bool C, std::size_t S> struct Func<T, Operon::BuiltinOp::Fmax, C, S> {
+template <typename T, bool C, std::size_t S, bool W> struct Func<T, Operon::BuiltinOp::Fmax, C, S, W> {
     auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result,
         std::integral auto first, std::integral auto... args)
     {
-        auto const w = nodes[result].Value;
+        auto const w = NodeWeight<W>(nodes, result);
         if constexpr (C) {
             if constexpr (sizeof...(args) == 0) {
                 Backend::Max<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, result), Ptr<T, S>(view, first));

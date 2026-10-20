@@ -50,7 +50,8 @@ namespace Backend {
 } // namespace Backend
 
 // detect missing specializations for functions
-template <typename T, Operon::BuiltinOp N = Operon::NoBuiltinOp, bool C = false, std::size_t S = Backend::BatchSize<T>>
+template <typename T, Operon::BuiltinOp N = Operon::NoBuiltinOp, bool C = false, std::size_t S = Backend::BatchSize<T>,
+    bool W = true>
 struct Func {
     auto operator()(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T, S> /*primal*/,
         std::integral auto /*node index*/, std::integral auto... /*child indices*/)
@@ -89,7 +90,8 @@ struct Dispatch {
     // 1) improved performance: the naive method accumulates into the result for each argument, leading to unnecessary
     // assignments 2) minimizing the number of intermediate steps which might improve floating point accuracy of some
     // operations
-    //    if arity > 4, one accumulation is performed every 4 args
+    //    if arity > 4, one accumulation is performed every 4 args; the node weight multiplies the result once, in the
+    //    final chunk (W = true), so intermediate chunks run with unit weight (W = false)
     template <BuiltinOp Op, typename T, std::size_t S>
         requires Node::IsNaryOp<Op>
     static void NaryOp(
@@ -99,32 +101,40 @@ struct Dispatch {
         auto arg1 = parentIndex - 1;
         bool continued = false;
 
-        auto const call = [&](bool continued, int result, auto... args) {
+        auto const call = [&](bool continued, bool last, int result, auto... args) {
+            auto const dispatch = [&]<bool C>() {
+                if (last) {
+                    Func<T, Op, C, S, true> {}(nodes, data, result, args...);
+                } else {
+                    Func<T, Op, C, S, false> {}(nodes, data, result, args...);
+                }
+            };
             if (continued) {
-                Func<T, Op, true, S> {}(nodes, data, result, args...);
+                dispatch.template operator()<true>();
             } else {
-                Func<T, Op, false, S> {}(nodes, data, result, args...);
+                dispatch.template operator()<false>();
             }
         };
 
         int arity = nodes[parentIndex].Arity;
         while (arity > 0) {
+            bool const last = arity <= 4;
             switch (arity) {
             case 1: {
-                call(continued, parentIndex, arg1);
+                call(continued, last, parentIndex, arg1);
                 arity = 0;
                 break;
             }
             case 2: {
                 auto arg2 = nextArg(arg1);
-                call(continued, parentIndex, arg1, arg2);
+                call(continued, last, parentIndex, arg1, arg2);
                 arity = 0;
                 break;
             }
             case 3: {
                 auto arg2 = nextArg(arg1);
                 auto arg3 = nextArg(arg2);
-                call(continued, parentIndex, arg1, arg2, arg3);
+                call(continued, last, parentIndex, arg1, arg2, arg3);
                 arity = 0;
                 break;
             }
@@ -132,7 +142,7 @@ struct Dispatch {
                 auto arg2 = nextArg(arg1);
                 auto arg3 = nextArg(arg2);
                 auto arg4 = nextArg(arg3);
-                call(continued, parentIndex, arg1, arg2, arg3, arg4);
+                call(continued, last, parentIndex, arg1, arg2, arg3, arg4);
                 arity -= 4;
                 arg1 = nextArg(arg4);
                 break;
