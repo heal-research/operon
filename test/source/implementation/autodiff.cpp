@@ -508,4 +508,33 @@ TEST_CASE("Autodiff: zero optimized coefficient retains finite Jacobian", "[auto
     SECTION("nonzero constant coefficient") { checkCoefficientJacobian(-1.75F); }
 }
 
+// A Ref whose target has no function parent (a sliced derivative forest): the target's adjoint is accumulated only
+// from Refs, so repeated calls and later batches must each start from zero.
+TEST_CASE("Reverse Jacobian of a Ref-only target is stable across calls and batches", "[autodiff]")
+{
+    constexpr auto rows = 3UL * Operon::Backend::BatchSize<Operon::Scalar> + 5UL;
+    std::vector<Operon::Scalar> x(rows);
+    for (auto i = 0UL; i < rows; ++i) {
+        x[i] = 1.0F + static_cast<Operon::Scalar>(i);
+    }
+    Operon::Dataset ds({ "x" }, { x });
+    Operon::DispatchTable<Operon::Scalar> dtable;
+    auto const xHash = ds.GetVariable("x")->Hash;
+
+    Operon::Node variable { Operon::NodeType::Variable, xHash };
+    variable.Value = 1.0F;
+    Operon::Vector<Operon::Node> nodes { variable, Operon::Node::Ref(0) };
+    Operon::Tree tree { nodes };
+    Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> interpreter { &dtable, &ds, &tree };
+    Operon::Range const range { 0, rows };
+
+    for (auto call = 0; call < 3; ++call) {
+        auto const derivative = interpreter.JacRevVariable({}, range, xHash);
+        REQUIRE(derivative);
+        for (auto i = 0UL; i < rows; ++i) {
+            CHECK((*derivative)[i] == 1.0F);
+        }
+    }
+}
+
 } // namespace Operon::Test

@@ -454,6 +454,16 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
         auto rem = std::min(S, rangeSize - row);
         Operon::Range rg(rangeStart + row, rangeStart + row + rem);
 
+        if (trace) {
+            // The reverse sweep accumulates Ref adjoints into their targets. A target with a function parent has its
+            // column overwritten by that parent's partials below; any other target must start every batch from zero.
+            for (auto const& node : nodes) {
+                if (node.IsRef()) {
+                    Backend::Fill<T, S>(trace_, node.RefTo, T { 0 });
+                }
+            }
+        }
+
         // forward pass - compute primal and trace
         for (auto i = 0L; i < nNodes; ++i) {
             if (nodes[i].IsConstant()) {
