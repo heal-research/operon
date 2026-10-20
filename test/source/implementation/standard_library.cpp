@@ -4,6 +4,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include "../operon_test.hpp"
 #include "operon/core/node.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/standard_library.hpp"
@@ -230,7 +231,7 @@ TEST_CASE("RegisterNaryFunction registers a variable-arity function end-to-end",
         std::string const x { "x" };
         Operon::Dataset const ds({ x }, { std::vector<Scalar> { 0.0 } });
         auto coeff = tree.GetCoefficients();
-        auto jac = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).JacFwd(coeff, Operon::Range(0, 1)).value();
+        auto jac = Util::JacFwd(Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree), coeff, Operon::Range(0, 1)).value();
 
         REQUIRE(jac.rows() == 1);
         REQUIRE(jac.cols() == 3);
@@ -265,7 +266,8 @@ TEST_CASE("RegisterNaryFunction registers a variable-arity function end-to-end",
         std::string const x { "x" };
         Operon::Dataset const ds({ x }, { std::vector<Scalar> { 0.0 } });
         auto coeff = tree.GetCoefficients();
-        auto jac = Operon::Interpreter<Scalar, DT>(&dtProd, &ds, &tree).JacFwd(coeff, Operon::Range(0, 1)).value();
+        auto jac
+            = Util::JacFwd(Operon::Interpreter<Scalar, DT>(&dtProd, &ds, &tree), coeff, Operon::Range(0, 1)).value();
 
         REQUIRE(jac.rows() == 1);
         REQUIRE(jac.cols() == 3);

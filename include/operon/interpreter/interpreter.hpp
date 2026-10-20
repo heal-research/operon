@@ -53,16 +53,10 @@ template <typename T> struct InterpreterBase {
     [[nodiscard]] virtual auto JacRev(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const
         -> tl::expected<void, InterpreterError>
         = 0;
-    [[nodiscard]] virtual auto JacRev(Operon::Span<T const> coeff, Operon::Range range) const
-        -> tl::expected<Eigen::Array<T, -1, -1>, InterpreterError>
-        = 0;
 
     // evaluate model jacobian in forward mode
     [[nodiscard]] virtual auto JacFwd(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const
         -> tl::expected<void, InterpreterError>
-        = 0;
-    [[nodiscard]] virtual auto JacFwd(Operon::Span<T const> coeff, Operon::Range range) const
-        -> tl::expected<Eigen::Array<T, -1, -1>, InterpreterError>
         = 0;
 
     // evaluate model derivative w.r.t. a single input variable's raw value (identified by hash), summed over every
@@ -159,18 +153,6 @@ struct Interpreter : public InterpreterBase<T> {
         return {};
     }
 
-    [[nodiscard]] auto JacRev(Operon::Span<T const> coeff, Operon::Range range) const
-        -> tl::expected<Eigen::Array<T, -1, -1>, InterpreterError> final
-    {
-        auto const nr = static_cast<int64_t>(range.Size());
-        Eigen::Array<T, -1, -1> jacobian(nr, NumCoefficients());
-        auto result = JacRev(coeff, range, { jacobian.data(), static_cast<size_t>(jacobian.size()) });
-        if (!result) {
-            return tl::unexpected(std::move(result.error()));
-        }
-        return jacobian;
-    }
-
     [[nodiscard]] auto JacFwd(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const
         -> tl::expected<void, InterpreterError> final
     {
@@ -191,18 +173,6 @@ struct Interpreter : public InterpreterBase<T> {
             ForwardTraceGeneric<false>(range, row, colOf, CoefficientFactor(range), jac);
         }
         return {};
-    }
-
-    [[nodiscard]] auto JacFwd(Operon::Span<T const> coeff, Operon::Range range) const
-        -> tl::expected<Eigen::Array<T, -1, -1>, InterpreterError> final
-    {
-        auto const nRows = static_cast<int64_t>(range.Size());
-        Eigen::Array<T, -1, -1> jacobian(nRows, NumCoefficients());
-        auto result = JacFwd(coeff, range, { jacobian.data(), static_cast<size_t>(jacobian.size()) });
-        if (!result) {
-            return tl::unexpected(std::move(result.error()));
-        }
-        return jacobian;
     }
 
     [[nodiscard]] auto JacRevVariable(Operon::Span<T const> coeff, Operon::Range range, Operon::Hash variable,
@@ -271,9 +241,10 @@ struct Interpreter : public InterpreterBase<T> {
         return result;
     }
 
-    // Evaluates the full tree and extracts values at multiple node indices; roots set to SIZE_MAX produce zero columns.
+    // Evaluates the full tree and extracts the values at the given node indices into `result` (column-major, one column
+    // of range.Size() rows per root; roots set to SIZE_MAX produce zero columns).
     [[nodiscard]] auto EvaluateRoots(Operon::Span<T const> coeff, Operon::Range range,
-        Operon::Span<std::size_t const> roots) const -> tl::expected<Eigen::Array<T, -1, -1>, InterpreterError>
+        Operon::Span<std::size_t const> roots, Operon::Span<T> result) const -> tl::expected<void, InterpreterError>
     {
         if (auto prepared = Prepare(coeff, /*needDerivatives=*/false); !prepared) {
             return tl::unexpected(std::move(prepared.error()));
@@ -284,17 +255,19 @@ struct Interpreter : public InterpreterBase<T> {
                 return tl::unexpected(InterpreterError { InterpreterError::Code::InvalidRootIndex, {}, nNodes, root });
             }
         }
+        if (auto sized = CheckOutputSize(range.Size() * roots.size(), result.size()); !sized) {
+            return sized;
+        }
         UpdateCoefficients(coeff);
         auto const len = static_cast<int64_t>(range.Size());
         auto const nRoots = static_cast<Eigen::Index>(roots.size());
         constexpr int64_t S = BatchSize;
 
-        // Not zero-initialized: every row is written exactly once by the
-        // batch loop below; NoIndex columns are zeroed explicitly.
-        Eigen::Array<T, -1, -1> result(len, nRoots);
+        // Every row is written exactly once by the batch loop below; NoIndex columns are zeroed explicitly.
+        Eigen::Map<Eigen::Array<T, -1, -1>> columns(result.data(), len, nRoots);
         for (Eigen::Index k = 0; k < nRoots; ++k) {
             if (roots[k] == NoIndex) {
-                result.col(k).setZero();
+                columns.col(k).setZero();
             }
         }
 
@@ -306,10 +279,10 @@ struct Interpreter : public InterpreterBase<T> {
                     continue;
                 }
                 auto const* src = primal_.data() + (static_cast<int64_t>(roots[k]) * S);
-                std::copy_n(src, rem, result.col(k).data() + row);
+                std::copy_n(src, rem, columns.col(k).data() + row);
             }
         }
-        return result;
+        return {};
     }
 
     [[nodiscard]] auto GetTree() const -> Operon::Tree const* { return tree_.get(); }

@@ -385,22 +385,22 @@ TEST_CASE("Auto-diff fallback via Jet<T,1>", "[interpreter]") // NOLINT(readabil
 
     SECTION("JacRev: auto-diff matches explicit derivative")
     {
-        auto jacAuto = interpAuto.JacRev(coeff, range).value();
-        auto jacExplicit = interpExplicit.JacRev(coeff, range).value();
+        auto jacAuto = Util::JacRev(interpAuto, coeff, range).value();
+        auto jacExplicit = Util::JacRev(interpExplicit, coeff, range).value();
         CHECK(jacAuto.isApprox(jacExplicit, 1e-4F));
     }
 
     SECTION("JacFwd: auto-diff matches explicit derivative")
     {
-        auto jacAuto = interpAuto.JacFwd(coeff, range).value();
-        auto jacExplicit = interpExplicit.JacFwd(coeff, range).value();
+        auto jacAuto = Util::JacFwd(interpAuto, coeff, range).value();
+        auto jacExplicit = Util::JacFwd(interpExplicit, coeff, range).value();
         CHECK(jacAuto.isApprox(jacExplicit, 1e-4F));
     }
 
     SECTION("JacRev matches expected analytic values")
     {
         // output = f(w*x),  d/dw at w=1 = x * f'(x) = x*(cos(x)-sin(x))
-        auto jac = interpAuto.JacRev(coeff, range).value();
+        auto jac = Util::JacRev(interpAuto, coeff, range).value();
         REQUIRE(jac.rows() == 10);
         for (auto i = 0; i < 10; ++i) {
             auto expected = xvals[i] * (std::cos(xvals[i]) - std::sin(xvals[i]));

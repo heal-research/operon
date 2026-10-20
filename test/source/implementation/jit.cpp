@@ -821,7 +821,7 @@ TEST_CASE("CompileJacobian correctness vs JacRev - random trees", "[jit][jacobia
 
         // Reference: JacRev via interpreter
         Interpreter<Operon::Scalar, DTable> const interp { &dtable, &ds, &tree };
-        auto const jrev = interp.JacRev(coeff, range).value();
+        auto const jrev = Util::JacRev(interp, coeff, range).value();
 
         // JIT Jacobian
         auto const dag = BuildJacobianDag(tree);
@@ -897,7 +897,7 @@ TEST_CASE("CompileJacobian correctness - variable weights", "[jit][jacobian]")
         }
 
         Interpreter<Operon::Scalar, DTable> const interp { &dtable, &ds, &tree };
-        auto const jrev = interp.JacRev(coeff, range).value();
+        auto const jrev = Util::JacRev(interp, coeff, range).value();
 
         auto const dag = BuildJacobianDag(tree);
         auto compiled = compiler.CompileJacobian(dag);
@@ -992,7 +992,8 @@ TEST_CASE("CompileJacobian performance vs JacRev", "[jit][jacobian][performance]
             if (coeffs[i].empty()) {
                 continue;
             }
-            static_cast<void>(Interpreter<Operon::Scalar, DTable> { &dtable, &ds, &trees[i] }.JacRev(coeffs[i], range));
+            static_cast<void>(
+                Util::JacRev(Interpreter<Operon::Scalar, DTable> { &dtable, &ds, &trees[i] }, coeffs[i], range));
         }
     });
 
@@ -1108,7 +1109,7 @@ TEST_CASE("JitLeastSquaresCostFunction residuals vs interpreter", "[jit][lm]")
         Eigen::Array<Operon::Scalar, -1, 1> refResiduals = predArr - tgtArr;
 
         // Reference Jacobian: (nRes, nPar) col-major
-        auto refJac = interp.JacRev(evalCoeff, range).value();
+        auto refJac = Util::JacRev(interp, evalCoeff, range).value();
         REQUIRE(refJac.rows() == nRes);
         REQUIRE(refJac.cols() == nPar);
 
@@ -1217,7 +1218,7 @@ TEST_CASE("JitLeastSquaresCostFunction respects consts parameter", "[jit][lm]")
     auto check = [&](std::vector<Operon::Scalar>& p, std::vector<Operon::Scalar>& res,
                      std::vector<Operon::Scalar>& jac) {
         auto predVec = interp.Evaluate(p, range).value();
-        auto refJac = interp.JacRev(p, range).value();
+        auto refJac = Util::JacRev(interp, p, range).value();
 
         Eigen::Map<const Eigen::Array<Operon::Scalar, -1, 1>> tgtArr(target.data(), static_cast<Eigen::Index>(nRes));
         Eigen::Map<const Eigen::Array<Operon::Scalar, -1, 1>> predArr(predVec.data(), static_cast<Eigen::Index>(nRes));
@@ -1607,7 +1608,7 @@ TEST_CASE("JitLeastSquaresCostFunction interpreter fallback ignores absent-kerne
     REQUIRE(result.has_value());
 
     auto const predicted = fx.interp.Evaluate(params, fx.FullRange()).value();
-    auto const refJac = fx.interp.JacRev(params, fx.FullRange()).value();
+    auto const refJac = Util::JacRev(fx.interp, params, fx.FullRange()).value();
     for (std::size_t r = 0; r < n; ++r) {
         CHECK(residuals[r] == Catch::Approx(predicted[r] - fx.y[r]).epsilon(1e-4F));
         for (std::size_t k = 0; k < p; ++k) {

@@ -278,14 +278,14 @@ TEST_CASE("Interpreter results do not depend on the previous range", "[interpret
         REQUIRE(actual);
         CHECK(*actual == *expected);
 
-        auto const expectedRev = fresh.JacRev(coeff, range);
-        auto const actualRev = reused.JacRev(coeff, range);
+        auto const expectedRev = Util::JacRev(fresh, coeff, range);
+        auto const actualRev = Util::JacRev(reused, coeff, range);
         REQUIRE(expectedRev);
         REQUIRE(actualRev);
         CHECK((*actualRev == *expectedRev).all());
 
-        auto const expectedFwd = fresh.JacFwd(coeff, range);
-        auto const actualFwd = reused.JacFwd(coeff, range);
+        auto const expectedFwd = Util::JacFwd(fresh, coeff, range);
+        auto const actualFwd = Util::JacFwd(reused, coeff, range);
         REQUIRE(expectedFwd);
         REQUIRE(actualFwd);
         CHECK((*actualFwd == *expectedFwd).all());
@@ -321,8 +321,8 @@ TEST_CASE("Empty coefficients evaluate the tree's own coefficients", "[interpret
     CHECK(*again == *own);
 
     // The coefficient Jacobian of the tree's own coefficients has one column per optimizable node, d(2x)/dc = x.
-    auto const jacRev = interpreter.JacRev({}, range);
-    auto const jacFwd = interpreter.JacFwd({}, range);
+    auto const jacRev = Util::JacRev(interpreter, {}, range);
+    auto const jacFwd = Util::JacFwd(interpreter, {}, range);
     REQUIRE(jacRev);
     REQUIRE(jacFwd);
     REQUIRE(jacRev->cols() == 1);
