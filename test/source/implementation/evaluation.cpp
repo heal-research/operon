@@ -319,6 +319,18 @@ TEST_CASE("Empty coefficients evaluate the tree's own coefficients", "[interpret
     auto const again = interpreter.Evaluate({}, range);
     REQUIRE(again);
     CHECK(*again == *own);
+
+    // The coefficient Jacobian of the tree's own coefficients has one column per optimizable node, d(2x)/dc = x.
+    auto const jacRev = interpreter.JacRev({}, range);
+    auto const jacFwd = interpreter.JacFwd({}, range);
+    REQUIRE(jacRev);
+    REQUIRE(jacFwd);
+    REQUIRE(jacRev->cols() == 1);
+    REQUIRE(jacFwd->cols() == 1);
+    for (auto i = 0; i < 3; ++i) {
+        CHECK((*jacRev)(i, 0) == static_cast<Operon::Scalar>(i + 1));
+        CHECK((*jacFwd)(i, 0) == static_cast<Operon::Scalar>(i + 1));
+    }
 }
 
 } // namespace Operon::Test
