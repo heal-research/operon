@@ -537,4 +537,52 @@ TEST_CASE("Reverse Jacobian of a Ref-only target is stable across calls and batc
     }
 }
 
+// The adjoint a Ref sends to its target must not be scaled by the target's own parent: with sin(x) * x built as
+// [x, Sin, Ref(0), Mul], the Sin node is swept after the Ref and used to multiply the combined value.
+TEST_CASE("Reverse Jacobian through a Ref to a node that has a function parent", "[autodiff]")
+{
+    constexpr auto rows = (2UL * Operon::Backend::BatchSize<Operon::Scalar>)+3UL;
+    std::vector<Operon::Scalar> x(rows);
+    for (auto i = 0UL; i < rows; ++i) {
+        x[i] = 0.5F + (0.01F * static_cast<Operon::Scalar>(i));
+    }
+    Operon::Dataset ds({ "x" }, { x });
+    Operon::DispatchTable<Operon::Scalar> dtable;
+    auto const xHash = ds.GetVariable("x")->Hash;
+    Operon::Range const range { 0, rows };
+
+    Operon::Node variable { Operon::NodeType::Variable, xHash };
+    variable.Value = 1.0F;
+    auto const sin = Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Sin), 1);
+    auto const mul = Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Mul), 2);
+    auto const add = Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Add), 2);
+
+    auto check = [&](Operon::Vector<Operon::Node> const& nodes, auto expected) {
+        Operon::Tree tree { nodes };
+        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> interpreter { &dtable, &ds, &tree };
+        for (auto call = 0; call < 2; ++call) {
+            auto const rev = interpreter.JacRevVariable({}, range, xHash);
+            auto const fwd = interpreter.JacFwdVariable({}, range, xHash);
+            REQUIRE(rev);
+            REQUIRE(fwd);
+            for (auto i = 0UL; i < rows; ++i) {
+                CHECK((*rev)[i] == Catch::Approx(expected(x[i])).epsilon(1e-4));
+                CHECK((*fwd)[i] == Catch::Approx(expected(x[i])).epsilon(1e-4));
+            }
+        }
+    };
+
+    // sin(x) * x: the Ref is swept before the Sin node that owns its target
+    SECTION("target's parent is swept after the Ref")
+    {
+        check({ variable, sin, Operon::Node::Ref(0), mul }, [](auto v) { return (v * std::cos(v)) + std::sin(v); });
+    }
+
+    // sin(x) + sin(x): the Ref targets the Sin node itself, whose parent is swept before the Ref
+    SECTION("target's parent is swept before the Ref")
+    {
+        check({ variable, sin, Operon::Node::Ref(1), add }, [](auto v) { return 2.0F * std::cos(v); });
+    }
+}
+
 } // namespace Operon::Test

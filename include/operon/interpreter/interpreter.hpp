@@ -439,6 +439,7 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
     mutable Operon::Vector<Data> context_;
     mutable Backend::Buffer<T, BatchSize> primal_;
     mutable Backend::Buffer<T, BatchSize> trace_;
+    mutable Backend::Buffer<T, BatchSize> refAdj_; // adjoints Refs send to their targets (reverse sweep only)
     mutable Operon::Range range_ {};
     mutable bool derivativesBound_ {};
 
@@ -592,8 +593,30 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
         Eigen::Map<Eigen::Array<T, S, -1>> primal(primal_.data(), S, nNodes);
         Eigen::Map<Eigen::Array<T, S, -1>> trace(trace_.data(), S, nNodes);
 
+        // The adjoint a Ref sends to its target is collected apart from the local partials held in trace: the target's
+        // own parent only turns its partial into an adjoint when that parent is processed, which can be after the Ref.
+        // The collected adjoint is added to the target's own when the sweep reaches the target.
+        Operon::Vector<char> isRefTarget;
+        if (std::ranges::any_of(nodes, [](auto const& n) { return n.IsRef(); })) {
+            isRefTarget.assign(static_cast<std::size_t>(nNodes), 0);
+            if (refAdj_.extent(1) != nNodes) {
+                refAdj_ = Backend::Buffer<T, S>(S, nNodes);
+            }
+            for (auto const& n : nodes) {
+                if (n.IsRef()) {
+                    isRefTarget[n.RefTo] = 1;
+                    Backend::Fill<T, S>(refAdj_, n.RefTo, T { 0 });
+                }
+            }
+        }
+        Eigen::Map<Eigen::Array<T, S, -1>> refAdj(refAdj_.data(), S, isRefTarget.empty() ? 0 : nNodes);
+
         for (auto i = nNodes - 1; i >= 0L; --i) {
             auto w = std::get<0>(context_[i]);
+
+            if (!isRefTarget.empty() && isRefTarget[static_cast<std::size_t>(i)] != 0) {
+                trace.col(i).head(remainingRows) += refAdj.col(i).head(remainingRows);
+            }
 
             if (auto const col = colOf[static_cast<std::size_t>(i)]; col != NoIndex) {
                 auto const factorValues = factor(static_cast<std::size_t>(i), primal, w);
@@ -609,7 +632,8 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
                 EXPECT(static_cast<int64_t>(nodes[i].RefTo)
                     < i); // backward ref: target processed after us in reverse sweep
                 // Accumulate gradient into the referenced node (may be referenced >1 time)
-                trace.col(static_cast<int64_t>(nodes[i].RefTo)).head(remainingRows) += trace.col(i).head(remainingRows);
+                refAdj.col(static_cast<int64_t>(nodes[i].RefTo)).head(remainingRows)
+                    += trace.col(i).head(remainingRows);
                 continue;
             }
             if (nodes[i].IsLeaf()) {
