@@ -585,4 +585,67 @@ TEST_CASE("Reverse Jacobian through a Ref to a node that has a function parent",
     }
 }
 
+TEST_CASE("Reverse Jacobian with several Refs to one target and Ref chains", "[autodiff]")
+{
+    constexpr auto rows = (2UL * Operon::Backend::BatchSize<Operon::Scalar>)+3UL;
+    std::vector<Operon::Scalar> x(rows);
+    for (auto i = 0UL; i < rows; ++i) {
+        x[i] = 0.5F + (0.01F * static_cast<Operon::Scalar>(i));
+    }
+    Operon::Dataset ds({ "x" }, { x });
+    Operon::DispatchTable<Operon::Scalar> dtable;
+    auto const xHash = ds.GetVariable("x")->Hash;
+    Operon::Range const range { 0, rows };
+
+    Operon::Node variable { Operon::NodeType::Variable, xHash };
+    variable.Value = 1.0F;
+    auto const mul2 = Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Mul), 2);
+    auto const mul3 = Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Mul), 3);
+    auto constant = Operon::Node::Constant(1.5F);
+    constant.Optimize = true;
+
+    auto checkVariable = [&](Operon::Vector<Operon::Node> const& nodes, auto expected) {
+        Operon::Tree tree { nodes };
+        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> interpreter { &dtable, &ds, &tree };
+        auto const rev = interpreter.JacRevVariable({}, range, xHash);
+        auto const fwd = interpreter.JacFwdVariable({}, range, xHash);
+        REQUIRE(rev);
+        REQUIRE(fwd);
+        for (auto i = 0UL; i < rows; ++i) {
+            CHECK((*rev)[i] == Catch::Approx(expected(x[i])).epsilon(1e-4));
+            CHECK((*fwd)[i] == Catch::Approx(expected(x[i])).epsilon(1e-4));
+        }
+    };
+
+    // x * x * x with both extra operands Refs to node 0
+    SECTION("two Refs to one target")
+    {
+        checkVariable(
+            { variable, Operon::Node::Ref(0), Operon::Node::Ref(0), mul3 }, [](auto v) { return 3.0F * v * v; });
+    }
+
+    // x * x where one operand is a Ref to a Ref to node 0
+    SECTION("Ref chain")
+    {
+        checkVariable({ variable, Operon::Node::Ref(0), Operon::Node::Ref(1), mul2 }, [](auto v) { return 2.0F * v; });
+    }
+
+    // the coefficient Jacobian through Refs to an optimized constant: c * c has derivative 2c
+    SECTION("coefficient Jacobian of a Ref target")
+    {
+        Operon::Tree tree { Operon::Vector<Operon::Node> { constant, Operon::Node::Ref(0), mul2 } };
+        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> interpreter { &dtable, &ds, &tree };
+        auto const coeff = tree.GetCoefficients();
+        REQUIRE(coeff.size() == 1);
+        std::vector<Operon::Scalar> rev(rows);
+        std::vector<Operon::Scalar> fwd(rows);
+        REQUIRE(interpreter.JacRev(coeff, range, rev));
+        REQUIRE(interpreter.JacFwd(coeff, range, fwd));
+        for (auto i = 0UL; i < rows; ++i) {
+            CHECK(rev[i] == Catch::Approx(2.0F * coeff[0]).epsilon(1e-4));
+            CHECK(fwd[i] == Catch::Approx(2.0F * coeff[0]).epsilon(1e-4));
+        }
+    }
+}
+
 } // namespace Operon::Test
