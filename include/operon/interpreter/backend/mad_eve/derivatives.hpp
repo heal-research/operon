@@ -9,7 +9,7 @@
 #include "operon/core/dispatch.hpp"
 #include "operon/core/node.hpp"
 #include "operon/core/tree.hpp"
-#include "operon/interpreter/backend/scalar_derivatives.hpp"
+#include "operon/interpreter/backend/detail/scalar_derivatives.hpp"
 
 namespace Operon::Backend {
 // Computes the derivative directly from the child's value, using the
