@@ -2,7 +2,11 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <fmt/format.h>
+#include <functional>
+#include <numeric>
 
 #include "../operon_test.hpp"
 #include "operon/core/dataset.hpp"
@@ -157,6 +161,89 @@ TEST_CASE("Batch evaluation validates output size", "[interpreter]")
     CHECK(evaluated.error().Error.Kind == InterpreterError::Code::InvalidOutputSize);
     CHECK(evaluated.error().Error.ExpectedSize == range.Size());
     CHECK(evaluated.error().Error.ActualSize == result.size());
+}
+
+// An n-ary node's weight multiplies the node's result exactly once, regardless of how many argument chunks the
+// dispatcher needs (arity > 4 is evaluated in chunks of up to four arguments).
+TEST_CASE("N-ary function weight is applied once", "[interpreter]")
+{
+    auto const maxArity = 9;
+    std::vector<std::string> names;
+    std::vector<std::vector<Operon::Scalar>> columns;
+    for (auto i = 0; i < maxArity; ++i) {
+        names.push_back(fmt::format("v{}", i));
+        // keep every value away from zero so Div is well-conditioned; scatter them so the extrema of Fmin/Fmax land in
+        // different argument chunks
+        columns.push_back({ 1.5F + static_cast<Scalar>((i * 5) % 9), 2.0F + (0.25F * static_cast<Scalar>((i * 4) % 7)),
+            1.25F, 3.0F });
+    }
+    Dataset ds(names, columns);
+    Range const range { 0, ds.Rows<std::size_t>() };
+    DispatchTable<Operon::Scalar> dtable;
+
+    auto const expectedFor = [&](BuiltinOp op, int arity, double weight, std::size_t row) {
+        // postfix layout: the argument adjacent to the function node is the first operand
+        std::vector<double> x;
+        for (auto i = arity - 1; i >= 0; --i) {
+            x.push_back(static_cast<double>(columns[i][row]));
+        }
+        auto const rest = [&](auto init, auto f) {
+            auto acc = init;
+            for (auto i = 1UL; i < x.size(); ++i) {
+                acc = f(acc, x[i]);
+            }
+            return acc;
+        };
+        switch (op) {
+        case BuiltinOp::Add:
+            return weight * std::accumulate(x.begin(), x.end(), 0.0);
+        case BuiltinOp::Mul:
+            return weight * std::accumulate(x.begin(), x.end(), 1.0, std::multiplies<> {});
+        case BuiltinOp::Sub:
+            return arity == 1 ? -weight * x[0] : weight * (x[0] - rest(0.0, std::plus<> {}));
+        case BuiltinOp::Div:
+            return arity == 1 ? weight / x[0] : weight * x[0] / rest(1.0, std::multiplies<> {});
+        case BuiltinOp::Fmin:
+            return weight * *std::ranges::min_element(x);
+        case BuiltinOp::Fmax:
+            return weight * *std::ranges::max_element(x);
+        default:
+            FAIL("unexpected op");
+            return 0.0;
+        }
+    };
+
+    for (auto const op :
+        { BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Sub, BuiltinOp::Div, BuiltinOp::Fmin, BuiltinOp::Fmax }) {
+        for (auto const arity : { 1, 2, 3, 4, 5, 6, 7, 8, 9 }) {
+            for (auto const weight : { 1.0, 2.0, -1.5, 0.0 }) {
+                DYNAMIC_SECTION("op " << static_cast<int>(op) << " arity " << arity << " weight " << weight)
+                {
+                    Operon::Vector<Node> nodes;
+                    for (auto i = 0; i < arity; ++i) {
+                        Node variable(NodeType::Variable);
+                        variable.HashValue = variable.CalculatedHashValue = ds.GetVariable(names[i])->Hash;
+                        variable.Value = 1.0F;
+                        variable.Optimize = false;
+                        nodes.push_back(variable);
+                    }
+                    auto fn = Node::Function(static_cast<Hash>(op), static_cast<uint16_t>(arity));
+                    fn.Value = static_cast<Scalar>(weight);
+                    nodes.push_back(fn);
+                    Tree tree { nodes };
+                    tree.UpdateNodes();
+
+                    auto const result
+                        = Interpreter<Scalar, DispatchTable<Scalar>>(&dtable, &ds, &tree).Evaluate({}, range);
+                    REQUIRE(result);
+                    for (auto row = 0UL; row < range.Size(); ++row) {
+                        auto const expected = expectedFor(op, arity, weight, row);
+                        CHECK((*result)[row] == Catch::Approx(expected).epsilon(1e-4).margin(1e-5));
+                    }
+                }
+            }
+        }
+    }
 }
 
 } // namespace Operon::Test
