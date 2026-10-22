@@ -231,6 +231,43 @@ TEST_CASE("Interpreter reports invalid coefficient, output, and root sizes", "[a
     CHECK(storage.back() == -7.0F);
 }
 
+// A range reaching past the dataset is rejected before any output is written, by every range-taking entry point.
+TEST_CASE("Interpreter rejects a range beyond the dataset", "[interpreter]")
+{
+    Operon::Dataset ds({ "x" }, { { 1.0F, 2.0F, 3.0F } });
+    Operon::DispatchTable<Operon::Scalar> dtable;
+    auto tree = Operon::InfixParser::ParseOrThrow("2 * sin(x)", ds);
+    for (auto& node : tree.Nodes()) {
+        node.Optimize = node.IsConstant();
+    }
+    tree.UpdateNodes();
+    Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> interpreter { &dtable, &ds, &tree };
+    auto const xHash = ds.GetVariable("x")->Hash;
+    auto const coeff = tree.GetCoefficients();
+
+    auto const expectInvalid = [](auto const& result) {
+        REQUIRE_FALSE(result);
+        CHECK(result.error().Kind == Operon::InterpreterError::Code::InvalidRange);
+        CHECK(result.error().ExpectedSize == 3);
+        CHECK(result.error().ActualSize == 5);
+    };
+
+    Operon::Range const beyond { 2, 5 };
+    std::vector<Operon::Scalar> out(beyond.Size() * coeff.size(), -7.0F);
+    expectInvalid(interpreter.Evaluate(coeff, beyond, { out.data(), beyond.Size() }));
+    expectInvalid(interpreter.JacRev(coeff, beyond, out));
+    expectInvalid(interpreter.JacFwd(coeff, beyond, out));
+    expectInvalid(interpreter.JacRevVariable(coeff, beyond, xHash, { out.data(), beyond.Size() }));
+    expectInvalid(interpreter.JacFwdVariable(coeff, beyond, xHash, { out.data(), beyond.Size() }));
+    std::array<std::size_t, 1> roots { 0 };
+    expectInvalid(interpreter.EvaluateRoots(coeff, beyond, roots, { out.data(), beyond.Size() }));
+    CHECK(std::ranges::all_of(out, [](auto v) { return v == -7.0F; }));
+
+    // a range ending exactly at the last row, and an empty range at the end, are valid
+    CHECK(interpreter.Evaluate(coeff, Operon::Range { 1, 3 }));
+    CHECK(interpreter.Evaluate(coeff, Operon::Range { 3, 3 }));
+}
+
 TEST_CASE("Autodiff forward vs reverse consistency", "[autodiff]")
 {
     Operon::Dataset ds(

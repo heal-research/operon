@@ -102,7 +102,7 @@ struct Interpreter : public InterpreterBase<T> {
     [[nodiscard]] auto Evaluate(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> result) const
         -> tl::expected<void, InterpreterError> final
     {
-        if (auto prepared = Prepare(coeff, /*needDerivatives=*/false); !prepared) {
+        if (auto prepared = Prepare(coeff, range, /*needDerivatives=*/false); !prepared) {
             return prepared;
         }
         if (auto sized = CheckOutputSize(range.Size(), result.size()); !sized) {
@@ -134,7 +134,7 @@ struct Interpreter : public InterpreterBase<T> {
     [[nodiscard]] auto JacRev(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const
         -> tl::expected<void, InterpreterError> final
     {
-        if (auto prepared = Prepare(coeff, /*needDerivatives=*/true); !prepared) {
+        if (auto prepared = Prepare(coeff, range, /*needDerivatives=*/true); !prepared) {
             return prepared;
         }
         auto const nCoeff = NumCoefficients();
@@ -156,7 +156,7 @@ struct Interpreter : public InterpreterBase<T> {
     [[nodiscard]] auto JacFwd(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const
         -> tl::expected<void, InterpreterError> final
     {
-        if (auto prepared = Prepare(coeff, /*needDerivatives=*/true); !prepared) {
+        if (auto prepared = Prepare(coeff, range, /*needDerivatives=*/true); !prepared) {
             return prepared;
         }
         auto const nCoeff = NumCoefficients();
@@ -178,7 +178,7 @@ struct Interpreter : public InterpreterBase<T> {
     [[nodiscard]] auto JacRevVariable(Operon::Span<T const> coeff, Operon::Range range, Operon::Hash variable,
         Operon::Span<T> result) const -> tl::expected<void, InterpreterError> final
     {
-        if (auto prepared = Prepare(coeff, /*needDerivatives=*/true); !prepared) {
+        if (auto prepared = Prepare(coeff, range, /*needDerivatives=*/true); !prepared) {
             return prepared;
         }
         if (auto sized = CheckOutputSize(range.Size(), result.size()); !sized) {
@@ -211,7 +211,7 @@ struct Interpreter : public InterpreterBase<T> {
     [[nodiscard]] auto JacFwdVariable(Operon::Span<T const> coeff, Operon::Range range, Operon::Hash variable,
         Operon::Span<T> result) const -> tl::expected<void, InterpreterError> final
     {
-        if (auto prepared = Prepare(coeff, /*needDerivatives=*/true); !prepared) {
+        if (auto prepared = Prepare(coeff, range, /*needDerivatives=*/true); !prepared) {
             return prepared;
         }
         if (auto sized = CheckOutputSize(range.Size(), result.size()); !sized) {
@@ -246,7 +246,7 @@ struct Interpreter : public InterpreterBase<T> {
     [[nodiscard]] auto EvaluateRoots(Operon::Span<T const> coeff, Operon::Range range,
         Operon::Span<std::size_t const> roots, Operon::Span<T> result) const -> tl::expected<void, InterpreterError>
     {
-        if (auto prepared = Prepare(coeff, /*needDerivatives=*/false); !prepared) {
+        if (auto prepared = Prepare(coeff, range, /*needDerivatives=*/false); !prepared) {
             return tl::unexpected(std::move(prepared.error()));
         }
         auto const nNodes = static_cast<std::size_t>(tree_->Nodes().size());
@@ -658,11 +658,16 @@ public:
     }
 
 private:
-    // Validates the coefficient count, binds the tree on first use, and rejects a derivative request on a tree with a
-    // missing derivative.
-    [[nodiscard]] auto Prepare(Operon::Span<T const> coeff, bool needDerivatives) const
+    // Validates the range against the dataset and the coefficient count, binds the tree on first use, and rejects a
+    // derivative request on a tree with a missing derivative.
+    [[nodiscard]] auto Prepare(Operon::Span<T const> coeff, Operon::Range range, bool needDerivatives) const
         -> tl::expected<void, InterpreterError>
     {
+        auto const rows = dataset_->template Rows<std::size_t>();
+        if (range.Start() + range.Size() > rows) {
+            return tl::unexpected(
+                InterpreterError { InterpreterError::Code::InvalidRange, {}, rows, range.Start() + range.Size() });
+        }
         if (auto valid = ValidateCoefficients(coeff); !valid) {
             return valid;
         }
