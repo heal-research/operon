@@ -173,7 +173,7 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
         Eigen::Map<Eigen::Array<T, -1, -1>> jac(jacobian.data(), len, coeff.size());
         for (auto row = 0L; row < len; row += S) {
             ForwardPass(range, row, true);
-            ReverseTraceGeneric<false>(
+            ReverseTrace<false>(
                 range, row, cols.colOf,
                 [&](std::size_t i, auto const& primal, T w) -> Eigen::Array<T, S, 1> {
                     if (nodes[i].IsConstant()) {
@@ -297,7 +297,7 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
         jac.setZero();
         for (auto row = 0L; row < len; row += S) {
             ForwardPass(range, row, true);
-            ReverseTraceGeneric<true>(
+            ReverseTrace<true>(
                 range, row, cols.colOf,
                 [](std::size_t, auto const&, T w) { return Eigen::Array<T, S, 1>::Constant(w); }, jac);
         }
@@ -439,6 +439,10 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
     mutable Operon::Vector<Data> context_;
     mutable Backend::Buffer<T, BatchSize> primal_;
     mutable Backend::Buffer<T, BatchSize> trace_;
+    mutable Backend::Buffer<T, BatchSize> refAdj_; // adjoints Refs send to their targets (reverse sweep only)
+    // Distinct Ref targets of the bound tree and a per-node mask of them; both stay empty for trees without Refs.
+    mutable Operon::Vector<std::size_t> refTargets_;
+    mutable Operon::Vector<char> isRefTarget_;
     mutable Operon::Range range_ {};
     mutable bool derivativesBound_ {};
 
@@ -453,6 +457,14 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
 
         auto rem = std::min(S, rangeSize - row);
         Operon::Range rg(rangeStart + row, rangeStart + row + rem);
+
+        // The reverse sweep accumulates Ref adjoints into their targets. A target with a function parent has its column
+        // overwritten by that parent's partials below; any other target must start every batch from zero.
+        if (trace && !refTargets_.empty()) {
+            for (auto const target : refTargets_) {
+                Backend::Fill<T, S>(trace_, target, T { 0 });
+            }
+        }
 
         // forward pass - compute primal and trace
         for (auto i = 0L; i < nNodes; ++i) {
@@ -569,7 +581,19 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
     }
 
     // Shared reverse-mode sweep behind JacRev/JacRevVariable; one backward pass covers every output column.
+    // Dispatches once per batch so that trees without Refs (the default) run a sweep with no Ref handling at all.
     template <bool Accumulate, typename LocalFactor>
+    auto ReverseTrace(Operon::Range range, int row, Operon::Vector<std::size_t> const& colOf, LocalFactor factor,
+        Eigen::Ref<Eigen::Array<T, -1, -1>> jac) const -> void
+    {
+        if (refTargets_.empty()) {
+            ReverseTraceGeneric<Accumulate, false>(range, row, colOf, factor, jac);
+        } else {
+            ReverseTraceGeneric<Accumulate, true>(range, row, colOf, factor, jac);
+        }
+    }
+
+    template <bool Accumulate, bool HasRefs, typename LocalFactor>
     auto ReverseTraceGeneric(Operon::Range range, int row, Operon::Vector<std::size_t> const& colOf, LocalFactor factor,
         Eigen::Ref<Eigen::Array<T, -1, -1>> jac) const -> void
     {
@@ -582,8 +606,27 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
         Eigen::Map<Eigen::Array<T, S, -1>> primal(primal_.data(), S, nNodes);
         Eigen::Map<Eigen::Array<T, S, -1>> trace(trace_.data(), S, nNodes);
 
+        // The adjoint a Ref sends to its target is collected apart from the local partials held in trace: the target's
+        // own parent only turns its partial into an adjoint when that parent is processed, which can be after the Ref.
+        // The collected adjoint is added to the target's own when the sweep reaches the target.
+        if constexpr (HasRefs) {
+            if (refAdj_.extent(1) != nNodes) {
+                refAdj_ = Backend::Buffer<T, S>(S, nNodes);
+            }
+            for (auto const target : refTargets_) {
+                Backend::Fill<T, S>(refAdj_, target, T { 0 });
+            }
+        }
+        [[maybe_unused]] Eigen::Map<Eigen::Array<T, S, -1>> refAdj(refAdj_.data(), S, HasRefs ? nNodes : 0);
+
         for (auto i = nNodes - 1; i >= 0L; --i) {
             auto w = std::get<0>(context_[i]);
+
+            if constexpr (HasRefs) {
+                if (isRefTarget_[static_cast<std::size_t>(i)] != 0) {
+                    trace.col(i).head(remainingRows) += refAdj.col(i).head(remainingRows);
+                }
+            }
 
             if (auto const col = colOf[static_cast<std::size_t>(i)]; col != NoIndex) {
                 auto const factorValues = factor(static_cast<std::size_t>(i), primal, w);
@@ -595,12 +638,15 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
                 }
             }
 
-            if (nodes[i].IsRef()) {
-                EXPECT(static_cast<int64_t>(nodes[i].RefTo)
-                    < i); // backward ref: target processed after us in reverse sweep
-                // Accumulate gradient into the referenced node (may be referenced >1 time)
-                trace.col(static_cast<int64_t>(nodes[i].RefTo)).head(remainingRows) += trace.col(i).head(remainingRows);
-                continue;
+            if constexpr (HasRefs) {
+                if (nodes[i].IsRef()) {
+                    EXPECT(static_cast<int64_t>(nodes[i].RefTo)
+                        < i); // backward ref: target processed after us in reverse sweep
+                    // Accumulate gradient into the referenced node (may be referenced >1 time)
+                    refAdj.col(static_cast<int64_t>(nodes[i].RefTo)).head(remainingRows)
+                        += trace.col(i).head(remainingRows);
+                    continue;
+                }
             }
             if (nodes[i].IsLeaf()) {
                 continue;
@@ -651,6 +697,19 @@ public:
                 : std::tuple_element_t<1, Data> {};
             context_.emplace_back(T { n.Value }, variableValues, dt->template TryGetFunction<T>(n.HashValue),
                 dt->template TryGetDerivative<T>(n.HashValue));
+        }
+        refTargets_.clear();
+        isRefTarget_.clear();
+        for (auto const& n : nodes) {
+            if (n.IsRef()) {
+                if (isRefTarget_.empty()) {
+                    isRefTarget_.assign(static_cast<std::size_t>(nNodes), 0);
+                }
+                if (isRefTarget_[n.RefTo] == 0) {
+                    isRefTarget_[n.RefTo] = 1;
+                    refTargets_.push_back(n.RefTo);
+                }
+            }
         }
         derivativesBound_ = requireDerivatives;
         range_ = range;
