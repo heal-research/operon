@@ -5,10 +5,15 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <algorithm>
+#include <array>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "../operon_test.hpp"
 
@@ -948,6 +953,268 @@ TEST_CASE("Affine backend: n-ary Fmin/Fmax with arity > 2", "[pappus][affine]")
         auto const r = Eval(eval, tree.GetCoefficients());
         // max enclosure must contain [3, 6]
         REQUIRE(Contains(r, 3.0, 6.0, 1e-3));
+    }
+}
+
+namespace {
+    using Op = Operon::BuiltinOp;
+
+    struct NaryOutcome {
+        S lo;
+        S hi;
+        S maxAbsCenter;
+    };
+
+    // Variables X1..X5 with distinct, strictly positive domains, so every n-ary op (including Div) is well defined
+    // and a swapped operand order changes the enclosure.
+    auto NaryDomains() -> AE::DomainMap
+    {
+        return AE::DomainMap { { 1, { S { 8 }, S { 10 } } }, { 2, { S { 2 }, S { 3 } } },
+            { 3, { S { 1.5F }, S { 2 } } }, { 4, { S { 4 }, S { 5 } } }, { 5, { S { 1 }, S { 1.25F } } } };
+    }
+
+    constexpr std::array<double, 6> NaryWeights { 0, 2.0, 0.5, 1.5, 3.0, 0.25 };
+    constexpr S NaryOpWeight { 1.5F };
+
+    // `operands` are in expression order (leftmost first); the postfix tree stores them reversed.
+    auto EvalNary(Op op, std::vector<Operon::Node> operands, AE::DomainMap domains, S opWeight) -> NaryOutcome
+    {
+        Operon::Vector<Operon::Node> nodes(operands.rbegin(), operands.rend());
+        auto fn = Operon::Node::Function(static_cast<Operon::Hash>(op), static_cast<uint16_t>(operands.size()));
+        fn.Value = opWeight;
+        nodes.push_back(fn);
+        auto tree = Operon::Tree(std::move(nodes)).UpdateNodes();
+        AE eval(&tree, std::move(domains));
+        auto const r = Eval(eval, tree.GetCoefficients()).to_interval();
+        return { r.inf(), r.sup(), eval.MaxAbsCenter() };
+    }
+
+    auto EvalVars(Op op, std::vector<int> const& vars, bool weighted) -> NaryOutcome
+    {
+        std::vector<Operon::Node> operands;
+        for (auto v : vars) {
+            operands.push_back(Var(static_cast<Operon::Hash>(v), weighted ? NaryWeights[v] : 1.0));
+        }
+        return EvalNary(op, std::move(operands), NaryDomains(), weighted ? NaryOpWeight : S { 1 });
+    }
+
+    auto EvalConsts(Op op, std::vector<double> const& values) -> NaryOutcome
+    {
+        std::vector<Operon::Node> operands;
+        for (auto v : values) {
+            operands.push_back(Const(v));
+        }
+        return EvalNary(op, std::move(operands), AE::DomainMap {}, S { 1 });
+    }
+
+    struct NaryRow {
+        Op op;
+        std::vector<int> vars; // expression order, leftmost operand first
+        bool weighted;
+        NaryOutcome expected;
+    };
+
+    // Scalar semantics of an n-ary op on already-weighted operand values.
+    auto NaryReference(Op op, std::vector<double> const& v) -> double
+    {
+        if (v.size() == 1) {
+            return op == Op::Sub ? -v[0] : (op == Op::Div ? 1.0 / v[0] : v[0]);
+        }
+        auto acc = v[0];
+        for (std::size_t k = 1; k < v.size(); ++k) {
+            switch (op) {
+            case Op::Add:
+                acc += v[k];
+                break;
+            case Op::Mul:
+                acc *= v[k];
+                break;
+            case Op::Sub:
+                acc -= v[k];
+                break;
+            case Op::Div:
+                acc /= v[k];
+                break;
+            case Op::Fmin:
+                acc = std::fmin(acc, v[k]);
+                break;
+            default:
+                acc = std::fmax(acc, v[k]);
+                break;
+            }
+        }
+        return acc;
+    }
+
+    // The pinned endpoints/centers were captured with single-precision Scalar. They are matched to within 2 ULP there
+    // (compiler/-march FMA contraction can move a last bit); for any other Scalar they only serve as a loose sanity
+    // anchor, and correctness rests on the corner-containment and structural checks.
+    auto PinMatches(S actual, S pinned) -> bool
+    {
+        if constexpr (std::is_same_v<S, float>) {
+            auto lo = pinned;
+            auto hi = pinned;
+            for (int k = 0; k < 2; ++k) {
+                lo = std::nextafter(lo, -std::numeric_limits<S>::infinity());
+                hi = std::nextafter(hi, std::numeric_limits<S>::infinity());
+            }
+            return actual >= lo && actual <= hi;
+        } else {
+            auto const a = static_cast<double>(actual);
+            auto const p = static_cast<double>(pinned);
+            return std::fabs(a - p) <= 1e-4 * (1.0 + std::fabs(p));
+        }
+    }
+
+    void CheckPinned(NaryOutcome const& actual, NaryOutcome const& expected)
+    {
+        CHECK(PinMatches(actual.lo, expected.lo));
+        CHECK(PinMatches(actual.hi, expected.hi));
+        CHECK(PinMatches(actual.maxAbsCenter, expected.maxAbsCenter));
+    }
+
+    // Evaluates `row` and checks (1) the pinned enclosure and MaxAbsCenter, and (2) that the enclosure is
+    // semantically right: it contains the scalar result at every corner of the domain box (so a wrong operand order
+    // or a dropped child cannot be pinned by accident) and, for the linear ops, is exact.
+    void CheckNaryRow(NaryRow const& row)
+    {
+        auto const actual = EvalVars(row.op, row.vars, row.weighted);
+        CheckPinned(actual, row.expected);
+
+        auto const domains = NaryDomains();
+        auto const opWeight = row.weighted ? static_cast<double>(NaryOpWeight) : 1.0;
+        auto refLo = std::numeric_limits<double>::infinity();
+        auto refHi = -refLo;
+        for (unsigned mask = 0; mask < 32; ++mask) {
+            std::vector<double> values;
+            for (auto v : row.vars) {
+                auto const& [lo, hi] = domains.at(static_cast<Operon::Hash>(v));
+                auto const x = static_cast<double>(((mask >> (v - 1)) & 1U) != 0 ? hi : lo);
+                values.push_back((row.weighted ? NaryWeights[v] : 1.0) * x);
+            }
+            auto const ref = opWeight * NaryReference(row.op, values);
+            auto const tol = 1e-4 * (1.0 + std::fabs(ref));
+            CHECK(static_cast<double>(actual.lo) <= ref + tol);
+            CHECK(static_cast<double>(actual.hi) + tol >= ref);
+            refLo = std::min(refLo, ref);
+            refHi = std::max(refHi, ref);
+        }
+        if (row.op == Op::Add || row.op == Op::Sub) {
+            auto const tol = 1e-4 * (1.0 + std::fabs(refLo) + std::fabs(refHi));
+            CHECK(std::fabs(static_cast<double>(actual.lo) - refLo) <= tol);
+            CHECK(std::fabs(static_cast<double>(actual.hi) - refHi) <= tol);
+        }
+    }
+} // namespace
+
+TEST_CASE("Affine backend: n-ary Add/Mul/Sub/Div/Fmin/Fmax, arity 1..5", "[pappus][affine][nary]")
+{
+    // Pinned from the evaluator's output; expression order is x1 op x2 op ... op xn, left-associated.
+    static std::vector<NaryRow> const rows {
+        { Op::Add, { 1 }, false, { 0x1p+3F, 0x1.4p+3F, 0x1.2p+3F } },
+        { Op::Add, { 1, 2 }, false, { 0x1.4p+3F, 0x1.ap+3F, 0x1.7p+3F } },
+        { Op::Add, { 1, 2, 3 }, false, { 0x1.7p+3F, 0x1.ep+3F, 0x1.a8p+3F } },
+        { Op::Add, { 1, 2, 3, 4 }, false, { 0x1.fp+3F, 0x1.4p+4F, 0x1.1cp+4F } },
+        { Op::Add, { 1, 2, 3, 4, 5 }, false, { 0x1.08p+4F, 0x1.54p+4F, 0x1.2ep+4F } },
+        { Op::Mul, { 1 }, false, { 0x1p+3F, 0x1.4p+3F, 0x1.2p+3F } },
+        { Op::Mul, { 1, 2 }, false, { 0x1.ep+3F, 0x1.ep+4F, 0x1.68p+4F } },
+        { Op::Mul, { 1, 2, 3 }, false, { 0x1.2cp+4F, 0x1.ep+5F, 0x1.3bp+5F } },
+        { Op::Mul, { 1, 2, 3, 4 }, false, { 0x1.b3p+5F, 0x1.2cp+8F, 0x1.626p+7F } },
+        { Op::Mul, { 1, 2, 3, 4, 5 }, false, { 0x1.7acp+4F, 0x1.77p+8F, 0x1.8eacp+7F } },
+        { Op::Sub, { 1 }, false, { -0x1.4p+3F, -0x1p+3F, 0x1.2p+3F } },
+        { Op::Sub, { 1, 2 }, false, { 0x1.4p+2F, 0x1p+3F, 0x1.2p+3F } },
+        { Op::Sub, { 1, 2, 3 }, false, { 0x1.8p+1F, 0x1.ap+2F, 0x1.2p+3F } },
+        { Op::Sub, { 1, 2, 3, 4 }, false, { -0x1p+1F, 0x1.4p+1F, 0x1.2p+3F } },
+        { Op::Sub, { 1, 2, 3, 4, 5 }, false, { -0x1.ap+1F, 0x1.8p+0F, 0x1.2p+3F } },
+        { Op::Div, { 1 }, false, { 0x1.93e47cp-4F, 0x1.00001cp-3F, 0x1.2p+3F } },
+        { Op::Div, { 1, 2 }, false, { 0x1.2c9a58p+1F, 0x1.400022p+2F, 0x1.2p+3F } },
+        { Op::Div, { 1, 2, 3 }, false, { 0x1.d18f2cp-1F, 0x1.aaab0ap+1F, 0x1.2p+3F } },
+        { Op::Div, { 1, 2, 3, 4 }, false, { 0x1.d874ap-4F, 0x1.aaab36p-1F, 0x1.2p+3F } },
+        { Op::Div, { 1, 2, 3, 4, 5 }, false, { 0x1.f1b58p-7F, 0x1.aaab68p-1F, 0x1.2p+3F } },
+        { Op::Fmin, { 1 }, false, { 0x1p+3F, 0x1.4p+3F, 0x1.2p+3F } },
+        { Op::Fmin, { 1, 2 }, false, { 0x1p+1F, 0x1.8p+1F, 0x1.2p+3F } },
+        { Op::Fmin, { 1, 2, 3 }, false, { 0x1.8p+0F, 0x1p+1F, 0x1.2p+3F } },
+        { Op::Fmin, { 1, 2, 3, 4 }, false, { 0x1.8p+0F, 0x1p+1F, 0x1.2p+3F } },
+        { Op::Fmin, { 1, 2, 3, 4, 5 }, false, { 0x1p+0F, 0x1.4p+0F, 0x1.2p+3F } },
+        { Op::Fmax, { 1 }, false, { 0x1p+3F, 0x1.4p+3F, 0x1.2p+3F } },
+        { Op::Fmax, { 1, 2 }, false, { 0x1p+3F, 0x1.4p+3F, 0x1.2p+3F } },
+        { Op::Fmax, { 1, 2, 3 }, false, { 0x1p+3F, 0x1.4p+3F, 0x1.2p+3F } },
+        { Op::Fmax, { 1, 2, 3, 4 }, false, { 0x1p+3F, 0x1.4p+3F, 0x1.2p+3F } },
+        { Op::Fmax, { 1, 2, 3, 4, 5 }, false, { 0x1p+3F, 0x1.4p+3F, 0x1.2p+3F } },
+        // Per-node coefficients: weighted variables and a weighted op node.
+        { Op::Add, { 1, 2, 3 }, true, { 0x1.cep+4F, 0x1.26p+5F, 0x1.068p+5F } },
+        { Op::Add, { 1, 2, 3, 4, 5 }, true, { 0x1.7ap+5F, 0x1.ddcp+5F, 0x1.abep+5F } },
+        { Op::Mul, { 1, 2, 3 }, true, { 0x1.518p+5F, 0x1.0ep+7F, 0x1.626p+6F } },
+        { Op::Mul, { 1, 2, 3, 4, 5 }, true, { 0x1.3f92p+5F, 0x1.3c68p+9F, 0x1.8eacp+9F } },
+        { Op::Sub, { 1, 2, 3 }, true, { 0x1.14p+4F, 0x1.92p+4F, 0x1.53p+4F } },
+        { Op::Sub, { 1, 2, 3, 4, 5 }, true, { -0x1.6ep+2F, 0x1.bp+2F, 0x1.2p+4F } },
+        { Op::Div, { 1, 2, 3 }, true, { 0x1.d18f34p+1F, 0x1.aaab08p+3F, 0x1.2p+4F } },
+        { Op::Div, { 1, 2, 3, 4, 5 }, true, { 0x1.4bce8p-4F, 0x1.1c7242p+2F, 0x1.2p+4F } },
+        { Op::Fmin, { 1, 2, 3 }, true, { 0x1.8p+0F, 0x1.2p+1F, 0x1.2p+4F } },
+        { Op::Fmin, { 1, 2, 3, 4, 5 }, true, { 0x1.8p-2F, 0x1.ep-2F, 0x1.2p+4F } },
+        { Op::Fmax, { 1, 2, 3 }, true, { 0x1.8p+4F, 0x1.ep+4F, 0x1.bp+4F } },
+        { Op::Fmax, { 1, 2, 3, 4, 5 }, true, { 0x1.8p+4F, 0x1.ep+4F, 0x1.bp+4F } },
+    };
+
+    for (auto const& row : rows) {
+        INFO("op=" << static_cast<int>(row.op) << " arity=" << row.vars.size() << " weighted=" << row.weighted);
+        CheckNaryRow(row);
+    }
+}
+
+TEST_CASE("Affine backend: n-ary ops with a repeated variable", "[pappus][affine][nary]")
+{
+    // A repeated variable occurrence shares one noise symbol, so x - x must collapse to exactly [0, 0] and
+    // x1 - x2 - x1 to exactly -x2, regardless of where the repeat sits in the fold.
+    static std::vector<NaryRow> const rows {
+        { Op::Sub, { 1, 1 }, false, { 0x0p+0F, 0x0p+0F, 0x1.2p+3F } },
+        { Op::Sub, { 1, 1, 1 }, false, { -0x1.4p+3F, -0x1p+3F, 0x1.2p+3F } },
+        { Op::Sub, { 1, 2, 1 }, false, { -0x1.8p+1F, -0x1p+1F, 0x1.2p+3F } },
+        { Op::Add, { 1, 1, 1 }, false, { 0x1.8p+4F, 0x1.ep+4F, 0x1.bp+4F } },
+        { Op::Add, { 1, 2, 1 }, false, { 0x1.2p+4F, 0x1.7p+4F, 0x1.48p+4F } },
+        { Op::Mul, { 1, 1, 1 }, false, { 0x1.e5p+8F, 0x1.f4p+9F, 0x1.734p+9F } },
+        { Op::Mul, { 1, 2, 1 }, false, { 0x1.aep+6F, 0x1.2cp+8F, 0x1.978p+7F } },
+        { Op::Div, { 1, 1 }, false, { 0x1.f8dd9cp-1F, 0x1.038ea4p+0F, 0x1.2p+3F } },
+        { Op::Div, { 1, 1, 1 }, false, { 0x1.8ccbc4p-4F, 0x1.038ecp-3F, 0x1.2p+3F } },
+        { Op::Div, { 1, 2, 1 }, false, { 0x1.26c71p-2F, 0x1.0ea636p-1F, 0x1.2p+3F } },
+        { Op::Fmin, { 1, 1, 1 }, false, { 0x1p+3F, 0x1.4p+3F, 0x1.2p+3F } },
+        { Op::Fmax, { 1, 1 }, false, { 0x1p+3F, 0x1.4p+3F, 0x1.2p+3F } },
+        { Op::Fmin, { 1, 2, 1 }, false, { 0x1p+1F, 0x1.8p+1F, 0x1.2p+3F } },
+    };
+
+    // x - x collapses to exactly [0, 0] at any precision.
+    auto const cancelled = EvalVars(Op::Sub, { 1, 1 }, false);
+    CHECK(cancelled.lo == S { 0 });
+    CHECK(cancelled.hi == S { 0 });
+
+    for (auto const& row : rows) {
+        INFO("op=" << static_cast<int>(row.op) << " vars=" << row.vars.size() << " first=" << row.vars.front());
+        CheckNaryRow(row);
+    }
+}
+
+TEST_CASE("Affine backend: MaxAbsCenter sees n-ary accumulator intermediates", "[pappus][affine][nary]")
+{
+    // Each fold's running accumulator exceeds every leaf and the final result, so MaxAbsCenter() only reports the
+    // right value if the center is tracked after every accumulation step, not just for emitted node values.
+    struct ConstRow {
+        Op op;
+        std::vector<double> values;
+        NaryOutcome expected;
+        S intermediate;
+    };
+    static std::vector<ConstRow> const rows {
+        { Op::Add, { 600, 600, -1100 }, { 0x1.9p+6F, 0x1.9p+6F, 0x1.2cp+10F }, S { 1200 } },
+        { Op::Sub, { 600, -600, 1100 }, { 0x1.9p+6F, 0x1.9p+6F, 0x1.2cp+10F }, S { 1200 } },
+        { Op::Mul, { 100, 100, 0.001 }, { 0x1.3ffffep+3F, 0x1.400002p+3F, 0x1.388p+13F }, S { 10000 } },
+        { Op::Div, { 2, 0.001, 10 }, { 0x1.8ffffap+7F, 0x1.900002p+7F, 0x1.f4p+10F }, S { 2000 } },
+    };
+
+    for (auto const& row : rows) {
+        INFO("op=" << static_cast<int>(row.op));
+        auto const actual = EvalConsts(row.op, row.values);
+        CheckPinned(actual, row.expected);
+        CHECK(actual.maxAbsCenter == Catch::Approx(row.intermediate).epsilon(1e-6));
     }
 }
 
