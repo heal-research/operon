@@ -139,6 +139,16 @@ TEST_CASE("ComputePopulationMeans excludes rejected and non-finite individuals f
         CHECK(std::abs(means.Fitness / static_cast<double>(huge) - 1.0) < 1e-12);
     }
 
+    SECTION("small terms next to large ones are not lost in the fitness sum")
+    {
+        // A plain double sum gives 1e30 + 1 + 1 - 1e30 == 0; the compensated sum keeps the two units.
+        std::vector pop { MakeIndividual(1, 1e30F), MakeIndividual(1, 1.0F), MakeIndividual(1, 1.0F),
+            MakeIndividual(1, -1e30F) };
+        auto const means = Operon::ComputePopulationMeans(pop, 0);
+        CHECK(means.Valid == 4);
+        CHECK(means.Fitness == 0.5);
+    }
+
     SECTION("a fully failed population reports ErrMax instead of NaN or infinity")
     {
         std::vector pop { MakeIndividual(2, errMax), MakeIndividual(4, nan) };
