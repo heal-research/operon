@@ -8,6 +8,7 @@ runner) vendor a pinned copy and check the `x-version` they were built against.
 | Schema file | `schema` value | Version | Written by |
 |---|---|---|---|
 | `final.schema.json` | `operon.final` | 1.1 | `--final-json PATH` |
+| `resolved-config.schema.json` | `operon.resolved_config` | 1.0 | `--print-config` (stdout) and `--config-out PATH` |
 | `common.schema.json` | (shared `$defs`, no document) | 1.1 | referenced by the schemas above via `common.schema.json#/$defs/...` |
 
 The `schema` and `schema_version` properties of every document name the schema and the version it was written
@@ -22,6 +23,9 @@ annotation.
 * **`producer.unsupported_fields`.** Lists the contract properties the producer could not supply, so that a
   `null` in them is a declared absence rather than a defect (for `operon.final`: `segments` and `record_count` when no
   generation stream is written).
+* **Resolved configuration.** `operon.resolved_config` makes every default explicit and lists the dotted paths that
+  were defaulted in `defaulted`. An explicitly unlimited budget (`--generations unlimited`, `--evaluations unlimited`)
+  is `null`. Unknown extra keys are tolerated at every level so that minor versions can add properties.
 * **Non-finite numbers** are never written as bare `NaN`/`Infinity` (invalid JSON); the affected metric is `null`.
 * **Hashes** are lowercase hexadecimal SHA-256; `run_id` is 64 hex characters, `attempt_id` a lowercase UUID, both
   passed on the command line with `--run-id` / `--attempt-id`.
