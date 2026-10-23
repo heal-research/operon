@@ -1,0 +1,175 @@
+{
+  "schema": "operon.resolved_config",
+  "schema_version": "1.0",
+  "algorithm": "gp",
+  "engine": {
+    "program": "operon_gp"
+  },
+  "seed": 7,
+  "seed_source": "explicit",
+  "threads": {
+    "effective": 1,
+    "source": "explicit"
+  },
+  "budgets": {
+    "generations": 1,
+    "evaluations": {
+      "limit": 1000000,
+      "unit": "residual+jacobian"
+    },
+    "time_limit_s": null,
+    "pressure_limit": null
+  },
+  "population_size": 8,
+  "pool_size": 1000,
+  "tree_limits": {
+    "max_length": 8,
+    "max_depth": 4
+  },
+  "data": {
+    "file": "<dataset>",
+    "file_sha256": "afc47ce54cc20e097e59c555c3b73e3c4572077c0508aef76ccf1c8ca0d0703f",
+    "target": "y",
+    "inputs": [
+      "x"
+    ],
+    "train": [
+      0,
+      8
+    ],
+    "test": [
+      8,
+      12
+    ],
+    "split": {
+      "train": [
+        0,
+        8
+      ],
+      "test": [
+        8,
+        12
+      ],
+      "shuffle": false,
+      "standardize": false
+    }
+  },
+  "objective": {
+    "metric": "nmse",
+    "objectives": [
+      {
+        "name": "nmse",
+        "direction": "min"
+      }
+    ],
+    "linear_scaling": true,
+    "skip_nonfinite": false,
+    "nonfinite_penalty_weight": 1
+  },
+  "optimizer": {
+    "kind": "levenberg-marquardt",
+    "iterations": 0,
+    "local_search_probability": 1,
+    "lamarckian_probability": 1
+  },
+  "operators": {
+    "creator": {
+      "kind": "ptc2",
+      "bias": 0.5,
+      "min_depth": 2,
+      "max_depth": 4,
+      "max_length": 8
+    },
+    "crossover": {
+      "kind": "subtree",
+      "probability": 1,
+      "internal_probability": 0.5,
+      "max_depth": 4,
+      "max_length": 8
+    },
+    "mutation": {
+      "probability": 0.25,
+      "mutators": [
+        {
+          "name": "onepoint",
+          "weight": 2
+        },
+        {
+          "name": "changevar",
+          "weight": 1
+        }
+      ]
+    },
+    "female_selector": {
+      "kind": "tournament",
+      "tournament_size": 5
+    },
+    "male_selector": {
+      "kind": "tournament",
+      "tournament_size": 5
+    },
+    "generator": {
+      "kind": "basic"
+    },
+    "reinserter": {
+      "name": "keep-best",
+      "elite_count": 1
+    },
+    "symbolic": false
+  },
+  "primitives": {
+    "base": "arithmetic",
+    "enable": [],
+    "disable": [],
+    "effective": [
+      "*",
+      "+",
+      "-",
+      "/",
+      "constant",
+      "variable"
+    ]
+  },
+  "cache": {
+    "enabled": false,
+    "max_age": 0
+  },
+  "jit": {
+    "mode": "",
+    "max_length": 0,
+    "min_visits": 1
+  },
+  "shape": null,
+  "defaulted": [
+    "budgets.evaluations.limit",
+    "budgets.time_limit_s",
+    "pool_size",
+    "data.inputs",
+    "data.split.shuffle",
+    "data.split.standardize",
+    "objective.linear_scaling",
+    "objective.skip_nonfinite",
+    "objective.nonfinite_penalty_weight",
+    "optimizer.iterations",
+    "optimizer.local_search_probability",
+    "optimizer.lamarckian_probability",
+    "operators.crossover.probability",
+    "operators.mutation.probability",
+    "operators.female_selector.kind",
+    "operators.male_selector.kind",
+    "operators.generator.kind",
+    "operators.reinserter.name",
+    "operators.reinserter.elite_count",
+    "operators.symbolic",
+    "cache.enabled",
+    "cache.max_age",
+    "jit.mode",
+    "jit.max_length",
+    "jit.min_visits",
+    "operators.female_selector.tournament_size",
+    "operators.male_selector.tournament_size",
+    "primitives"
+  ],
+  "ignored_options": [],
+  "argv": []
+}

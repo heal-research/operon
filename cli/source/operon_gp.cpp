@@ -37,6 +37,7 @@
 #include "jit_setup.hpp"
 #include "operator_factory.hpp"
 #include "probes_config.hpp"
+#include "resolved_config.hpp"
 #include "shape_constraints_config.hpp"
 #include "stop_signal.hpp"
 #include "util.hpp"
@@ -69,7 +70,7 @@ auto MakeCoeffAndMutation(bool symbolic) -> std::tuple<std::unique_ptr<Operon::C
     return { std::move(ci), std::move(op), std::move(multi) };
 }
 
-auto RunGp(cxxopts::ParseResult const& result, Operon::Cli::FinalRun& finalRun) -> int
+auto RunGp(cxxopts::ParseResult const& result, Operon::Cli::FinalRun& finalRun, Operon::Span<char* const> argv) -> int
 {
     // parse and set default values
     Operon::GeneticAlgorithmConfig config {};
@@ -206,7 +207,8 @@ auto RunGp(cxxopts::ParseResult const& result, Operon::Cli::FinalRun& finalRun) 
             { "discretepoint", &discretePoint },
             { "shuffle", &shuffleSubtrees },
         };
-        Operon::ParseMutators(result["mutators"].as<std::string>(), availableMutators, mutator);
+        std::vector<Operon::MutatorWeight> mutatorWeights;
+        Operon::ParseMutators(result["mutators"].as<std::string>(), availableMutators, mutator, mutatorWeights);
 
         Operon::ScalarDispatch dtable;
         auto const jitMode = result["jit"].as<std::string>(); // "all", "jac", or ""
@@ -320,7 +322,12 @@ auto RunGp(cxxopts::ParseResult const& result, Operon::Cli::FinalRun& finalRun) 
                     &dtable, &problem);
             }
         }
+        evaluator->SetBudget(config.Evaluations);
+        evaluator->SetObjectiveName(result["objective"].as<std::string>());
         optimizer->SetIterations(config.Iterations);
+        if (config.PopulationSize == 0 || config.PoolSize == 0 || problem.TrainingRange().Size() == 0) {
+            throw std::invalid_argument("population, pool and training range must be non-empty");
+        }
 
         // The constrained evaluator (when shape constraints are configured) is `evaluator` itself: it is the
         // outermost evaluator the GP loop and the Reporter see, and it is still an `Operon::Evaluator<T>` for the
@@ -389,6 +396,13 @@ auto RunGp(cxxopts::ParseResult const& result, Operon::Cli::FinalRun& finalRun) 
             return Operon::Cli::Report(loadedProbes.error());
         }
         auto probes = std::move(*loadedProbes);
+        if (Operon::Cli::ExportResolvedConfig(result,
+                { "operon_gp", config, problem, threads, *creator, creatorMaxLength, creatorMinDepth, creatorMaxDepth,
+                    crossover, mutatorWeights, *femaleSelector, *maleSelector, *generator, *reinserter, *evaluator,
+                    *optimizer, shapeSpec, argv })) {
+            finalRun.Abandon();
+            return EXIT_SUCCESS;
+        }
         gp.Run(
             executor, random,
             [&]() -> bool {
@@ -454,7 +468,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 
     auto exitCode = EXIT_FAILURE;
     try {
-        exitCode = RunGp(result, *finalRun);
+        exitCode = RunGp(result, *finalRun, { argv + 1, static_cast<std::size_t>(argc - 1) });
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());
     } catch (...) {

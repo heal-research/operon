@@ -118,9 +118,7 @@ auto ParseSelector(std::string const& str, ComparisonCallback&& comp) -> std::un
         selector = std::make_unique<Operon::TournamentSelector>(std::move(comp));
         size_t tournamentSize { defaultTournamentSize };
         if (tok.size() > 1) {
-            auto result = scn::scan<std::size_t>(tok[1], "{}");
-            ENSURE(result);
-            tournamentSize = result->value();
+            tournamentSize = ScanField<size_t>("selector", str, tok[1], "tournament size");
         }
         dynamic_cast<Operon::TournamentSelector*>(selector.get())->SetTournamentSize(tournamentSize);
     } else if (name == "proportional") {
@@ -151,24 +149,16 @@ auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<
     size_t maxDepth = defaultMaxDepth;
 
     if (tok.size() > 1 && !tok[1].empty()) {
-        auto res = scn::scan<double>(tok[1], "{}");
-        ENSURE(res);
-        bias = res->value();
+        bias = ScanField<double>("creator", str, tok[1], "bias");
     }
     if (tok.size() > 2 && !tok[2].empty()) {
-        auto res = scn::scan<size_t>(tok[2], "{}");
-        ENSURE(res);
-        minDepth = res->value();
+        minDepth = ScanField<size_t>("creator", str, tok[2], "minimum depth");
     }
     if (tok.size() > 3 && !tok[3].empty()) {
-        auto res = scn::scan<size_t>(tok[3], "{}");
-        ENSURE(res);
-        maxDepth = res->value();
+        maxDepth = ScanField<size_t>("creator", str, tok[3], "maximum depth");
     }
     if (tok.size() > 4 && !tok[4].empty()) {
-        auto res = scn::scan<size_t>(tok[4], "{}");
-        ENSURE(res);
-        maxLength = res->value();
+        maxLength = ScanField<size_t>("creator", str, tok[4], "maximum length");
     }
 
     std::unique_ptr<CreatorBase> creator;
@@ -187,6 +177,13 @@ auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<
 auto ParseMutators(std::string const& str, std::unordered_map<std::string, MutatorBase*> const& available,
     MultiMutation& mutator) -> void
 {
+    std::vector<MutatorWeight> resolved;
+    ParseMutators(str, available, mutator, resolved);
+}
+
+auto ParseMutators(std::string const& str, std::unordered_map<std::string, MutatorBase*> const& available,
+    MultiMutation& mutator, std::vector<MutatorWeight>& resolved) -> void
+{
     for (auto const& spec : Split(str, ',')) {
         auto tok = Split(spec, ':');
         if (tok.empty() || tok[0].empty()) {
@@ -196,11 +193,9 @@ auto ParseMutators(std::string const& str, std::unordered_map<std::string, Mutat
 
         double weight { 1.0 };
         if (tok.size() > 1 && !tok[1].empty()) {
-            auto res = scn::scan<double>(tok[1], "{}");
-            ENSURE(res);
-            weight = res->value();
+            weight = ScanField<double>("mutators", str, tok[1], "weight");
         }
-        if (!(weight > 0)) {
+        if (!(std::isfinite(weight) && weight > 0)) {
             throw std::invalid_argument(GetErrorString("mutators", str));
         }
 
@@ -209,6 +204,7 @@ auto ParseMutators(std::string const& str, std::unordered_map<std::string, Mutat
             throw std::invalid_argument(GetErrorString("mutators", name));
         }
         mutator.Add(it->second, weight);
+        resolved.push_back({ name, weight });
     }
     if (mutator.Count() == 0) {
         throw std::invalid_argument(GetErrorString("mutators", str));

@@ -102,6 +102,12 @@ auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<
 // the shared "which of my already-built operators, at what weight" parsing).
 auto ParseMutators(std::string const& str, std::unordered_map<std::string, MutatorBase*> const& available,
     MultiMutation& mutator) -> void;
+struct MutatorWeight {
+    std::string name;
+    double weight;
+};
+auto ParseMutators(std::string const& str, std::unordered_map<std::string, MutatorBase*> const& available,
+    MultiMutation& mutator, std::vector<MutatorWeight>& resolved) -> void;
 
 // Builds the objective evaluator named by `str`. With `shape`, the evaluator is the
 // ShapeConstrainedValueEvaluator over that concrete evaluator (constructed before type erasure), owning the whole

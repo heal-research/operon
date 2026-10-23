@@ -286,6 +286,11 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         "help", "Print help")("version", "Print version and program information")("capabilities",
         "Print build identity, precision, ISA, optional features and accepted options as one JSON object and exit");
 
+    if (name == "operon_gp" || name == "operon_nsgp") {
+        opts.add_options()("print-config", "Print the constructed operon.resolved_config and exit without running")(
+            "config-out", "Write operon.resolved_config atomically before running", cxxopts::value<std::string>());
+    }
+
     // Machine-readable run record (operon.final) and the identifiers that are stamped into it.
     opts.add_options()("final-json",
         "Write the operon.final termination record (stop reasons, final counters, final model) to this path, "

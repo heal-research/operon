@@ -61,5 +61,7 @@ endfunction()
 
 add_operon_cli(operon_gp source/final_record.cpp source/probes_config.cpp source/shape_constraints_config.cpp source/stop_signal.cpp)
 add_operon_cli(operon_nsgp source/final_record.cpp source/probes_config.cpp source/shape_constraints_config.cpp source/stop_signal.cpp)
+target_sources(operon_gp PRIVATE source/resolved_config.cpp)
+target_sources(operon_nsgp PRIVATE source/resolved_config.cpp)
 add_operon_cli(operon_parse_model source/shape_constraints_config.cpp)
 add_operon_cli(operon_enum)

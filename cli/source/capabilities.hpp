@@ -57,6 +57,15 @@ inline auto JsonStringArray(std::vector<std::string> const& values) -> std::stri
     return out + "]";
 }
 
+inline auto BuildCapabilities(BuildInfo const& info) -> std::vector<std::string>
+{
+    std::vector<std::string> capabilities { "shape_constraints", "probes", "checkpoint", "transposition_cache" };
+    if (info.Jit) {
+        capabilities.emplace_back("jit");
+    }
+    return capabilities;
+}
+
 // One-line JSON document describing the binary: identity (revision, build type, platform), numeric precision,
 // compile-time ISA, available optional features and the options this program registers. `options` are the long option
 // names registered with the parser (without the leading dashes); a registered option can still be rejected at run
@@ -67,7 +76,7 @@ inline auto CapabilitiesJson(std::string_view program, std::vector<std::string> 
 {
     std::ranges::sort(options);
     auto const hasOption = [&](std::string_view name) { return std::ranges::binary_search(options, name); };
-    // The machine report (--report-json) is the only versioned output the CLI produces today.
+    // The legacy machine report has its own integer schema version.
     std::string const machineReportVersions = hasOption("report-json") ? "[1]" : "[]";
     auto const ceresJson
         = info.CeresVersion.empty() ? std::string { "null" } : fmt::format("\"{}\"", JsonEscape(info.CeresVersion));
@@ -83,6 +92,7 @@ inline auto CapabilitiesJson(std::string_view program, std::vector<std::string> 
         "\"isa\":{{\"level\":{level},\"features\":{isaFeatures}}},"
         "\"features\":{{\"jit\":{jit},\"shape_constraints\":true,\"probes\":true,\"checkpoint\":true,"
         "\"transposition_cache\":true}},"
+        "\"capabilities\":{capabilities},"
         "\"machine_report_schema_versions\":{machineReport},"
         "\"options\":{options}}}",
         fmt::arg("program", JsonEscape(program)), fmt::arg("revision", JsonEscape(info.Revision)),
@@ -91,8 +101,8 @@ inline auto CapabilitiesJson(std::string_view program, std::vector<std::string> 
         fmt::arg("compilerId", JsonEscape(info.CompilerId)),
         fmt::arg("compilerVersion", JsonEscape(info.CompilerVersion)),
         fmt::arg("flags", JsonEscape(info.CompilerFlags)), fmt::arg("eigen", JsonEscape(info.EigenVersion)),
-        fmt::arg("taskflow", JsonEscape(info.TaskflowVersion)), fmt::arg("ceres", ceresJson),
-        fmt::arg("timestamp", JsonEscape(info.BuildTimestamp)), fmt::arg("level", levelJson),
+        fmt::arg("taskflow", JsonEscape(info.TaskflowVersion)), fmt::arg("level", levelJson),
+        fmt::arg("capabilities", JsonStringArray(BuildCapabilities(info))),
         fmt::arg("isaFeatures", JsonStringArray(info.IsaFeatures)), fmt::arg("jit", info.Jit ? "true" : "false"),
         fmt::arg("machineReport", machineReportVersions), fmt::arg("options", JsonStringArray(options)));
 }

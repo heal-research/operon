@@ -46,6 +46,7 @@
 #include "pareto_front.hpp"
 #include "probes_config.hpp"
 #include "reporter.hpp"
+#include "resolved_config.hpp"
 #include "shape_constraints_config.hpp"
 #include "stop_signal.hpp"
 #include "util.hpp"
@@ -73,7 +74,7 @@ auto FrontSelect(EvaluatorType const& eval, Operon::Span<Operon::Individual cons
     return best ? *best : pop.front();
 }
 
-auto RunNsgp(cxxopts::ParseResult const& result, Operon::Cli::FinalRun& finalRun) -> int
+auto RunNsgp(cxxopts::ParseResult const& result, Operon::Cli::FinalRun& finalRun, Operon::Span<char* const> argv) -> int
 {
     // parse and set default values
     Operon::GeneticAlgorithmConfig config {};
@@ -248,7 +249,8 @@ auto RunNsgp(cxxopts::ParseResult const& result, Operon::Cli::FinalRun& finalRun
             { "discretepoint", &discretePoint },
             { "shuffle", &shuffleSubtrees },
         };
-        Operon::ParseMutators(result["mutators"].as<std::string>(), availableMutators, mutator);
+        std::vector<Operon::MutatorWeight> mutatorWeights;
+        Operon::ParseMutators(result["mutators"].as<std::string>(), availableMutators, mutator, mutatorWeights);
 
         Operon::ScalarDispatch dtable;
         // DynamicPrimitives::Saxpy<Operon::Scalar, Operon::Backend::BatchSize<Operon::Scalar>> f{};
@@ -262,6 +264,7 @@ auto RunNsgp(cxxopts::ParseResult const& result, Operon::Cli::FinalRun& finalRun
         Operon::TreePropertyEvaluator lengthEvaluator(
             &problem, [](Operon::Tree const& tree) { return static_cast<Operon::Scalar>(tree.Length()); },
             static_cast<Operon::Scalar>(maxLength));
+        lengthEvaluator.SetObjectiveName("length");
         // Operon::EntropyEvaluator entropyEvaluator(&problem);
 
         auto loadedShapeConstraints = Operon::LoadShapeConstraints(result.contains("shape-constraints-config")
@@ -369,7 +372,12 @@ auto RunNsgp(cxxopts::ParseResult const& result, Operon::Cli::FinalRun& finalRun
                     &dtable, &problem);
             }
         }
+        errorEvaluator->SetBudget(config.Evaluations);
+        errorEvaluator->SetObjectiveName(result["objective"].as<std::string>());
         optimizer->SetIterations(config.Iterations);
+        if (config.PopulationSize == 0 || config.PoolSize == 0 || problem.TrainingRange().Size() == 0) {
+            throw std::invalid_argument("population, pool and training range must be non-empty");
+        }
 
         // The plain composition supplies [error, length]. With shape constraints, `errorEvaluator` is the
         // shape-constrained evaluator: it already owns the whole objective vector (error, length, violation) and
@@ -482,6 +490,13 @@ auto RunNsgp(cxxopts::ParseResult const& result, Operon::Cli::FinalRun& finalRun
             return Operon::Cli::Report(loadedProbes.error());
         }
         auto probes = std::move(*loadedProbes);
+        if (Operon::Cli::ExportResolvedConfig(result,
+                { "operon_nsgp", config, problem, threads, *creator, creatorMaxLength, creatorMinDepth, creatorMaxDepth,
+                    crossover, mutatorWeights, *femaleSelector, *maleSelector, *generator, *reinserter,
+                    *activeEvaluator, *optimizer, shapeSpec, argv })) {
+            finalRun.Abandon();
+            return EXIT_SUCCESS;
+        }
         gp.Run(
             executor, random,
             [&]() -> bool {
@@ -548,7 +563,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 
     auto exitCode = EXIT_FAILURE;
     try {
-        exitCode = RunNsgp(result, *finalRun);
+        exitCode = RunNsgp(result, *finalRun, { argv + 1, static_cast<std::size_t>(argc - 1) });
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());
     } catch (...) {
