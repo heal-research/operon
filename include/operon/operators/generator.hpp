@@ -215,11 +215,18 @@ public:
         lastEvaluations_ = this->Evaluator()->CallCount;
     }
 
-    // DEPRECATED, telemetry only: evaluator calls since the last Prepare(), per parent, read from the shared
-    // CallCount. The algorithms do not use it (see MaxAttempts(), which counts the attempts per pool slot; the two
-    // differ when transposition-cache hits make attempts without an evaluator call). Counts one CallCount increment
-    // per scored individual, regardless of local search, not local search's own internal residual/Jacobian
-    // evaluations.
+    [[nodiscard]] auto AttemptedCandidates() const -> std::size_t
+    {
+        return this->Evaluator()->CallCount - lastEvaluations_;
+    }
+
+    // Counts real offspring-candidate attempts (one CallCount increment per
+    // individual scored, regardless of local search), not local search's own
+    // internal residual/Jacobian evaluations - TotalEvaluations() (used here
+    // previously) counts the latter, wildly overstating selection pressure
+    // whenever local search runs (each attempt can cost dozens of internal
+    // LM evaluations, all counted as if they were separate failed
+    // candidates).
     auto SelectionPressure() const -> double
     {
         auto n = this->FemaleSelector()->Population().size();

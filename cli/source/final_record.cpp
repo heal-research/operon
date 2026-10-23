@@ -201,6 +201,14 @@ auto SerializeFinalRecord(FinalRecord const& r) -> std::string
             R"(,"producer":{{"adapter":"operon","unsupported_fields":[{}],"derived_fields":[]}})", fields);
     }
 
+    std::string segments;
+    for (auto const& s : r.Segments) {
+        if (!segments.empty()) {
+            segments += ',';
+        }
+        segments += fmt::format(R"({{"segment_id":{},"first_seq":{},"last_seq":{},"count":{},"sha256":{}}})", s.Id,
+            s.FirstSeq, s.LastSeq, s.Count, Quote(s.Sha256));
+    }
     return fmt::format(
         R"({{"schema":"operon.final","schema_version":"1.1","run_id":{},"attempt_id":{},"exit_status":{},)"
         R"("termination":{{"primary":{},"reasons":[{}],"precedence_version":{}}},)"
@@ -209,13 +217,13 @@ auto SerializeFinalRecord(FinalRecord const& r) -> std::string
         R"("evaluations":{{"unit":"residual+jacobian","limit":{},"consumed":{},"overshoot":{}}},)"
         R"("time":{{"limit_s":{},"elapsed_s":{}}},"pressure":{{"max":{},"last":{}}}}},)"
         R"("counters":{{"logical":{},"since_restart":{}}},"final_model":{},"front_ref":{},)"
-        R"("segments":[],"record_count":0,"instrumentation_errors":0{}}})"
+        R"("segments":[{}],"record_count":{},"instrumentation_errors":{}{}}})"
         "\n",
         Quote(r.RunId), Quote(r.AttemptId), r.Error ? R"("error")" : R"("ok")", primary, reasons,
         Operon::StopPrecedenceVersion, r.GenerationsCompleted, incomplete, OrNull(r.GenerationLimit, Uint),
         OrNull(r.EvaluationLimit, Uint), consumed, OrNull(overshoot, Uint), OrNull(r.TimeLimitSeconds, Number),
         Number(r.ElapsedSeconds), OrNull(r.PressureMax, Uint), OrNull(r.PressureLast, Number), counters, counters,
-        model, OrNull(r.FrontRef, Quote), producer);
+        model, OrNull(r.FrontRef, Quote), segments, r.RecordCount, r.InstrumentationErrors, producer);
 }
 
 auto WriteFileAtomically(std::filesystem::path const& path, std::string_view content) -> void
@@ -294,16 +302,18 @@ auto WriteFileAtomically(std::filesystem::path const& path, std::string_view con
 // ------------------------------------------------------------------------------------------------------------------
 // CLI glue
 
-FinalRun::FinalRun(cxxopts::ParseResult const& result)
+FinalRun::FinalRun(cxxopts::ParseResult const& result, Operon::GenerationRecorder::Clock::time_point processStart)
+    : processStart_(processStart)
+    , streamRequested_(result.contains("generation-log"))
 {
-    if (!result.contains("final-json")) {
+    if (!result.contains("final-json") && !streamRequested_) {
         if (result.contains("run-id") || result.contains("attempt-id")) {
-            throw std::invalid_argument("--run-id and --attempt-id are only used with --final-json");
+            throw std::invalid_argument("--run-id and --attempt-id require --final-json or --generation-log");
         }
         return;
     }
     if (!result.contains("run-id") || !result.contains("attempt-id")) {
-        throw std::invalid_argument("--final-json requires --run-id and --attempt-id");
+        throw std::invalid_argument("--final-json and --generation-log require --run-id and --attempt-id");
     }
     runId_ = result["run-id"].as<std::string>();
     attemptId_ = result["attempt-id"].as<std::string>();
@@ -313,9 +323,53 @@ FinalRun::FinalRun(cxxopts::ParseResult const& result)
     if (!IsUuid(attemptId_)) {
         throw std::invalid_argument("--attempt-id must be a lowercase UUID (8-4-4-4-12 hexadecimal digits)");
     }
-    path_ = result["final-json"].as<std::string>();
+    if (result.contains("final-json")) {
+        path_ = result["final-json"].as<std::string>();
+    }
     enabled_ = true;
     StopSignals::Install();
+}
+
+auto FinalRun::StartGenerationLog(cxxopts::ParseResult const& result, bool nsga2, std::size_t objectiveCount)
+    -> Operon::GenerationRecorder*
+{
+    if (!streamRequested_) {
+        return nullptr;
+    }
+    try {
+        if (result.contains("resume")) {
+            throw std::invalid_argument("--generation-log requires a fresh run; --resume is unsupported");
+        }
+        auto const sync = result["sync"].as<std::string>();
+        if (sync != "record" && sync != "segment") {
+            throw std::invalid_argument("--sync must be record or segment");
+        }
+        Operon::GenerationRecorderOptions options;
+        options.Directory = result["generation-log"].as<std::string>();
+        options.RunId = runId_;
+        options.AttemptId = attemptId_;
+        options.ObjectiveNames.push_back(result["objective"].as<std::string>());
+        if (nsga2) {
+            options.ObjectiveNames.emplace_back("length");
+        }
+        if (objectiveCount > options.ObjectiveNames.size()) {
+            options.ObjectiveNames.emplace_back("violation");
+        }
+        options.Generator = result["offspring-generator"].as<std::string>();
+        options.Generator.resize(
+            options.Generator.find(':') == std::string::npos ? options.Generator.size() : options.Generator.find(':'));
+        options.SelectionRule = nsga2 ? result["model-selection"].as<std::string>() : "obj0";
+        options.Nsga2 = nsga2;
+        options.SegmentGenerations = result["segment-generations"].as<std::size_t>();
+        options.SegmentSeconds = result["segment-seconds"].as<double>();
+        options.SyncRecord = sync == "record";
+        options.ProcessStart = processStart_;
+        recorder_ = std::make_unique<Operon::GenerationRecorder>(std::move(options));
+        return recorder_.get();
+    } catch (...) {
+        ++instrumentationErrors_;
+        throw;
+    }
 }
 
 FinalRun::~FinalRun()
@@ -363,24 +417,43 @@ auto FinalRun::Finish(int exitCode) -> int
     if (!enabled_) {
         return exitCode;
     }
+    if (recorder_) {
+        try {
+            recorder_->Close();
+        } catch (std::exception const& e) {
+            fmt::print(stderr, "error: could not seal generation log: {}\n", e.what());
+            error_ = true;
+            exitCode = EXIT_FAILURE;
+        }
+    }
     auto record = snapshot_ ? *snapshot_ : MakeFinalRecord(config_);
     record.RunId = runId_;
     record.AttemptId = attemptId_;
     record.Model = model_;
     record.FrontRef = frontRef_;
-    record.UnsupportedFields = { "segments", "record_count" };
+    record.InstrumentationErrors = instrumentationErrors_ + (recorder_ ? recorder_->Errors() : 0);
+    if (streamRequested_) {
+        if (recorder_) {
+            record.Segments = recorder_->Segments();
+            record.RecordCount = recorder_->RecordCount();
+        }
+    } else {
+        record.UnsupportedFields = { "segments", "record_count" };
+    }
     if (frontExpected_ && !record.FrontRef) {
         record.UnsupportedFields.emplace_back("front_ref");
     }
 
-    auto const failed = error_ || exitCode != 0 || record.Reasons == 0;
+    auto const failed = error_ || exitCode != 0 || record.Reasons == 0 || record.InstrumentationErrors != 0;
     if (failed) {
         record.Error = true;
         record.Reasons |= Operon::MaskOf(Operon::StopReason::EngineError);
     }
     auto const signal = StopSignals::Received();
     try {
-        WriteFileAtomically(path_, SerializeFinalRecord(record));
+        if (!path_.empty()) {
+            WriteFileAtomically(path_, SerializeFinalRecord(record));
+        }
     } catch (std::exception const& e) {
         fmt::print(stderr, "error: could not write the final record: {}\n", e.what());
         return EXIT_FAILURE;

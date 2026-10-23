@@ -497,6 +497,7 @@ auto RunNsgp(cxxopts::ParseResult const& result, Operon::Cli::FinalRun& finalRun
             finalRun.Abandon();
             return EXIT_SUCCESS;
         }
+        reporter.SetGenerationRecorder(finalRun.StartGenerationLog(result, true, activeEvaluator->ObjectiveCount()));
         gp.Run(
             executor, random,
             [&]() -> bool {
@@ -531,11 +532,19 @@ auto RunNsgp(cxxopts::ParseResult const& result, Operon::Cli::FinalRun& finalRun
         if (!best.Genotype.Empty()) {
             finalRun.SetModel(modelSelection, best.Genotype, model);
         }
-        if (result.contains("pareto-front")) {
-            auto const paretoPath = result["pareto-front"].as<std::string>();
-            Operon::WriteParetoFront(
-                paretoPath, gp.Parents(), dtable, problem, *sorterPtr, static_cast<Operon::Scalar>(config.Epsilon));
-            finalRun.SetFrontRef(Operon::Sha256FileHex(paretoPath));
+        if (result.contains("pareto-front") || result.contains("generation-log")) {
+            auto const paretoPath = result.contains("pareto-front")
+                ? result["pareto-front"].as<std::string>()
+                : (std::filesystem::path(result["generation-log"].as<std::string>()) / "pareto-front.json.txt")
+                      .string();
+            try {
+                Operon::WriteParetoFront(
+                    paretoPath, gp.Parents(), dtable, problem, *sorterPtr, static_cast<Operon::Scalar>(config.Epsilon));
+                finalRun.SetFrontRef(Operon::Sha256FileHex(paretoPath));
+            } catch (...) {
+                finalRun.MarkInstrumentationError();
+                throw;
+            }
         }
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());
@@ -548,6 +557,7 @@ auto RunNsgp(cxxopts::ParseResult const& result, Operon::Cli::FinalRun& finalRun
 
 auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 {
+    auto const processStart = Operon::GenerationRecorder::Clock::now();
     auto opts = Operon::InitOptions("operon_nsgp", "Genetic programming symbolic regression");
     opts.add_options()("sorter", "Non-dominated sorter: rs (RankIntersect) or ms (Merge)",
         cxxopts::value<std::string>()->default_value("rs"));
@@ -555,7 +565,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 
     std::optional<Operon::Cli::FinalRun> finalRun;
     try {
-        finalRun.emplace(result);
+        finalRun.emplace(result, processStart);
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());
         return EXIT_FAILURE;

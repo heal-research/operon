@@ -43,6 +43,46 @@ the final model's `ModelRef` (SHA-256 of `ModelSerialization`), as an `operon.fi
 (reason `signal`) and the process exits with 128 plus the signal number; a second signal terminates it immediately.
 The document's schema is `docs/schemas/final.schema.json`.
 
+## Lossless generation records
+
+Both CLIs accept `--generation-log DIR --run-id HEX64 --attempt-id UUID`. The directory must not contain an earlier
+stream. Generation 0 is `initialized`, followed by one `generation_complete` per fully filled offspring pool.
+`--segment-generations 10` and `--segment-seconds 5` seal at the first reached threshold, checked at each completed
+record; `--sync segment` is the default. Every line is written directly to the OS in `generation-000000.jsonl.part`.
+Sealing syncs the model sidecar and segment, closes the segment, renames it to `.jsonl`, and syncs the directory.
+One persistent seal worker overlaps that durability sequence with the next generation's computation. Before writing
+another record the callback waits for the pending seal, so there is never more than one `.part`; worker errors are
+re-thrown on the callback thread or by `Close()`. `Drain()` waits for an already-requested count/time seal.
+`--sync record` additionally syncs after every record. SIGKILL can leave one `.part`, whose trailing incomplete line
+must be ignored; only sealed segments are power-loss durable. Open/write/serialization/sync errors fail the run.
+With `--final-json`, the final document includes sealed segment ranges, byte-identical SHA-256 hashes, record count
+and instrumentation error count. A stream can also be requested without a final document.
+Each line follows `docs/schemas/generation.schema.json`.
+
+The library `GenerationRecorder` captures objective/length/depth/rank reductions in one population pass before the
+table reporter. The reporter then hands it the exact selected, linearly scaled tree and NMSE values, avoiding another
+model-selection or prediction pass. The existing table and `--report-json` v1 remain unchanged. Objective means use
+double accumulation in population order, excluding non-finite values, `ErrMax`, and `Individual::ShapeRejected`.
+Means are rounded once to native build precision for JSON, consistently with best/min/max; accumulation does not
+overflow at float precision, and a uniform population's emitted mean equals its emitted extrema.
+The shape adapter records that flag when hard rejection occurs; it is not inferred from the configurable worst
+fitness value, and describes evaluated fitness even under non-Lamarckian search. Resume with a generation log is
+rejected: this stream is restart-only.
+
+`models.jsonl.txt` is the per-attempt model sidecar (the `.txt` suffix distinguishes opaque objects from contract
+documents). It contains a `model_ref` and lossless `ModelSerialization` string only when the selected model changes;
+every generation references its SHA-256. Equality checks all serialized node attributes and coefficient bits.
+NSGA-II uses `--model-selection` exactly as the table does. `--pareto-front PATH` supplies the final front hash;
+with a stream and no explicit path, the front is stored in `DIR/pareto-front.json.txt`.
+Shape feasibility is certified for the exported model on change, not inferred from its possibly non-Lamarckian score.
+Validation NMSE is unavailable and declared as such. Scalar objectives use native-precision shortest round-trip
+numbers; non-finite metrics are JSON `null` with counts/status.
+
+`time.report_s` includes reductions, model selection, prediction metrics, changed-model serialization/certification,
+and JSON construction up to the timing field. The final write/fsync cannot be included in its own immutable bytes;
+measure that cost end-to-end. Generation wall time is the interval between callback entries; process elapsed time
+starts at `main()`. OS pressure counts evaluator calls since `Prepare()` (cache hits do not increment it).
+
 ## Fitness and ordering
 
 Fitness is a minimization vector. Single-objective GP commonly uses `SingleObjectiveComparison`; NSGA-II computes `Rank` and `Distance` and uses crowded comparison. `ParetoComparison` assumes minimization in every dimension. A custom comparator must be consistent for selection and reinsertion or the search transition no longer has a coherent ordering.

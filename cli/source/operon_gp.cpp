@@ -403,6 +403,7 @@ auto RunGp(cxxopts::ParseResult const& result, Operon::Cli::FinalRun& finalRun, 
             finalRun.Abandon();
             return EXIT_SUCCESS;
         }
+        reporter.SetGenerationRecorder(finalRun.StartGenerationLog(result, false, evaluator->ObjectiveCount()));
         gp.Run(
             executor, random,
             [&]() -> bool {
@@ -453,6 +454,7 @@ auto RunGp(cxxopts::ParseResult const& result, Operon::Cli::FinalRun& finalRun, 
 
 auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 {
+    auto const processStart = Operon::GenerationRecorder::Clock::now();
     auto opts = Operon::InitOptions("operon_gp", "Genetic programming symbolic regression");
     opts.add_options()("report-json", "Write a versioned lossless machine-readable report to this path",
         cxxopts::value<std::string>());
@@ -460,7 +462,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 
     std::optional<Operon::Cli::FinalRun> finalRun;
     try {
-        finalRun.emplace(result);
+        finalRun.emplace(result, processStart);
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());
         return EXIT_FAILURE;

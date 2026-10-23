@@ -15,6 +15,7 @@
 
 #include "operon/algorithms/config.hpp"
 #include "operon/algorithms/ga_base.hpp"
+#include "operon/algorithms/generation_record.hpp"
 #include "operon/algorithms/stop_reason.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/operators/evaluator.hpp"
@@ -23,9 +24,8 @@
 // ended, the budgets and counters it consumed (read from the evaluator after Run() returned, never copied from the
 // last report), and the final model. The document is written atomically and always, also when the run failed.
 //
-// The per-generation record stream (--generation-log) is not produced by the engine yet: `segments` is empty,
-// `record_count` is 0 and `instrumentation_errors` 0, and both stream fields are named in
-// `producer.unsupported_fields` so a reader does not mistake the empty stream for a run without generations.
+// With --generation-log the stream is sealed before the final document, which carries its byte hashes and count.
+// Without a stream, `segments` and `record_count` are explicitly declared unsupported.
 namespace Operon::Cli {
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -53,6 +53,9 @@ struct FinalRecord {
     Operon::EvaluationStats Stats;
     std::optional<FinalModel> Model;
     std::optional<std::string> FrontRef; // SHA-256 of the written Pareto front (NSGA2 with --pareto-front)
+    std::vector<Operon::GenerationSegment> Segments;
+    std::size_t RecordCount {};
+    std::size_t InstrumentationErrors {};
     std::vector<std::string> UnsupportedFields; // producer.unsupported_fields
 };
 
@@ -90,7 +93,8 @@ auto WriteFileAtomically(std::filesystem::path const& path, std::string_view con
 // Without --final-json the object does nothing at all: no signal handlers, no file.
 class FinalRun {
 public:
-    explicit FinalRun(cxxopts::ParseResult const& result);
+    explicit FinalRun(cxxopts::ParseResult const& result,
+        Operon::GenerationRecorder::Clock::time_point processStart = Operon::GenerationRecorder::Clock::now());
     ~FinalRun();
     FinalRun(FinalRun const&) = delete;
     auto operator=(FinalRun const&) -> FinalRun& = delete;
@@ -101,6 +105,8 @@ public:
 
     // Limits to report if the run fails before an algorithm is watched.
     auto SetConfig(Operon::GeneticAlgorithmConfig const& config) -> void { config_ = config; }
+    auto StartGenerationLog(cxxopts::ParseResult const& result, bool nsga2, std::size_t objectiveCount)
+        -> Operon::GenerationRecorder*;
 
     // Takes the snapshot of `algorithm` when the returned guard is destroyed (normal return or exception), and
     // forwards SIGINT/SIGTERM to it while it is watched. `algorithm` must outlive the guard.
@@ -127,6 +133,11 @@ public:
     auto Abandon() -> void;
     // The process is going to fail even if the algorithm itself ended normally.
     auto MarkError() -> void { error_ = true; }
+    auto MarkInstrumentationError() -> void
+    {
+        ++instrumentationErrors_;
+        error_ = true;
+    }
 
     // Writes the record (if enabled) and returns the exit status for the process: `exitCode`, or, for a run that was
     // stopped by SIGINT/SIGTERM, 128 + the signal number. A non-zero `exitCode` makes the record an error record.
@@ -143,6 +154,10 @@ private:
     std::optional<std::string> frontRef_;
     bool frontExpected_ { false };
     bool error_ { false };
+    Operon::GenerationRecorder::Clock::time_point processStart_;
+    std::unique_ptr<Operon::GenerationRecorder> recorder_;
+    std::size_t instrumentationErrors_ {};
+    bool streamRequested_ { false };
 };
 
 } // namespace Operon::Cli

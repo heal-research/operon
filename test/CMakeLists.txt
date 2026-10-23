@@ -57,6 +57,7 @@ add_executable(operon_test
     source/implementation/permutation_importance.cpp
     source/implementation/evaluation_stats.cpp
     source/implementation/final_record.cpp
+    source/implementation/generation_record.cpp
     source/implementation/evaluator.cpp
     source/implementation/optimizer.cpp
     source/implementation/probes.cpp

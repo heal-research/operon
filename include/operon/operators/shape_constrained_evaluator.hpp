@@ -320,10 +320,11 @@ public:
     }
 
 protected:
-    void ResetChildren() const override
+    auto Evaluate(Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf) const
+        -> tl::expected<std::optional<EvaluatedBuffer>, InterpreterError> override
     {
-        BaseEvaluator::ResetChildren();
-        this->ShapeStructuralReset();
+        ind.ShapeRejected = false;
+        return BaseEvaluator::Evaluate(ind, buf);
     }
 
     auto Score(Operon::RandomGenerator& rng, Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf,
@@ -331,6 +332,7 @@ protected:
     {
         auto const summary = this->ShapeCertify(ind.Genotype, evaluated);
         if (auto rejected = this->ShapeReject(summary)) {
+            ind.ShapeRejected = true;
             return std::move(*rejected);
         }
         auto const primary = BaseEvaluator::Score(rng, ind, buf, std::move(evaluated));
