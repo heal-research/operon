@@ -4,8 +4,11 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstddef>
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <random>
 #include <type_traits>
 #include <utility>
@@ -370,6 +373,230 @@ TEST_CASE("Generation/Elapsed/IsFitted return by value for const objects, by ref
     static_assert(std::is_same_v<decltype(std::declval<Algo const&&>().IsFitted()), bool>);
 
     SUCCEED("all four Self x value-category combinations verified at compile time");
+}
+
+namespace {
+
+    // Self-contained GP/NSGA2 setup with a configurable population/pool size and an evaluation budget, used to drive
+    // runs into (or away from) a stop condition in the middle of a generation.
+    struct BudgetedRun {
+        Operon::Dataset Ds { MakeDataset() };
+        Operon::Problem Problem { gsl::not_null<Operon::Dataset*>(&Ds) };
+        Operon::PrimitiveSet Pset { MakePset() };
+        std::vector<Operon::Hash> Vars { Ds.GetVariable("X1")->Hash };
+
+        DTable Dtable;
+        Operon::Evaluator<DTable> Evaluator { &Problem, &Dtable };
+        Operon::SubtreeCrossover Crossover { 0.9, /*maxDepth=*/6, /*maxLength=*/20 };
+        Operon::OnePointMutation<std::normal_distribution<Operon::Scalar>> OnePoint;
+        Operon::MultiMutation Mutator;
+        Operon::TournamentSelector FemSel { Operon::SingleObjectiveComparison { 0 } };
+        Operon::TournamentSelector MaleSel { Operon::SingleObjectiveComparison { 0 } };
+        Operon::BasicOffspringGenerator Generator { &Evaluator, &Crossover, &Mutator, &FemSel, &MaleSel };
+        Operon::KeepBestReinserter KeepBest { Operon::SingleObjectiveComparison { 0 } };
+        Operon::ReplaceWorstReinserter ReplaceWorst { Operon::SingleObjectiveComparison { 0 } };
+        Operon::BalancedTreeCreator Creator { &Pset, Vars, 0.0, 10 };
+        Operon::UniformTreeInitializer TreeInit { &Creator };
+        Operon::UniformCoefficientInitializer CoeffInit;
+        Operon::DeductiveSorter Sorter;
+        Operon::GeneticAlgorithmConfig Config {};
+
+        BudgetedRun(std::size_t popSize, std::size_t poolSize, std::size_t generations, std::size_t budget)
+        {
+            Config.PopulationSize = popSize;
+            Config.PoolSize = poolSize;
+            Config.Generations = generations;
+            Problem.SetTrainingRange({ 0, 10 });
+            Problem.SetTestRange({ 0, 10 });
+            Problem.SetTarget("Y");
+            TreeInit.ParameterizeDistribution(std::size_t { 1 }, std::size_t { 10 });
+            OnePoint.ParameterizeDistribution(Operon::Scalar { 0 }, Operon::Scalar { 1 });
+            Mutator.Add(&OnePoint, 1.0);
+            Evaluator.SetBudget(budget);
+        }
+    };
+
+    // What a report callback can observe about the population.
+    struct Snapshot {
+        std::size_t Generation {};
+        std::vector<Operon::Scalar> Fitness;
+        std::vector<std::size_t> Lengths;
+        std::vector<Operon::Hash> Hashes;
+        auto operator==(Snapshot const&) const -> bool = default;
+    };
+
+    auto Capture(Operon::GeneticAlgorithmBase const& algo) -> Snapshot
+    {
+        Snapshot s;
+        s.Generation = algo.Generation();
+        for (auto const& ind : algo.Parents()) {
+            s.Fitness.push_back(ind[0]);
+            s.Lengths.push_back(ind.Genotype.Length());
+            s.Hashes.push_back(ind.Genotype.HashValue());
+        }
+        return s;
+    }
+
+    // pop = pool = 16, budget 24: the 16 initial evaluations leave room for 8 offspring, so generation 1 is cut short.
+    constexpr std::size_t PartialPop = 16;
+    constexpr std::size_t PartialBudget = PartialPop + 8;
+
+} // namespace
+
+TEST_CASE("GP: a generation cut short by the evaluation budget is neither reinserted, counted nor reported",
+    "[algorithms][partial-generation]")
+{
+    BudgetedRun f { PartialPop, PartialPop, /*generations=*/100, PartialBudget };
+    Operon::GeneticProgrammingAlgorithm gp { f.Config, &f.Problem, &f.TreeInit, &f.CoeffInit, &f.Generator,
+        &f.KeepBest };
+    Operon::RandomGenerator rng { 7 };
+
+    std::vector<Snapshot> reports;
+    gp.Run(
+        rng,
+        [&]() -> bool {
+            reports.push_back(Capture(gp));
+            return false;
+        },
+        /*threads=*/1);
+
+    REQUIRE(reports.size() == 1); // only the initial population: generation 1 never completed
+    CHECK(reports.front().Generation == 0);
+    CHECK(gp.Generation() == 0);
+    CHECK(Capture(gp) == reports.front()); // the population is the last reported one, untouched
+
+    REQUIRE(gp.IncompleteGeneration().has_value());
+    auto const progress = *gp.IncompleteGeneration();
+    CHECK(progress.PoolSize == PartialPop);
+    CHECK(progress.Completed == PartialBudget - PartialPop);
+    CHECK(progress.Attempted >= progress.Completed);
+    CHECK(f.Evaluator.TotalEvaluations() == PartialBudget);
+
+    SECTION("the incomplete state is copied with the algorithm and cleared by Reset()")
+    {
+        Operon::GeneticProgrammingAlgorithm copy { gp };
+        REQUIRE(copy.IncompleteGeneration().has_value());
+        CHECK(copy.IncompleteGeneration()->Completed == progress.Completed);
+        copy.Reset();
+        CHECK_FALSE(copy.IncompleteGeneration().has_value());
+    }
+}
+
+TEST_CASE(
+    "GP: replace-worst does not inject unfilled pool slots into the population", "[algorithms][partial-generation]")
+{
+    // Before the generation guard, the 8 pool slots that were never filled (default-constructed individuals: empty
+    // genotype, maximal fitness) were swapped into the population by ReplaceWorstReinserter.
+    for (std::size_t const threads : { 1UL, 4UL }) {
+        BudgetedRun f { PartialPop, PartialPop, /*generations=*/100, PartialBudget };
+        Operon::GeneticProgrammingAlgorithm gp { f.Config, &f.Problem, &f.TreeInit, &f.CoeffInit, &f.Generator,
+            &f.ReplaceWorst };
+        Operon::RandomGenerator rng { 7 };
+
+        std::optional<Snapshot> initial;
+        gp.Run(
+            rng,
+            [&]() -> bool {
+                if (!initial) {
+                    initial = Capture(gp);
+                }
+                return false;
+            },
+            threads);
+
+        INFO("threads = " << threads);
+        REQUIRE(initial.has_value());
+        CHECK(Capture(gp) == *initial);
+        CHECK(gp.Generation() == 0);
+        CHECK(gp.IncompleteGeneration().has_value());
+        for (auto const& ind : gp.Parents()) {
+            CHECK(ind.Genotype.Length() > 0);
+            CHECK(ind[0] < Operon::EvaluatorBase::ErrMax);
+        }
+    }
+}
+
+TEST_CASE("GP: generations that fill their pool before the budget is reached are reinserted, counted and reported",
+    "[algorithms][partial-generation]")
+{
+    // init (16) + 3 complete generations (3 * 16) + 8 evaluations: generation 4 is cut short.
+    BudgetedRun f { PartialPop, PartialPop, /*generations=*/100, 4 * PartialPop + 8 };
+    Operon::GeneticProgrammingAlgorithm gp { f.Config, &f.Problem, &f.TreeInit, &f.CoeffInit, &f.Generator,
+        &f.KeepBest };
+    Operon::RandomGenerator rng { 7 };
+
+    std::vector<std::size_t> reported;
+    gp.Run(
+        rng,
+        [&]() -> bool {
+            reported.push_back(gp.Generation());
+            return false;
+        },
+        /*threads=*/1);
+
+    CHECK(reported == std::vector<std::size_t> { 0, 1, 2, 3 });
+    CHECK(gp.Generation() == 3);
+    REQUIRE(gp.IncompleteGeneration().has_value());
+    CHECK(gp.IncompleteGeneration()->Completed == 8);
+}
+
+TEST_CASE("NSGA2: IncompleteGeneration() reports the cut-short generation", "[algorithms][partial-generation]")
+{
+    BudgetedRun f { PartialPop, PartialPop, /*generations=*/100, PartialBudget };
+    Operon::NSGA2 nsga { f.Config, &f.Problem, &f.TreeInit, &f.CoeffInit, &f.Generator, &f.KeepBest, &f.Sorter };
+    Operon::RandomGenerator rng { 7 };
+
+    std::size_t reports = 0;
+    nsga.Run(
+        rng,
+        [&]() -> bool {
+            ++reports;
+            return false;
+        },
+        /*threads=*/1);
+
+    CHECK(reports == 1);
+    CHECK(nsga.Generation() == 0);
+    REQUIRE(nsga.IncompleteGeneration().has_value());
+    CHECK(nsga.IncompleteGeneration()->PoolSize == PartialPop);
+    CHECK(nsga.IncompleteGeneration()->Completed == PartialBudget - PartialPop);
+}
+
+TEST_CASE("GP: runs that stop at the generation limit are complete and identical across seeds and thread counts",
+    "[algorithms][partial-generation]")
+{
+    // No budget or time limit is reached, so every generation is complete: the trajectory (all reports) and the final
+    // population must not depend on the thread count, and no incomplete generation may be reported.
+    constexpr std::size_t generations = 6;
+    auto trajectory = [&](std::uint64_t seed, std::size_t threads) {
+        BudgetedRun f { 24, 24, generations, /*budget=*/std::numeric_limits<std::size_t>::max() };
+        Operon::GeneticProgrammingAlgorithm gp { f.Config, &f.Problem, &f.TreeInit, &f.CoeffInit, &f.Generator,
+            &f.ReplaceWorst };
+        Operon::RandomGenerator rng { seed };
+        std::vector<Snapshot> reports;
+        gp.Run(
+            rng,
+            [&]() -> bool {
+                reports.push_back(Capture(gp));
+                return false;
+            },
+            threads);
+        CHECK(gp.Generation() == generations);
+        CHECK_FALSE(gp.IncompleteGeneration().has_value());
+        reports.push_back(Capture(gp));
+        return reports;
+    };
+
+    for (std::uint64_t const seed : { 1ULL, 2ULL, 3ULL, 42ULL }) {
+        INFO("seed = " << seed);
+        auto const reference = trajectory(seed, 1);
+        REQUIRE(reference.size() == generations + 2); // init + 6 generations + final snapshot
+        for (std::size_t g = 0; g <= generations; ++g) {
+            CHECK(reference[g].Generation == g);
+        }
+        CHECK(trajectory(seed, 4) == reference);
+        CHECK(trajectory(seed, 1) == reference); // repeatable
+    }
 }
 
 } // namespace Operon::Test

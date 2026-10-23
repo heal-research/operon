@@ -9,10 +9,19 @@
 #include "operon/core/types.hpp"
 #include "operon/operators/generator.hpp"
 #include "stoppable.hpp"
+#include <cstddef>
 #include <operon/operon_export.hpp>
+#include <optional>
 #include <string>
 
 namespace Operon {
+
+// Offspring-generation progress of one generation attempt.
+struct OffspringProgress {
+    size_t Attempted { 0 }; // offspring-generator invocations (accepted and rejected)
+    size_t Completed { 0 }; // pool slots filled
+    size_t PoolSize { 0 }; // pool slots to fill
+};
 
 class Problem;
 class ReinserterBase;
@@ -49,6 +58,7 @@ public:
         , elapsed_(other.elapsed_)
         , phaseTimes_(other.phaseTimes_)
         , isFitted_(other.isFitted_)
+        , incompleteGeneration_(other.incompleteGeneration_)
     {
     }
     GeneticAlgorithmBase(GeneticAlgorithmBase&&) = delete;
@@ -72,6 +82,7 @@ public:
         elapsed_ = other.elapsed_;
         phaseTimes_ = other.phaseTimes_;
         isFitted_ = other.isFitted_;
+        incompleteGeneration_ = other.incompleteGeneration_;
         return *this;
     }
     auto operator=(GeneticAlgorithmBase&&) -> GeneticAlgorithmBase& = delete;
@@ -209,6 +220,18 @@ public:
         return self.isFitted_;
     } // NOLINT(cppcoreguidelines-missing-std-forward)
 
+    // Progress of the generation that was cut short by a stop condition (budget, time, callback) before its offspring
+    // pool was completely filled; nullopt if the last attempted generation completed. Such a generation is neither
+    // reinserted, counted in Generation(), nor reported: Parents() holds the last completed generation.
+    [[nodiscard]] auto IncompleteGeneration() const -> std::optional<OffspringProgress> const&
+    {
+        return incompleteGeneration_;
+    }
+    auto SetIncompleteGeneration(std::optional<OffspringProgress> progress) -> void
+    {
+        incompleteGeneration_ = progress;
+    }
+
     // StopRequested()/RequestStop() are inherited from StoppableAlgorithm.
 
     // Valid to call between runs only. The PhaseTimer observer owns its own
@@ -217,6 +240,7 @@ public:
     auto Reset() -> void
     {
         generation_ = 0;
+        incompleteGeneration_.reset();
         elapsed_ = 0;
         ClearStopRequested();
         phaseTimes_.clear();
@@ -250,6 +274,7 @@ private:
     double elapsed_ { 0 };
     Operon::Map<std::string, double> phaseTimes_;
     bool isFitted_ { false };
+    std::optional<OffspringProgress> incompleteGeneration_;
 };
 
 } // namespace Operon
