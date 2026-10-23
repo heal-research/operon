@@ -2737,6 +2737,29 @@ TEST_CASE("mode:N bounds are sound, never wider than the plain mode, and tighter
     }
 }
 
+// The packed leaf evaluation divides by a divisor that touches zero (here exp(0.5 / (X2 - 5.5)) reaches 0 on the leaves
+// around X2 = 5.5) differently from the scalar whole-box evaluation; the hull of the leaf bounds must still not be
+// wider than the whole-box bound, with no rounding slack.
+TEST_CASE("interval:N identity bound is never wider than the whole-box bound across a zero-touching divisor",
+    "[shape-constraints][subdivision]")
+{
+    SubdivisionFixture fx;
+    SubdivisionCase const jc { "tanh((-1 * X1) / exp(0.5 / (X2 - 5.5)))", { 8, 24.8F }, { 3, 8 }, {}, false };
+    auto const plain = fx.Measure(jc, { .Mode = ShapeBoundMode::Interval });
+    REQUIRE(plain.Measurements.size() == 5);
+    REQUIRE(plain.Measurements[0].Bound.has_value());
+    auto const [baseLo, baseHi] = *plain.Measurements[0].Bound;
+    for (int depth = 1; depth <= 6; ++depth) {
+        INFO("depth " << depth);
+        auto const subdivided = fx.Measure(jc, { .Mode = ShapeBoundMode::Interval, .BisectionDepth = depth });
+        REQUIRE(subdivided.Measurements.size() == 5);
+        REQUIRE(subdivided.Measurements[0].Bound.has_value());
+        auto const [lo, hi] = *subdivided.Measurements[0].Bound;
+        CHECK(lo >= baseLo);
+        CHECK(hi <= baseHi);
+    }
+}
+
 TEST_CASE(
     "interval:N bound shrinks monotonically with depth on a single-axis expression", "[shape-constraints][subdivision]")
 {

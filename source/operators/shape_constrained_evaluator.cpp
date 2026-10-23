@@ -257,7 +257,8 @@ namespace {
     };
 
     // The interval bound of `tree` over the hull of the leaf boxes of `plan` (SIMD over the leaves for a single axis
-    // and for packed multi-axis leaves); the whole-box bound when `plan` is null or a leaf has no finite bound.
+    // and for packed multi-axis leaves), intersected with the whole-box bound so that subdividing can never weaken
+    // it; the whole-box bound when `plan` is null or a leaf has no finite bound.
     auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom,
         IntervalSubdivisionPlan const* plan) -> BoundResult
     {
@@ -267,6 +268,23 @@ namespace {
         auto const directBound = [&]() -> BoundResult {
             IntervalEvaluator<Operon::Scalar> ie(&tree, dom);
             return ie(tree.GetCoefficients());
+        };
+
+        // Both the hull of the leaf bounds and the whole-box bound enclose the range over the box, so their
+        // intersection does too, and it is never wider than either. (The packed leaf evaluation is not guaranteed to
+        // be inclusion-monotone against the scalar whole-box evaluation, e.g. across divisors that touch zero.) A
+        // whole-box evaluation that fails leaves the hull as the bound; disjoint bounds mean one of them is unsound, so
+        // no bound is reported.
+        auto const intersectWithWholeBox = [&](Interval const& hull) -> BoundResult {
+            auto const whole = directBound();
+            if (!whole) {
+                return hull;
+            }
+            auto const intersection = hull & *whole;
+            if (whole->is_empty() || intersection.is_empty()) {
+                return tl::unexpected(std::string { "subdivided and whole-box interval bounds are disjoint" });
+            }
+            return intersection;
         };
 
         if (plan == nullptr) {
@@ -331,7 +349,7 @@ namespace {
                         ? Interval(std::min(result->inf(), bound->inf()), std::max(result->sup(), bound->sup()))
                         : *bound;
                 }
-                return result ? BoundResult { *result } : directBound();
+                return result ? intersectWithWholeBox(*result) : directBound();
             } catch (std::exception const&) {
                 return directBound();
             }
@@ -402,7 +420,7 @@ namespace {
             if (!result || !std::isfinite(result->inf()) || !std::isfinite(result->sup())) {
                 return directBound();
             }
-            return *result;
+            return intersectWithWholeBox(*result);
         } catch (std::exception const&) {
             return directBound();
         }
