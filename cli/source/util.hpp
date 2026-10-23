@@ -29,6 +29,10 @@ auto PrintPrimitives(PrimitiveSetConfig config) -> void;
 auto InitOptions(std::string const& name, std::string const& desc, int width = optionsWidth) -> cxxopts::Options;
 auto ParseOptions(cxxopts::Options&& opts, int argc, char** argv) -> cxxopts::ParseResult;
 
+// Value of a budget option (--generations, --evaluations): an integer or `unlimited` (>= 2^62 also means unlimited),
+// returned as SIZE_MAX when unlimited. ParseOptions has already validated the text, so this cannot fail.
+auto GetLimit(cxxopts::ParseResult const& result, std::string const& name) -> size_t;
+
 // Set trainingRange and testRange from CLI options, inferring defaults from dataset if not provided.
 auto SetupRanges(cxxopts::ParseResult const& result, Dataset const& dataset, Range& trainingRange, Range& testRange)
     -> void;
