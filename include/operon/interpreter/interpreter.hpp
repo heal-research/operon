@@ -252,7 +252,10 @@ struct Interpreter : public InterpreterBase<T> {
         auto const nNodes = static_cast<std::size_t>(tree_->Nodes().size());
         for (auto root : roots) {
             if (root != NoIndex && root >= nNodes) {
-                return tl::unexpected(InterpreterError { InterpreterError::Code::InvalidRootIndex, {}, nNodes, root });
+                return tl::unexpected(InterpreterError { .Kind = InterpreterError::Code::InvalidRootIndex,
+                    .Hash = {},
+                    .ExpectedSize = nNodes,
+                    .ActualSize = root });
             }
         }
         if (auto sized = CheckOutputSize(range.Size() * roots.size(), result.size()); !sized) {
@@ -420,7 +423,7 @@ private:
 
     // Derivative of the model w.r.t. a variable's raw value is the node weight times the adjoint/tangent there.
     static constexpr auto VariableFactor
-        = [](std::size_t, auto const&, T w, int) { return Eigen::Array<T, BatchSize, 1>::Constant(w); };
+        = [](std::size_t, auto const&, T w, int) -> auto { return Eigen::Array<T, BatchSize, 1>::Constant(w); };
 
     // Derivative of a node's output w.r.t. its own weight (= the coefficient): 1 for a constant, the raw column for a
     // variable, otherwise primal / weight. A zero weight makes primal / weight a 0 / 0, so a variable then reads its
@@ -665,8 +668,10 @@ private:
     {
         auto const rows = dataset_->template Rows<std::size_t>();
         if (range.Start() + range.Size() > rows) {
-            return tl::unexpected(
-                InterpreterError { InterpreterError::Code::InvalidRange, {}, rows, range.Start() + range.Size() });
+            return tl::unexpected(InterpreterError { .Kind = InterpreterError::Code::InvalidRange,
+                .Hash = {},
+                .ExpectedSize = rows,
+                .ActualSize = range.Start() + range.Size() });
         }
         if (auto valid = ValidateCoefficients(coeff); !valid) {
             return valid;
@@ -687,7 +692,10 @@ private:
         -> tl::expected<void, InterpreterError>
     {
         if (actual != expected) {
-            return tl::unexpected(InterpreterError { InterpreterError::Code::InvalidOutputSize, {}, expected, actual });
+            return tl::unexpected(InterpreterError { .Kind = InterpreterError::Code::InvalidOutputSize,
+                .Hash = {},
+                .ExpectedSize = expected,
+                .ActualSize = actual });
         }
         return {};
     }
@@ -707,8 +715,10 @@ private:
         }
         auto const expected = NumCoefficients();
         if (coeff.size() != expected) {
-            return tl::unexpected(
-                InterpreterError { InterpreterError::Code::InvalidCoefficientSize, {}, expected, coeff.size() });
+            return tl::unexpected(InterpreterError { .Kind = InterpreterError::Code::InvalidCoefficientSize,
+                .Hash = {},
+                .ExpectedSize = expected,
+                .ActualSize = coeff.size() });
         }
         return {};
     }
