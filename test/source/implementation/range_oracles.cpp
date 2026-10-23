@@ -126,7 +126,7 @@ namespace {
         return { std::move(dataset), std::move(tree), std::move(domains) };
     }
 
-    [[nodiscard]] auto BisectedBound(Prepared& prepared, RangeOracle const& oracle) -> Bounds
+    [[nodiscard]] auto SubdividedBound(Prepared& prepared, RangeOracle const& oracle) -> Bounds
     {
         Problem problem(&prepared.dataset);
         problem.SetTrainingRange({ 0, 1 });
@@ -143,7 +143,7 @@ namespace {
             .Sign = std::nullopt,
             .Bound = std::pair { S { -1e6 }, S { 1e6 } } });
         ShapeCertifier certifier(&problem, &dtable, constraints, Operon::Scalar { 1 },
-            ShapeBoundOptions { .Mode = ShapeBoundMode::Bisected, .BisectionDepth = 5 });
+            ShapeBoundOptions { .Mode = ShapeBoundMode::Interval, .BisectionDepth = 5 });
         auto const result = certifier.MeasureCanonical(prepared.tree);
         REQUIRE(result.Measurements.size() == 1);
         REQUIRE(result.Measurements.front().Bound.has_value());
@@ -160,18 +160,18 @@ namespace {
     }
 } // namespace
 
-TEST_CASE("Range-oracle corpus: interval and bisection enclosures", "[range-oracles][shape-constraints]")
+TEST_CASE("Range-oracle corpus: interval and interval:N enclosures", "[range-oracles][shape-constraints]")
 {
     for (auto const& oracle : Oracles()) {
         auto prepared = Prepare(oracle);
         auto const directResult = IE(&prepared.tree, prepared.domains)(prepared.tree.GetCoefficients());
         REQUIRE(directResult);
         auto const direct = *directResult;
-        auto const bisected = BisectedBound(prepared, oracle);
+        auto const subdivided = SubdividedBound(prepared, oracle);
         CheckContains(oracle, { direct.inf(), direct.sup() });
-        CheckContains(oracle, bisected);
-        CHECK(bisected.lo >= direct.inf() - oracle.tolerance);
-        CHECK(bisected.hi <= direct.sup() + oracle.tolerance);
+        CheckContains(oracle, subdivided);
+        CHECK(subdivided.lo >= direct.inf() - oracle.tolerance);
+        CHECK(subdivided.hi <= direct.sup() + oracle.tolerance);
     }
 }
 } // namespace Operon::Test

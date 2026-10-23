@@ -132,8 +132,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     }
 
     try {
-        shapeBoundOptions = Operon::ParseShapeBoundOptions(
-            result["shape-bound-mode"].as<std::string>(), result["shape-bisection-depth"].as<int>());
+        shapeBoundOptions = Operon::ParseShapeBoundOptions(result["shape-bound-mode"].as<std::string>());
         if (showPrimitiveSet) {
             Operon::PrintPrimitives(primitiveSetConfig);
             return EXIT_SUCCESS;

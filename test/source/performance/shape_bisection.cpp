@@ -29,7 +29,7 @@ namespace {
 // every leaf uses IntervalEvaluator<Operon::Scalar>. Production uses the
 // wide<T> path for one axis and the scalar fallback for multi-axis grids; both
 // enumerate exactly the same boxes.
-auto ScalarBisectedBound(Operon::Tree const& tree, Operon::IntervalEvaluator<Operon::Scalar>::DomainMap const& dom,
+auto ScalarSubdividedBound(Operon::Tree const& tree, Operon::IntervalEvaluator<Operon::Scalar>::DomainMap const& dom,
     int depth) -> std::pair<Operon::Scalar, Operon::Scalar>
 {
     using IE = Operon::IntervalEvaluator<Operon::Scalar>;
@@ -147,14 +147,14 @@ void RunExprCase(nb::Bench& bench, ExprCase const& ec)
 
     auto makeShapeEval = [&](int depth) {
         return Operon::ShapeCertifier(&problem, &dtable, cs, Operon::Scalar { 1 },
-            Operon::ShapeBoundOptions { .Mode = Operon::ShapeBoundMode::Bisected, .BisectionDepth = depth });
+            Operon::ShapeBoundOptions { .Mode = Operon::ShapeBoundMode::Interval, .BisectionDepth = depth });
     };
 
     constexpr int maxDepth = 8;
     double width0 = -1.0;
     for (int depth = 0; depth <= maxDepth; ++depth) {
         bench.run(fmt::format("{} scalar depth={:02d}", ec.name, depth), [&] {
-            auto const b = ScalarBisectedBound(tree, dom, depth);
+            auto const b = ScalarSubdividedBound(tree, dom, depth);
             nb::doNotOptimizeAway(b.first);
             nb::doNotOptimizeAway(b.second);
         });
@@ -165,7 +165,7 @@ void RunExprCase(nb::Bench& bench, ExprCase const& ec)
             nb::doNotOptimizeAway(r.Measurements.size());
         });
 
-        auto const [scalarLo, scalarHi] = ScalarBisectedBound(tree, dom, depth);
+        auto const [scalarLo, scalarHi] = ScalarSubdividedBound(tree, dom, depth);
         auto const r = shapeEval.MeasureCanonical(tree);
         auto const [simdLo, simdHi] = *r.Measurements[0].Bound;
         REQUIRE(static_cast<double>(scalarLo) == Catch::Approx(static_cast<double>(simdLo)).margin(1e-3));
