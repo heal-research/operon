@@ -326,6 +326,32 @@ if(TARGET operon_gp AND TARGET operon_nsgp)
     add_cli_test(nsgp_accepts_epsilon operon_nsgp ok "iteration"
         "--dataset;${operon_cli_data};--target;Y;--population-size;10;--pool-size;10;--threads;1;--seed;1;--generations;1;--epsilon;1e-3")
 
+    # build description
+    add_cli_test(gp_capabilities operon_gp ok "\"schema\":\"operon.capabilities\".*\"program\":\"operon_gp\".*\"report-json\"" "--capabilities")
+    set(operon_active_flags "${CMAKE_CXX_FLAGS}")
+    foreach(operon_cfg IN LISTS operon_flag_configs)
+        string(TOUPPER "${operon_cfg}" operon_cfg_upper)
+        string(APPEND operon_active_flags "$<$<CONFIG:${operon_cfg}>: ${CMAKE_CXX_FLAGS_${operon_cfg_upper}}>")
+    endforeach()
+    # The compile options of operon_operon are resolved by file(GENERATE), the same way as for the reported flags (an
+    # add_test() argument is evaluated in a context that omits options inherited from linked targets).
+    file(GENERATE
+        OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/capabilities-target-options-$<CONFIG>.txt"
+        CONTENT "$<JOIN:$<TARGET_PROPERTY:operon_operon,COMPILE_OPTIONS>,|>"
+    )
+    add_test(
+        NAME cli_capabilities_compiler_flags
+        COMMAND "${CMAKE_COMMAND}"
+                "-DCLI=$<TARGET_FILE:operon_gp>"
+                "-DCONFIG=$<CONFIG>"
+                "-DTARGET_OPTIONS_FILE=${CMAKE_CURRENT_BINARY_DIR}/capabilities-target-options-$<CONFIG>.txt"
+                "-DDEBUG_FLAGS=${CMAKE_CXX_FLAGS_DEBUG}"
+                "-DACTIVE_FLAGS=${operon_active_flags}"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/check_capabilities_flags.cmake"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    )
+    add_cli_test(nsgp_capabilities operon_nsgp ok "\"program\":\"operon_nsgp\".*\"machine_report_schema_versions\":\\[\\].*\"sorter\"" "--capabilities")
+
     # threads
     add_cli_test(gp_rejects_zero_threads operon_gp fail
         "error: --threads: must be at least 1 .omit the option to use all hardware threads."
