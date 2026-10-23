@@ -171,6 +171,42 @@ private:
     std::optional<LinearScaling> scaling_;
 };
 
+// Evaluation counters of an evaluator tree, split by who spent them. `Residual*`/`Jacobian*` count the same units
+// that the budget is made of (EvaluatorBase::TotalEvaluations): `*Optimizer` is spent by coefficient optimization
+// (LocalSearch), `*Scoring` by everything else (the prediction pass of Evaluate, a Jacobian taken by a likelihood
+// scorer, ...). Budget consumption is `ResidualTotal() + JacobianTotal()`. Calls is the number of operator() calls
+// (candidate scorings) and OptimizerTimeUs the wall time spent in the optimizer, summed over threads.
+// The cache counters are not known to evaluators: they stay `nullopt` here and are filled by
+// GeneticAlgorithmBase::DetailedStats() when a transposition cache is configured (null means "no cache", not zero).
+struct EvaluationStats {
+    std::size_t Calls {};
+    std::size_t ResidualScoring {};
+    std::size_t ResidualOptimizer {};
+    std::size_t JacobianScoring {};
+    std::size_t JacobianOptimizer {};
+    std::size_t OptimizerTimeUs {};
+    std::optional<std::size_t> CacheHits {};
+    std::optional<std::size_t> CacheLookups {};
+
+    [[nodiscard]] constexpr auto ResidualTotal() const -> std::size_t { return ResidualScoring + ResidualOptimizer; }
+    [[nodiscard]] constexpr auto JacobianTotal() const -> std::size_t { return JacobianScoring + JacobianOptimizer; }
+    [[nodiscard]] constexpr auto Consumed() const -> std::size_t { return ResidualTotal() + JacobianTotal(); }
+
+    // Adds the evaluation counters of `other` (the cache counters belong to the algorithm and are left alone).
+    constexpr auto operator+=(EvaluationStats const& other) -> EvaluationStats&
+    {
+        Calls += other.Calls;
+        ResidualScoring += other.ResidualScoring;
+        ResidualOptimizer += other.ResidualOptimizer;
+        JacobianScoring += other.JacobianScoring;
+        JacobianOptimizer += other.JacobianOptimizer;
+        OptimizerTimeUs += other.OptimizerTimeUs;
+        return *this;
+    }
+
+    [[nodiscard]] constexpr auto operator==(EvaluationStats const&) const -> bool = default;
+};
+
 // An evaluator is an OperatorBase: `operator()` is its sole public execution path. It is `final` and performs, in
 // order, `Evaluate` (prediction phase), failure handling, and `Score` (objective phase). Both phases are protected
 // implementation hooks: a derived evaluator calls its base's phases on itself (ShapeConstrainedValueEvaluator),
@@ -186,6 +222,11 @@ struct EvaluatorBase
     mutable std::atomic_ulong JacobianEvaluations { 0 }; // NOLINT
     mutable std::atomic_ulong CallCount { 0 }; // NOLINT
     mutable std::atomic_ulong CostFunctionTime { 0 }; // NOLINT
+    // The part of ResidualEvaluations/JacobianEvaluations that was spent by coefficient optimization (LocalSearch).
+    // Always incremented after the totals above, so that a reader loading these first never sees more optimizer
+    // than total evaluations (see DetailedStats).
+    mutable std::atomic_ulong OptimizerResidualEvaluations { 0 }; // NOLINT
+    mutable std::atomic_ulong OptimizerJacobianEvaluations { 0 }; // NOLINT
 
     static constexpr size_t DefaultEvaluationBudget = 100'000;
 
@@ -243,17 +284,44 @@ struct EvaluatorBase
             CostFunctionTime.load() };
     }
 
+    // Like Stats(), with the optimizer/scoring split of the residual and Jacobian evaluations (the totals are the
+    // same as Stats()). Composite evaluators (MultiEvaluator, the shape-constrained adapter) include their children.
+    // Safe to call while the evaluator is in use; the result is then a consistent-enough snapshot (every optimizer
+    // evaluation is also counted in its total, never the other way round), exact once evaluation has stopped.
+    virtual auto DetailedStats() const -> EvaluationStats
+    {
+        // Optimizer counters are read before the totals; LocalSearch bumps the total first, then the optimizer part.
+        auto const optimizerResidual = OptimizerResidualEvaluations.load();
+        auto const optimizerJacobian = OptimizerJacobianEvaluations.load();
+        auto const residual = ResidualEvaluations.load();
+        auto const jacobian = JacobianEvaluations.load();
+        auto const clampedResidual = std::min<std::size_t>(optimizerResidual, residual);
+        auto const clampedJacobian = std::min<std::size_t>(optimizerJacobian, jacobian);
+        return EvaluationStats {
+            .Calls = CallCount.load(),
+            .ResidualScoring = residual - clampedResidual,
+            .ResidualOptimizer = clampedResidual,
+            .JacobianScoring = jacobian - clampedJacobian,
+            .JacobianOptimizer = clampedJacobian,
+            .OptimizerTimeUs = CostFunctionTime.load(),
+        };
+    }
+
     auto Population() const -> Operon::Span<Individual const> { return population_; }
     auto SetPopulation(Operon::Span<Operon::Individual const> pop) const { population_ = pop; }
     auto GetProblem() const -> Problem const* { return problem_; }
     auto SetProblem(gsl::not_null<Problem const*> problem) { problem_ = problem; }
 
-    void Reset() const
+    // Zeroes every counter. Composite evaluators also reset their children, so that a re-run in the same process
+    // starts from a clean budget.
+    virtual void Reset() const
     {
         ResidualEvaluations = 0;
         JacobianEvaluations = 0;
         CallCount = 0;
         CostFunctionTime = 0;
+        OptimizerResidualEvaluations = 0;
+        OptimizerJacobianEvaluations = 0;
     }
 
 protected:
@@ -463,6 +531,26 @@ public:
     {
         auto [re, je, cc, ct] = Stats();
         return re + je >= Budget();
+    }
+
+    // Own counters plus those of every child (Calls is the composite's own, like Stats()).
+    auto DetailedStats() const -> EvaluationStats override
+    {
+        auto stats = EvaluatorBase::DetailedStats();
+        auto const calls = stats.Calls;
+        for (auto const& ev : evaluators_) {
+            stats += ev->DetailedStats();
+        }
+        stats.Calls = calls;
+        return stats;
+    }
+
+    void Reset() const override
+    {
+        EvaluatorBase::Reset();
+        for (auto const& ev : evaluators_) {
+            ev->Reset();
+        }
     }
 
     auto Evaluators() const { return evaluators_; }
