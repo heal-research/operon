@@ -21,6 +21,8 @@ The GP and NSGA-II drivers share the same operator boundary. Initializers create
 
 Fitness is a minimization vector. Single-objective GP commonly uses `SingleObjectiveComparison`; NSGA-II computes `Rank` and `Distance` and uses crowded comparison. `ParetoComparison` assumes minimization in every dimension. A custom comparator must be consistent for selection and reinsertion or the search transition no longer has a coherent ordering.
 
+The `operon_nsgp --pareto-front` export contains the rank-zero members of the retained parent population only. Unfilled offspring from an evaluation-limited generation are not front members.
+
 ## Coefficient optimization
 
 `CoefficientOptimizer` delegates to an `OptimizerBase`, usually `LevenbergMarquardtOptimizer`. It changes only `Optimize` constants in the tree. `FitOutcome` distinguishes an improving fit, a valid non-improving fit, an interpreter evaluation error, and a configuration error; `Diagnostics(outcome)` is available in every case. Treat an unsuccessful local fit as a candidate-level result, not as a reason to discard the structural tree before normal evaluation.
