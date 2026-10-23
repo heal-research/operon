@@ -9,6 +9,7 @@ runner) vendor a pinned copy and check the `x-version` they were built against.
 |---|---|---|---|
 | `final.schema.json` | `operon.final` | 1.1 | `--final-json PATH` |
 | `resolved-config.schema.json` | `operon.resolved_config` | 1.0 | `--print-config` (stdout) and `--config-out PATH` |
+| `generation.schema.json` | `operon.generation` | 1.1 | `--generation-log DIR` (one record per line in `generation-NNNNNN.jsonl` segments) |
 | `common.schema.json` | (shared `$defs`, no document) | 1.1 | referenced by the schemas above via `common.schema.json#/$defs/...` |
 
 The `schema` and `schema_version` properties of every document name the schema and the version it was written
@@ -23,6 +24,11 @@ annotation.
 * **`producer.unsupported_fields`.** Lists the contract properties the producer could not supply, so that a
   `null` in them is a declared absence rather than a defect (for `operon.final`: `segments` and `record_count` when no
   generation stream is written).
+* **Generation records.** One `operon.generation` record per completed generation, generation 0 (`initialized`)
+  included, with a dense per-attempt `seq`. A value the engine cannot count is `null` and is named in
+  `validity.unsupported_fields`; metric means cover finite, non-rejected individuals only. With `--final-json` the
+  `operon.final` document carries the sealed segments (`segments`, `record_count`, byte hashes) and no longer
+  lists them in `producer.unsupported_fields`.
 * **Resolved configuration.** `operon.resolved_config` makes every default explicit and lists the dotted paths that
   were defaulted in `defaulted`. An explicitly unlimited budget (`--generations unlimited`, `--evaluations unlimited`)
   is `null`. Unknown extra keys are tolerated at every level so that minor versions can add properties.

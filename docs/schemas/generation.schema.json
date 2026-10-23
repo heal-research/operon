@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "operon.generation: one record per completed generation, including initialization (generation 0)",
+  "x-schema": "operon.generation",
+  "x-version": "1.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schema_version", "run_id", "attempt_id", "segment_id", "seq", "generation", "event",
+    "checkpoint_parent", "budget", "counters", "objectives", "structure", "selection", "nsga2", "selected_model", "time", "validity"],
+  "properties": {
+    "schema": {"const": "operon.generation"},
+    "schema_version": {"$ref": "common.schema.json#/$defs/version"},
+    "run_id": {"$ref": "common.schema.json#/$defs/sha256"},
+    "attempt_id": {"$ref": "common.schema.json#/$defs/uuid"},
+    "segment_id": {"$ref": "common.schema.json#/$defs/uint"},
+    "seq": {"description": "Dense per-attempt sequence number starting at 0; one record per generation in v1.", "$ref": "common.schema.json#/$defs/uint"},
+    "generation": {"$ref": "common.schema.json#/$defs/uint"},
+    "event": {"type": "string", "enum": ["initialized", "generation_complete"]},
+    "checkpoint_parent": {
+      "description": "Reserved for M6 (exact resume). Null in restart-only mode.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["checkpoint_id", "generation"],
+      "properties": {"checkpoint_id": {"$ref": "common.schema.json#/$defs/id"}, "generation": {"$ref": "common.schema.json#/$defs/uint"}}
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "limit", "consumed"],
+      "properties": {
+        "unit": {"const": "residual+jacobian"},
+        "limit": {"description": "null = no evaluation limit.", "$ref": "common.schema.json#/$defs/nullable_uint"},
+        "consumed": {"$ref": "common.schema.json#/$defs/uint"}
+      }
+    },
+    "counters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["logical", "since_restart"],
+      "properties": {
+        "logical": {"$ref": "common.schema.json#/$defs/counters"},
+        "since_restart": {"description": "Equal to logical unless checkpoint_parent is set.", "$ref": "common.schema.json#/$defs/counters"}
+      }
+    },
+    "objectives": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "direction", "best", "mean", "min", "max", "finite_count", "rejected_count", "nan_count", "posinf_count", "neginf_count"],
+        "properties": {
+          "name": {"$ref": "common.schema.json#/$defs/id"},
+          "direction": {"const": "min"},
+          "best": {"$ref": "common.schema.json#/$defs/number_or_null"},
+          "mean": {"description": "Over finite, non-rejected individuals only.", "$ref": "common.schema.json#/$defs/number_or_null"},
+          "min": {"$ref": "common.schema.json#/$defs/number_or_null"},
+          "max": {"$ref": "common.schema.json#/$defs/number_or_null"},
+          "finite_count": {"description": "Null only when the producer cannot count (declared in validity.unsupported_fields as objectives[].finite_count etc.).", "$ref": "common.schema.json#/$defs/nullable_uint"},
+          "rejected_count": {"description": "Individuals holding the evaluator failure/rejection sentinel (ErrMax or shape WorstValue).", "$ref": "common.schema.json#/$defs/nullable_uint"},
+          "nan_count": {"$ref": "common.schema.json#/$defs/nullable_uint"},
+          "posinf_count": {"$ref": "common.schema.json#/$defs/nullable_uint"},
+          "neginf_count": {"$ref": "common.schema.json#/$defs/nullable_uint"}
+        }
+      }
+    },
+    "structure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["population_count", "pool_count", "attempted_offspring", "completed_offspring", "length", "depth"],
+      "properties": {
+        "population_count": {"$ref": "common.schema.json#/$defs/uint"},
+        "pool_count": {"$ref": "common.schema.json#/$defs/uint"},
+        "attempted_offspring": {"description": "Generator invocations this generation; null at initialization.", "$ref": "common.schema.json#/$defs/nullable_uint"},
+        "completed_offspring": {"description": "Pool slots actually filled; null at initialization.", "$ref": "common.schema.json#/$defs/nullable_uint"},
+        "length": {"$ref": "common.schema.json#/$defs/stat3"},
+        "depth": {"$ref": "common.schema.json#/$defs/stat3"}
+      }
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generator", "applicable", "attempted_candidates", "accepted_candidates", "pressure", "comparison_factor", "success_ratio"],
+      "properties": {
+        "generator": {"type": "string", "enum": ["basic", "os", "brood", "poly"]},
+        "applicable": {"description": "true only for offspring selection (os). Otherwise all other fields are null.", "type": "boolean"},
+        "attempted_candidates": {"$ref": "common.schema.json#/$defs/nullable_uint"},
+        "accepted_candidates": {"$ref": "common.schema.json#/$defs/nullable_uint"},
+        "pressure": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["numerator", "denominator", "value", "max"],
+          "properties": {
+            "numerator": {"description": "Evaluator CallCount delta since generator Prepare().", "$ref": "common.schema.json#/$defs/uint"},
+            "denominator": {"description": "Parent population size seen by the selector.", "$ref": "common.schema.json#/$defs/uint"},
+            "value": {"$ref": "common.schema.json#/$defs/number_or_null"},
+            "max": {"$ref": "common.schema.json#/$defs/uint"}
+          }
+        },
+        "comparison_factor": {"$ref": "common.schema.json#/$defs/number_or_null"},
+        "success_ratio": {"$ref": "common.schema.json#/$defs/number_or_null"}
+      }
+    },
+    "nsga2": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["rank_histogram"],
+      "properties": {
+        "rank_histogram": {"description": "Parents per Rank value (index = rank). Sums to population_count. Null only when the producer cannot supply it (declared as nsga2.rank_histogram).", "type": ["array", "null"], "items": {"$ref": "common.schema.json#/$defs/uint"}}
+      }
+    },
+    "selected_model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selection_rule", "model_ref", "model_object_emitted", "node_count", "objectives", "nmse_train", "nmse_validation", "nmse_test", "metric_status"],
+      "properties": {
+        "selection_rule": {"type": "string", "enum": ["obj0", "mdl", "bic", "aic"]},
+        "model_ref": {"description": "sha256 of the lossless tree+coefficient+transform serialization. Null only when the producer cannot supply it (declared as selected_model.model_ref).", "$ref": "common.schema.json#/$defs/nullable_sha256"},
+        "model_object_emitted": {"description": "true if the model object is stored (emitted only when it changed).", "type": "boolean"},
+        "node_count": {"$ref": "common.schema.json#/$defs/uint"},
+        "objectives": {"type": "array", "items": {"$ref": "common.schema.json#/$defs/number_or_null"}},
+        "nmse_train": {"$ref": "common.schema.json#/$defs/number_or_null"},
+        "nmse_validation": {"$ref": "common.schema.json#/$defs/number_or_null"},
+        "nmse_test": {"$ref": "common.schema.json#/$defs/number_or_null"},
+        "metric_status": {"$ref": "common.schema.json#/$defs/metric_status"}
+      }
+    },
+    "time": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["process_elapsed_s", "logical_elapsed_s", "generation_wall_s", "optimizer_worker_s", "sort_s", "report_s"],
+      "properties": {
+        "process_elapsed_s": {"description": "Steady clock since process start; includes initialization. Null only when declared unsupported.", "type": ["number", "null"], "minimum": 0},
+        "logical_elapsed_s": {"description": "Accumulated compute time (algorithm Elapsed()).", "type": "number", "minimum": 0},
+        "generation_wall_s": {"description": "Null only when declared unsupported.", "type": ["number", "null"], "minimum": 0},
+        "optimizer_worker_s": {"description": "Accumulated worker-seconds spent in coefficient optimization.", "$ref": "common.schema.json#/$defs/number_or_null"},
+        "sort_s": {"$ref": "common.schema.json#/$defs/number_or_null"},
+        "report_s": {"description": "Time spent producing this record (instrumentation overhead).", "$ref": "common.schema.json#/$defs/number_or_null"}
+      }
+    },
+    "validity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["finite_prediction_fraction", "shape_feasible", "shape_violation", "unsupported_fields"],
+      "properties": {
+        "finite_prediction_fraction": {"$ref": "common.schema.json#/$defs/number_or_null"},
+        "shape_feasible": {"type": ["boolean", "null"]},
+        "shape_violation": {"$ref": "common.schema.json#/$defs/number_or_null"},
+        "unsupported_fields": {"description": "Fields this producer cannot supply (null means unavailable, not zero).", "type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}
