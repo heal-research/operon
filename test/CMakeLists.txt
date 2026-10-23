@@ -296,6 +296,10 @@ if(TARGET operon_gp AND TARGET operon_nsgp)
     add_cli_test(nsgp_accepts_epsilon operon_nsgp ok "iteration"
         "--dataset;${operon_cli_data};--target;Y;--population-size;10;--pool-size;10;--threads;1;--seed;1;--generations;1;--epsilon;1e-3")
 
+    # build description
+    add_cli_test(gp_capabilities operon_gp ok "\"schema\":\"operon.capabilities\".*\"program\":\"operon_gp\".*\"report-json\"" "--capabilities")
+    add_cli_test(nsgp_capabilities operon_nsgp ok "\"program\":\"operon_nsgp\".*\"machine_report_schema_versions\":\\[\\].*\"sorter\"" "--capabilities")
+
     # threads
     add_cli_test(gp_rejects_zero_threads operon_gp fail
         "error: --threads: must be at least 1 .omit the option to use all hardware threads."

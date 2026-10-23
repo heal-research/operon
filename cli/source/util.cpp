@@ -14,6 +14,7 @@
 #include <stdexcept>
 #include <string_view>
 
+#include "capabilities.hpp"
 #include "cli_args.hpp"
 #include "cli_error.hpp"
 #include "util.hpp"
@@ -244,7 +245,8 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         "depth :N (0-20; the bound is the hull over the 2^N sub-boxes of the domain box, 0 or no suffix is the whole "
         "box), e.g. interval:4",
         cxxopts::value<std::string>()->default_value("interval"))("debug", "Debug mode (more information displayed)")(
-        "help", "Print help")("version", "Print version and program information");
+        "help", "Print help")("version", "Print version and program information")("capabilities",
+        "Print build identity, precision, ISA, optional features and accepted options as one JSON object and exit");
     return opts;
 }
 
@@ -436,6 +438,12 @@ auto ParseOptions(cxxopts::Options&& opts, int argc, char** argv) -> cxxopts::Pa
 {
     auto const helpText = opts.help(); // capture before move
     auto const program = opts.program();
+    std::vector<std::string> optionNames;
+    for (auto const& group : opts.groups()) {
+        for (auto const& option : opts.group_help(group).options) {
+            optionNames.insert(optionNames.end(), option.l.begin(), option.l.end());
+        }
+    }
     cxxopts::ParseResult result;
     try {
         result = std::move(opts).parse(argc, argv);
@@ -449,6 +457,10 @@ auto ParseOptions(cxxopts::Options&& opts, int argc, char** argv) -> cxxopts::Pa
     }
     if (result.contains("version")) {
         fmt::print("{}\n", Operon::Version());
+        std::exit(EXIT_SUCCESS);
+    }
+    if (result.contains("capabilities")) {
+        fmt::print("{}\n", Cli::CapabilitiesJson(program, std::move(optionNames), Operon::GetBuildInfo()));
         std::exit(EXIT_SUCCESS);
     }
     if (auto const checked = CheckOptions(result, program); !checked) {

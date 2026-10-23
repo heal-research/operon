@@ -2,7 +2,9 @@
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <catch2/catch_test_macros.hpp>
+#include <glaze/glaze.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -10,10 +12,12 @@
 #include <string>
 #include <vector>
 
+#include "capabilities.hpp"
 #include "cli_args.hpp"
 #include "operon/core/individual.hpp"
 #include "operon/core/node.hpp"
 #include "operon/core/tree.hpp"
+#include "operon/core/version.hpp"
 #include "operon/operators/evaluator.hpp"
 #include "population_stats.hpp"
 
@@ -151,6 +155,77 @@ TEST_CASE("ComputePopulationMeans excludes rejected and non-finite individuals f
         CHECK(means.Fitness == 0.0);
         CHECK(means.Length == 0.0);
     }
+}
+
+TEST_CASE("Cli::CapabilitiesJson is valid JSON, escapes strings and lists the options sorted", "[cli]")
+{
+    Operon::BuildInfo info;
+    info.Revision = "abc123";
+    info.BuildType = "Release";
+    info.Platform = "Linux-6";
+    info.Arch = "x86_64";
+    info.CompilerId = "Clang";
+    info.CompilerVersion = "21.1.8";
+    info.CompilerFlags = "-O3 -DNAME=\"a\\b\" -march=x86-64-v3";
+    info.Precision = "single";
+    info.EigenVersion = "3.4.1";
+    info.TaskflowVersion = "4.1.0";
+    info.IsaLevel = "x86-64-v3";
+    info.IsaFeatures = { "avx2", "fma" };
+    info.Jit = true;
+
+    SECTION("a GP-like program with --report-json")
+    {
+        auto const json = Operon::Cli::CapabilitiesJson("operon_gp", { "seed", "report-json", "dataset" }, info);
+        INFO(json);
+        CHECK_FALSE(glz::validate_json(json));
+        CHECK(json.find("\"schema\":\"operon.capabilities\"") != std::string::npos);
+        CHECK(json.find("\"schema_version\":1") != std::string::npos);
+        CHECK(json.find("\"program\":\"operon_gp\"") != std::string::npos);
+        CHECK(json.find("\"revision\":\"abc123\"") != std::string::npos);
+        CHECK(json.find("\"build_type\":\"Release\"") != std::string::npos);
+        CHECK(json.find("\"precision\":\"single\"") != std::string::npos);
+        CHECK(json.find("\"isa\":{\"level\":\"x86-64-v3\",\"features\":[\"avx2\",\"fma\"]}") != std::string::npos);
+        CHECK(json.find("\"jit\":true") != std::string::npos);
+        CHECK(json.find("\"machine_report_schema_versions\":[1]") != std::string::npos);
+        CHECK(json.find("\"options\":[\"dataset\",\"report-json\",\"seed\"]") != std::string::npos);
+        // the quote and backslash in the compiler flags are escaped
+        CHECK(json.find("-DNAME=\\\"a\\\\b\\\"") != std::string::npos);
+    }
+
+    SECTION("a program without --report-json and on a non-x86 build")
+    {
+        info.IsaLevel.clear();
+        info.IsaFeatures = { "neon" };
+        info.Jit = false;
+        auto const json = Operon::Cli::CapabilitiesJson("operon_nsgp", { "sorter" }, info);
+        INFO(json);
+        CHECK_FALSE(glz::validate_json(json));
+        CHECK(json.find("\"machine_report_schema_versions\":[]") != std::string::npos);
+        CHECK(json.find("\"isa\":{\"level\":null,\"features\":[\"neon\"]}") != std::string::npos);
+        CHECK(json.find("\"jit\":false") != std::string::npos);
+    }
+}
+
+TEST_CASE("Operon::GetBuildInfo describes this build", "[cli]")
+{
+    auto const info = Operon::GetBuildInfo();
+    CHECK(info.Precision == (sizeof(Operon::Scalar) == sizeof(float) ? "single" : "double"));
+    CHECK_FALSE(info.Revision.empty());
+    CHECK_FALSE(info.BuildType.empty());
+    CHECK_FALSE(info.CompilerId.empty());
+    CHECK_FALSE(info.EigenVersion.empty());
+#if defined(__AVX2__)
+    CHECK(std::ranges::find(info.IsaFeatures, "avx2") != info.IsaFeatures.end());
+#endif
+#if defined(__x86_64__)
+    CHECK(info.IsaLevel.starts_with("x86-64-v"));
+#endif
+#if defined(HAVE_ASMJIT)
+    CHECK(info.Jit);
+#else
+    CHECK_FALSE(info.Jit);
+#endif
 }
 
 } // namespace Operon::Test
