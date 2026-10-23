@@ -3,6 +3,7 @@
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include "operator_factory.hpp"
+#include "cli_args.hpp"
 #include "operon/operators/creator.hpp" // for CreatorBase, BalancedTreeC...
 #include "operon/operators/evaluator.hpp" // for Evaluator, EvaluatorBase
 #include "operon/operators/generator.hpp" // for OffspringGeneratorBase
@@ -38,6 +39,19 @@ namespace {
     auto GetErrorString(std::string const& name, std::string const& arg)
     {
         return fmt::format("unable to parse {} argument '{}'", name, arg);
+    }
+
+    // Scans one numeric field of a `name:field:...` spec; the error names the option, the whole spec and the field.
+    template <typename T>
+    auto ScanField(std::string const& option, std::string const& spec, std::string const& token, std::string_view field)
+        -> T
+    {
+        auto const value = Cli::ScanExact<T>(token);
+        if (!value) {
+            throw std::invalid_argument(
+                fmt::format("unable to parse {} argument '{}': '{}' is not a valid {}", option, spec, token, field));
+        }
+        return *value;
     }
 } // namespace
 
@@ -260,10 +274,10 @@ auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& 
         size_t maxSelectionPressure { 100 };
         double comparisonFactor { 0 };
         if (tok.size() > 1) {
-            maxSelectionPressure = scn::scan<size_t>(tok[1], "{}")->value();
+            maxSelectionPressure = ScanField<size_t>("generator", str, tok[1], "maximum selection pressure");
         }
         if (tok.size() > 2) {
-            comparisonFactor = scn::scan<double>(tok[2], "{}")->value();
+            comparisonFactor = ScanField<double>("generator", str, tok[2], "comparison factor");
         }
         generator = std::make_unique<OffspringSelectionGenerator>(&eval, &cx, &mut, &femSel, &maleSel, coeffOptimizer);
         dynamic_cast<OffspringSelectionGenerator*>(generator.get())->MaxSelectionPressure(maxSelectionPressure);
@@ -272,14 +286,14 @@ auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& 
         generator = std::make_unique<BroodOffspringGenerator>(&eval, &cx, &mut, &femSel, &maleSel, coeffOptimizer);
         size_t broodSize { BroodOffspringGenerator::DefaultBroodSize };
         if (tok.size() > 1) {
-            broodSize = scn::scan<size_t>(tok[1], "{}")->value();
+            broodSize = ScanField<size_t>("generator", str, tok[1], "brood size");
         }
         dynamic_cast<BroodOffspringGenerator*>(generator.get())->BroodSize(broodSize);
     } else if (name == "poly") {
         generator = std::make_unique<PolygenicOffspringGenerator>(&eval, &cx, &mut, &femSel, &maleSel, coeffOptimizer);
         size_t polygenicSize { PolygenicOffspringGenerator::DefaultBroodSize };
         if (tok.size() > 1) {
-            polygenicSize = scn::scan<size_t>(tok[1], "{}")->value();
+            polygenicSize = ScanField<size_t>("generator", str, tok[1], "polygenic size");
         }
         dynamic_cast<PolygenicOffspringGenerator*>(generator.get())->PolygenicSize(polygenicSize);
     } else {
