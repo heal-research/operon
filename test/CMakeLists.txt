@@ -15,6 +15,7 @@ endif()
 
 find_package(Catch2 3 REQUIRED)
 find_package(scn REQUIRED)
+find_package(cxxopts REQUIRED)
 find_package(nanobench REQUIRED)
 # vdt is optional: if found, enables the "Backend vs vdt ULP accuracy" test case
 # (gated by OPERON_HAVE_VDT in backend.cpp). Not in vcpkg.json; provide via overlay or nix.
@@ -55,18 +56,21 @@ add_executable(operon_test
     source/implementation/nondominatedsort.cpp
     source/implementation/permutation_importance.cpp
     source/implementation/evaluation_stats.cpp
-    source/implementation/reporter.cpp
+    source/implementation/final_record.cpp
     source/implementation/evaluator.cpp
     source/implementation/optimizer.cpp
     source/implementation/probes.cpp
     source/implementation/random.cpp
     source/implementation/selection.cpp
+    source/implementation/stop_reasons.cpp
     source/implementation/serialization.cpp
-    source/implementation/resume_validation.cpp
+    source/implementation/sha256.cpp
     source/implementation/shape_constrained_evaluator.cpp
     source/implementation/shape_constrained_value_evaluator.cpp
     source/implementation/shape_bound_correctness.cpp
+    ../cli/source/final_record.cpp
     ../cli/source/shape_constraints_config.cpp
+    ../cli/source/stop_signal.cpp
     source/implementation/standard_library.cpp
     source/performance/autodiff.cpp
     source/performance/creator.cpp
@@ -100,7 +104,7 @@ add_executable(operon_test
     source/implementation/gaussian_gradient_cost.cpp
     source/implementation/poisson_gradient_cost.cpp
     )
-target_link_libraries(operon_test PRIVATE operon::operon Catch2::Catch2WithMain scn::scn nanobench::nanobench)
+target_link_libraries(operon_test PRIVATE operon::operon Catch2::Catch2WithMain scn::scn cxxopts::cxxopts nanobench::nanobench)
 target_compile_definitions(operon_test PRIVATE OPERON_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/..")
 if(vdt_FOUND)
     target_link_libraries(operon_test PRIVATE vdt::vdt)

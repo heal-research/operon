@@ -22,9 +22,26 @@ The evaluation budget limits committed work. Initialization always commits (a ze
 // keep both
 An incomplete generation is not itself a stop reason and does not set `StopRequested()`: the run ends only because the stop condition that cut the generation short (evaluation budget, generator termination, time limit, stop request or a `true` report) holds. A generator-defined termination that clears again before the loop checks it, such as the selection-pressure limit, still ends the run. `StopRequested()` is true only after `RequestStop()` or a `true` report callback.
 
-## Transposition cache
+## Stop reasons
 
-With `GeneticAlgorithmConfig::Cache` set, offspring that are structurally identical to an earlier one reuse its fitness instead of being scored again. By default (`CacheVisibility::Committed`) an entry becomes visible to other offspring slots only in the next generation, which makes the cache hit/miss decisions independent of slot arrival order. The whole run is independent of the thread count, also when the evaluation budget or the offspring-selection pressure binds, as long as no time limit or stop request cuts a generation; JIT evaluation is not covered. Lookups that used to hit an entry of the same generation become evaluations, which changes the search trajectory and therefore the number of evaluations a run consumes, in either direction. `CacheVisibility::Immediate` shares entries at once and depends on thread timing. **Offspring selection and the cache:** the selection pressure of `os` counts attempts, so a cache hit counts like an evaluated offspring (it made no evaluator call, and used to be free). With a cache an `os` run therefore reaches its pressure cap sooner and may stop earlier than before, also at one thread: on Poly-10 with `os:20:0.5`, population and pool 100, seed 3, 18 generations instead of 60. Without a cache, and for `basic`, `brood` and `poly`, results are unchanged, except when the evaluation budget binds inside an attempt that costs more than one evaluation (such a generation used to overshoot the budget and is now discarded). The cap also guarantees that offspring selection terminates when every candidate is a rejected cache hit. See the [search reference](../reference/search.md#transposition-cache). Checkpoints written with `--checkpoint-interval` carry the cache, so `--resume` continues a run with the cache on exactly like the uninterrupted run, unless `--evaluations` (or another limit that cuts a generation) binds (a resumed run gets a fresh evaluation budget and is charged one evaluation per parent for the re-evaluation at the warm start); resume with the same `--seed`, `--cache-visibility` and `--cache-max-age` (a mismatch is rejected).
+A run records *why* it stopped as a `StopMask` (`stop_reason.hpp`): `GenerationLimit`, `EvaluationLimit`,
+`PressureLimit`, `TimeLimit`, `Callback`, `Signal`, `EngineError`. The drivers poll the four limits (generation count,
+evaluator budget, `OffspringGeneratorBase::PressureExhausted()`, time) together with the external requests, record
+every condition that holds with an atomic `fetch_or`, and so tolerate concurrent polls from worker threads.
+`StopReasons()` is what was recorded, `TerminationReasons()` adds the conditions that hold in the final state, and
+`PrimaryStopReason()` picks the one to report first (`engine_error`, `signal`, `callback`, `evaluation_limit`,
+`pressure_limit`, `generation_limit`, `time_limit`). `RequestStop(source)` takes `Callback` (the default, and what a
+report callback returning `true` records), `Signal` or `EngineError`; it is async-signal-safe. `StopRequested()` is
+true only for these external requests. `Progress()` is the offspring accounting of the generation body started last
+and `GenerationsCompleted()` the index of the last generation whose pool was filled.
+`OffspringGeneratorBase::Terminate()` is the union of `BudgetExhausted()` and `PressureExhausted()`.
+
+`operon_gp` and `operon_nsgp` write these, with the final counters read from the evaluator after `Run()` returns and
+the final model's `ModelRef` (SHA-256 of `ModelSerialization`), as an `operon.final` JSON document with
+`--final-json PATH --run-id ID --attempt-id UUID`. The file is published atomically, also when the run fails
+(`exit_status` `error`, reason `engine_error`). With `--final-json`, SIGINT and SIGTERM stop the run gracefully
+(reason `signal`) and the process exits with 128 plus the signal number; a second signal terminates it immediately.
+The document's schema is `docs/schemas/final.schema.json`.
 
 ## Fitness and ordering
 

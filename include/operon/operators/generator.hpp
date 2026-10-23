@@ -58,35 +58,14 @@ public:
         Evaluator()->Prepare(pop);
     }
 
-    // DEPRECATED. GeneticProgrammingAlgorithm and NSGA2 no longer call Terminate(): the evaluation budget is
-    // GeneticAlgorithmConfig::Evaluations, enforced by the algorithm on committed work, and the offspring-selection
-    // pressure limit is MaxAttempts(). An override (in C++ or in a binding) is not consulted any more. The virtual is
-    // kept so that existing subclasses and bindings still compile; it still reports whether the evaluation budget of
-    // the evaluator -- its scoring evaluations (EvaluatorBase::Stats()) plus the optimizer evaluations recorded in
-    // `accounting` -- has been consumed.
-    [[nodiscard]] virtual auto Terminate(OptimizerAccounting const& accounting) const -> bool
-    {
-        auto const [residual, jacobian, calls] = evaluator_->Stats();
-        auto const scoring
-            = detail::SaturatingAdd(static_cast<std::uint64_t>(residual), static_cast<std::uint64_t>(jacobian));
-        return detail::SaturatingAdd(scoring, accounting.Evaluations()) >= evaluator_->Budget();
-    }
-
-    // Largest number of attempts that one generation may make, given the number of parents; nullopt means no limit.
-    // One attempt is one invocation of the generator (operator()) for a pool slot: a candidate is generated, evaluated
-    // or taken from the transposition cache, and accepted or rejected. The algorithm counts the attempts of every pool
-    // slot and commits the generation only if the count stays within the cap, with the sequential rule of the budget
-    // ledger (an attempt may start while the attempts so far do not exceed the cap, so the last accepted attempt is
-    // not counted against it). It is a cap on what is *committed*, not a bound on executed work: attempts already
-    // running when the cap is passed finish, and their work is discarded with the generation.
-    //
-    // Counting attempts, not evaluator calls, is what makes the cap a bound for every generator: a rejected
-    // candidate that is a cache hit still advances it, so a slot cannot retry for ever. The generator needs no
-    // cooperation: the algorithm counts its invocations, wherever it evaluates.
-    [[nodiscard]] virtual auto MaxAttempts(std::size_t /*parents*/) const -> std::optional<std::size_t>
-    {
-        return std::nullopt;
-    }
+    // The two independent reasons an offspring generator can ask the algorithm to stop. Terminate() is their union
+    // and is not overridable: the algorithms poll the two parts separately so that a run can report which fired.
+    // Budget: the evaluator's evaluation budget is used up.
+    [[nodiscard]] auto BudgetExhausted() const -> bool { return evaluator_->BudgetExhausted(); }
+    // Selection pressure: offspring selection has needed more than its maximum candidates per parent (never true
+    // for generators without a selection-pressure limit).
+    [[nodiscard]] virtual auto PressureExhausted() const -> bool { return false; }
+    [[nodiscard]] auto Terminate() const -> bool { return BudgetExhausted() || PressureExhausted(); }
 
     auto SetCache(Zobrist* cache) const { cache_ = cache; }
     [[nodiscard]] auto Cache() const -> Zobrist* { return cache_; }
@@ -251,12 +230,10 @@ public:
         return static_cast<double>(e) / static_cast<double>(n);
     }
 
-    // DEPRECATED, no longer consulted by the algorithms (see OffspringGeneratorBase::Terminate()).
-    auto Terminate(OptimizerAccounting const& accounting) const -> bool override
+    auto PressureExhausted() const -> bool override
     {
-        return OffspringGeneratorBase::Terminate(accounting)
-            || SelectionPressure() > static_cast<double>(maxSelectionPressure_);
-    };
+        return SelectionPressure() > static_cast<double>(maxSelectionPressure_);
+    }
 
     // The selection pressure of a generation is the number of attempts (candidates generated, whether evaluated or
     // taken from the transposition cache) divided by the parents, as in offspring selection genetic algorithms. The

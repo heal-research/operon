@@ -284,8 +284,16 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         "box), e.g. interval:4",
         cxxopts::value<std::string>()->default_value("interval"))("debug", "Debug mode (more information displayed)")(
         "help", "Print help")("version", "Print version and program information")("capabilities",
-        "Print build identity, precision, ISA, optional features and registered option names as one JSON object and "
-        "exit");
+        "Print build identity, precision, ISA, optional features and accepted options as one JSON object and exit");
+
+    // Machine-readable run record (operon.final) and the identifiers that are stamped into it.
+    opts.add_options()("final-json",
+        "Write the operon.final termination record (stop reasons, final counters, final model) to this path, "
+        "atomically, also when the run fails; SIGINT/SIGTERM then stop the run gracefully and exit with 128+signal",
+        cxxopts::value<std::string>())("run-id",
+        "Opaque run identifier (64 lowercase hex characters) recorded in --final-json",
+        cxxopts::value<std::string>())("attempt-id",
+        "Opaque attempt identifier (lowercase UUID) recorded in --final-json", cxxopts::value<std::string>());
     return opts;
 }
 

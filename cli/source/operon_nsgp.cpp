@@ -9,6 +9,7 @@
 #include <fmt/ranges.h>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <taskflow/algorithm/reduce.hpp>
 #include <taskflow/taskflow.hpp>
@@ -20,6 +21,7 @@
 #include "operon/core/version.hpp"
 #include "operon/formatter/formatter.hpp"
 #include "operon/hash/hash.hpp"
+#include "operon/hash/sha256.hpp"
 #include "operon/hash/zobrist.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/creator.hpp"
@@ -38,12 +40,14 @@
 #include "operon/optimizer/solvers/sgd.hpp"
 
 #include "cli_error.hpp"
+#include "final_record.hpp"
 #include "jit_setup.hpp"
 #include "operator_factory.hpp"
 #include "pareto_front.hpp"
 #include "probes_config.hpp"
 #include "reporter.hpp"
 #include "shape_constraints_config.hpp"
+#include "stop_signal.hpp"
 #include "util.hpp"
 
 namespace {
@@ -68,15 +72,9 @@ auto FrontSelect(EvaluatorType const& eval, Operon::Span<Operon::Individual cons
     }
     return best ? *best : pop.front();
 }
-} // namespace
 
-auto main(int argc, char** argv) -> int
+auto RunNsgp(cxxopts::ParseResult const& result, Operon::Cli::FinalRun& finalRun) -> int
 {
-    auto opts = Operon::InitOptions("operon_nsgp", "Genetic programming symbolic regression");
-    opts.add_options()("sorter", "Non-dominated sorter: rs (RankIntersect) or ms (Merge)",
-        cxxopts::value<std::string>()->default_value("rs"));
-    auto result = Operon::ParseOptions(std::move(opts), argc, argv);
-
     // parse and set default values
     Operon::GeneticAlgorithmConfig config {};
     config.Generations = Operon::GetLimit(result, "generations");
@@ -91,6 +89,8 @@ auto main(int argc, char** argv) -> int
     config.LamarckianProbability = result["lamarckian-probability"].as<Operon::Scalar>();
     config.TimeLimit = result["timelimit"].as<size_t>();
     config.Seed = std::random_device {}();
+    finalRun.SetConfig(config);
+    finalRun.ExpectFront();
 
     // parse remaining config options
     Operon::Range trainingRange;
@@ -154,6 +154,7 @@ auto main(int argc, char** argv) -> int
         }
 
         if (showPrimitiveSet) {
+            finalRun.Abandon(); // prints the primitive set and exits: nothing to record
             Operon::PrintPrimitives(primitiveSetConfig);
             return EXIT_SUCCESS;
         }
@@ -426,6 +427,7 @@ auto main(int argc, char** argv) -> int
         }
         Operon::NSGA2 gp { config, &problem, &treeInitializer, coeffInitializer.get(), generator.get(),
             reinserter.get(), sorterPtr };
+        Operon::Cli::FinalRun::Watch const watch { finalRun, gp };
 
         Operon::ModelSelectorFn modelSelector;
         auto const modelSelection = result["model-selection"].as<std::string>();
@@ -483,6 +485,7 @@ auto main(int argc, char** argv) -> int
         gp.Run(
             executor, random,
             [&]() -> bool {
+                Operon::Cli::StopSignals::Forward(gp);
                 reporter(executor, gp);
                 if (probes) {
                     (*probes)(gp);
@@ -507,10 +510,17 @@ auto main(int argc, char** argv) -> int
             fmt::print(stderr, "shape-constraints: final model is {}\n",
                 feasible ? "feasible" : "INFEASIBLE (not certified over the domain box)");
         }
-        fmt::print("{:infix:roundtrip}\n", Operon::Fmt::TreeFormatArgs { best.Genotype, *problem.GetDataset() });
+        auto const model
+            = fmt::format("{:infix:roundtrip}", Operon::Fmt::TreeFormatArgs { best.Genotype, *problem.GetDataset() });
+        fmt::print("{}\n", model);
+        if (!best.Genotype.Empty()) {
+            finalRun.SetModel(modelSelection, best.Genotype, model);
+        }
         if (result.contains("pareto-front")) {
-            Operon::WriteParetoFront(result["pareto-front"].as<std::string>(), gp.Parents(), dtable, problem,
-                *sorterPtr, static_cast<Operon::Scalar>(config.Epsilon));
+            auto const paretoPath = result["pareto-front"].as<std::string>();
+            Operon::WriteParetoFront(
+                paretoPath, gp.Parents(), dtable, problem, *sorterPtr, static_cast<Operon::Scalar>(config.Epsilon));
+            finalRun.SetFrontRef(Operon::Sha256FileHex(paretoPath));
         }
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());
@@ -518,4 +528,31 @@ auto main(int argc, char** argv) -> int
     }
 
     return 0;
+}
+} // namespace
+
+auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
+{
+    auto opts = Operon::InitOptions("operon_nsgp", "Genetic programming symbolic regression");
+    opts.add_options()("sorter", "Non-dominated sorter: rs (RankIntersect) or ms (Merge)",
+        cxxopts::value<std::string>()->default_value("rs"));
+    auto result = Operon::ParseOptions(std::move(opts), argc, argv);
+
+    std::optional<Operon::Cli::FinalRun> finalRun;
+    try {
+        finalRun.emplace(result);
+    } catch (std::exception& e) {
+        fmt::print(stderr, "error: {}\n", e.what());
+        return EXIT_FAILURE;
+    }
+
+    auto exitCode = EXIT_FAILURE;
+    try {
+        exitCode = RunNsgp(result, *finalRun);
+    } catch (std::exception& e) {
+        fmt::print(stderr, "error: {}\n", e.what());
+    } catch (...) {
+        fmt::print(stderr, "error: unknown exception\n");
+    }
+    return finalRun->Finish(exitCode);
 }
