@@ -190,6 +190,14 @@ namespace detail {
         // objectives.
         [[nodiscard]] auto ShapeStructuralStats() const -> std::tuple<std::size_t, std::size_t, std::size_t>;
 
+        // Same as ShapeStructuralStats() with the optimizer/scoring split. `Calls` is the sum over the structural
+        // objectives; the adapter keeps its own call count.
+        [[nodiscard]] auto ShapeStructuralDetailedStats() const -> EvaluationStats;
+
+        // Zeroes the counters of the structural objectives (they are children of the adapter, not evaluators the
+        // algorithm knows about).
+        void ShapeStructuralReset() const;
+
         // Measures `tree` under exactly the transform the evaluated prediction carries, before the base
         // evaluator's score rewrites the buffer. Throws std::logic_error if `evaluated` is empty.
         [[nodiscard]] auto ShapeCertify(Operon::Tree const& tree, std::optional<EvaluatedBuffer> const& evaluated) const
@@ -290,6 +298,21 @@ public:
         auto const [structuralResidual, structuralJacobian, structuralTime] = this->ShapeStructuralStats();
         return std::tuple { residual + structuralResidual, jacobian + structuralJacobian, calls,
             costFunctionTime + structuralTime };
+    }
+
+    auto DetailedStats() const -> EvaluationStats override
+    {
+        auto stats = BaseEvaluator::DetailedStats();
+        auto const calls = stats.Calls;
+        stats += this->ShapeStructuralDetailedStats();
+        stats.Calls = calls;
+        return stats;
+    }
+
+    void Reset() const override
+    {
+        BaseEvaluator::Reset();
+        this->ShapeStructuralReset();
     }
 
     auto BudgetExhausted() const -> bool override
