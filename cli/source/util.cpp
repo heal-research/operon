@@ -301,7 +301,7 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         "Opaque attempt identifier (lowercase UUID) recorded in --final-json", cxxopts::value<std::string>());
     opts.add_options()("generation-log", "Write lossless generation segments and model sidecar in this directory",
         cxxopts::value<std::string>())("segment-generations", "Seal a generation segment after this many records",
-        cxxopts::value<std::size_t>()->default_value("10"))("segment-seconds",
+        cxxopts::value<std::size_t>()->default_value("1000"))("segment-seconds",
         "Seal a generation segment after this many seconds", cxxopts::value<double>()->default_value("5"))("sync",
         "Generation log durability: record or segment", cxxopts::value<std::string>()->default_value("segment"));
     return opts;

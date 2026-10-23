@@ -66,7 +66,7 @@ struct GenerationRecorderOptions {
     std::string Generator { "basic" };
     std::string SelectionRule { "obj0" };
     bool Nsga2 { false };
-    std::size_t SegmentGenerations { 10 };
+    std::size_t SegmentGenerations { 1000 };
     double SegmentSeconds { 5 };
     bool SyncRecord { false };
     std::chrono::steady_clock::time_point ProcessStart { std::chrono::steady_clock::now() };

@@ -47,7 +47,7 @@ The document's schema is `docs/schemas/final.schema.json`.
 
 Both CLIs accept `--generation-log DIR --run-id HEX64 --attempt-id UUID`. The directory must not contain an earlier
 stream. Generation 0 is `initialized`, followed by one `generation_complete` per fully filled offspring pool.
-`--segment-generations 10` and `--segment-seconds 5` seal at the first reached threshold, checked at each completed
+`--segment-generations 1000` and `--segment-seconds 5` seal at the first reached threshold, checked at each completed
 record; `--sync segment` is the default. Every line is written directly to the OS in `generation-000000.jsonl.part`.
 Sealing syncs the model sidecar and segment, closes the segment, renames it to `.jsonl`, and syncs the directory.
 One persistent seal worker overlaps that durability sequence with the next generation's computation. Before writing
