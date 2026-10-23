@@ -2618,10 +2618,8 @@ namespace {
             cs.Domains.insert_or_assign("X1", jc.X1);
             cs.Domains.insert_or_assign("X2", jc.X2);
             auto const permissive = std::pair { Operon::Scalar { -1e9 }, Operon::Scalar { 1e9 } };
-            cs.Constraints.push_back({ .Op = ShapeConstraintOp::Identity,
-                .Variable = "",
-                .Sign = std::nullopt,
-                .Bound = permissive });
+            cs.Constraints.push_back(
+                { .Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = permissive });
             for (auto const* variable : { "X1", "X2" }) {
                 cs.Constraints.push_back({ .Op = ShapeConstraintOp::FirstDerivative,
                     .Variable = variable,
@@ -2778,8 +2776,8 @@ TEST_CASE("mode:N falls back to the whole-box result when a sub-box is undecided
 // The step of a leaf box is (hi - lo) / 2^splits rounded to nearest, so the top of the last cell lo + 2^splits * step
 // can fall below hi (for example lo = -2.018f, hi = 1.853f at one halving). Unless the outer endpoints are pinned to
 // the domain the point hi is in no leaf box and the bound misses f(hi).
-TEST_CASE("interval:N leaf boxes cover the top of the domain when the step rounds down",
-    "[shape-constraints][subdivision]")
+TEST_CASE(
+    "interval:N leaf boxes cover the top of the domain when the step rounds down", "[shape-constraints][subdivision]")
 {
     using S = Operon::Scalar;
     auto const coversTop = [](S lo, S hi, int splits) {
@@ -2811,6 +2809,24 @@ TEST_CASE("interval:N leaf boxes cover the top of the domain when the step round
         }
     }
     REQUIRE(exercised > 0);
+}
+
+// For a subnormal-width axis the step (hi - lo) / 2^splits underflows to zero, so every leaf box of the axis is the
+// point lo unless the top of the last cell is pinned to hi. The packed multi-axis identity route must pin it too.
+TEST_CASE("interval:N packed leaf boxes cover a subnormal-width domain", "[shape-constraints][subdivision]")
+{
+    using S = Operon::Scalar;
+    constexpr auto tiny = std::numeric_limits<S>::denorm_min();
+    SubdivisionFixture fx;
+    // two split axes: the packed SIMD route. Up to 2^12 leaves, so at least one full pack at any vector width.
+    SubdivisionCase const jc { "X1 + X2", { 0, tiny }, { 0, tiny }, {}, false };
+    for (int depth : { 6, 12 }) {
+        INFO("depth " << depth);
+        auto const measured = fx.Measure(jc, { .Mode = ShapeBoundMode::Interval, .BisectionDepth = depth });
+        REQUIRE(measured.Measurements[0].Bound);
+        CHECK(measured.Measurements[0].Bound->first <= S { 0 });
+        CHECK(measured.Measurements[0].Bound->second >= S { 2 } * tiny);
+    }
 }
 
 // The routes that run one evaluator per leaf stop at 12 halvings, so that the largest accepted depth is not a

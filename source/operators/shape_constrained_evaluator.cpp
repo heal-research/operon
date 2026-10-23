@@ -211,19 +211,33 @@ namespace {
             return plan;
         }
 
-        // The box of leaf `leaf`: bit b of `leaf` selects the lower/upper half of the axis the b-th bisection of the
-        // schedule splits. The outermost endpoints of every axis are clamped to the domain itself, so that the union
-        // of all leaf boxes provably covers the whole box despite the rounding of (hi - lo) / 2^splits (the step is
-        // rounded to nearest, so the top of the last cell can otherwise fall short of hi).
-        [[nodiscard]] auto LeafDomains(DomainMap const& domains, std::size_t leaf) const -> DomainMap
+        // The cell index of `leaf` on every axis: bit b of `leaf` selects the lower/upper half of the axis the b-th
+        // bisection of the schedule splits.
+        [[nodiscard]] auto Cells(std::size_t leaf) const -> Operon::Vector<int>
         {
-            auto result = domains;
             Operon::Vector<int> cells(Axes.size());
             Operon::Vector<int> bits(Axes.size());
             for (std::size_t bit = 0; bit < Schedule.size(); ++bit) {
                 auto const axis = Schedule[bit];
                 cells[axis] |= (static_cast<int>((leaf >> bit) & std::size_t { 1 }) << bits[axis]++);
             }
+            return cells;
+        }
+
+        // Whether `cell` is the last cell of axis `axis`.
+        [[nodiscard]] auto IsLastCell(std::size_t axis, int cell) const -> bool
+        {
+            return cell + 1 == (1 << Splits[axis]);
+        }
+
+        // The box of leaf `leaf`. The outermost endpoints of every axis are clamped to the domain itself, so that the
+        // union of all leaf boxes provably covers the whole box despite the rounding of (hi - lo) / 2^splits (the step
+        // is rounded to nearest, and underflows to zero for a subnormal width, so the top of the last cell can
+        // otherwise fall short of hi).
+        [[nodiscard]] auto LeafDomains(DomainMap const& domains, std::size_t leaf) const -> DomainMap
+        {
+            auto result = domains;
+            auto const cells = Cells(leaf);
             for (std::size_t axis = 0; axis < Axes.size(); ++axis) {
                 auto const [lo, hi] = domains.at(Axes[axis]);
                 auto const step = (hi - lo) / Operon::Scalar(std::size_t { 1 } << Splits[axis]);
@@ -233,7 +247,7 @@ namespace {
                 if (cells[axis] == 0) {
                     cellLo = lo;
                 }
-                if (cells[axis] + 1 == (1 << Splits[axis])) {
+                if (IsLastCell(axis, cells[axis])) {
                     cellHi = std::max(cellHi, hi);
                 }
                 result[Axes[axis]] = { cellLo, cellHi };
@@ -275,13 +289,26 @@ namespace {
                 auto acc = IntervalEvaluator<WScalar>::Interval::empty();
                 std::size_t first = 0;
                 Operon::Vector<typename IntervalEvaluator<WScalar>::LaneOverride> overrides(plan->Axes.size());
-                // Needs no pinning: pappus takes the segment width from a diameter rounded up, so the top of the last
-                // cell of an axis is at least hi, and the bottom of the first cell is exactly lo.
+                // The segment width of pappus is (hi - lo) / 2^splits, which underflows to zero for a subnormal
+                // width: the top of the last cell of an axis is pinned to hi, as in LeafDomains.
                 Pack pack(subdivision, 0);
+                constexpr auto lanes = WScalar::size();
+                Operon::Vector<std::array<Operon::Scalar, lanes>> upper(plan->Axes.size());
                 for (; first + Pack::width <= nLeaves; first += Pack::width) {
                     pack.refill(subdivision, first);
                     for (std::size_t axis = 0; axis < plan->Axes.size(); ++axis) {
-                        overrides[axis] = { plan->Axes[axis], pack.lower_data(axis), pack.upper_data(axis) };
+                        std::copy_n(pack.upper_data(axis), lanes, upper[axis].data());
+                    }
+                    for (std::size_t lane = 0; lane < lanes; ++lane) {
+                        auto const cells = plan->Cells(first + lane);
+                        for (std::size_t axis = 0; axis < plan->Axes.size(); ++axis) {
+                            if (plan->IsLastCell(axis, cells[axis])) {
+                                upper[axis][lane] = std::max(upper[axis][lane], dom.at(plan->Axes[axis]).second);
+                            }
+                        }
+                    }
+                    for (std::size_t axis = 0; axis < plan->Axes.size(); ++axis) {
+                        overrides[axis] = { plan->Axes[axis], pack.lower_data(axis), upper[axis].data() };
                     }
                     auto const batch = evaluator(coeff, overrides);
                     if (!batch || eve::any(batch->is_empty())
