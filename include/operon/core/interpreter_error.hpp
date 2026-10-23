@@ -24,6 +24,7 @@ struct InterpreterError {
         InvalidOutputSize,
         InvalidCoefficientSize,
         InvalidRootIndex,
+        InvalidRange,
     };
 
     Code Kind { Code::MissingVariable };
@@ -47,6 +48,9 @@ struct InterpreterError {
         return fmt::format("invalid coefficient size: expected {}, got {}", error.ExpectedSize, error.ActualSize);
     case InterpreterError::Code::InvalidRootIndex:
         return fmt::format("invalid root index: expected less than {}, got {}", error.ExpectedSize, error.ActualSize);
+    case InterpreterError::Code::InvalidRange:
+        return fmt::format(
+            "invalid range: dataset has {} rows, range ends at {}", error.ExpectedSize, error.ActualSize);
     }
     std::unreachable();
 }

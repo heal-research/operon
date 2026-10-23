@@ -40,8 +40,8 @@ TEST_CASE("Autodiff specific expressions", "[autodiff]") // NOLINT(readability-f
 
         Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter { &dtable, &ds,
             &tree };
-        auto rev = interpreter.JacRev(parameters, range).value();
-        auto fwd = interpreter.JacFwd(parameters, range).value();
+        auto rev = Util::JacRev(interpreter, parameters, range).value();
+        auto fwd = Util::JacFwd(interpreter, parameters, range).value();
 
         Eigen::Map<Eigen::Array<Operon::Scalar, -1, -1>> const jjet(
             jac.data(), static_cast<Eigen::Index>(range.Size()), static_cast<Eigen::Index>(parameters.size()));
@@ -84,13 +84,97 @@ TEST_CASE("Autodiff APIs report missing derivatives", "[autodiff]")
     auto coeff = tree.GetCoefficients();
     Operon::Range const range { 0, 1 };
     auto const sinHash = tree.Nodes().back().HashValue;
-    dtable.RegisterFunction<Operon::Scalar>(sinHash, standard.GetFunction<Operon::Scalar>(sinHash));
+    dtable.RegisterFunction<Operon::Scalar>(sinHash, *standard.FindFunction<Operon::Scalar>(sinHash));
     Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> interpreter { &dtable, &ds, &tree };
-    CHECK(interpreter.JacFwd(coeff, range).error().Kind == Operon::InterpreterError::Code::MissingDerivative);
+    CHECK(Util::JacFwd(interpreter, coeff, range).error().Kind == Operon::InterpreterError::Code::MissingDerivative);
     CHECK(interpreter.JacRevVariable(coeff, range, ds.GetVariable("x")->Hash).error().Kind
         == Operon::InterpreterError::Code::MissingDerivative);
     CHECK(interpreter.JacFwdVariable(coeff, range, ds.GetVariable("x")->Hash).error().Kind
         == Operon::InterpreterError::Code::MissingDerivative);
+}
+
+// Prediction needs no derivatives, so it must keep working on a tree whose derivative is missing, before and after a
+// rejected Jacobian request on the same interpreter.
+TEST_CASE("Prediction survives a rejected Jacobian request", "[autodiff]")
+{
+    Operon::Dataset ds({ "x" }, { { 0.5F, 1.0F, 2.0F } });
+    Operon::DispatchTable<Operon::Scalar> standard;
+    Operon::DispatchTable<Operon::Scalar> dtable;
+    auto tree = Operon::InfixParser::ParseOrThrow("sin(x)", ds);
+    auto const coeff = tree.GetCoefficients();
+    Operon::Range const range { 0, 3 };
+    auto const sinHash = tree.Nodes().back().HashValue;
+    dtable.RegisterFunction<Operon::Scalar>(sinHash, *standard.FindFunction<Operon::Scalar>(sinHash));
+    Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> interpreter { &dtable, &ds, &tree };
+
+    auto const before = interpreter.Evaluate(coeff, range);
+    REQUIRE(before);
+    auto const rejected = Util::JacRev(interpreter, coeff, range);
+    REQUIRE_FALSE(rejected);
+    CHECK(rejected.error().Kind == Operon::InterpreterError::Code::MissingDerivative);
+    CHECK(rejected.error().Hash == sinHash);
+    auto const after = interpreter.Evaluate(coeff, range);
+    REQUIRE(after);
+    CHECK(*after == *before);
+}
+
+// A registered slot with no callable is as unusable as an unregistered hash.
+TEST_CASE("Empty primitive slot is reported as a missing primitive", "[interpreter]")
+{
+    Operon::Dataset ds({ "x" }, { { 1.0F } });
+    Operon::DispatchTable<Operon::Scalar> standard;
+    Operon::DispatchTable<Operon::Scalar> dtable;
+    auto tree = Operon::InfixParser::ParseOrThrow("sin(x)", ds);
+    auto const sinHash = tree.Nodes().back().HashValue;
+    dtable.RegisterFunction<Operon::Scalar>(sinHash, {});
+    Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> interpreter { &dtable, &ds, &tree };
+    auto const result = interpreter.Evaluate({}, Operon::Range { 0, 1 });
+    REQUIRE_FALSE(result);
+    CHECK(result.error().Kind == Operon::InterpreterError::Code::MissingPrimitive);
+    CHECK(result.error().Hash == sinHash);
+}
+
+// The binding is cached, and BindTree() is how a changed tree or dispatch table is picked up.
+TEST_CASE("BindTree refreshes a stale binding", "[interpreter]")
+{
+    Operon::Dataset ds({ "x" }, { { 1.0F, 2.0F, 3.0F } });
+    Operon::DispatchTable<Operon::Scalar> standard;
+    Operon::DispatchTable<Operon::Scalar> dtable;
+    auto tree = Operon::InfixParser::ParseOrThrow("2 * sin(x)", ds);
+    auto const sinHash = static_cast<Operon::Hash>(Operon::BuiltinOp::Sin);
+    dtable.RegisterFunction<Operon::Scalar>(sinHash, *standard.FindFunction<Operon::Scalar>(sinHash));
+    Operon::Dataset const& dataset = ds;
+    Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> interpreter { &dtable, &dataset, &tree };
+    Operon::Range const range { 0, 3 };
+
+    REQUIRE(interpreter.Evaluate({}, range));
+    REQUIRE_FALSE(interpreter.JacRevVariable({}, range, ds.GetVariable("x")->Hash));
+
+    dtable.RegisterFunction<Operon::Scalar>(
+        sinHash, *standard.FindFunction<Operon::Scalar>(sinHash), *standard.FindDerivative<Operon::Scalar>(sinHash));
+    REQUIRE(interpreter.BindTree());
+    auto const derivative = interpreter.JacRevVariable({}, range, ds.GetVariable("x")->Hash);
+    REQUIRE(derivative);
+
+    // d/dx 2 sin(x) = 2 cos(x)
+    for (auto i = 0UL; i < 3; ++i) {
+        auto const x = ds.GetValues("x")[i];
+        CHECK((*derivative)[i] == Catch::Approx(2.0F * std::cos(x)).epsilon(1e-4));
+    }
+
+    // a changed node weight is picked up by rebinding, not by evaluating a different range
+    for (auto& node : tree.Nodes()) {
+        if (node.IsConstant()) {
+            node.Value = 3.0F;
+        }
+    }
+    REQUIRE(interpreter.BindTree());
+    auto const rebound = interpreter.Evaluate({}, Operon::Range { 1, 3 });
+    REQUIRE(rebound);
+    for (auto i = 0UL; i < 2; ++i) {
+        auto const x = ds.GetValues("x")[i + 1];
+        CHECK((*rebound)[i] == Catch::Approx(3.0F * std::sin(x)).epsilon(1e-4));
+    }
 }
 
 TEST_CASE("Interpreter reports invalid coefficient, output, and root sizes", "[autodiff]")
@@ -123,14 +207,65 @@ TEST_CASE("Interpreter reports invalid coefficient, output, and root sizes", "[a
     CHECK(invalidJacobian.error().Kind == Operon::InterpreterError::Code::InvalidOutputSize);
 
     std::array<std::size_t, 2> roots { 0, std::numeric_limits<std::size_t>::max() };
-    auto const evaluatedRoots = interpreter.EvaluateRoots(coeff, range, roots);
+    auto const evaluatedRoots = Util::EvaluateRoots(interpreter, coeff, range, roots);
     REQUIRE(evaluatedRoots);
     CHECK(evaluatedRoots->col(1).isZero());
 
     std::array<std::size_t, 1> invalidRoots { tree.Nodes().size() };
-    auto const invalidRoot = interpreter.EvaluateRoots(coeff, range, invalidRoots);
+    auto const invalidRoot = Util::EvaluateRoots(interpreter, coeff, range, invalidRoots);
     REQUIRE_FALSE(invalidRoot);
     CHECK(invalidRoot.error().Kind == Operon::InterpreterError::Code::InvalidRootIndex);
+
+    // the caller-owned output must match exactly in size, and nothing outside it is written
+    std::array<std::size_t, 2> twoRoots { 0, 0 };
+    auto const outputSize = range.Size() * twoRoots.size();
+    std::vector<Operon::Scalar> storage(outputSize + 2, -7.0F);
+    auto const undersized = interpreter.EvaluateRoots(
+        coeff, range, twoRoots, Operon::Span<Operon::Scalar> { storage.data() + 1, outputSize - 1 });
+    REQUIRE_FALSE(undersized);
+    CHECK(undersized.error().Kind == Operon::InterpreterError::Code::InvalidOutputSize);
+    auto const exact = interpreter.EvaluateRoots(
+        coeff, range, twoRoots, Operon::Span<Operon::Scalar> { storage.data() + 1, outputSize });
+    REQUIRE(exact);
+    CHECK(storage.front() == -7.0F);
+    CHECK(storage.back() == -7.0F);
+}
+
+// A range reaching past the dataset is rejected before any output is written, by every range-taking entry point.
+TEST_CASE("Interpreter rejects a range beyond the dataset", "[interpreter]")
+{
+    Operon::Dataset ds({ "x" }, { { 1.0F, 2.0F, 3.0F } });
+    Operon::DispatchTable<Operon::Scalar> dtable;
+    auto tree = Operon::InfixParser::ParseOrThrow("2 * sin(x)", ds);
+    for (auto& node : tree.Nodes()) {
+        node.Optimize = node.IsConstant();
+    }
+    tree.UpdateNodes();
+    Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> interpreter { &dtable, &ds, &tree };
+    auto const xHash = ds.GetVariable("x")->Hash;
+    auto const coeff = tree.GetCoefficients();
+
+    auto const expectInvalid = [](auto const& result) {
+        REQUIRE_FALSE(result);
+        CHECK(result.error().Kind == Operon::InterpreterError::Code::InvalidRange);
+        CHECK(result.error().ExpectedSize == 3);
+        CHECK(result.error().ActualSize == 5);
+    };
+
+    Operon::Range const beyond { 2, 5 };
+    std::vector<Operon::Scalar> out(beyond.Size() * coeff.size(), -7.0F);
+    expectInvalid(interpreter.Evaluate(coeff, beyond, { out.data(), beyond.Size() }));
+    expectInvalid(interpreter.JacRev(coeff, beyond, out));
+    expectInvalid(interpreter.JacFwd(coeff, beyond, out));
+    expectInvalid(interpreter.JacRevVariable(coeff, beyond, xHash, { out.data(), beyond.Size() }));
+    expectInvalid(interpreter.JacFwdVariable(coeff, beyond, xHash, { out.data(), beyond.Size() }));
+    std::array<std::size_t, 1> roots { 0 };
+    expectInvalid(interpreter.EvaluateRoots(coeff, beyond, roots, { out.data(), beyond.Size() }));
+    CHECK(std::ranges::all_of(out, [](auto v) { return v == -7.0F; }));
+
+    // a range ending exactly at the last row, and an empty range at the end, are valid
+    CHECK(interpreter.Evaluate(coeff, Operon::Range { 1, 3 }));
+    CHECK(interpreter.Evaluate(coeff, Operon::Range { 3, 3 }));
 }
 
 TEST_CASE("Autodiff forward vs reverse consistency", "[autodiff]")
@@ -191,7 +326,7 @@ TEST_CASE("Autodiff forward vs reverse consistency", "[autodiff]")
             jac.data(), static_cast<Eigen::Index>(range.Size()), static_cast<Eigen::Index>(parameters.size()));
 
         Operon::Interpreter<Operon::Scalar, decltype(dtable)> const interpreter { &dtable, &ds, &tree };
-        Eigen::Array<Operon::Scalar, -1, -1> const jrev = interpreter.JacRev(parameters, range).value();
+        Eigen::Array<Operon::Scalar, -1, -1> const jrev = Util::JacRev(interpreter, parameters, range).value();
 
         auto f1 = std::isfinite(jjet.sum());
         auto f2 = std::isfinite(jrev.sum());
@@ -348,11 +483,11 @@ TEST_CASE("Autodiff poly-10 expression", "[autodiff]")
     Operon::Range range(0, 10); // NOLINT
 
     DispatchTable<Operon::Scalar> dt;
-    auto jacrev = Operon::Interpreter<Operon::Scalar, DispatchTable<Operon::Scalar>> { &dt, &ds, &tree }
-                      .JacRev(coeff, range)
+    auto jacrev = Util::JacRev(
+        Operon::Interpreter<Operon::Scalar, DispatchTable<Operon::Scalar>> { &dt, &ds, &tree }, coeff, range)
                       .value();
-    auto jacfwd = Operon::Interpreter<Operon::Scalar, DispatchTable<Operon::Scalar>> { &dt, &ds, &tree }
-                      .JacFwd(coeff, range)
+    auto jacfwd = Util::JacFwd(
+        Operon::Interpreter<Operon::Scalar, DispatchTable<Operon::Scalar>> { &dt, &ds, &tree }, coeff, range)
                       .value();
 
     // Forward and reverse should agree
@@ -494,7 +629,7 @@ TEST_CASE("Autodiff: zero optimized coefficient retains finite Jacobian", "[auto
 
         Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter { &dtable, &ds,
             &tree };
-        auto const jac = interpreter.JacRev(coeff, range).value();
+        auto const jac = Util::JacRev(interpreter, coeff, range).value();
         REQUIRE(jac.cols() == 1);
 
         auto const rs = ds.GetValues("r");

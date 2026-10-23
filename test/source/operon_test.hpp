@@ -18,6 +18,13 @@
 // #include "operon/interpreter/backend/backend.hpp"
 #include "jet_eigen_traits.hpp"
 #include "operon/interpreter/dual.hpp"
+#include <Eigen/Core>
+#include <algorithm>
+#include <tl/expected.hpp>
+#include <type_traits>
+
+#include "operon/core/interpreter_error.hpp"
+#include "operon/core/types.hpp"
 
 namespace Operon::Test::Util {
 // Test convenience: construct a Function node for a built-in op with a
@@ -307,6 +314,47 @@ auto Autodiff(auto const& tree, auto const& dataset, auto const range)
     }
 
     return std::tuple { std::move(resid), std::move(jacob) };
+}
+
+// Allocating wrappers over the span-filling interpreter APIs: Jacobian with one column per optimizable node, and the
+// node-value matrix with one column per root.
+template <typename T = Operon::Scalar, typename Interp>
+auto JacRev(Interp const& interpreter, std::type_identity_t<Operon::Span<T const>> coeff, Operon::Range range)
+    -> tl::expected<Eigen::Array<T, -1, -1>, Operon::InterpreterError>
+{
+    auto const cols = std::ranges::count_if(interpreter.GetTree()->Nodes(), [](auto const& n) { return n.Optimize; });
+    Eigen::Array<T, -1, -1> jacobian(static_cast<Eigen::Index>(range.Size()), cols);
+    if (auto result = interpreter.JacRev(coeff, range, { jacobian.data(), static_cast<std::size_t>(jacobian.size()) });
+        !result) {
+        return tl::unexpected(std::move(result.error()));
+    }
+    return jacobian;
+}
+
+template <typename T = Operon::Scalar, typename Interp>
+auto JacFwd(Interp const& interpreter, std::type_identity_t<Operon::Span<T const>> coeff, Operon::Range range)
+    -> tl::expected<Eigen::Array<T, -1, -1>, Operon::InterpreterError>
+{
+    auto const cols = std::ranges::count_if(interpreter.GetTree()->Nodes(), [](auto const& n) { return n.Optimize; });
+    Eigen::Array<T, -1, -1> jacobian(static_cast<Eigen::Index>(range.Size()), cols);
+    if (auto result = interpreter.JacFwd(coeff, range, { jacobian.data(), static_cast<std::size_t>(jacobian.size()) });
+        !result) {
+        return tl::unexpected(std::move(result.error()));
+    }
+    return jacobian;
+}
+
+template <typename T = Operon::Scalar, typename Interp>
+auto EvaluateRoots(Interp const& interpreter, std::type_identity_t<Operon::Span<T const>> coeff, Operon::Range range,
+    Operon::Span<std::size_t const> roots) -> tl::expected<Eigen::Array<T, -1, -1>, Operon::InterpreterError>
+{
+    Eigen::Array<T, -1, -1> values(static_cast<Eigen::Index>(range.Size()), static_cast<Eigen::Index>(roots.size()));
+    if (auto result
+        = interpreter.EvaluateRoots(coeff, range, roots, { values.data(), static_cast<std::size_t>(values.size()) });
+        !result) {
+        return tl::unexpected(std::move(result.error()));
+    }
+    return values;
 }
 } // namespace Operon::Test::Util
 

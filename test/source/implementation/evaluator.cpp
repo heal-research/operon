@@ -9,6 +9,7 @@
 #include <array>
 #include <limits>
 
+#include "../operon_test.hpp"
 #include "operon/core/dataset.hpp"
 #include "operon/core/individual.hpp"
 #include "operon/core/types.hpp"
@@ -488,7 +489,7 @@ TEST_CASE("MDL evaluator", "[evaluator][information-criteria]")
         auto const sigmaArr = std::array<Operon::Scalar, 1> { sigma };
         auto const nll = static_cast<double>(GaussianLikelihood<Operon::Scalar>::ComputeLikelihood(
             { estimTrain.data(), estimTrain.size() }, targetTrain, { sigmaArr.data(), sigmaArr.size() }));
-        auto jac = interp.JacRev(coeffs, trainingRange);
+        auto jac = Util::JacRev(interp, coeffs, trainingRange);
         INFO("JacRev error: " << (jac ? "none" : Operon::FormatInterpreterError(jac.error())));
         REQUIRE(jac);
         auto jacobian = std::move(*jac);

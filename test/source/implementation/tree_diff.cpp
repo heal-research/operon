@@ -355,7 +355,7 @@ TEST_CASE("BuildJacobianDag correctness vs JacRev - random trees", "[tree_diff]"
         } // tree has no constants
 
         Interp const interp { &dtable, &ds, &tree };
-        auto const jrev = interp.JacRev(coeff, range).value();
+        auto const jrev = Util::JacRev(interp, coeff, range).value();
 
         auto const dag = BuildJacobianDag(tree);
         auto const jdag = EvalDagJacobian(dag, coeff, ds, range, dtable);
@@ -411,7 +411,7 @@ TEST_CASE("BuildJacobianDag correctness vs JacRev - weighted Function nodes", "[
         }
 
         Interp const interp { &dtable, &ds, &tree };
-        auto const jrev = interp.JacRev(coeff, range).value();
+        auto const jrev = Util::JacRev(interp, coeff, range).value();
 
         auto const dag = BuildJacobianDag(tree);
         auto const jdag = EvalDagJacobian(dag, coeff, ds, range, dtable);
@@ -484,7 +484,7 @@ TEST_CASE("BuildJacobianDag performance vs JacRev", "[tree_diff][performance]")
             if (coeff.empty()) {
                 continue;
             }
-            nb::doNotOptimizeAway(Interp { &dtable, &ds, &tree }.JacRev(coeff, range));
+            nb::doNotOptimizeAway(Util::JacRev(Interp { &dtable, &ds, &tree }, coeff, range));
         }
     });
 
@@ -528,7 +528,7 @@ TEST_CASE("BuildJacobianDag performance vs JacRev", "[tree_diff][performance]")
             auto dag = BuildJacobianDag(trees[i]);
             Tree t { dag.Nodes };
             Interp const interp { &dtable, &ds, &t };
-            nb::doNotOptimizeAway(interp.EvaluateRoots(coeff, range, dag.Roots).value());
+            nb::doNotOptimizeAway(Util::EvaluateRoots(interp, coeff, range, dag.Roots).value());
         }
     });
 
@@ -541,7 +541,7 @@ TEST_CASE("BuildJacobianDag performance vs JacRev", "[tree_diff][performance]")
             }
             Tree t { dags[i].Nodes };
             Interp const interp { &dtable, &ds, &t };
-            nb::doNotOptimizeAway(interp.EvaluateRoots(coeff, range, dags[i].Roots).value());
+            nb::doNotOptimizeAway(Util::EvaluateRoots(interp, coeff, range, dags[i].Roots).value());
         }
     });
 
@@ -929,7 +929,7 @@ namespace {
     {
         Tree t { dagNodes };
         Interp const interp { &dtable, &ds, &t };
-        auto result = interp.EvaluateRoots(coeff, range, roots);
+        auto result = Util::EvaluateRoots(interp, coeff, range, roots);
         if (!result) {
             throw std::runtime_error(Operon::FormatInterpreterError(result.error()));
         }
@@ -1232,8 +1232,8 @@ TEST_CASE("BuildHessianDag correctness vs finite differences - random trees", "[
                 treePlus.SetCoefficients({ coeffPlus.data(), coeffPlus.size() });
                 treeMinus.SetCoefficients({ coeffMinus.data(), coeffMinus.size() });
 
-                auto jacPlus = Interp { &dtable, &ds, &treePlus }.JacRev(coeffPlus, range).value();
-                auto jacMinus = Interp { &dtable, &ds, &treeMinus }.JacRev(coeffMinus, range).value();
+                auto jacPlus = Util::JacRev(Interp { &dtable, &ds, &treePlus }, coeffPlus, range).value();
+                auto jacMinus = Util::JacRev(Interp { &dtable, &ds, &treeMinus }, coeffMinus, range).value();
 
                 auto fdCol = (jacPlus.col(static_cast<Eigen::Index>(i)) - jacMinus.col(static_cast<Eigen::Index>(i)))
                     / (2.0F * fdEps);
@@ -1304,8 +1304,8 @@ TEST_CASE("BuildHessianDag correctness vs finite differences - weighted Function
                 treePlus.SetCoefficients({ coeffPlus.data(), coeffPlus.size() });
                 treeMinus.SetCoefficients({ coeffMinus.data(), coeffMinus.size() });
 
-                auto jacPlus = Interp { &dtable, &ds, &treePlus }.JacRev(coeffPlus, range).value();
-                auto jacMinus = Interp { &dtable, &ds, &treeMinus }.JacRev(coeffMinus, range).value();
+                auto jacPlus = Util::JacRev(Interp { &dtable, &ds, &treePlus }, coeffPlus, range).value();
+                auto jacMinus = Util::JacRev(Interp { &dtable, &ds, &treeMinus }, coeffMinus, range).value();
 
                 auto fdCol = (jacPlus.col(static_cast<Eigen::Index>(i)) - jacMinus.col(static_cast<Eigen::Index>(i)))
                     / (2.0F * fdEps);
@@ -1382,8 +1382,8 @@ TEST_CASE("BuildHessianDag performance vs JacRev FD", "[tree_diff][hessian][perf
                 auto tMinus = trees[ti];
                 tPlus.SetCoefficients({ cPlus.data(), cPlus.size() });
                 tMinus.SetCoefficients({ cMinus.data(), cMinus.size() });
-                auto jPlus = Interp { &dtable, &ds, &tPlus }.JacRev(cPlus, range).value();
-                auto jMinus = Interp { &dtable, &ds, &tMinus }.JacRev(cMinus, range).value();
+                auto jPlus = Util::JacRev(Interp { &dtable, &ds, &tPlus }, cPlus, range).value();
+                auto jMinus = Util::JacRev(Interp { &dtable, &ds, &tMinus }, cMinus, range).value();
                 nb::doNotOptimizeAway((jPlus - jMinus).eval());
             }
         }

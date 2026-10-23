@@ -371,7 +371,7 @@ template <typename DTable, bool JacobianOnly = false> struct JitLevenbergMarquar
             diag.FinalParameters = diag.InitialParameters;
             return detail::MakeFitConfigurationError(validWeights.error(), std::move(diag));
         }
-        auto bound = interpreter.BindTree(range);
+        auto bound = interpreter.BindTree();
         if (!bound) {
             return detail::MakeUnevaluatedFitEvaluationError(
                 GradientError { .Code = GradientErrorCode::EvaluationFailure, .Cause = std::move(bound.error()) },

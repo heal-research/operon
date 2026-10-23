@@ -246,4 +246,91 @@ TEST_CASE("N-ary function weight is applied once", "[interpreter]")
     }
 }
 
+// One interpreter must give the same results as a fresh one for every range it is asked about, in any order, including
+// ranges that do not start at zero and end in a partial batch.
+TEST_CASE("Interpreter results do not depend on the previous range", "[interpreter]")
+{
+    constexpr auto rows = 300UL;
+    std::vector<Operon::Scalar> x(rows);
+    std::vector<Operon::Scalar> y(rows);
+    for (auto i = 0UL; i < rows; ++i) {
+        x[i] = 0.1F + (0.01F * static_cast<Operon::Scalar>(i));
+        y[i] = 2.0F - (0.005F * static_cast<Operon::Scalar>(i));
+    }
+    Dataset ds({ "x", "y" }, { x, y });
+    DispatchTable<Operon::Scalar> dtable;
+    auto tree = InfixParser::ParseOrThrow("2.5 * x + 1.5 * sin(y)", ds);
+    for (auto& node : tree.Nodes()) {
+        node.Optimize = node.IsConstant();
+    }
+    tree.UpdateNodes();
+    auto const coeff = tree.GetCoefficients();
+    REQUIRE(coeff.size() == 2);
+
+    using Interp = Interpreter<Operon::Scalar, DispatchTable<Operon::Scalar>>;
+    Interp reused { &dtable, &ds, &tree };
+    for (auto const range : { Range { 0, rows }, Range { 37, 211 }, Range { 250, 300 }, Range { 0, 5 },
+             Range { 100, 290 }, Range { 37, 211 } }) {
+        Interp const fresh { &dtable, &ds, &tree };
+        auto const expected = fresh.Evaluate(coeff, range);
+        auto const actual = reused.Evaluate(coeff, range);
+        REQUIRE(expected);
+        REQUIRE(actual);
+        CHECK(*actual == *expected);
+
+        auto const expectedRev = Util::JacRev(fresh, coeff, range);
+        auto const actualRev = Util::JacRev(reused, coeff, range);
+        REQUIRE(expectedRev);
+        REQUIRE(actualRev);
+        CHECK((*actualRev == *expectedRev).all());
+
+        auto const expectedFwd = Util::JacFwd(fresh, coeff, range);
+        auto const actualFwd = Util::JacFwd(reused, coeff, range);
+        REQUIRE(expectedFwd);
+        REQUIRE(actualFwd);
+        CHECK((*actualFwd == *expectedFwd).all());
+
+        // the variable Jacobian is unaffected by the earlier calls too
+        auto const xHash = ds.GetVariable("x")->Hash;
+        CHECK(*reused.JacRevVariable(coeff, range, xHash) == *fresh.JacRevVariable(coeff, range, xHash));
+    }
+}
+
+// Empty coefficients mean the tree's own coefficients, regardless of what an earlier call on the same interpreter
+// passed.
+TEST_CASE("Empty coefficients evaluate the tree's own coefficients", "[interpreter]")
+{
+    Dataset ds({ "x" }, { { 1.0F, 2.0F, 3.0F } });
+    DispatchTable<Operon::Scalar> dtable;
+    auto tree = InfixParser::ParseOrThrow("2 * x", ds);
+    for (auto& node : tree.Nodes()) {
+        node.Optimize = node.IsConstant();
+    }
+    tree.UpdateNodes();
+    Interpreter<Operon::Scalar, DispatchTable<Operon::Scalar>> interpreter { &dtable, &ds, &tree };
+    Range const range { 0, 3 };
+
+    auto const own = interpreter.Evaluate({}, range);
+    REQUIRE(own);
+    Operon::Vector<Operon::Scalar> const other { 5.0F };
+    auto const shifted = interpreter.Evaluate(other, range);
+    REQUIRE(shifted);
+    CHECK(*shifted != *own);
+    auto const again = interpreter.Evaluate({}, range);
+    REQUIRE(again);
+    CHECK(*again == *own);
+
+    // The coefficient Jacobian of the tree's own coefficients has one column per optimizable node, d(2x)/dc = x.
+    auto const jacRev = Util::JacRev(interpreter, {}, range);
+    auto const jacFwd = Util::JacFwd(interpreter, {}, range);
+    REQUIRE(jacRev);
+    REQUIRE(jacFwd);
+    REQUIRE(jacRev->cols() == 1);
+    REQUIRE(jacFwd->cols() == 1);
+    for (auto i = 0; i < 3; ++i) {
+        CHECK((*jacRev)(i, 0) == static_cast<Operon::Scalar>(i + 1));
+        CHECK((*jacFwd)(i, 0) == static_cast<Operon::Scalar>(i + 1));
+    }
+}
+
 } // namespace Operon::Test

@@ -75,12 +75,12 @@ TEST_CASE("Autodiff performance", "[performance]")
 
     auto jacrev = [&](auto const& ds, auto const& tree, auto range) -> auto {
         auto coeff = tree.GetCoefficients();
-        return INT { &dtable, &ds, &tree }.JacRev(coeff, range);
+        return Util::JacRev(INT { &dtable, &ds, &tree }, coeff, range);
     };
 
     auto jacfwd = [&](auto const& ds, auto const& tree, auto range) -> auto {
         auto coeff = tree.GetCoefficients();
-        return INT { &dtable, &ds, &tree }.JacFwd(coeff, range);
+        return Util::JacFwd(INT { &dtable, &ds, &tree }, coeff, range);
     };
 
     SECTION("residual") { benchmark(b, residual, "residual", n, m); }
@@ -125,7 +125,7 @@ TEST_CASE("Reverse mode performance", "[performance]")
     b.batch(numtrees).run("rev", [&]() -> void {
         for (auto const& tree : trees) {
             auto coeff { tree.GetCoefficients() };
-            static_cast<void>(INT { &dtable, &ds, &tree }.JacRev(coeff, range));
+            static_cast<void>(Util::JacRev(INT { &dtable, &ds, &tree }, coeff, range));
         }
     });
 }

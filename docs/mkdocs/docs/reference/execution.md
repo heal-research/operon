@@ -7,18 +7,25 @@ Header: [`operon/interpreter/interpreter.hpp`](https://github.com/heal-research/
 ```cpp
 Interpreter<Scalar, ScalarDispatch> interpreter { &dispatch, &dataset, &tree };
 auto values = interpreter.Evaluate(tree.GetCoefficients(), range);
-auto jacobian = interpreter.JacRev(tree.GetCoefficients(), range);
+Operon::Vector<Scalar> jacobian(range.Size() * tree.CoefficientsCount()); // column-major
+auto filled = interpreter.JacRev(tree.GetCoefficients(), range, jacobian);
 ```
 
 | Method family | Result |
 | --- | --- |
 | `Evaluate(coeff, range[, output])` | model values or `InterpreterError` |
-| `JacRev` / `JacFwd` | coefficient Jacobian or `InterpreterError`; rows are observations, columns are optimizable constants |
+| `JacRev` / `JacFwd` `(coeff, range, jacobian)` | fills the column-major coefficient Jacobian (`range.Size() * CoefficientsCount()` elements) or returns `InterpreterError`; rows are observations, columns are optimizable constants |
 | `JacRevVariable` / `JacFwdVariable` | derivative of output with respect to one input variable hash, or `InterpreterError` |
 
 All fallible `Interpreter` operations return `tl::expected`; inspect the result before using its value.
 
+Empty `coeff` means the tree's own coefficients. The interpreter interface exposes no Eigen types: the Jacobian and `EvaluateRoots` results are written into caller-provided spans, so the Eigen-free guarantee of the signatures does not depend on how the interpreter computes them internally.
+
 This API change is a deliberate breaking boundary for the next Operon API epoch: `InterpreterBase` virtual return types use `tl::expected`, and the former virtual `Try*` methods are removed. Downstream bindings and consumers must rebuild and migrate together; binaries built against the previous virtual interface are not ABI-compatible.
+
+The interpreter interface in this release also drops the following. `Interpreter::Primal()` and `Trace()`, and public access to its scratch state and trace helpers, are removed. `DispatchTable::Get<T>`, `GetFunction`, `GetDerivative` and `TryGetFunction`/`TryGetDerivative` are removed; use `FindFunction<T>`/`FindDerivative<T>`, which return a pointer to a usable callable, or null if the hash is unregistered or its slot for `T` is empty (check before dereferencing; the pointer is valid until the table is modified, and `Contains(hash)` tells the two cases apart). `Interpreter::BindTree` takes no range and is the way to refresh a binding after the tree, dataset storage or dispatch table changed. The allocating `JacRev(coeff, range)` and `JacFwd(coeff, range)` overloads are removed from `InterpreterBase` and `Interpreter`, and `EvaluateRoots` writes into a caller-provided span. Downstream code must migrate to the span-filling overloads.
+
+`Interpreter` methods taking a `Range` return `InterpreterError::Code::InvalidRange` (`ExpectedSize` = dataset rows, `ActualSize` = range end) if the range ends after the last dataset row; nothing is written to the output in that case.
 
 ## `EvaluatorBase`
 
