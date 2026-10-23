@@ -207,7 +207,9 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             scorer = Operon::MakeObjectiveScorer(objectiveEvaluator.get());
         }
 
-        auto seed = result["seed"].as<Operon::RandomGenerator::result_type>();
+        // --seed 0 and an omitted --seed both select a random seed
+        auto seed = result.count("seed") != 0 ? result["seed"].as<Operon::RandomGenerator::result_type>()
+                                              : Operon::RandomGenerator::result_type { 0 };
         if (seed == 0) {
             seed = std::random_device {}();
         }
@@ -215,7 +217,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 
         Operon::GrammarEnumerationAlgorithm algo(config, std::move(grammar), &optimizer, std::move(scorer), rng);
 
-        auto const threads = result["threads"].as<std::size_t>();
+        // 0 (the default) selects all hardware threads
+        auto const threads = result.count("threads") != 0 ? result["threads"].as<std::size_t>() : std::size_t { 0 };
         algo.Run(
             rng,
             [&]() -> bool {
