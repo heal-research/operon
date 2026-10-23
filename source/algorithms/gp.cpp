@@ -3,6 +3,7 @@
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <algorithm> // for max
+#include <atomic> // for atomic_size_t
 #include <chrono> // for steady_clock
 #include <cstddef> // for size_t
 #include <functional> // for std::function
@@ -86,6 +87,8 @@ auto GeneticProgrammingAlgorithm::Run(
     auto offspring = Offspring();
     std::vector<Operon::RandomGenerator> savedRngs; // used only on warm resume
     std::vector<std::optional<std::vector<Operon::Scalar>>> originalCoeffs(parents.size());
+    std::atomic_size_t generatedOffspring {}; // pool slots filled in the current generation
+    std::atomic_size_t attemptedOffspring {}; // generator invocations (accepted + rejected) in the current generation
 
     // Declared here (Run()'s own scope), not inside the "init" task's
     // callable below: a subflow's tasks run after that callable returns, so
@@ -183,6 +186,9 @@ auto GeneticProgrammingAlgorithm::Run(
             // reserved for a hand-picked elite here anymore.
             auto prepareGenerator = subflow
                                         .emplace([&]() -> void {
+                                            generatedOffspring = 0;
+                                            attemptedOffspring = 0;
+                                            SetIncompleteGeneration(std::nullopt);
                                             generator->Prepare(parents);
                                             // Stamp the cache clock with the generation offspring will
                                             // belong to *before* they're evaluated - Generation() itself
@@ -200,24 +206,54 @@ auto GeneticProgrammingAlgorithm::Run(
                           [&](size_t i) -> void {
                               slots[executor.this_worker_id()].resize(trainSize);
                               auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
+                              size_t attempts = 0;
                               while (!stop()) {
+                                  ++attempts;
                                   if (auto result
                                       = (*generator)(rngs[i], config.CrossoverProbability, config.MutationProbability,
                                           config.LocalSearchProbability, config.LamarckianProbability, buf);
                                       result.has_value()) {
                                       offspring[i] = std::move(result.value());
-                                      return;
+                                      generatedOffspring.fetch_add(1, std::memory_order_relaxed);
+                                      break;
                                   }
                               }
+                              attemptedOffspring.fetch_add(attempts, std::memory_order_relaxed);
                           })
                       .name("generate offspring");
+            // A generation whose pool was not completely filled (a stop condition fired mid-generation) is not a
+            // generation: the unfilled slots hold stale or default individuals, so nothing is reinserted, counted or
+            // reported (same rule as NSGA2). The partial progress is kept in IncompleteGeneration().
             auto reinsert
-                = subflow.emplace([&]() -> void { (*reinserter)(random, Parents(), offspring); }).name("reinsert");
-            auto incrementGeneration = subflow.emplace([&]() -> void { ++Generation(); }).name("increment generation");
+                = subflow
+                      .emplace([&]() -> void {
+                          auto const generated = generatedOffspring.load(std::memory_order_relaxed);
+                          if (generated != offspring.size()) {
+                              SetIncompleteGeneration(OffspringProgress {
+                                  attemptedOffspring.load(std::memory_order_relaxed), generated, offspring.size() });
+                              RequestStop();
+                              return;
+                          }
+                          (*reinserter)(random, Parents(), offspring);
+                      })
+                      .name("reinsert");
+            auto incrementGeneration
+                = subflow
+                      .emplace([&]() -> void {
+                          if (generatedOffspring.load(std::memory_order_relaxed) == offspring.size()) {
+                              ++Generation();
+                          }
+                      })
+                      .name("increment generation");
             auto reportProgress = subflow
                                       .emplace([&, timer]() -> void {
+                                          // Time and phase telemetry describe the work done even when the
+                                          // generation is discarded; only the report callback is skipped.
                                           Elapsed() = computeElapsed();
                                           Timings() = timer->Timings();
+                                          if (generatedOffspring.load(std::memory_order_relaxed) != offspring.size()) {
+                                              return;
+                                          }
                                           if (report && std::invoke(report)) {
                                               RequestStop();
                                           }
