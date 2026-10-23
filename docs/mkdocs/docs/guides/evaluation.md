@@ -58,3 +58,13 @@ and `C2`, is computed over that common finite subset; omitted rows add a configu
 penalty is dimensionless, while residual metrics scale it to their error units.
 
 `ObjectiveCount()` tells population algorithms the required fitness-vector width. `Prepare(population)` is the per-generation hook for cached or population-level state; the shape-constrained adapter prepares its base and structural evaluators and keeps no certification cache. `ResidualEvaluations`, `JacobianEvaluations`, and `CallCount` are atomic counters; `operator()` increments `CallCount` exactly once per call, including a failed one, so a custom `Score` must not increment it again. A custom evaluator should preserve the base failure behavior rather than translating execution errors into ordinary scores.
+
+`Stats()` returns the four aggregate counters (residual evaluations, Jacobian evaluations, calls, optimizer
+microseconds); `DetailedStats()` returns an `EvaluationStats` with the same totals split by who spent them:
+`ResidualScoring`/`JacobianScoring` (the prediction pass of `Evaluate`, a Jacobian taken by a likelihood scorer, ...)
+and `ResidualOptimizer`/`JacobianOptimizer` (coefficient optimization in `LocalSearch`). The evaluation budget is
+still `ResidualEvaluations + JacobianEvaluations`, i.e. the sum of both parts. `MultiEvaluator` and the
+shape-constrained adapter include their children; `GeneticAlgorithmBase::DetailedStats()` adds the transposition-cache
+hit and lookup counters (`nullopt` when no cache is configured). `Reset()` is virtual: composite evaluators reset
+their children too, and `GeneticAlgorithmBase::Reset()` (called at the start of every `Run()`) also zeroes the
+cache counters.

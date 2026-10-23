@@ -199,6 +199,13 @@ public:
     // Thread-safe; called once per generation from the GA loop.
     auto SetGeneration(std::size_t generation) -> void;
 
+    // Zeroes Hits()/Lookups() only; the table's entries and the generation clock are left alone.
+    auto ResetCounters() -> void
+    {
+        hits_.store(0, std::memory_order_relaxed);
+        lookups_.store(0, std::memory_order_relaxed);
+    }
+
     [[nodiscard]] auto Hits() const -> std::size_t { return hits_.load(std::memory_order_relaxed); }
     // Total TryGet() calls regardless of outcome - the denominator Hits()
     // needs to express an actual hit *rate* rather than a raw count.

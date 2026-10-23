@@ -355,6 +355,9 @@ auto LocalSearch(Operon::RandomGenerator& random, Operon::Individual& ind, Opero
     auto const& diag = Diagnostics(outcome);
     evaluator.ResidualEvaluations += diag.FunctionEvaluations;
     evaluator.JacobianEvaluations += diag.JacobianEvaluations;
+    // After the totals: DetailedStats() reads these first and relies on optimizer <= total.
+    evaluator.OptimizerResidualEvaluations += diag.FunctionEvaluations;
+    evaluator.OptimizerJacobianEvaluations += diag.JacobianEvaluations;
     evaluator.CostFunctionTime += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
     ind.Genotype = std::move(optimizedTree);
 
