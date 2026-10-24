@@ -24,6 +24,8 @@ struct BuildInfo {
     std::string Precision; // "single" or "double"
     std::string EigenVersion;
     std::string TaskflowVersion;
+    std::string CeresVersion; // empty when the build does not use Ceres
+    std::string BuildTimestamp; // ISO 8601, as recorded at configure time
     std::string IsaLevel; // x86-64 microarchitecture level ("x86-64-v1" .. "x86-64-v4"); empty on other architectures
     std::vector<std::string> IsaFeatures; // ISA extensions the library was compiled for
     bool Jit { false }; // asmjit-based JIT backend available

@@ -69,14 +69,17 @@ inline auto CapabilitiesJson(std::string_view program, std::vector<std::string> 
     auto const hasOption = [&](std::string_view name) { return std::ranges::binary_search(options, name); };
     // The machine report (--report-json) is the only versioned output the CLI produces today.
     std::string const machineReportVersions = hasOption("report-json") ? "[1]" : "[]";
+    auto const ceresJson
+        = info.CeresVersion.empty() ? std::string { "null" } : fmt::format("\"{}\"", JsonEscape(info.CeresVersion));
     auto const levelJson = info.IsaLevel.empty() ? std::string { "null" } : fmt::format("\"{}\"", info.IsaLevel);
 
     return fmt::format(
         "{{\"schema\":\"operon.capabilities\",\"schema_version\":1,\"program\":\"{program}\","
-        "\"revision\":\"{revision}\",\"build_type\":\"{buildType}\",\"platform\":\"{platform}\",\"arch\":\"{arch}\","
+        "\"revision\":\"{revision}\",\"build_type\":\"{buildType}\",\"build_timestamp\":\"{timestamp}\",\"platform\":"
+        "\"{platform}\",\"arch\":\"{arch}\","
         "\"precision\":\"{precision}\","
         "\"compiler\":{{\"id\":\"{compilerId}\",\"version\":\"{compilerVersion}\",\"flags\":\"{flags}\"}},"
-        "\"dependencies\":{{\"eigen\":\"{eigen}\",\"taskflow\":\"{taskflow}\"}},"
+        "\"dependencies\":{{\"eigen\":\"{eigen}\",\"taskflow\":\"{taskflow}\",\"ceres\":{ceres}}},"
         "\"isa\":{{\"level\":{level},\"features\":{isaFeatures}}},"
         "\"features\":{{\"jit\":{jit},\"shape_constraints\":true,\"probes\":true,\"checkpoint\":true,"
         "\"transposition_cache\":true}},"
@@ -88,7 +91,8 @@ inline auto CapabilitiesJson(std::string_view program, std::vector<std::string> 
         fmt::arg("compilerId", JsonEscape(info.CompilerId)),
         fmt::arg("compilerVersion", JsonEscape(info.CompilerVersion)),
         fmt::arg("flags", JsonEscape(info.CompilerFlags)), fmt::arg("eigen", JsonEscape(info.EigenVersion)),
-        fmt::arg("taskflow", JsonEscape(info.TaskflowVersion)), fmt::arg("level", levelJson),
+        fmt::arg("taskflow", JsonEscape(info.TaskflowVersion)), fmt::arg("ceres", ceresJson),
+        fmt::arg("timestamp", JsonEscape(info.BuildTimestamp)), fmt::arg("level", levelJson),
         fmt::arg("isaFeatures", JsonStringArray(info.IsaFeatures)), fmt::arg("jit", info.Jit ? "true" : "false"),
         fmt::arg("machineReport", machineReportVersions), fmt::arg("options", JsonStringArray(options)));
 }

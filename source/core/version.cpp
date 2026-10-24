@@ -52,6 +52,8 @@ auto GetBuildInfo() -> BuildInfo
 #endif
     info.EigenVersion = OPERON_EIGEN_VERSION;
     info.TaskflowVersion = OPERON_TF_VERSION;
+    info.CeresVersion = OPERON_CERES_VERSION ? OPERON_CERES_VERSION : "";
+    info.BuildTimestamp = OPERON_BUILD_TIMESTAMP;
 #ifdef HAVE_ASMJIT
     info.Jit = true;
 #endif
