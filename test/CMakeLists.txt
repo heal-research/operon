@@ -376,7 +376,7 @@ if(TARGET operon_gp AND TARGET operon_nsgp)
         "--dataset;${operon_cli_data};--target;Y;--population-size;10;--pool-size;10;--threads;1;--seed;1;--generations;2;--evaluations;18446744073709551615")
 
     # offspring-generator spec parsing
-    foreach(spec "os:abc" "os:10:x" "os:10:nan" "os::5" "brood:x" "brood:5x" "brood:-1" "poly:x" "poly::")
+    foreach(spec "os:abc" "os:10:x" "os:10:nan" "os::5" "brood:x" "brood:5x" "brood:-1" "brood:0" "poly:x" "poly::" "poly:0")
         string(REGEX REPLACE "[^a-z0-9]" "_" tag "${spec}")
         add_cli_test(gp_rejects_generator_${tag} operon_gp fail
             "error: unable to parse generator argument '${spec}': '[^']*' is not a valid"
