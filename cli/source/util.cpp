@@ -208,8 +208,9 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         "Expire transposition cache entries older than this many generations (0 = never expire); only effective with "
         "--transposition-cache",
         cxxopts::value<size_t>()->default_value("0"))("pareto-front",
-        "Write rank-0 Pareto front to this JSON file after the run (only effective with Pareto-based algorithms, e.g. "
-        "operon_nsgp)",
+        "Write the non-dominated members of the retained parent population to this JSON file after the run (only "
+        "effective with Pareto-based algorithms, e.g. operon_nsgp). The front is computed from the fitness vectors "
+        "with the --epsilon tolerance used by the search: epsilon-equivalent individuals are listed once",
         cxxopts::value<std::string>())("model-selection",
         "Pareto front model selection: obj0 (lowest first objective), mdl, bic, aic",
         cxxopts::value<std::string>()->default_value("obj0"))("mdl-likelihood",

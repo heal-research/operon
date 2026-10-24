@@ -9,17 +9,28 @@
 #include "operon/core/individual.hpp"
 #include "operon/core/problem.hpp"
 #include "operon/core/types.hpp"
+#include "operon/operators/non_dominated_sorter.hpp"
 #include <string>
+#include <vector>
 
 namespace Operon {
 
-// Write the rank-0 individuals from `population` to a JSON file at `path`.
-// Each entry contains the infix expression, tree length, weighted complexity (k),
+// Non-dominated members of `population`, computed from the fitness vectors (stored Rank is not consulted) with the
+// same sorter and epsilon deduplication as NSGA2::Sort, applied to `population` (the retained parents): epsilon-
+// equivalent individuals (--epsilon) are collapsed onto the lexicographically smallest one, then `sorter` ranks the
+// remaining ones under the same tolerance. Pass the sorter the run used. This is not NSGA2::Best(), which after a
+// completed generation is the front of parents plus offspring (it equals Best() only for the initial population).
+// Result is ordered by the first objective.
+auto SelectParetoFront(Operon::Span<Individual const> population, NondominatedSorterBase const& sorter,
+    Operon::Scalar eps) -> std::vector<Individual const*>;
+
+// Write the non-dominated individuals (SelectParetoFront under `sorter` and `eps`) from `population` to a JSON file at
+// `path`. Each entry contains the infix expression, tree length, weighted complexity (k),
 // raw objective values, R²/MSE/NMSE/MAE on train+test, MDL, and FBF.
 // If problem.LinearScalingEnabled() is true, a least-squares (a, b) fit is
 // applied to each individual's train predictions before computing all metrics.
 auto WriteParetoFront(std::string const& path, Operon::Span<Individual const> population, ScalarDispatch const& dtable,
-    Problem const& problem) -> void;
+    Problem const& problem, NondominatedSorterBase const& sorter, Operon::Scalar eps) -> void;
 
 } // namespace Operon
 #endif

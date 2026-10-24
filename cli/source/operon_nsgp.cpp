@@ -507,7 +507,8 @@ auto main(int argc, char** argv) -> int
         }
         fmt::print("{:infix:roundtrip}\n", Operon::Fmt::TreeFormatArgs { best.Genotype, *problem.GetDataset() });
         if (result.contains("pareto-front")) {
-            Operon::WriteParetoFront(result["pareto-front"].as<std::string>(), gp.Parents(), dtable, problem);
+            Operon::WriteParetoFront(result["pareto-front"].as<std::string>(), gp.Parents(), dtable, problem,
+                *sorterPtr, static_cast<Operon::Scalar>(config.Epsilon));
         }
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());

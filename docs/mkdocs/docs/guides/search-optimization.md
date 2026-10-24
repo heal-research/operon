@@ -21,7 +21,7 @@ The GP and NSGA-II drivers share the same operator boundary. Initializers create
 
 Fitness is a minimization vector. Single-objective GP commonly uses `SingleObjectiveComparison`; NSGA-II computes `Rank` and `Distance` and uses crowded comparison. `ParetoComparison` assumes minimization in every dimension. A custom comparator must be consistent for selection and reinsertion or the search transition no longer has a coherent ordering.
 
-The `operon_nsgp --pareto-front` export contains the rank-zero members of the retained parent population only. Unfilled offspring from an evaluation-limited generation are not front members.
+The `operon_nsgp --pareto-front` export contains the non-dominated members of the retained parent population, computed from their fitness vectors with the same sorter and epsilon deduplication as the NSGA-II sort, applied to the retained parents (the sorter chosen with `--sorter`; the export is not `NSGA2::Best()`, which after a completed generation is the front of parents plus offspring), including the `--epsilon` tolerance: objective differences up to `--epsilon` do not establish dominance, and epsilon-equivalent individuals are listed once (the lexicographically smallest). Stored `Rank` values are not used because they may refer to a previously sorted population (typically parents plus offspring after a completed generation, or the initial parents when a budget ends generation 0) rather than to the retained parents. Unfilled offspring from an evaluation-limited generation are not front members.
 
 ## Coefficient optimization
 
