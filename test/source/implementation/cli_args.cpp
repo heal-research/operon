@@ -181,6 +181,8 @@ TEST_CASE("Cli::CapabilitiesJson is valid JSON, escapes strings and lists the op
     info.Precision = "single";
     info.EigenVersion = "3.4.1";
     info.TaskflowVersion = "4.1.0";
+    info.CeresVersion = "2.2.0";
+    info.BuildTimestamp = "2026-10-24T09:00:00Z";
     info.IsaLevel = "x86-64-v3";
     info.IsaFeatures = { "avx2", "fma" };
     info.Jit = true;
@@ -196,6 +198,8 @@ TEST_CASE("Cli::CapabilitiesJson is valid JSON, escapes strings and lists the op
         CHECK(json.find("\"revision\":\"abc123\"") != std::string::npos);
         CHECK(json.find("\"build_type\":\"Release\"") != std::string::npos);
         CHECK(json.find("\"precision\":\"single\"") != std::string::npos);
+        CHECK(json.find("\"build_timestamp\":\"2026-10-24T09:00:00Z\"") != std::string::npos);
+        CHECK(json.find("\"ceres\":\"2.2.0\"") != std::string::npos);
         CHECK(json.find("\"isa\":{\"level\":\"x86-64-v3\",\"features\":[\"avx2\",\"fma\"]}") != std::string::npos);
         CHECK(json.find("\"jit\":true") != std::string::npos);
         CHECK(json.find("\"machine_report_schema_versions\":[1]") != std::string::npos);
@@ -209,12 +213,14 @@ TEST_CASE("Cli::CapabilitiesJson is valid JSON, escapes strings and lists the op
         info.IsaLevel.clear();
         info.IsaFeatures = { "neon" };
         info.Jit = false;
+        info.CeresVersion.clear();
         auto const json = Operon::Cli::CapabilitiesJson("operon_nsgp", { "sorter" }, info);
         INFO(json);
         CHECK_FALSE(glz::validate_json(json));
         CHECK(json.find("\"machine_report_schema_versions\":[]") != std::string::npos);
         CHECK(json.find("\"isa\":{\"level\":null,\"features\":[\"neon\"]}") != std::string::npos);
         CHECK(json.find("\"jit\":false") != std::string::npos);
+        CHECK(json.find("\"ceres\":null") != std::string::npos);
     }
 }
 
@@ -226,6 +232,7 @@ TEST_CASE("Operon::GetBuildInfo describes this build", "[cli]")
     CHECK_FALSE(info.BuildType.empty());
     CHECK_FALSE(info.CompilerId.empty());
     CHECK_FALSE(info.EigenVersion.empty());
+    CHECK_FALSE(info.BuildTimestamp.empty());
 #if defined(__AVX2__)
     CHECK(std::ranges::find(info.IsaFeatures, "avx2") != info.IsaFeatures.end());
 #endif
