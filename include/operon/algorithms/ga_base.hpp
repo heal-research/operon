@@ -149,6 +149,20 @@ public:
     [[nodiscard]] auto GetProblem() const -> const Problem* { return problem_.get(); }
     [[nodiscard]] auto GetConfig() const -> GeneticAlgorithmConfig { return config_; }
 
+    // Evaluation counters of the evaluator tree plus the transposition-cache counters (nullopt when no cache is
+    // active, which is not the same as zero). The active cache is the generator's (the pointer it actually looks
+    // up; initially config.Cache, see the constructor), which SetCache may have changed since. Reset together with
+    // the algorithm at the start of Run().
+    [[nodiscard]] auto DetailedStats() const -> EvaluationStats
+    {
+        auto stats = generator_->Evaluator()->DetailedStats();
+        if (auto const* cache = generator_->Cache()) {
+            stats.CacheHits = cache->Hits();
+            stats.CacheLookups = cache->Lookups();
+        }
+        return stats;
+    }
+
     [[nodiscard]] auto GetTreeInitializer() const -> TreeInitializerBase const* { return treeInit_.get(); }
     [[nodiscard]] auto GetCoefficientInitializer() const -> CoefficientInitializerBase const*
     {
@@ -221,6 +235,9 @@ public:
         ClearStopRequested();
         phaseTimes_.clear();
         GetGenerator()->Evaluator()->Reset();
+        if (auto* cache = generator_->Cache()) {
+            cache->ResetCounters();
+        }
     }
 
     auto RestoreIndividuals(std::vector<Individual> inds) -> void

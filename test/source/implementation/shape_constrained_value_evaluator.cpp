@@ -774,4 +774,41 @@ TEST_CASE("The adapter aggregates its structural objectives' accounting", "[shap
     CHECK(gate.BudgetExhausted());
 }
 
+TEST_CASE("The adapter's detailed stats and Reset cover its structural objectives", "[shape-adapter][stats]")
+{
+    GateFixture fx;
+    using E = ShapeConstraintEnforcement;
+    auto const length = Length(&fx.problem);
+    auto const ind = GateFixture::MakeIndividual(fx.tree);
+    auto buf = fx.Buffer();
+    auto const holder = fx.MakeGate(IncreasingInX1(), Policy(E::HardReject), { length.get() });
+    auto& gate = *holder;
+
+    static_cast<void>(gate(fx.rng, ind, buf)); // one scoring prediction on the adapter's base evaluator
+    // Charge the structural objective as local search would: totals first, then the optimizer part.
+    length->ResidualEvaluations += 4;
+    length->JacobianEvaluations += 3;
+    length->OptimizerResidualEvaluations += 3;
+    length->OptimizerJacobianEvaluations += 2;
+    length->CostFunctionTime += 7;
+
+    auto const stats = gate.DetailedStats();
+    CHECK(stats.Calls == 1);
+    CHECK(stats.ResidualScoring == 2); // 1 prediction + 1 scoring evaluation of the structural objective
+    CHECK(stats.ResidualOptimizer == 3);
+    CHECK(stats.JacobianScoring == 1);
+    CHECK(stats.JacobianOptimizer == 2);
+    CHECK(stats.OptimizerTimeUs == 7);
+    auto const [residual, jacobian, calls, time] = gate.Stats();
+    CHECK(stats.ResidualTotal() == residual);
+    CHECK(stats.JacobianTotal() == jacobian);
+    CHECK(stats.Calls == calls);
+    CHECK(stats.OptimizerTimeUs == time);
+
+    gate.Reset();
+    CHECK(gate.DetailedStats() == EvaluationStats {});
+    CHECK(length->DetailedStats() == EvaluationStats {});
+    CHECK(gate.TotalEvaluations() == 0);
+}
+
 } // namespace Operon::Test

@@ -1260,6 +1260,22 @@ auto detail::ShapeConstraintEnforcer::ShapeStructuralStats() const -> std::tuple
     return std::tuple { residual, jacobian, costFunctionTime };
 }
 
+auto detail::ShapeConstraintEnforcer::ShapeStructuralDetailedStats() const -> EvaluationStats
+{
+    EvaluationStats stats {};
+    for (auto const& objective : structural_) {
+        stats += objective->DetailedStats();
+    }
+    return stats;
+}
+
+auto detail::ShapeConstraintEnforcer::ShapeStructuralReset() const -> void
+{
+    for (auto const& objective : structural_) {
+        objective->Reset();
+    }
+}
+
 auto detail::ShapeConstraintEnforcer::ShapeCertify(Operon::Tree const& tree,
     std::optional<EvaluatedBuffer> const& evaluated) const -> ShapeConstraintMeasurementSummary
 {
