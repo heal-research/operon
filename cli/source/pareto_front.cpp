@@ -11,6 +11,7 @@
 
 #include <fmt/os.h>
 
+#include "operon/core/comparison.hpp"
 #include "operon/core/types.hpp"
 #include "operon/error_metrics/error_metrics.hpp"
 #include "operon/formatter/formatter.hpp"
@@ -42,6 +43,31 @@ namespace {
 
 } // namespace
 
+auto SelectParetoFront(Operon::Span<Individual const> population) -> std::vector<Individual const*>
+{
+    // Stored Rank/Distance are relative to the population that was last sorted (parents + offspring), so after
+    // reinsertion they can disagree with the retained parents. Derive the front from the fitness values instead.
+    std::vector<Individual const*> front;
+    for (auto i = 0UL; i < population.size(); ++i) {
+        auto const& a = population[i].Fitness;
+        auto keep = true;
+        for (auto j = 0UL; j < population.size() && keep; ++j) {
+            if (i == j) {
+                continue;
+            }
+            auto const& b = population[j].Fitness;
+            auto const d = ParetoDominance {}(b.begin(), b.end(), a.begin(), a.end());
+            // dominated, or an exact duplicate of an earlier individual
+            keep = !(d == Dominance::Left || (d == Dominance::Equal && j < i));
+        }
+        if (keep) {
+            front.push_back(&population[i]);
+        }
+    }
+    std::ranges::stable_sort(front, [](auto const* a, auto const* b) -> bool { return (*a)[0] < (*b)[0]; });
+    return front;
+}
+
 auto WriteParetoFront(std::string const& path, Operon::Span<Individual const> population, ScalarDispatch const& dtable,
     Problem const& problem) -> void
 {
@@ -51,13 +77,7 @@ auto WriteParetoFront(std::string const& path, Operon::Span<Individual const> po
     auto const targetTrain = problem.TargetValues(trainRange);
     auto const targetTest = problem.TargetValues(testRange);
 
-    std::vector<Individual const*> front;
-    for (auto const& ind : population) {
-        if (ind.Rank == 0) {
-            front.push_back(&ind);
-        }
-    }
-    std::ranges::sort(front, [](auto const* a, auto const* b) -> bool { return (*a)[0] < (*b)[0]; });
+    auto const front = SelectParetoFront(population);
 
     auto jsonNum = [](double v) -> std::string {
         if (!std::isfinite(v)) {
