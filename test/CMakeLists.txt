@@ -267,6 +267,8 @@ endif()
 # Each case runs the real executable through cli/expect.cmake: `fail` cases need exit status 1 and a stderr match
 # (a crash or abort does not count), `ok` cases need exit status 0 and a stdout match.
 if(TARGET operon_gp AND TARGET operon_nsgp)
+    # CI builds only operon_test; the CLI cases below run the real executables.
+    add_dependencies(operon_test operon_gp operon_nsgp)
     set(operon_cli_data "data/Poly-10.csv")
 
     function(add_cli_test NAME PROGRAM EXPECT REGEX)
