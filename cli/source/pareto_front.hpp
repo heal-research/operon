@@ -10,10 +10,15 @@
 #include "operon/core/problem.hpp"
 #include "operon/core/types.hpp"
 #include <string>
+#include <vector>
 
 namespace Operon {
 
-// Write the rank-0 individuals from `population` to a JSON file at `path`.
+// Non-dominated members of `population`, computed from the fitness vectors (stored Rank is not consulted).
+// Individuals with identical fitness are reported once (the first). Result is ordered by the first objective.
+auto SelectParetoFront(Operon::Span<Individual const> population) -> std::vector<Individual const*>;
+
+// Write the non-dominated individuals (SelectParetoFront) from `population` to a JSON file at `path`.
 // Each entry contains the infix expression, tree length, weighted complexity (k),
 // raw objective values, R²/MSE/NMSE/MAE on train+test, MDL, and FBF.
 // If problem.LinearScalingEnabled() is true, a least-squares (a, b) fit is
