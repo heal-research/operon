@@ -485,6 +485,11 @@ public:
 
     explicit MultiEvaluator(Problem const* problem) : EvaluatorBase(problem) {}
 
+    // Shared children: Add() does not reject a child that is already registered (directly or through a nested
+    // composite). Stats(), DetailedStats() and BudgetExhausted() all sum the children slot by slot, and a child runs
+    // once per slot (its own counters grow once per run), so a child occupying k slots contributes k times its own
+    // counters. The three always agree and the budget consumes exactly what they report; Reset() reaching a shared
+    // child more than once is harmless.
     // Registers a child that runs through its own operator(). Throws std::invalid_argument for a
     // ShapeConstrainedValueEvaluator: it owns the whole constrained objective vector (including its structural
     // objectives) and its non-Lamarckian restoration step (RestoreNonLamarckianCoefficients) is only reachable when

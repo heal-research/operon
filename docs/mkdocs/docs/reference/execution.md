@@ -57,6 +57,8 @@ without that proof. Whether an evaluator is a value evaluator is a compile-time 
 
 Evaluator failures are converted to the evaluator's worst-score sentinel rather than escaping through the optimization loop. In particular, `MinimumDescriptionLengthEvaluator::Score` returns `EvaluatorBase::ErrMax` when Jacobian evaluation fails, preserving the evaluator's fixed fitness arity and allowing population comparisons to continue safely.
 
+`EvaluatorBase` gains the data members `OptimizerResidualEvaluations` and `OptimizerJacobianEvaluations` and the virtual function `DetailedStats()`, and `Reset()` becomes virtual. The source API is compatible (no existing signature changed), but the object layout and the vtable of `EvaluatorBase` and every class derived from it change, so binaries built against older headers are not ABI-compatible: consumers, including language bindings, must be rebuilt. A derived evaluator that holds child evaluators should override `DetailedStats()` and `Reset()` to include them, as `MultiEvaluator` and the shape-constrained adapter do.
+
 ## Shape constraints
 
 Header: [`operon/operators/shape_constrained_evaluator.hpp`](https://github.com/heal-research/operon/blob/main/include/operon/operators/shape_constrained_evaluator.hpp)
