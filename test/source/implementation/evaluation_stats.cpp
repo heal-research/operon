@@ -269,6 +269,44 @@ TEST_CASE("MultiEvaluator::Reset zeroes every child, however deeply nested", "[e
     CHECK(multi.TotalEvaluations() == 0);
 }
 
+TEST_CASE("A child added twice to a MultiEvaluator is counted once per slot, in Stats() and DetailedStats() alike",
+    "[evaluator][stats]")
+{
+    StatsFixture fix;
+    Evaluator<DTable> const mse { &fix.Problem, &fix.Dtable, MSE {} };
+    // MultiEvaluator::Add does not reject duplicates, and neither Stats() nor BudgetExhausted() deduplicates: every
+    // slot contributes the child's own counters. The child runs once per slot, so a shared child is counted
+    // (slots x its own work) times by the composite. DetailedStats() sums the same way and agrees exactly.
+    MultiEvaluator inner { &fix.Problem };
+    inner.Add(&mse);
+    MultiEvaluator multi { &fix.Problem };
+    multi.Add(&mse);
+    multi.Add(&inner); // the same instance again, through a nested composite
+    auto ind = fix.MakeIndividual("X1 + 0.5");
+
+    fix.ScoreWithLocalSearch(multi, ind);
+
+    CHECK(mse.TotalEvaluations() == 2); // the child really ran twice
+    auto const stats = multi.DetailedStats();
+    auto const [residual, jacobian, calls, time] = multi.Stats();
+    CHECK(stats.ResidualScoring == 4); // 2 runs, each counted at both slots
+    CHECK(stats.ResidualOptimizer == FunctionEvaluationsPerSearch);
+    CHECK(residual == stats.ResidualTotal());
+    CHECK(jacobian == stats.JacobianTotal());
+    CHECK(calls == stats.Calls);
+    CHECK(time == stats.OptimizerTimeUs);
+
+    // The budget consumes exactly what the stats report.
+    multi.SetBudget(stats.Consumed());
+    CHECK(multi.BudgetExhausted());
+    multi.SetBudget(stats.Consumed() + 1);
+    CHECK_FALSE(multi.BudgetExhausted());
+
+    multi.Reset();
+    CHECK(multi.DetailedStats() == EvaluationStats {});
+    CHECK(mse.DetailedStats() == EvaluationStats {});
+}
+
 TEST_CASE("Counters stay exact under concurrent scoring", "[evaluator][stats]")
 {
     StatsFixture fix;
@@ -355,6 +393,59 @@ TEST_CASE("GeneticAlgorithmBase::DetailedStats after a GP run", "[algorithms][st
         CHECK(cleared.Consumed() == 0);
         CHECK(cleared.CacheHits == std::optional<std::size_t> { 0 });
         CHECK(cleared.CacheLookups == std::optional<std::size_t> { 0 });
+    }
+}
+
+TEST_CASE("GeneticAlgorithmBase cache counters follow the generator's active cache", "[algorithms][stats]")
+{
+    AlgorithmFixture fix;
+    Operon::Evaluator<DTable> evaluator { &fix.Problem, &fix.Dtable, MSE {} };
+    Operon::BasicOffspringGenerator generator { &evaluator, &fix.Crossover, &fix.Mutator, &fix.FemSel, &fix.MaleSel,
+        &fix.CoeffOptimizer };
+    Operon::RandomGenerator cacheRng { 3 };
+    Operon::Zobrist configured { cacheRng, /*maxLength=*/20, fix.Vars };
+    Operon::Zobrist replacement { cacheRng, /*maxLength=*/20, fix.Vars };
+    auto config = fix.Config;
+    config.Cache = &configured;
+    Operon::GeneticProgrammingAlgorithm gp { config, &fix.Problem, &fix.TreeInit, &fix.CoeffInit, &generator,
+        &fix.Reinserter };
+    REQUIRE(generator.Cache() == &configured);
+
+    SECTION("replaced by another cache")
+    {
+        generator.SetCache(&replacement);
+        Operon::RandomGenerator rng { 7 };
+        gp.Run(rng, nullptr, /*threads=*/2);
+
+        auto const stats = gp.DetailedStats();
+        REQUIRE(stats.CacheLookups.has_value());
+        CHECK(replacement.Lookups() > 0);
+        CHECK(configured.Lookups() == 0);
+        CHECK(stats.CacheHits == std::optional<std::size_t> { replacement.Hits() });
+        CHECK(stats.CacheLookups == std::optional<std::size_t> { replacement.Lookups() });
+
+        // Reset clears the active cache's counters, not the configured one's.
+        auto const hash = configured.ComputeHash(fix.MakeIndividual("X1").Genotype);
+        Operon::Vector<Operon::Scalar> out(1);
+        CHECK_FALSE(configured.TryGet(hash, out)); // a miss still counts as a lookup
+        REQUIRE(configured.Lookups() > 0);
+        auto const configuredLookups = configured.Lookups();
+        gp.Reset();
+        CHECK(replacement.Hits() == 0);
+        CHECK(replacement.Lookups() == 0);
+        CHECK(configured.Lookups() == configuredLookups);
+    }
+
+    SECTION("removed")
+    {
+        generator.SetCache(nullptr);
+        Operon::RandomGenerator rng { 7 };
+        gp.Run(rng, nullptr, /*threads=*/2);
+
+        auto const stats = gp.DetailedStats();
+        CHECK_FALSE(stats.CacheHits.has_value());
+        CHECK_FALSE(stats.CacheLookups.has_value());
+        CHECK(configured.Lookups() == 0);
     }
 }
 

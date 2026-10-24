@@ -161,11 +161,13 @@ public:
     [[nodiscard]] auto GetConfig() const -> GeneticAlgorithmConfig { return config_; }
 
     // Evaluation counters of the evaluator tree plus the transposition-cache counters (nullopt when no cache is
-    // configured, which is not the same as zero). Reset together with the algorithm at the start of Run().
+    // active, which is not the same as zero). The active cache is the generator's (the pointer it actually looks
+    // up; initially config.Cache, see the constructor), which SetCache may have changed since. Reset together with
+    // the algorithm at the start of Run().
     [[nodiscard]] auto DetailedStats() const -> EvaluationStats
     {
         auto stats = generator_->Evaluator()->DetailedStats();
-        if (auto const* cache = config_.Cache) {
+        if (auto const* cache = generator_->Cache()) {
             stats.CacheHits = cache->Hits();
             stats.CacheLookups = cache->Lookups();
         }
@@ -257,7 +259,7 @@ public:
         ClearStopRequested();
         phaseTimes_.clear();
         GetGenerator()->Evaluator()->Reset();
-        if (auto* cache = config_.Cache) {
+        if (auto* cache = generator_->Cache()) {
             cache->ResetCounters();
         }
     }
