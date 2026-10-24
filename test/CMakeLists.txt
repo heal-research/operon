@@ -297,6 +297,8 @@ endif()
 # Each case runs the real executable through cli/expect.cmake: `fail` cases need exit status 1 and a stderr match
 # (a crash or abort does not count), `ok` cases need exit status 0 and a stdout match.
 if(TARGET operon_gp AND TARGET operon_nsgp)
+    # CI builds only operon_test; the CLI cases below run the real executables.
+    add_dependencies(operon_test operon_gp operon_nsgp)
     set(operon_cli_data "data/Poly-10.csv")
 
     function(add_cli_test NAME PROGRAM EXPECT REGEX)
@@ -383,4 +385,18 @@ if(TARGET operon_gp AND TARGET operon_nsgp)
     endforeach()
     add_cli_test(gp_accepts_valid_generator_specs operon_gp ok "iteration"
         "--dataset;${operon_cli_data};--target;Y;--population-size;10;--pool-size;10;--threads;1;--seed;1;--generations;1;--offspring-generator;os:50:0.5")
+
+    # operon_enum: seed/threads may be omitted (random seed, all hardware threads); GP-only options are rejected
+    if(TARGET operon_enum)
+        add_dependencies(operon_test operon_enum)
+        add_cli_test(enum_capabilities operon_enum ok "\"program\":\"operon_enum\"" "--capabilities")
+        add_cli_test(enum_default_seed_and_threads operon_enum ok "mdl_bits="
+            "--dataset;${operon_cli_data};--target;Y;--train;0:50;--max-complexity;4;--top-k;1")
+        add_cli_test(enum_rejects_epsilon operon_enum fail
+            "error: --epsilon: is only used by operon_nsgp"
+            "--dataset;${operon_cli_data};--target;Y;--epsilon;1e-3")
+        add_cli_test(enum_rejects_selection_pressure operon_enum fail
+            "error: --selection-pressure: is not supported and has no effect"
+            "--dataset;${operon_cli_data};--target;Y;--selection-pressure;5")
+    endif()
 endif()
