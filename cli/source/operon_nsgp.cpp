@@ -72,18 +72,18 @@ auto FrontSelect(EvaluatorType const& eval, Operon::Span<Operon::Individual cons
 
 auto main(int argc, char** argv) -> int
 {
-    auto opts = Operon::InitOptions("operon_gp", "Genetic programming symbolic regression");
+    auto opts = Operon::InitOptions("operon_nsgp", "Genetic programming symbolic regression");
     opts.add_options()("sorter", "Non-dominated sorter: rs (RankIntersect) or ms (Merge)",
         cxxopts::value<std::string>()->default_value("rs"));
     auto result = Operon::ParseOptions(std::move(opts), argc, argv);
 
     // parse and set default values
     Operon::GeneticAlgorithmConfig config {};
-    config.Generations = result["generations"].as<size_t>();
+    config.Generations = Operon::GetLimit(result, "generations");
     config.PopulationSize = result["population-size"].as<size_t>();
     config.PoolSize = result["pool-size"].as<size_t>();
     config.Epsilon = result["epsilon"].as<Operon::Scalar>();
-    config.Evaluations = result["evaluations"].as<size_t>();
+    config.Evaluations = Operon::GetLimit(result, "evaluations");
     config.Iterations = result["iterations"].as<size_t>();
     config.CrossoverProbability = result["crossover-probability"].as<Operon::Scalar>();
     config.MutationProbability = result["mutation-probability"].as<Operon::Scalar>();

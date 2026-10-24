@@ -25,6 +25,7 @@ add_executable(operon_test
     source/implementation/ga_base.cpp
     source/implementation/backend.cpp
     source/implementation/autodiff.cpp
+    source/implementation/cli_args.cpp
     source/implementation/cli_error.cpp
     source/implementation/tree_diff.cpp
     source/implementation/range_oracles.cpp
@@ -260,4 +261,76 @@ if(NOT PROJECT_IS_TOP_LEVEL)
                 "-DOPERON_CONSUMER_BUILD_DIR=${operon_package_consumer_optional_backend_work_dir}/build"
                 -P "${operon_package_consumer_source_dir}/run-consumer-test.cmake"
     )
+endif()
+
+# ---- Command-line programs: option validation and error reporting ----
+# Each case runs the real executable through cli/expect.cmake: `fail` cases need exit status 1 and a stderr match
+# (a crash or abort does not count), `ok` cases need exit status 0 and a stdout match.
+if(TARGET operon_gp AND TARGET operon_nsgp)
+    # CI builds only operon_test; the CLI cases below run the real executables.
+    add_dependencies(operon_test operon_gp operon_nsgp)
+    set(operon_cli_data "data/Poly-10.csv")
+
+    function(add_cli_test NAME PROGRAM EXPECT REGEX)
+        string(REPLACE ";" "|" joined "${ARGN}")
+        add_test(
+            NAME cli_${NAME}
+            COMMAND "${CMAKE_COMMAND}"
+                    "-DCLI=$<TARGET_FILE:${PROGRAM}>"
+                    "-DARGS=${joined}"
+                    "-DEXPECT=${EXPECT}"
+                    "-DREGEX=${REGEX}"
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/cli_expect.cmake"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        )
+    endfunction()
+
+    # dead options
+    add_cli_test(gp_rejects_selection_pressure operon_gp fail
+        "error: --selection-pressure: is not supported.*--offspring-generator os:"
+        "--dataset;${operon_cli_data};--target;Y;--selection-pressure;5")
+    add_cli_test(nsgp_rejects_selection_pressure operon_nsgp fail
+        "error: --selection-pressure: is not supported.*--offspring-generator os:"
+        "--dataset;${operon_cli_data};--target;Y;--selection-pressure;5")
+    add_cli_test(gp_rejects_epsilon operon_gp fail
+        "error: --epsilon: is only used by operon_nsgp"
+        "--dataset;${operon_cli_data};--target;Y;--epsilon;1e-3")
+    add_cli_test(nsgp_accepts_epsilon operon_nsgp ok "iteration"
+        "--dataset;${operon_cli_data};--target;Y;--population-size;10;--pool-size;10;--threads;1;--seed;1;--generations;1;--epsilon;1e-3")
+
+    # build description
+    add_cli_test(gp_capabilities operon_gp ok "\"schema\":\"operon.capabilities\".*\"program\":\"operon_gp\".*\"report-json\"" "--capabilities")
+    add_cli_test(nsgp_capabilities operon_nsgp ok "\"program\":\"operon_nsgp\".*\"machine_report_schema_versions\":\\[\\].*\"sorter\"" "--capabilities")
+
+    # threads
+    add_cli_test(gp_rejects_zero_threads operon_gp fail
+        "error: --threads: must be at least 1 .omit the option to use all hardware threads."
+        "--dataset;${operon_cli_data};--target;Y;--threads;0")
+    add_cli_test(nsgp_rejects_zero_threads operon_nsgp fail
+        "error: --threads: must be at least 1 .omit the option to use all hardware threads."
+        "--dataset;${operon_cli_data};--target;Y;--threads;0")
+
+    # budgets
+    add_cli_test(gp_rejects_malformed_evaluations operon_gp fail
+        "error: --evaluations: 'lots' is not a non-negative integer or 'unlimited'"
+        "--dataset;${operon_cli_data};--target;Y;--evaluations;lots")
+    add_cli_test(gp_rejects_malformed_generations operon_gp fail
+        "error: --generations: '-3' is not a non-negative integer or 'unlimited'"
+        "--dataset;${operon_cli_data};--target;Y;--generations;-3")
+    add_cli_test(gp_unlimited_generations_stop_on_budget operon_gp ok "iteration"
+        "--dataset;${operon_cli_data};--target;Y;--population-size;10;--pool-size;10;--threads;1;--seed;1;--generations;unlimited;--evaluations;60")
+    add_cli_test(gp_unlimited_evaluations_stop_on_generations operon_gp ok "iteration[^\n]*\n[^\n]*\n[^\n]*\n"
+        "--dataset;${operon_cli_data};--target;Y;--population-size;10;--pool-size;10;--threads;1;--seed;1;--generations;2;--evaluations;unlimited")
+    add_cli_test(nsgp_unlimited_budgets operon_nsgp ok "iteration"
+        "--dataset;${operon_cli_data};--target;Y;--population-size;10;--pool-size;10;--threads;1;--seed;1;--generations;2;--evaluations;18446744073709551615")
+
+    # offspring-generator spec parsing
+    foreach(spec "os:abc" "os:10:x" "os:10:nan" "os::5" "brood:x" "brood:5x" "brood:-1" "brood:0" "poly:x" "poly::" "poly:0")
+        string(REGEX REPLACE "[^a-z0-9]" "_" tag "${spec}")
+        add_cli_test(gp_rejects_generator_${tag} operon_gp fail
+            "error: unable to parse generator argument '${spec}': '[^']*' is not a valid"
+            "--dataset;${operon_cli_data};--target;Y;--population-size;10;--pool-size;10;--threads;1;--offspring-generator;${spec}")
+    endforeach()
+    add_cli_test(gp_accepts_valid_generator_specs operon_gp ok "iteration"
+        "--dataset;${operon_cli_data};--target;Y;--population-size;10;--pool-size;10;--threads;1;--seed;1;--generations;1;--offspring-generator;os:50:0.5")
 endif()

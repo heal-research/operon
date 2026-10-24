@@ -9,10 +9,31 @@
 #include <chrono>
 #include <fmt/format.h>
 #include <string>
+#include <vector>
 
 namespace Operon {
+// Build-time facts about the library, for machine-readable reporting; Version() is the free-text equivalent.
+struct BuildInfo {
+    std::string Revision; // git revision, "unknown" when it was not available at build time
+    std::string BuildType;
+    std::string Platform;
+    std::string Arch;
+    std::string CompilerId;
+    std::string CompilerVersion;
+    std::string CompilerFlags;
+    std::string Precision; // "single" or "double"
+    std::string EigenVersion;
+    std::string TaskflowVersion;
+    std::string CeresVersion; // empty when the build does not use Ceres
+    std::string BuildTimestamp; // ISO 8601, as recorded at configure time
+    std::string IsaLevel; // x86-64 microarchitecture level ("x86-64-v1" .. "x86-64-v4"); empty on other architectures
+    std::vector<std::string> IsaFeatures; // ISA extensions the library was compiled for
+    bool Jit { false }; // asmjit-based JIT backend available
+};
+
 // NOLINTBEGIN
 auto OPERON_EXPORT Version() -> std::string;
+auto OPERON_EXPORT GetBuildInfo() -> BuildInfo;
 } // namespace Operon
 
 #endif
