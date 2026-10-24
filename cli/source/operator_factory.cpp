@@ -53,6 +53,19 @@ namespace {
         }
         return *value;
     }
+
+    // A size field that must be at least one: zero would build an empty brood and dereference its end iterator.
+    auto ScanPositiveSize(
+        std::string const& option, std::string const& spec, std::string const& token, std::string_view field) -> size_t
+    {
+        auto const value = ScanField<size_t>(option, spec, token, field);
+        if (value == 0) {
+            throw std::invalid_argument(
+                fmt::format("unable to parse {} argument '{}': '{}' is not a valid {} (must be at least 1)", option,
+                    spec, token, field));
+        }
+        return value;
+    }
 } // namespace
 
 auto ParseReinserter(std::string const& str, ComparisonCallback&& comp, size_t eliteCount)
@@ -286,14 +299,14 @@ auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& 
         generator = std::make_unique<BroodOffspringGenerator>(&eval, &cx, &mut, &femSel, &maleSel, coeffOptimizer);
         size_t broodSize { BroodOffspringGenerator::DefaultBroodSize };
         if (tok.size() > 1) {
-            broodSize = ScanField<size_t>("generator", str, tok[1], "brood size");
+            broodSize = ScanPositiveSize("generator", str, tok[1], "brood size");
         }
         dynamic_cast<BroodOffspringGenerator*>(generator.get())->BroodSize(broodSize);
     } else if (name == "poly") {
         generator = std::make_unique<PolygenicOffspringGenerator>(&eval, &cx, &mut, &femSel, &maleSel, coeffOptimizer);
         size_t polygenicSize { PolygenicOffspringGenerator::DefaultBroodSize };
         if (tok.size() > 1) {
-            polygenicSize = ScanField<size_t>("generator", str, tok[1], "polygenic size");
+            polygenicSize = ScanPositiveSize("generator", str, tok[1], "polygenic size");
         }
         dynamic_cast<PolygenicOffspringGenerator*>(generator.get())->PolygenicSize(polygenicSize);
     } else {

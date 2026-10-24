@@ -58,8 +58,10 @@ inline auto JsonStringArray(std::vector<std::string> const& values) -> std::stri
 }
 
 // One-line JSON document describing the binary: identity (revision, build type, platform), numeric precision,
-// compile-time ISA, available optional features and the options this program accepts. `options` are the long option
-// names registered by the program (without the leading dashes).
+// compile-time ISA, available optional features and the options this program registers. `options` are the long option
+// names registered with the parser (without the leading dashes); a registered option can still be rejected at run
+// time (for example options that another program of the family reads), so this is a registration list, not a
+// promise that every option has an effect. `features` describe the library build, not the individual program.
 inline auto CapabilitiesJson(std::string_view program, std::vector<std::string> options, BuildInfo const& info)
     -> std::string
 {
