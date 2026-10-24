@@ -3,13 +3,17 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <numeric>
 #include <optional>
 #include <random>
+#include <thread>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -575,6 +579,160 @@ TEST_CASE("NSGA2: IncompleteGeneration() reports the cut-short generation", "[al
             CHECK(nsga.IncompleteGeneration()->Completed == PartialBudget - PartialPop);
         }
     }
+}
+
+namespace {
+
+    // Deterministic hook into offspring generation: delegates to a BasicOffspringGenerator and calls OnCall(attempt,
+    // call) before each delegation, where `attempt` is the 1-based generation attempt (counted by Prepare()) and `call`
+    // the 1-based generator invocation within it. No timing or sleeping is involved in the stop decision itself.
+    class HookedGenerator final : public Operon::OffspringGeneratorBase {
+    public:
+        HookedGenerator(Operon::EvaluatorBase const* eval, Operon::CrossoverBase const* cx,
+            Operon::MutatorBase const* mut, Operon::SelectorBase const* femSel, Operon::SelectorBase const* maleSel)
+            : OffspringGeneratorBase(eval, cx, mut, femSel, maleSel)
+            , inner_(eval, cx, mut, femSel, maleSel)
+        {
+        }
+
+        std::function<void(std::size_t, std::size_t)> OnCall;
+
+        auto Prepare(Operon::Span<Operon::Individual const> pop) const -> void override
+        {
+            OffspringGeneratorBase::Prepare(pop);
+            ++attempt_;
+            call_ = 0;
+        }
+
+        auto operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal,
+            double pLamarck, Operon::Span<Operon::Scalar> buf) const -> std::optional<Operon::Individual> override
+        {
+            auto const call = call_.fetch_add(1, std::memory_order_relaxed) + 1;
+            if (OnCall) {
+                OnCall(attempt_.load(std::memory_order_relaxed), call);
+            }
+            return inner_(random, pCrossover, pMutation, pLocal, pLamarck, buf);
+        }
+
+    private:
+        Operon::BasicOffspringGenerator inner_;
+        mutable std::atomic_size_t attempt_ { 0 };
+        mutable std::atomic_size_t call_ { 0 };
+    };
+
+    enum class Interruption { StopRequest, TimeLimit };
+
+    // Interrupts generation attempt 2 after the first complete generation was reported. Asserts that the interrupted
+    // generation is not counted, reinserted or reported, and that IncompleteGeneration() describes it.
+    template <typename Algo, typename MakeAlgo>
+    void CheckInterruptedGeneration(Interruption kind, std::size_t threads, MakeAlgo makeAlgo)
+    {
+        constexpr std::size_t pop = 16;
+        constexpr std::size_t stopAfterCalls = 5;
+        // The elapsed time is truncated to milliseconds and compared against an integral number of seconds, so
+        // TimeLimit = 1 is exceeded once more than 1001 ms have passed since Run() started.
+        constexpr auto timeGate = std::chrono::milliseconds { 1100 };
+
+        BudgetedRun f { pop, pop, /*generations=*/100, std::numeric_limits<std::size_t>::max() };
+        if (kind == Interruption::TimeLimit) {
+            f.Config.TimeLimit = 1;
+        }
+        HookedGenerator hg { &f.Evaluator, &f.Crossover, &f.Mutator, &f.FemSel, &f.MaleSel };
+        Algo algo = makeAlgo(f, hg);
+        Operon::RandomGenerator rng { 7 };
+
+        std::chrono::steady_clock::time_point firstReport;
+        hg.OnCall = [&](std::size_t attempt, std::size_t call) {
+            if (attempt != 2) {
+                return;
+            }
+            if (kind == Interruption::StopRequest && call == stopAfterCalls) {
+                algo.RequestStop();
+            } else if (kind == Interruption::TimeLimit && call == 1) {
+                // Spin (no sleep) until the run is provably past its time limit; firstReport is not earlier than
+                // the run's own start. The stop check that preceded this call has already passed.
+                while (std::chrono::steady_clock::now() < firstReport + timeGate) {
+                    std::this_thread::yield();
+                }
+            }
+        };
+
+        std::vector<Snapshot> reports;
+        algo.Run(
+            rng,
+            [&]() -> bool {
+                if (reports.empty()) {
+                    firstReport = std::chrono::steady_clock::now();
+                }
+                reports.push_back(Capture(algo));
+                return false;
+            },
+            threads);
+
+        INFO("threads = " << threads);
+        REQUIRE(reports.size() == 2); // initial population and generation 1; attempt 2 was never reported
+        CHECK(reports[0].Generation == 0);
+        CHECK(reports[1].Generation == 1);
+        CHECK(algo.Generation() == 1);
+        CHECK(Capture(algo) == reports[1]); // the population is the last complete generation, untouched
+        for (auto const& ind : algo.Parents()) {
+            CHECK(ind.Genotype.Length() > 0);
+            CHECK(ind[0] < Operon::EvaluatorBase::ErrMax);
+        }
+
+        REQUIRE(algo.IncompleteGeneration().has_value());
+        auto const progress = *algo.IncompleteGeneration();
+        CHECK(progress.PoolSize == pop);
+        CHECK(progress.Completed < pop);
+        CHECK(progress.Attempted >= progress.Completed);
+        if (kind == Interruption::StopRequest) {
+            CHECK(algo.StopRequested());
+            CHECK(progress.Attempted >= stopAfterCalls);
+        } else {
+            CHECK(progress.Attempted >= 1);
+            // Elapsed() covers the discarded generation: the run ended because it exceeded the limit.
+            CHECK(algo.Elapsed() > static_cast<double>(f.Config.TimeLimit));
+        }
+    }
+
+    auto MakeGp(BudgetedRun& f, Operon::OffspringGeneratorBase& g) -> Operon::GeneticProgrammingAlgorithm
+    {
+        return { f.Config, &f.Problem, &f.TreeInit, &f.CoeffInit, &g, &f.KeepBest };
+    }
+
+    auto MakeNsga2(BudgetedRun& f, Operon::OffspringGeneratorBase& g) -> Operon::NSGA2
+    {
+        return { f.Config, &f.Problem, &f.TreeInit, &f.CoeffInit, &g, &f.KeepBest, &f.Sorter };
+    }
+
+} // namespace
+
+TEST_CASE("GP: a stop request during offspring generation discards the unfinished generation",
+    "[algorithms][partial-generation]")
+{
+    for (std::size_t const threads : { 1UL, 4UL }) {
+        CheckInterruptedGeneration<Operon::GeneticProgrammingAlgorithm>(Interruption::StopRequest, threads, MakeGp);
+    }
+}
+
+TEST_CASE("NSGA2: a stop request during offspring generation discards the unfinished generation",
+    "[algorithms][partial-generation]")
+{
+    for (std::size_t const threads : { 1UL, 4UL }) {
+        CheckInterruptedGeneration<Operon::NSGA2>(Interruption::StopRequest, threads, MakeNsga2);
+    }
+}
+
+TEST_CASE("GP: the time limit expiring during offspring generation discards the unfinished generation",
+    "[algorithms][partial-generation]")
+{
+    CheckInterruptedGeneration<Operon::GeneticProgrammingAlgorithm>(Interruption::TimeLimit, 1, MakeGp);
+}
+
+TEST_CASE("NSGA2: the time limit expiring during offspring generation discards the unfinished generation",
+    "[algorithms][partial-generation]")
+{
+    CheckInterruptedGeneration<Operon::NSGA2>(Interruption::TimeLimit, 1, MakeNsga2);
 }
 
 TEST_CASE("GP: runs that stop at the generation limit are complete and identical across seeds and thread counts",
