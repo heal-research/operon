@@ -170,7 +170,7 @@ namespace detail {
         void SetWorstValue(double value) { worstValue_ = value; }
 
         // Individuals rejected by HardReject so far (paper's Sec. 5.1 "constraint violations" figure). Accumulates
-        // over this evaluator's lifetime; EvaluatorBase::Reset() does not clear it.
+        // over this evaluator's lifetime; Reset() does not clear it.
         [[nodiscard]] auto Violations() const noexcept -> std::size_t { return violations_.load(); }
 
     protected:
@@ -309,12 +309,6 @@ public:
         return stats;
     }
 
-    void Reset() const override
-    {
-        BaseEvaluator::Reset();
-        this->ShapeStructuralReset();
-    }
-
     auto BudgetExhausted() const -> bool override
     {
         auto const [residual, jacobian, calls, costFunctionTime] = Stats();
@@ -322,6 +316,12 @@ public:
     }
 
 protected:
+    void ResetChildren() const override
+    {
+        BaseEvaluator::ResetChildren();
+        this->ShapeStructuralReset();
+    }
+
     auto Score(Operon::RandomGenerator& rng, Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf,
         std::optional<EvaluatedBuffer> evaluated) const -> typename EvaluatorBase::ReturnType override
     {
