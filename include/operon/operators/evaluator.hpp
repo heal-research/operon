@@ -312,9 +312,11 @@ struct EvaluatorBase
     auto GetProblem() const -> Problem const* { return problem_; }
     auto SetProblem(gsl::not_null<Problem const*> problem) { problem_ = problem; }
 
-    // Zeroes every counter. Composite evaluators also reset their children, so that a re-run in the same process
-    // starts from a clean budget.
-    virtual void Reset() const
+    // Zeroes every counter of this evaluator, then calls ResetChildren() so that composite evaluators also clear
+    // the evaluators they hold and a re-run in the same process starts from a clean budget. Deliberately not
+    // virtual: a derived `Reset()` of its own hides this one instead of replacing it, so the base counters are
+    // always cleared when called through an `EvaluatorBase`. Extend it through ResetChildren().
+    void Reset() const
     {
         ResidualEvaluations = 0;
         JacobianEvaluations = 0;
@@ -322,9 +324,15 @@ struct EvaluatorBase
         CostFunctionTime = 0;
         OptimizerResidualEvaluations = 0;
         OptimizerJacobianEvaluations = 0;
+        ResetChildren();
     }
 
 protected:
+    // Extension point of Reset(): reset whatever counters this evaluator owns beyond the base ones (child
+    // evaluators, structural counters). Called after the base counters were cleared; must not call Reset() on
+    // `this`.
+    virtual void ResetChildren() const {}
+
     // Prediction phase. Returns `nullopt` for an objective-only evaluator, or the prediction proof for a value
     // evaluator; an error is turned into the ErrMax vector by `operator()`.
     [[nodiscard]] virtual auto Evaluate(Operon::Individual const& /*ind*/, Operon::Span<Operon::Scalar> /*buf*/) const
@@ -550,17 +558,16 @@ public:
         return stats;
     }
 
-    void Reset() const override
+    auto Evaluators() const { return evaluators_; }
+
+protected:
+    void ResetChildren() const override
     {
-        EvaluatorBase::Reset();
         for (auto const& ev : evaluators_) {
             ev->Reset();
         }
     }
 
-    auto Evaluators() const { return evaluators_; }
-
-protected:
     // Children run exclusively through their operator().
     auto Score(Operon::RandomGenerator& rng, Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf,
         std::optional<EvaluatedBuffer> evaluated) const -> typename EvaluatorBase::ReturnType override;

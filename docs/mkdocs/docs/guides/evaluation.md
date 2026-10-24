@@ -65,6 +65,10 @@ microseconds); `DetailedStats()` returns an `EvaluationStats` with the same tota
 and `ResidualOptimizer`/`JacobianOptimizer` (coefficient optimization in `LocalSearch`). The evaluation budget is
 still `ResidualEvaluations + JacobianEvaluations`, i.e. the sum of both parts. `MultiEvaluator` and the
 shape-constrained adapter include their children; `GeneticAlgorithmBase::DetailedStats()` adds the transposition-cache
-hit and lookup counters (`nullopt` when no cache is configured). `Reset()` is virtual: composite evaluators reset
-their children too, and `GeneticAlgorithmBase::Reset()` (called at the start of every `Run()`) also zeroes the
-cache counters.
+hit and lookup counters of the generator's active cache (`OffspringGeneratorBase::Cache()`: initially
+`config.Cache`, replaceable with `SetCache`; `nullopt` when the generator has no active cache). The same cache has
+its generation clock advanced by `Run()`, so entry stamping and age-based expiry, the counters and the reset all
+refer to it. `EvaluatorBase::Reset()` is not virtual: it clears the base counters and then calls the protected
+virtual `ResetChildren()`, which composite evaluators override to reset their children (`MultiEvaluator`, the
+shape-constrained adapter). `GeneticAlgorithmBase::Reset()` (called at the start of every `Run()`) calls it and also
+zeroes the active cache's counters.

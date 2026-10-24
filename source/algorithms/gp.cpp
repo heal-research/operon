@@ -182,8 +182,14 @@ auto GeneticProgrammingAlgorithm::Run(
                                             attemptedOffspring = 0;
                                             SetIncompleteGeneration(std::nullopt);
                                             generator->Prepare(parents);
-                                            // Offspring belong to the next generation.
-                                            if (auto* cache = config.Cache) {
+                                            // Stamp the cache clock with the generation offspring will
+                                            // belong to *before* they're evaluated - Generation() itself
+                                            // isn't incremented until after reinsert() below, so without
+                                            // this the cache would stamp entries with the prior
+                                            // generation's number (see incrementGeneration). The
+                                            // generator's cache is the one entries are stamped in and
+                                            // expired from (SetCache may have replaced config.Cache).
+                                            if (auto* cache = generator->Cache()) {
                                                 cache->SetGeneration(Generation() + 1);
                                             }
                                         })

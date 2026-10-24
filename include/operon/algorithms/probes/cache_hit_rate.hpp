@@ -13,13 +13,13 @@
 namespace Operon {
 
 // Reports per-generation deltas of the algorithm's Zobrist transposition
-// cache (GeneticAlgorithmConfig::Cache): hits, lookups, hit rate, and the
-// cache's cumulative size. Emits nothing if no cache is configured.
+// cache (the generator's active cache, initially GeneticAlgorithmConfig::Cache): hits, lookups, hit rate, and the
+// cache's cumulative size. Emits nothing if no cache is active.
 class CacheHitRateProbe final : public GenerationProbe {
 public:
     auto operator()(ProbeContext& ctx) -> void override
     {
-        auto const* cache = ctx.Config().Cache;
+        auto const* cache = ctx.Algorithm().GetGenerator()->Cache();
         if (cache == nullptr) {
             return;
         }
