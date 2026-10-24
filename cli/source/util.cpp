@@ -280,7 +280,7 @@ auto ResumeFromCheckpoint(GeneticAlgorithmBase& algo, RandomGenerator& rng, cxxo
     // with the resumed generation instead of 0, which would otherwise make
     // every entry read as ancient (and get evicted) the moment the loop
     // advances the clock past the checkpoint's generation.
-    if (auto* cache = config.Cache) {
+    if (auto* cache = algo.GetGenerator()->Cache()) {
         cache->SetGeneration(cp->Generation);
     }
     auto parents = algo.Parents();

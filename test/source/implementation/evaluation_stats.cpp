@@ -436,6 +436,29 @@ TEST_CASE("GeneticAlgorithmBase cache counters follow the generator's active cac
         CHECK(configured.Lookups() == configuredLookups);
     }
 
+    SECTION("the replacement's generation clock is advanced, so a nonzero max age expires old entries")
+    {
+        Operon::Zobrist aging { cacheRng, /*maxLength=*/20, fix.Vars, /*maxAge=*/1 };
+        Operon::Zobrist keeping { cacheRng, /*maxLength=*/20, fix.Vars }; // max age 0: never expires
+        auto const hash = Operon::Hash { 0xDEADBEEF };
+        Operon::Vector<Operon::Scalar> out;
+        aging.Insert(hash, { Operon::Scalar { 1 } }); // stamped with generation 0, before the run
+        keeping.Insert(hash, { Operon::Scalar { 1 } });
+        REQUIRE(aging.TryGet(hash, out)); // fresh while the clock is still at 0
+
+        generator.SetCache(&aging);
+        Operon::RandomGenerator rng { 7 };
+        gp.Run(rng, nullptr, /*threads=*/2);
+        REQUIRE(gp.Generation() >= 2);
+        CHECK_FALSE(aging.TryGet(hash, out)); // the clock moved past maxAge on the generator's cache
+        CHECK(configured.Lookups() == 0);
+
+        generator.SetCache(&keeping);
+        Operon::RandomGenerator rng2 { 7 };
+        gp.Run(rng2, nullptr, /*threads=*/2);
+        CHECK(keeping.TryGet(hash, out)); // unchanged behaviour for the default max age
+    }
+
     SECTION("removed")
     {
         generator.SetCache(nullptr);
@@ -486,12 +509,154 @@ TEST_CASE("GeneticAlgorithmBase::Reset and a second Run start from zero on every
     CHECK(mse.DetailedStats() == EvaluationStats {});
     CHECK(length.DetailedStats() == EvaluationStats {});
     CHECK(multi.TotalEvaluations() == 0);
+}
 
-    // Run() resets at start: a second run's counters do not include the first run's.
+TEST_CASE("Run() clears the counters at start", "[algorithms][stats]")
+{
+    AlgorithmFixture fix;
+    Operon::Evaluator<DTable> mse { &fix.Problem, &fix.Dtable, MSE {} };
+    Operon::TreePropertyEvaluator length { &fix.Problem,
+        [](Operon::Tree const& t) { return static_cast<Operon::Scalar>(t.Length()); } };
+    Operon::MultiEvaluator multi { &fix.Problem };
+    multi.Add(&mse);
+    multi.Add(&length);
+    Operon::CrowdedComparison comp;
+    Operon::TournamentSelector fem { comp };
+    Operon::TournamentSelector male { comp };
+    Operon::BasicOffspringGenerator generator { &multi, &fix.Crossover, &fix.Mutator, &fem, &male,
+        &fix.CoeffOptimizer };
+    Operon::DeductiveSorter sorter;
+    Operon::KeepBestReinserter reinserter { comp };
+    Operon::RandomGenerator cacheRng { 3 };
+    Operon::Zobrist cache { cacheRng, /*maxLength=*/20, fix.Vars };
+    auto config = fix.Config;
+    config.Cache = &cache;
+    Operon::NSGA2 nsga { config, &fix.Problem, &fix.TreeInit, &fix.CoeffInit, &generator, &reinserter, &sorter };
+
+    SECTION("a second Run without an intervening Reset reports only its own counts")
+    {
+        // Without a cache every run scores the same number of individuals (the initial population plus one pool per
+        // generation), so accumulated counters would show up as exactly double.
+        generator.SetCache(nullptr);
+        Operon::RandomGenerator rng1 { 11 };
+        nsga.Run(rng1, nullptr, /*threads=*/1);
+        auto const first = nsga.DetailedStats();
+        auto const expected = fix.PopSize + (fix.Config.Generations * fix.PoolSize);
+        REQUIRE(first.Calls == expected);
+        REQUIRE(first.ResidualOptimizer > 0);
+        REQUIRE(mse.DetailedStats().Calls == expected);
+        REQUIRE_FALSE(first.CacheLookups.has_value());
+
+        Operon::RandomGenerator rng2 { 12 };
+        nsga.Run(rng2, nullptr, /*threads=*/1); // no Reset() in between
+        auto const second = nsga.DetailedStats();
+        CHECK(second.Calls == expected);
+        CHECK(mse.DetailedStats().Calls == expected);
+    }
+
+    SECTION("preloaded counters are cleared by the run-start reset")
+    {
+        // Leave nonzero evaluator and cache counters behind, as a previous run (or other users of the objects) would.
+        Operon::Vector<Operon::Scalar> out;
+        for (auto i = 0; i < 50; ++i) {
+            std::ignore = cache.TryGet(Operon::Hash { 1000U + static_cast<std::uint64_t>(i) }, out);
+        }
+        mse.ResidualEvaluations = 1'000'000;
+        mse.CallCount = 1'000'000;
+        multi.ResidualEvaluations = 1'000'000;
+        multi.OptimizerResidualEvaluations = 1'000'000;
+        REQUIRE(cache.Lookups() == 50);
+        REQUIRE(nsga.DetailedStats().Consumed() >= 2'000'000);
+
+        Operon::RandomGenerator rng { 11 };
+        nsga.Run(rng, nullptr, /*threads=*/1);
+
+        auto const stats = nsga.DetailedStats();
+        REQUIRE(stats.Calls > 0);
+        CHECK(stats.Consumed() < 1'000'000);
+        CHECK(mse.CallCount.load() < 1'000'000);
+        CHECK(multi.OptimizerResidualEvaluations.load() < 1'000'000);
+        REQUIRE(stats.CacheLookups.has_value());
+
+        // The same run on an empty cache: the preloaded lookups must not show up in the preloaded run's count.
+        cache.Clear();
+        Operon::RandomGenerator again { 11 };
+        nsga.Run(again, nullptr, /*threads=*/1);
+        CHECK(nsga.DetailedStats().CacheLookups == stats.CacheLookups);
+    }
+}
+
+namespace {
+    // A downstream evaluator that declares its own `Reset()`: it hides the base one rather than overriding it.
+    struct HidingEvaluator final : Operon::EvaluatorBase {
+        using EvaluatorBase::EvaluatorBase;
+        mutable bool ResetChildrenCalled { false };
+        mutable bool OwnResetCalled { false };
+        void Reset() const { OwnResetCalled = true; }
+
+    protected:
+        void ResetChildren() const override { ResetChildrenCalled = true; }
+        auto Score(Operon::RandomGenerator& /*rng*/, Operon::Individual const& /*ind*/,
+            Operon::Span<Operon::Scalar> /*buf*/, std::optional<EvaluatedBuffer> /*evaluated*/) const
+            -> ReturnType override
+        {
+            return ReturnType {};
+        }
+    };
+} // namespace
+
+TEST_CASE(
+    "EvaluatorBase::Reset is not virtual and clears the base counters through the base pointer", "[evaluator][stats]")
+{
+    StatsFixture fix;
+    HidingEvaluator hiding { &fix.Problem };
+    Operon::EvaluatorBase const* base = &hiding;
+    hiding.ResidualEvaluations = 5;
+    hiding.JacobianEvaluations = 6;
+    hiding.CallCount = 7;
+    hiding.CostFunctionTime = 8;
+    hiding.OptimizerResidualEvaluations = 3;
+    hiding.OptimizerJacobianEvaluations = 2;
+
+    base->Reset();
+    CHECK_FALSE(hiding.OwnResetCalled);
+    CHECK(hiding.ResetChildrenCalled);
+    CHECK(hiding.DetailedStats() == EvaluationStats {});
+    CHECK(hiding.OptimizerResidualEvaluations.load() == 0);
+    CHECK(hiding.OptimizerJacobianEvaluations.load() == 0);
+    CHECK(hiding.CostFunctionTime.load() == 0);
+}
+
+TEST_CASE("NSGA2 advances the generator's active cache clock", "[algorithms][stats]")
+{
+    AlgorithmFixture fix;
+    Operon::Evaluator<DTable> mse { &fix.Problem, &fix.Dtable, MSE {} };
+    Operon::TreePropertyEvaluator length { &fix.Problem,
+        [](Operon::Tree const& t) { return static_cast<Operon::Scalar>(t.Length()); } };
+    Operon::MultiEvaluator multi { &fix.Problem };
+    multi.Add(&mse);
+    multi.Add(&length);
+    Operon::CrowdedComparison comp;
+    Operon::TournamentSelector fem { comp };
+    Operon::TournamentSelector male { comp };
+    Operon::BasicOffspringGenerator generator { &multi, &fix.Crossover, &fix.Mutator, &fem, &male,
+        &fix.CoeffOptimizer };
+    Operon::DeductiveSorter sorter;
+    Operon::KeepBestReinserter reinserter { comp };
+    Operon::NSGA2 nsga { fix.Config, &fix.Problem, &fix.TreeInit, &fix.CoeffInit, &generator, &reinserter, &sorter };
+
+    Operon::RandomGenerator cacheRng { 3 };
+    Operon::Zobrist aging { cacheRng, /*maxLength=*/20, fix.Vars, /*maxAge=*/1 };
+    auto const hash = Operon::Hash { 0xDEADBEEF };
+    Operon::Vector<Operon::Scalar> out;
+    aging.Insert(hash, { Operon::Scalar { 1 } });
+    REQUIRE(aging.TryGet(hash, out));
+
+    generator.SetCache(&aging);
+    Operon::RandomGenerator rng { 7 };
     nsga.Run(rng, nullptr, /*threads=*/2);
-    auto const second = nsga.DetailedStats();
-    CHECK(second.Calls > 0);
-    CHECK(second.Calls < 2 * first.Calls);
+    REQUIRE(nsga.Generation() >= 2);
+    CHECK_FALSE(aging.TryGet(hash, out));
 }
 
 } // namespace Operon::Test
