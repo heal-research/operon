@@ -54,6 +54,20 @@ namespace {
         return *value;
     }
 
+    // Splits on `delimiter` keeping empty fields (also a trailing one), unlike Split(): "os:" has two fields.
+    auto SplitFields(std::string const& s, char delimiter) -> std::vector<std::string>
+    {
+        std::vector<std::string> fields { std::string {} };
+        for (char const c : s) {
+            if (c == delimiter) {
+                fields.emplace_back();
+            } else {
+                fields.back().push_back(c);
+            }
+        }
+        return fields;
+    }
+
     // A size field that must be at least one: zero would build an empty brood and dereference its end iterator.
     auto ScanPositiveSize(
         std::string const& option, std::string const& spec, std::string const& token, std::string_view field) -> size_t
@@ -279,8 +293,14 @@ auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& 
     -> std::unique_ptr<OffspringGeneratorBase>
 {
     std::unique_ptr<OffspringGeneratorBase> generator;
-    auto tok = Split(str, ':');
-    auto name = tok[0];
+    auto tok = SplitFields(str, ':');
+    auto const& name = tok[0];
+    auto const maxFields = name == "basic" ? 1UL : (name == "os" ? 3UL : 2UL);
+    if ((name == "basic" || name == "os" || name == "brood" || name == "poly") && tok.size() > maxFields) {
+        throw std::invalid_argument(
+            fmt::format("unable to parse generator argument '{}': '{}' takes at most {} field(s) after the name", str,
+                name, maxFields - 1));
+    }
     if (name == "basic") {
         generator = std::make_unique<BasicOffspringGenerator>(&eval, &cx, &mut, &femSel, &maleSel, coeffOptimizer);
     } else if (name == "os") {
