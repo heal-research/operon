@@ -185,7 +185,8 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         cxxopts::value<std::string>()->default_value("tournament"))("male-selector",
         "Male selection operator, with optional parameters separated by : (eg, --selector tournament:5)",
         cxxopts::value<std::string>()->default_value("tournament"))("offspring-generator",
-        "OffspringGenerator operator, with optional parameters separated by : (eg --offspring-generator brood:10:10)",
+        "OffspringGenerator operator, with optional parameters separated by : basic, os[:pressure[:factor]], "
+        "brood[:size], poly[:size] (eg --offspring-generator os:10:0.5 or --offspring-generator brood:10)",
         cxxopts::value<std::string>()->default_value("basic"))("reinserter",
         "Reinsertion operator merging offspring in the recombination pool back into the population",
         cxxopts::value<std::string>()->default_value("keep-best"))("mutators",
@@ -206,7 +207,8 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         "Operate in symbolic mode - no coefficient tuning or coefficient mutation",
         cxxopts::value<bool>()->default_value("false"))(
         "show-primitives", "Display the primitive set used by the algorithm")("threads",
-        "Number of threads to use for parallelism, at least 1 (default: all hardware threads)",
+        "Number of threads to use for parallelism (default: all hardware threads); operon_gp and operon_nsgp require "
+        "at least 1, operon_enum treats 0 as all hardware threads",
         cxxopts::value<size_t>())("timelimit", "Time limit after which the algorithm will terminate",
         cxxopts::value<size_t>()->default_value(std::to_string(std::numeric_limits<size_t>::max())))(
         "transposition-cache",
