@@ -14,6 +14,7 @@
 #include <taskflow/algorithm/for_each.hpp> // for taskflow.for_each_index
 #include <vector> // for vector, vector::size_type
 
+#include "budget_ledger.hpp"
 #include "operon/algorithms/nsga2.hpp"
 #include "operon/algorithms/phase_timer.hpp"
 #include "operon/core/contracts.hpp" // for ENSURE
@@ -135,6 +136,9 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
 auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon::ReportCallback report, bool warmStart)
     -> void // NOLINT(readability-function-cognitive-complexity)
 {
+    // Configuration error (std::invalid_argument): rejected before anything about the algorithm changes.
+    detail::RequireViableConfiguration(GetConfig());
+
     auto const savedGeneration = Generation();
     // Resumability is captured before anything is reset: only an object whose last Run() completed (or whose
     // state a checkpoint restore replaced and marked fitted) holds a population a warm start may continue.
@@ -192,18 +196,46 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
     ENSURE(executor.num_workers() > 0);
     std::vector<std::vector<Operon::Scalar>> slots(executor.num_workers());
 
+    // The budget is a limit on committed work (see BudgetLedger). Initialization always commits.
+    detail::BudgetLedger ledger { evaluator, &accounting, config.Evaluations };
+    ledger.Begin();
+    // Set by the task that ends the run from inside a generation: a discard (for a resource limit, a stop request or
+    // the time limit) or a committed generation that crossed the attempt cap. A resource-limit discard ends
+    // the run without a (public) stop request.
+    RunEnd ledgerEnd = RunEnd::None;
+    bool generationCommitted = false; // outcome of the current generation attempt
+
     // stop() is polled concurrently by offspring-generation workers and must
-    // not write shared state; Elapsed() is published only from single-task
-    // contexts (the loop condition and the report task), which the taskflow
-    // graph orders against every reader.
-    auto shouldStop = [&](double elapsed) -> bool {
-        return StopRequested() || generator->Terminate(accounting) || Generation() >= config.Generations
-            || elapsed > static_cast<double>(config.TimeLimit);
+    // not write shared state. It holds the two asynchronous stop conditions: a stop request and the time limit.
+    // A generation they cut short is discarded; they are not part of the determinism guarantee. The evaluation
+    // budget, the attempt cap and the generation limit are not polled here: the first two are decided per
+    // generation by the ledger, the generation limit at the loop condition. Elapsed() is published only from
+    // single-task contexts (the loop condition and the report task), which the taskflow graph orders against every
+    // reader.
+    auto stop = [&]() -> bool { return StopRequested() || computeElapsed() > static_cast<double>(config.TimeLimit); };
+    // Why the run ends, in the order documented at RunEnd; None to go on.
+    auto decideEnd = [&](double elapsed) -> RunEnd {
+        if (ledgerEnd != RunEnd::None) {
+            return ledgerEnd;
+        }
+        if (Generation() >= config.Generations) {
+            return RunEnd::GenerationLimit;
+        }
+        if (ledger.Exhausted()) {
+            return RunEnd::BudgetSpent;
+        }
+        if (StopRequested()) {
+            return RunEnd::StopRequested;
+        }
+        return elapsed > static_cast<double>(config.TimeLimit) ? RunEnd::TimeLimit : RunEnd::None;
     };
-    auto stop = [&]() -> bool { return shouldStop(computeElapsed()); };
     auto loopCondition = [&]() -> bool {
         Elapsed() = computeElapsed();
-        return shouldStop(Elapsed());
+        auto const end = decideEnd(Elapsed());
+        if (end != RunEnd::None) {
+            ledger.SetEnd(end);
+        }
+        return end != RunEnd::None;
     };
 
     auto& individuals = Individuals();
@@ -218,6 +250,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
     // an evaluator that computes something else with the same number of objectives: the caller has to establish
     // that the evaluator matches the checkpoint (the command-line programs compare a run fingerprint first).
     std::vector<Operon::Vector<Operon::Scalar>> savedFitness; // used only on warm resume
+    std::vector<Operon::RandomGenerator> generationRngs; // slot RNG states at the start of the generation attempt
     std::vector<std::optional<std::vector<Operon::Scalar>>> originalCoeffs(parents.size());
     std::atomic_size_t generatedOffspring {};
     std::atomic_size_t attemptedOffspring {};
@@ -267,6 +300,8 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                                         .name(std::string { SortTaskName });
             auto reportProgress = subflow
                                       .emplace([&, timer]() -> void {
+                                          ledger.CommitInitialization();
+                                          SetBudgetReport(ledger.Report());
                                           Timings() = timer->Timings();
                                           if (report && std::invoke(report)) {
                                               RequestStop();
@@ -368,7 +403,12 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                                         .emplace([&]() -> void {
                                             generatedOffspring = 0;
                                             attemptedOffspring = 0;
+                                            generationCommitted = false;
                                             SetIncompleteGeneration(std::nullopt);
+                                            // The slot RNG streams are restored from here if the generation is
+                                            // discarded, so a warm resume does not depend on how far it got.
+                                            generationRngs = rngs;
+                                            ledger.BeginGeneration(generator->MaxAttempts(parents.size()));
                                             generator->Prepare(parents);
                                             // Stamp the cache clock with the generation offspring will
                                             // belong to *before* they're evaluated - Generation() itself
@@ -390,14 +430,19 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                               slots[executor.this_worker_id()].resize(trainSize);
                               auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
                               size_t attempts = 0;
+                              bool const lastSlot = i + 1 == offspring.size();
                               // Entries this slot inserts are visible to its own later attempts only (see
                               // CacheVisibility::Committed); the scope belongs to the generator's cache.
                               Operon::Zobrist::SlotScope const cacheSlot { generator->Cache() };
-                              while (!stop()) {
+                              // Workers stop starting attempts once the generation has already spent more than
+                              // the budget has left (or made more attempts than the cap): the counters only
+                              // grow, so this fires only for a generation that could not commit anyway.
+                              while (!stop() && !ledger.Exceeded()) {
                                   ++attempts;
                                   auto result
                                       = (*generator)(rngs[i], config.CrossoverProbability, config.MutationProbability,
                                           config.LocalSearchProbability, config.LamarckianProbability, buf, accounting);
+                                  ledger.AddAttempt(lastSlot, result.has_value());
                                   if (result) {
                                       offspring[i] = std::move(*result);
                                       generatedOffspring.fetch_add(1, std::memory_order_relaxed);
@@ -411,18 +456,39 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
             auto nonDominatedSort
                 = subflow
                       .emplace([&]() -> void {
+                          // The commit decision (see the GP driver): everything that changes the committed state
+                          // (ranks, fronts, best, reinsertion) sits behind it.
                           auto const generated = generatedOffspring.load(std::memory_order_relaxed);
-                          if (generated != offspring.size()) {
-                              SetIncompleteGeneration(OffspringProgress {
-                                  attemptedOffspring.load(std::memory_order_relaxed), generated, offspring.size() });
+                          auto const full = generated == offspring.size();
+                          auto const exceeded = ledger.Exceeded();
+                          if (!full || exceeded) {
+                              auto const progress = ledger.Progress(attemptedOffspring.load(std::memory_order_relaxed),
+                                  generated, offspring.size(), StopRequested());
+                              SetIncompleteGeneration(progress);
+                              ledger.DiscardGeneration();
                               // The offspring workers have finished. Their cache entries belong to a generation
                               // that does not exist: drop them so a retry cannot see them (Committed only).
                               if (auto* cache = generator->Cache()) {
                                   cache->AbortGeneration();
                               }
                               openGenerationCache = nullptr;
-                              RequestStop();
+                              rngs = generationRngs;
+                              if (exceeded) {
+                                  ledgerEnd = RunEnd::ResourceLimit;
+                              } else {
+                                  // cut short by a stop request or the time limit
+                                  ledgerEnd = progress.Reason == DiscardReason::StopRequested ? RunEnd::StopRequested
+                                                                                              : RunEnd::TimeLimit;
+                                  RequestStop();
+                              }
                               return;
+                          }
+                          ledger.CommitGeneration();
+                          generationCommitted = true;
+                          // A committed generation that made more attempts than the cap (its last attempt
+                          // crossed it) ends the run after it is reported, like the selection-pressure stop did.
+                          if (ledger.AttemptCapReached()) {
+                              ledgerEnd = RunEnd::AttemptCap;
                           }
                           Sort(individuals);
                       })
@@ -432,27 +498,28 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
             // sorted array via ReinserterBase::Sort.
             auto reinsert = subflow
                                 .emplace([&]() -> void {
-                                    if (generatedOffspring.load(std::memory_order_relaxed) == offspring.size()) {
+                                    if (generationCommitted) {
                                         (*reinserter)(random, parents, offspring);
                                     }
                                 })
                                 .name("reinsert");
-            auto incrementGeneration
-                = subflow
-                      .emplace([&]() -> void {
-                          if (generatedOffspring.load(std::memory_order_relaxed) == offspring.size()) {
-                              ++Generation();
-                              openGenerationCache = nullptr; // committed: a later exception must not undo it
-                          }
-                      })
-                      .name("increment generation");
+            auto incrementGeneration = subflow
+                                           .emplace([&]() -> void {
+                                               if (generationCommitted) {
+                                                   ++Generation();
+                                                   openGenerationCache
+                                                       = nullptr; // committed: a later exception must not undo it
+                                                   SetBudgetReport(ledger.Report());
+                                               }
+                                           })
+                                           .name("increment generation");
             auto reportProgress = subflow
                                       .emplace([&, timer]() -> void {
                                           // Time and phase telemetry describe the work done even when the
                                           // generation is discarded; only the report callback is skipped.
                                           Elapsed() = computeElapsed();
                                           Timings() = timer->Timings();
-                                          if (generatedOffspring.load(std::memory_order_relaxed) != offspring.size()) {
+                                          if (!generationCommitted) {
                                               return;
                                           }
                                           if (report && std::invoke(report)) {
@@ -470,6 +537,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
         }, // loop body (evolutionary main loop)
         [&]() -> int { return 0; }, // jump back to the next iteration
         [&]() -> void {
+            SetBudgetReport(ledger.Report());
             IsFitted() = true; /* all done */
         } // work done, report last gen and stop
     ); // evolutionary loop
