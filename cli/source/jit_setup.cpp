@@ -14,7 +14,7 @@ namespace Operon::CLI {
 auto MakeJitObjects([[maybe_unused]] std::string_view jitMode, [[maybe_unused]] Operon::Problem& problem,
     [[maybe_unused]] Operon::ScalarDispatch const& dtable, [[maybe_unused]] std::string const& objective,
     [[maybe_unused]] int jitMaxLength, [[maybe_unused]] std::size_t jitMinVisits, [[maybe_unused]] int maxLength,
-    [[maybe_unused]] std::size_t seed, [[maybe_unused]] std::size_t cacheMaxAge,
+    [[maybe_unused]] std::size_t seed, [[maybe_unused]] Operon::ZobristOptions cacheOptions,
     [[maybe_unused]] std::optional<Operon::ShapeConstraintSpec> const& shape) -> JitObjects
 {
 #if !defined(HAVE_ASMJIT)
@@ -29,7 +29,7 @@ auto MakeJitObjects([[maybe_unused]] std::string_view jitMode, [[maybe_unused]] 
     auto [metric, supportsLinearScale] = Operon::ParseErrorMetric(objective);
     (void)supportsLinearScale;
     auto j = Operon::JIT::MakeJitObjects(
-        jitMode, problem, dtable, *metric, maxLength, jitMaxLength, jitMinVisits, seed, cacheMaxAge, shape);
+        jitMode, problem, dtable, *metric, maxLength, jitMaxLength, jitMinVisits, seed, cacheOptions, shape);
     return JitObjects { .Evaluator = std::move(j.Evaluator),
         .OptimizerJacEval = std::move(j.OptimizerJacEval),
         .Optimizer = std::move(j.Optimizer),

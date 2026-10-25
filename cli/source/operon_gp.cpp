@@ -133,6 +133,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 
     try {
         shapeBoundOptions = Operon::ParseShapeBoundOptions(result["shape-bound-mode"].as<std::string>());
+        auto const cacheOptions = Operon::ZobristOptions { .MaxAge = result["cache-max-age"].as<size_t>() };
         if (showPrimitiveSet) {
             Operon::PrintPrimitives(primitiveSetConfig);
             return EXIT_SUCCESS;
@@ -284,7 +285,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             if (result["transposition-cache"].as<bool>()) {
                 Operon::RandomGenerator cacheRng(config.Seed);
                 zobrist = std::make_unique<Operon::Zobrist>(
-                    cacheRng, static_cast<int>(maxLength), problem.GetInputs(), result["cache-max-age"].as<size_t>());
+                    cacheRng, static_cast<int>(maxLength), problem.GetInputs(), cacheOptions);
                 config.Cache = zobrist.get();
             }
             evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable,
@@ -295,7 +296,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         } else {
             auto jobj = Operon::CLI::MakeJitObjects(jitMode, problem, dtable, result["objective"].as<std::string>(),
                 result["jit-max-length"].as<int>(), result["jit-min-visits"].as<std::size_t>(),
-                static_cast<int>(maxLength), config.Seed, result["cache-max-age"].as<std::size_t>(), shapeSpec);
+                static_cast<int>(maxLength), config.Seed, cacheOptions, shapeSpec);
             if (jobj.Error) {
                 return EXIT_FAILURE;
             }

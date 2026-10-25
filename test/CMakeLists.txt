@@ -26,6 +26,7 @@ add_executable(operon_test
     source/implementation/backend.cpp
     source/implementation/autodiff.cpp
     source/implementation/cli_args.cpp
+    source/implementation/cache_visibility.cpp
     source/implementation/cli_error.cpp
     source/implementation/pareto_front.cpp
     ../cli/source/pareto_front.cpp

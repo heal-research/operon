@@ -8,6 +8,7 @@
 #include <cstddef> // for size_t
 #include <functional> // for std::function
 #include <optional> // for std::optional
+#include <stdexcept>
 #include <thread> // for std::thread
 #include <utility> // for std::move
 #include <vector> // for std::vector
@@ -21,6 +22,7 @@
 #include "operon/algorithms/phase_timer.hpp"
 #include "operon/core/contracts.hpp" // for ENSURE
 #include "operon/core/types.hpp"
+#include "operon/hash/zobrist.hpp" // for Zobrist::SlotScope
 #include "operon/operators/evaluator.hpp"
 #include "operon/operators/initializer.hpp"
 #include "operon/operators/reinserter.hpp"
@@ -30,10 +32,25 @@ auto GeneticProgrammingAlgorithm::Run(
     tf::Executor& executor, Operon::RandomGenerator& random, Operon::ReportCallback report, bool warmStart) -> void
 {
     auto const savedGeneration = Generation();
+    // Resumability is captured before anything is reset: only an object whose last Run() completed (or whose
+    // state a checkpoint restore replaced and marked fitted) holds a population a warm start may continue.
+    auto const wasFitted = IsFitted();
+    if (warmStart && !wasFitted) {
+        // A Run() that ended in an exception leaves parents, ranks and RNG states half-way through a generation, and a
+        // never-run object has no population at all: a warm start would silently build a new population at the
+        // generation the object had reached.
+        throw std::logic_error("warm start of an algorithm without a fitted population (the object was never run, or "
+                               "a previous Run() threw an exception, or a restored checkpoint did not mark it "
+                               "fitted): an algorithm object is not resumable after a task exception, create a new "
+                               "one");
+    }
     Reset();
     if (warmStart) {
         Generation() = savedGeneration;
     }
+    // Cleared for the duration of the run, set again only by the `done` task: an exception anywhere in between leaves
+    // the object not fitted, however the previous run ended.
+    IsFitted() = false;
 
     const auto config = GetConfig();
     const auto& treeInit = GetTreeInitializer();
@@ -76,7 +93,7 @@ auto GeneticProgrammingAlgorithm::Run(
     // contexts (the loop condition and the report task), which the taskflow
     // graph orders against every reader.
     auto shouldStop = [&](double elapsed) -> bool {
-        return StopRequested() || generator->Terminate(accounting) || Generation() == config.Generations
+        return StopRequested() || generator->Terminate(accounting) || Generation() >= config.Generations
             || elapsed > static_cast<double>(config.TimeLimit);
     };
     auto stop = [&]() -> bool { return shouldStop(computeElapsed()); };
@@ -88,6 +105,14 @@ auto GeneticProgrammingAlgorithm::Run(
     auto parents = Parents();
     auto offspring = Offspring();
     std::vector<Operon::RandomGenerator> savedRngs; // used only on warm resume
+    // The fitness a warm resume was given (a checkpoint's parents). It is not reproducible by a plain evaluation of the
+    // genotype whenever the individual's fitness came from a transposition-cache hit (the entry holds the fitness of
+    // another coefficient set of the same structure) or from local search that did not write its coefficients back, so
+    // the re-evaluation below must not replace it: selection of the next generation reads it. The re-evaluation still
+    // runs (Prepare() of the evaluator, and an evaluator with another objective count wins), but it does NOT detect
+    // an evaluator that computes something else with the same number of objectives: the caller has to establish
+    // that the evaluator matches the checkpoint (the command-line programs compare a run fingerprint first).
+    std::vector<Operon::Vector<Operon::Scalar>> savedFitness; // used only on warm resume
     std::vector<std::optional<std::vector<Operon::Scalar>>> originalCoeffs(parents.size());
     std::atomic_size_t generatedOffspring {}; // pool slots filled in the current generation
     std::atomic_size_t attemptedOffspring {}; // generator invocations (accepted + rejected) in the current generation
@@ -96,7 +121,12 @@ auto GeneticProgrammingAlgorithm::Run(
     // callable below: a subflow's tasks run after that callable returns, so
     // a variable local to it and captured by reference would be dangling by
     // the time a worker thread actually reads it.
-    bool const warmResume = IsFitted() && warmStart;
+    bool const warmResume = warmStart; // wasFitted is guaranteed here
+
+    // The cache whose generation is being generated and has not been committed yet (set when the generation is
+    // opened, cleared when it is committed or rolled back). Written only by the single-task steps of the loop body
+    // and read after the run, when an exception unwound it.
+    Operon::Zobrist* openGenerationCache = nullptr;
 
     auto timer = executor.make_observer<PhaseTimer>();
 
@@ -134,8 +164,28 @@ auto GeneticProgrammingAlgorithm::Run(
             if (warmResume) {
                 // Re-evaluate to catch evaluator/objective config mismatches, but snapshot and restore
                 // the worker RNG states so that subsequent generations remain deterministic.
-                auto saveRngs = subflow.emplace([&]() { savedRngs = rngs; }).name("save rng states");
-                auto restoreRngs = subflow.emplace([&]() { rngs = std::move(savedRngs); }).name("restore rng states");
+                auto saveRngs = subflow
+                                    .emplace([&]() {
+                                        savedRngs = rngs;
+                                        savedFitness.clear();
+                                        for (auto const& ind : parents) {
+                                            savedFitness.push_back(ind.Fitness);
+                                        }
+                                    })
+                                    .name("save rng states");
+                auto restoreRngs = subflow
+                                       .emplace([&]() {
+                                           rngs = std::move(savedRngs);
+                                           // keep the checkpointed fitness of an individual unless the objective
+                                           // count changed (an evaluator that does not match the checkpoint): then the
+                                           // re-evaluation wins
+                                           for (size_t i = 0; i < savedFitness.size(); ++i) {
+                                               if (savedFitness[i].size() == parents[i].Fitness.size()) {
+                                                   parents[i].Fitness = std::move(savedFitness[i]);
+                                               }
+                                           }
+                                       })
+                                       .name("restore rng states");
                 prepareEval.precede(saveRngs);
                 saveRngs.precede(eval);
                 eval.precede(restoreRngs);
@@ -204,6 +254,7 @@ auto GeneticProgrammingAlgorithm::Run(
                                             // expired from (SetCache may have replaced config.Cache).
                                             if (auto* cache = generator->Cache()) {
                                                 cache->SetGeneration(Generation() + 1);
+                                                openGenerationCache = cache;
                                             }
                                         })
                                         .name("prepare generator");
@@ -214,6 +265,9 @@ auto GeneticProgrammingAlgorithm::Run(
                               slots[executor.this_worker_id()].resize(trainSize);
                               auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
                               size_t attempts = 0;
+                              // Entries this slot inserts are visible to its own later attempts only (see
+                              // CacheVisibility::Committed); the scope belongs to the generator's cache.
+                              Operon::Zobrist::SlotScope const cacheSlot { generator->Cache() };
                               while (!stop()) {
                                   ++attempts;
                                   if (auto result
@@ -238,6 +292,12 @@ auto GeneticProgrammingAlgorithm::Run(
                           if (generated != offspring.size()) {
                               SetIncompleteGeneration(OffspringProgress {
                                   attemptedOffspring.load(std::memory_order_relaxed), generated, offspring.size() });
+                              // The offspring workers have finished. Their cache entries belong to a generation
+                              // that does not exist: drop them so a retry cannot see them (Committed only).
+                              if (auto* cache = generator->Cache()) {
+                                  cache->AbortGeneration();
+                              }
+                              openGenerationCache = nullptr;
                               RequestStop();
                               return;
                           }
@@ -249,6 +309,7 @@ auto GeneticProgrammingAlgorithm::Run(
                       .emplace([&]() -> void {
                           if (generatedOffspring.load(std::memory_order_relaxed) == offspring.size()) {
                               ++Generation();
+                              openGenerationCache = nullptr; // committed: a later exception must not undo it
                           }
                       })
                       .name("increment generation");
@@ -299,6 +360,15 @@ auto GeneticProgrammingAlgorithm::Run(
     try {
         executor.run(taskflow).get(); // .wait() would silently drop an exception thrown by any task
     } catch (...) {
+        // A task threw. The run has finished (get() returned), so no worker touches the cache any more. A generation
+        // that was opened but not committed never happened: remove its entries (Committed mode), as for a generation
+        // cut short. Nothing else is rolled back: parents, ranks and RNG states may be half-way through a
+        // generation, so the object is not resumable (a later warm Run() throws std::logic_error). What the caller
+        // can rely on: the cache holds no entry of the failed generation, Generation() is the last committed one,
+        // and a new algorithm object can reuse the cache.
+        if (openGenerationCache != nullptr) {
+            openGenerationCache->AbortGeneration();
+        }
         cleanupTimer();
         throw;
     }
