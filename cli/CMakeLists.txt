@@ -30,6 +30,7 @@ function(add_operon_cli NAME)
         source/operator_factory.cpp
         source/pareto_front.cpp
         source/util.cpp
+        source/resume_validation.cpp
         ${ARGN}
     )
 

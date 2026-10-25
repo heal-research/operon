@@ -30,6 +30,8 @@ add_executable(operon_test
     source/implementation/cli_error.cpp
     source/implementation/pareto_front.cpp
     ../cli/source/pareto_front.cpp
+    ../cli/source/resume_validation.cpp
+    ../cli/source/util.cpp
     source/implementation/tree_diff.cpp
     source/implementation/range_oracles.cpp
     source/implementation/crossover.cpp
@@ -59,6 +61,7 @@ add_executable(operon_test
     source/implementation/random.cpp
     source/implementation/selection.cpp
     source/implementation/serialization.cpp
+    source/implementation/resume_validation.cpp
     source/implementation/shape_constrained_evaluator.cpp
     source/implementation/shape_constrained_value_evaluator.cpp
     source/implementation/shape_bound_correctness.cpp
@@ -131,6 +134,40 @@ endif()
 
 add_test(NAME operon_test COMMAND operon_test "~[performance]" WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 windows_set_path(operon_test operon::operon)
+
+# ---- Command-line contract tests ----
+# These run the operon_gp / operon_nsgp executables. The cli/ directory is added after test/ by the root build, so
+# the registration is deferred until the targets exist; `operon_test` depends on them so that building it alone
+# (as CI does) also builds what these tests run. Skipped when the CLI programs are not built and on Windows (the
+# executables would need the DLL search path set for a child process of cmake -P).
+function(operon_add_cli_tests test_source_dir with_jit)
+    if(WIN32 OR NOT TARGET operon_gp OR NOT TARGET operon_nsgp)
+        return()
+    endif()
+    add_dependencies(operon_test operon_gp operon_nsgp)
+    add_test(
+        NAME cli_cache_visibility
+        COMMAND "${CMAKE_COMMAND}"
+                "-DOPERON_GP=$<TARGET_FILE:operon_gp>"
+                "-DOPERON_NSGP=$<TARGET_FILE:operon_nsgp>"
+                "-DDATA_DIR=${CMAKE_SOURCE_DIR}/data"
+                "-DWITH_JIT=${with_jit}"
+                -P "${test_source_dir}/cli/cache_visibility.cmake"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    add_test(
+        NAME cli_checkpoint_resume
+        COMMAND "${CMAKE_COMMAND}"
+                "-DOPERON_GP=$<TARGET_FILE:operon_gp>"
+                "-DOPERON_NSGP=$<TARGET_FILE:operon_nsgp>"
+                "-DDATA_DIR=${CMAKE_SOURCE_DIR}/data"
+                "-DWORK_DIR=${CMAKE_BINARY_DIR}/checkpoint-resume"
+                -P "${test_source_dir}/cli/checkpoint_resume.cmake"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+endfunction()
+# Deferred-call arguments are expanded when the call runs, in the root directory scope, so bake the values in here.
+cmake_language(EVAL CODE "
+    cmake_language(DEFER DIRECTORY [[${CMAKE_SOURCE_DIR}]]
+        CALL operon_add_cli_tests [[${CMAKE_CURRENT_SOURCE_DIR}]] [[${HAVE_ASMJIT}]])")
 
 # ---- Stage 1 memory-layout-plan consumer fixtures ----
 # Standalone smoke executables (not linked into operon_test) proving the

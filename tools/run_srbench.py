@@ -27,7 +27,7 @@ VALUE_DEFAULTS = {
     "male-selector": "tournament", "offspring-generator": "basic", "reinserter": "keep-best",
     "mutators": "onepoint:1,changevar:1,changefunc:1,replacesubtree:1,insertsubtree:1,removesubtree:1,discretepoint:1",
     "local-search-probability": "1.0", "lamarckian-probability": "1.0", "threads": "0",
-    "timelimit": str(2**64 - 1), "cache-max-age": "0", "model-selection": "obj0", "mdl-likelihood": "gaussian",
+    "timelimit": str(2**64 - 1), "cache-max-age": "0", "cache-visibility": "committed", "model-selection": "obj0", "mdl-likelihood": "gaussian",
     "checkpoint-interval": "0", "checkpoint-file": "checkpoint.beve", "nonfinite-penalty-weight": "1.0",
     "shape-penalty-weight": "1.0", "shape-unknown-violation": "1.0", "shape-worst-value": "1.0", "shape-bound-mode": "combined",
 }
