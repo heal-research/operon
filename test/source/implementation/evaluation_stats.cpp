@@ -1163,7 +1163,8 @@ TEST_CASE("GeneticAlgorithmBase cache counters follow the generator's active cac
 
     SECTION("the replacement's generation clock is advanced, so a nonzero max age expires old entries")
     {
-        Operon::Zobrist aging { cacheRng, /*maxLength=*/20, fix.Vars, /*maxAge=*/1 };
+        Operon::ZobristOptions const immediate { .MaxAge = 1, .Visibility = Operon::CacheVisibility::Immediate };
+        Operon::Zobrist aging { cacheRng, /*maxLength=*/20, fix.Vars, immediate };
         Operon::Zobrist keeping { cacheRng, /*maxLength=*/20, fix.Vars }; // max age 0: never expires
         auto const hash = Operon::Hash { 0xDEADBEEF };
         Operon::Vector<Operon::Scalar> out;
@@ -1182,6 +1183,22 @@ TEST_CASE("GeneticAlgorithmBase cache counters follow the generator's active cac
         Operon::RandomGenerator rng2 { 7 };
         gp.Run(rng2, nullptr, /*threads=*/2);
         CHECK(keeping.TryGet(hash, out)); // unchanged behaviour for the default max age
+    }
+
+    SECTION("committed: the clock advance expires old entries at the generation boundary")
+    {
+        Operon::Zobrist aging { cacheRng, /*maxLength=*/20, fix.Vars, { .MaxAge = 1 } };
+        auto const hash = Operon::Hash { 0xDEADBEEF };
+        aging.Insert(hash, { Operon::Scalar { 1 } }); // stamped with generation 0, before the run
+        REQUIRE(aging.Size() == 1);
+
+        generator.SetCache(&aging);
+        Operon::RandomGenerator rng { 7 };
+        gp.Run(rng, nullptr, /*threads=*/2);
+        REQUIRE(gp.Generation() >= 2);
+        Operon::Vector<Operon::Scalar> out;
+        CHECK_FALSE(aging.TryGet(hash, out));
+        CHECK(configured.Lookups() == 0);
     }
 
     SECTION("removed")
@@ -1333,7 +1350,8 @@ TEST_CASE("NSGA2 advances the generator's active cache clock", "[algorithms][sta
         &rig.Sorter };
 
     Operon::RandomGenerator cacheRng { 3 };
-    Operon::Zobrist aging { cacheRng, /*maxLength=*/20, fix.Vars, /*maxAge=*/1 };
+    Operon::Zobrist aging { cacheRng, /*maxLength=*/20, fix.Vars,
+        { .MaxAge = 1, .Visibility = Operon::CacheVisibility::Immediate } };
     auto const hash = Operon::Hash { 0xDEADBEEF };
     Operon::Vector<Operon::Scalar> out;
     aging.Insert(hash, { Operon::Scalar { 1 } });
