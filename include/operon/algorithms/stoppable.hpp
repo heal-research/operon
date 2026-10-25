@@ -26,7 +26,9 @@ template <typename Sig> using MoveOnlyFunction = std::function<Sig>;
 // once per budget level (GrammarEnumerationAlgorithm) by an algorithm's
 // Run() to report progress. Returning true requests early termination; each
 // algorithm's own stop condition ORs StopRequested() in alongside its own
-// generation-count/budget, evaluator-budget, and time-limit checks.
+// generation-count and time-limit checks. (The evaluation budget of the GA
+// drivers is not a polled stop condition: they apply it when they decide
+// whether a generation commits, see GeneticAlgorithmConfig::Evaluations.)
 // MoveOnlyFunction, not std::function directly: this is only ever called and
 // moved (passed by value into Run(), never copied), so it permits move-only
 // captures (e.g. a captured unique_ptr progress sink) that std::function

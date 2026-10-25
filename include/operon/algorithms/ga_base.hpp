@@ -10,6 +10,7 @@
 #include "operon/operators/generator.hpp"
 #include "stoppable.hpp"
 #include <cstddef>
+#include <cstdint>
 #include <operon/operon_export.hpp>
 #include <optional>
 #include <string>
@@ -51,11 +52,67 @@ struct EvaluationStats {
     [[nodiscard]] constexpr auto operator==(EvaluationStats const&) const -> bool = default;
 };
 
-// Offspring-generation progress of one generation attempt.
+// Why a generation attempt was not committed. `None` is the neutral value of a default-constructed
+// OffspringProgress. ResourceLimit means the generation went over the evaluation budget and/or over the generator's
+// attempt cap; the decision itself is deterministic (the same committed state gives the same decision at every
+// thread count) but which of the two limits the *executed* work was seen to exceed is not when both are finite, see
+// OffspringProgress. TimeLimit and StopRequested are asynchronous and are reported only if no resource limit was
+// observed; StopRequested takes precedence over TimeLimit.
+enum class DiscardReason : std::uint8_t {
+    None,
+    ResourceLimit, // the generation spent more than the budget has left and/or made more attempts than the cap
+    TimeLimit, // the time limit expired before the offspring pool was filled
+    StopRequested, // RequestStop() (or the report callback) ended the generation before the pool was filled
+};
+
+// A generation attempt that was not committed (informational: it describes the work executed before the workers
+// stopped, which can depend on the thread count). Attempted, Completed, BudgetExceeded and AttemptCapExceeded are
+// thread-count dependent in general. BudgetExceeded / AttemptCapExceeded say which limit the executed work was
+// observed to exceed: they are deterministic when only one of the two limits is finite (finite = a budget below
+// unlimited, a generator with MaxAttempts()), because the workers then stop on that limit alone; when both are
+// finite, work that was in flight when the first one tripped may or may not have tripped the other, so the flags
+// depend on the thread count. Reason is still ResourceLimit then.
 struct OffspringProgress {
     size_t Attempted { 0 }; // offspring-generator invocations (accepted and rejected)
     size_t Completed { 0 }; // pool slots filled
     size_t PoolSize { 0 }; // pool slots to fill
+    DiscardReason Reason { DiscardReason::None };
+    bool BudgetExceeded { false }; // the executed work spent more than the budget had left
+    bool AttemptCapExceeded { false }; // the executed work made more attempts than the generator's cap
+};
+
+// Why the last Run() ended. Deterministic (the same at every thread count) except for TimeLimit and StopRequested.
+// If several conditions hold at once, the first of this list is reported (ResourceLimit and AttemptCap are recorded
+// when they occur, so they come before the loop-condition checks).
+enum class RunEnd : std::uint8_t {
+    None, // no Run() yet, or it is still running
+    ResourceLimit, // a generation was discarded for budget and/or attempt cap (IncompleteGeneration() is set)
+    AttemptCap, // a committed generation made more attempts than the cap and ended the run (nothing discarded)
+    GenerationLimit, // Generation() reached GeneticAlgorithmConfig::Generations
+    BudgetSpent, // committed work reached the budget (initialization alone may do it), no generation was started
+    StopRequested, // RequestStop(), or the report callback returned true
+    TimeLimit, // GeneticAlgorithmConfig::TimeLimit expired
+};
+
+// Budget accounting of the last Run(), in the units of the evaluation budget (residual + Jacobian evaluations, see
+// EvaluationStats::Consumed()). Committed work is the initialization plus every committed generation; the budget
+// limits committed work only. Discarded work is what the generation attempts that were discarded spent (before the
+// workers noticed that they could not commit): it is informational and can depend on the thread count, like
+// Executed, which is everything counted since Run() started by the evaluator tree (scoring) and by the run's
+// OptimizerAccounting: committed and discarded work, and anything else that used the evaluator, e.g. a report
+// callback. Committed work does not depend on the thread count.
+// All values saturate instead of wrapping. Reset by Reset() and at the start of Run(); refreshed after
+// initialization, after every committed generation and when Run() returns.
+struct BudgetAccounting {
+    std::uint64_t Budget { 0 }; // GeneticAlgorithmConfig::Evaluations of the run
+    std::uint64_t GenerationsCommitted { 0 }; // generations committed by this Run() (warm-start generations excluded)
+    std::uint64_t EvaluationsCommitted { 0 }; // initialization (or warm-start re-evaluation) + committed generations
+    std::uint64_t EvaluationsExecuted { 0 }; // everything counted since Run() started (scoring + optimizer)
+    std::uint64_t EvaluationsDiscarded { 0 }; // spent by the generation attempts that were discarded
+    std::uint64_t BudgetOvershoot { 0 }; // max(0, committed - budget): only initialization can overshoot
+    RunEnd End { RunEnd::None }; // why Run() ended; None while it is running
+
+    [[nodiscard]] constexpr auto operator==(BudgetAccounting const&) const -> bool = default;
 };
 
 class Problem;
@@ -95,6 +152,7 @@ public:
         , isFitted_(other.isFitted_)
         , incompleteGeneration_(other.incompleteGeneration_)
         , optimizerAccounting_(other.optimizerAccounting_)
+        , budgetReport_(other.budgetReport_)
     {
     }
     GeneticAlgorithmBase(GeneticAlgorithmBase&&) = delete;
@@ -120,6 +178,7 @@ public:
         isFitted_ = other.isFitted_;
         incompleteGeneration_ = other.incompleteGeneration_;
         optimizerAccounting_ = other.optimizerAccounting_;
+        budgetReport_ = other.budgetReport_;
         return *this;
     }
     auto operator=(GeneticAlgorithmBase&&) -> GeneticAlgorithmBase& = delete;
@@ -291,9 +350,21 @@ public:
         return self.isFitted_;
     } // NOLINT(cppcoreguidelines-missing-std-forward)
 
-    // Progress of the generation that was cut short by a stop condition (budget, time, callback) before its offspring
-    // pool was completely filled; nullopt if the last attempted generation completed. Such a generation is neither
-    // reinserted, counted in Generation(), nor reported: Parents() holds the last completed generation.
+    // Budget accounting of the last Run() (see BudgetAccounting). All zero before the first Run(). Not to be confused
+    // with Accounting(), the run's coefficient-optimizer accounting: this one reports committed, discarded and
+    // executed work in units of the evaluation budget (scoring plus optimizer work) and why the run ended.
+    [[nodiscard]] auto BudgetReport() const -> BudgetAccounting const& { return budgetReport_; }
+    auto SetBudgetReport(BudgetAccounting const& report) -> void { budgetReport_ = report; }
+
+    // Progress of the last generation attempt that was not committed, with the reason; nullopt if the last attempted
+    // generation was committed. A generation is not committed if its offspring pool was not completely filled (time
+    // limit or stop request), if it spent more than the budget has left, or if it made more attempts than the
+    // generator allows (OffspringGeneratorBase::MaxAttempts()); in the last two cases the pool may be full
+    // (Completed == PoolSize). Such a generation is neither reinserted, counted in Generation(), nor reported:
+    // Parents() holds the last committed generation and the worker RNG states are those it had when the discarded
+    // generation started. The counts and flags describe the work executed before the workers stopped and may depend
+    // on the thread count (see OffspringProgress, DiscardReason). A run that a committed generation ended by crossing
+    // the attempt cap leaves this empty: see BudgetReport().End.
     [[nodiscard]] auto IncompleteGeneration() const -> std::optional<OffspringProgress> const&
     {
         return incompleteGeneration_;
@@ -312,6 +383,7 @@ public:
     {
         generation_ = 0;
         incompleteGeneration_.reset();
+        budgetReport_ = {};
         elapsed_ = 0;
         ClearStopRequested();
         phaseTimes_.clear();
@@ -351,6 +423,7 @@ private:
     bool isFitted_ { false };
     std::optional<OffspringProgress> incompleteGeneration_;
     OptimizerAccounting optimizerAccounting_;
+    BudgetAccounting budgetReport_;
 };
 
 } // namespace Operon
