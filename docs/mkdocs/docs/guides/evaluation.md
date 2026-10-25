@@ -105,9 +105,9 @@ unchanged: it is checked before each offspring attempt, work done for a generati
 guide. A genotype-only objective that costs nothing to score still consumes budget through the local search it
 triggers.
 
-The same cache has its generation clock advanced by `Run()`, so entry stamping and age-based expiry, the counters and
-the reset all refer to it. `EvaluatorBase::Reset()` is not virtual: it clears the base counters and then calls the
-protected virtual `ResetChildren()`, which composite evaluators override to reset their children (`MultiEvaluator`,
+The same cache has its generation clock advanced by `Run()`, so entry stamping, entry visibility (`CacheVisibility`) and age-based expiry, the
+counters and the reset all refer to it. `EvaluatorBase::Reset()` is not virtual: it clears the base counters and then
+calls the protected virtual `ResetChildren()`, which composite evaluators override to reset their children (`MultiEvaluator`,
 the shape-constrained adapter). `GeneticAlgorithmBase::Reset()` (called at the start of every `Run()`) calls it, zeroes
 the run's optimizer accounting, and zeroes the active cache's counters. Copying a quiescent algorithm copies its
 optimizer accounting with it.
