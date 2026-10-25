@@ -26,6 +26,7 @@ add_executable(operon_test
     source/implementation/backend.cpp
     source/implementation/autodiff.cpp
     source/implementation/cli_args.cpp
+    source/implementation/budget_ledger.cpp
     source/implementation/cache_visibility.cpp
     source/implementation/cli_error.cpp
     source/implementation/pareto_front.cpp
@@ -106,7 +107,7 @@ if(vdt_FOUND)
     target_compile_definitions(operon_test PRIVATE OPERON_HAVE_VDT)
 endif()
 target_compile_features(operon_test PRIVATE cxx_std_23)
-target_include_directories(operon_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../source/thirdparty ${CMAKE_CURRENT_SOURCE_DIR}/../cli/source)
+target_include_directories(operon_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../source ${CMAKE_CURRENT_SOURCE_DIR}/../source/thirdparty ${CMAKE_CURRENT_SOURCE_DIR}/../cli/source)
 set_target_properties(operon_test PROPERTIES
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN YES
@@ -162,6 +163,14 @@ function(operon_add_cli_tests test_source_dir with_jit)
                 "-DDATA_DIR=${CMAKE_SOURCE_DIR}/data"
                 "-DWORK_DIR=${CMAKE_BINARY_DIR}/checkpoint-resume"
                 -P "${test_source_dir}/cli/checkpoint_resume.cmake"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    add_test(
+        NAME cli_budget
+        COMMAND "${CMAKE_COMMAND}"
+                "-DOPERON_GP=$<TARGET_FILE:operon_gp>"
+                "-DOPERON_NSGP=$<TARGET_FILE:operon_nsgp>"
+                "-DDATA_DIR=${CMAKE_SOURCE_DIR}/data"
+                -P "${test_source_dir}/cli/budget.cmake"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 endfunction()
 # Deferred-call arguments are expanded when the call runs, in the root directory scope, so bake the values in here.
