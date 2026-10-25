@@ -133,7 +133,9 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 
     try {
         shapeBoundOptions = Operon::ParseShapeBoundOptions(result["shape-bound-mode"].as<std::string>());
-        auto const cacheOptions = Operon::ZobristOptions { .MaxAge = result["cache-max-age"].as<size_t>() };
+        // validated even without --transposition-cache, so a typo is not silently ignored
+        auto const cacheOptions = Operon::ZobristOptions { .MaxAge = result["cache-max-age"].as<size_t>(),
+            .Visibility = Operon::ParseCacheVisibility(result["cache-visibility"].as<std::string>()) };
         if (showPrimitiveSet) {
             Operon::PrintPrimitives(primitiveSetConfig);
             return EXIT_SUCCESS;
@@ -365,7 +367,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         Operon::GeneticProgrammingAlgorithm gp { config, &problem, &treeInitializer, coeffInitializer.get(),
             generator.get(), reinserter.get() };
 
-        auto const warmStart = Operon::ResumeFromCheckpoint(gp, random, result);
+        auto const fingerprint = Operon::MakeRunFingerprint(gp, shapeSpec ? &shapeSpec->Constraints : nullptr);
+        auto const warmStart = Operon::ResumeFromCheckpoint(gp, random, result, fingerprint);
 
         std::unique_ptr<Operon::Evaluator<decltype(dtable)>> reporterEvalStorage;
         Operon::Evaluator<decltype(dtable)> const* ptr = nullptr;
@@ -395,14 +398,14 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
                 if (probes) {
                     (*probes)(gp);
                 }
-                Operon::MaybeSaveCheckpoint(gp, random, result);
+                Operon::MaybeSaveCheckpoint(gp, random, result, fingerprint);
                 return false;
             },
             warmStart);
         if (probes) {
             probes->Finish();
         }
-        Operon::MaybeSaveCheckpoint(gp, random, result, /*force=*/true);
+        Operon::MaybeSaveCheckpoint(gp, random, result, fingerprint, /*force=*/true);
         jitReport();
         auto best = reporter.GetBest();
         if (shapeEvaluator != nullptr) {
