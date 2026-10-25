@@ -368,14 +368,12 @@ auto main(int argc, char** argv) -> int
                     &dtable, &problem);
             }
         }
-        errorEvaluator->SetBudget(config.Evaluations);
         optimizer->SetIterations(config.Iterations);
 
         // The plain composition supplies [error, length]. With shape constraints, `errorEvaluator` is the
         // shape-constrained evaluator: it already owns the whole objective vector (error, length, violation) and
         // cannot be a MultiEvaluator child, so the composition stays empty and unused.
         Operon::MultiEvaluator evaluator(&problem);
-        evaluator.SetBudget(config.Evaluations);
         if (!shapeSpec) {
             evaluator.Add(errorEvaluator.get());
             evaluator.Add(&lengthEvaluator);

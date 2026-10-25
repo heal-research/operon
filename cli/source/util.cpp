@@ -169,7 +169,9 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         cxxopts::value<Operon::RandomGenerator::result_type>())("generations",
         "Number of generations, or 'unlimited' (also any value >= 2^62)",
         cxxopts::value<std::string>()->default_value("1000"))("evaluations",
-        "Evaluation budget in residual + Jacobian evaluations, or 'unlimited' (also any value >= 2^62)",
+        "Budget of committed work in residual + Jacobian evaluations, or 'unlimited' (also any value >= 2^62). A "
+        "generation counts only if everything it spent still fits in the budget, so a run can end with less than the "
+        "budget used; initialization always counts and may exceed it. Must be at least --population-size",
         cxxopts::value<std::string>()->default_value("1000000"))("iterations", "Local optimization iterations",
         cxxopts::value<size_t>()->default_value("0"))("selection-pressure",
         "Not supported (rejected); in operon_gp/operon_nsgp set the maximum selection pressure with "
@@ -227,9 +229,9 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         cxxopts::value<size_t>()->default_value("0"))("cache-visibility",
         "When a transposition cache entry becomes visible: committed (to other offspring slots only from the next "
         "generation, duplicate entries keep the smallest fitness, expiry at the generation boundary; cache hits then "
-        "do not depend on slot arrival order, and the run does not depend on the thread count unless a stop condition "
-        "cuts a generation: evaluation budget, offspring-selection pressure, time limit, stop request; JIT "
-        "evaluation is not covered) or immediate (to every slot at once; results can depend on thread timing); only "
+        "do not depend on slot arrival order, and the run does not depend on the thread count unless a time limit "
+        "or a stop request cuts a generation; JIT evaluation is not covered) or immediate (to every slot at once; "
+        "results can depend on thread timing); only "
         "effective with --transposition-cache",
         cxxopts::value<std::string>()->default_value("committed"))("pareto-front",
         "Write the non-dominated members of the retained parent population to this JSON file after the run (only "
@@ -597,6 +599,26 @@ namespace {
         for (auto const* name : { "generations", "evaluations" }) {
             if (auto limit = Cli::ParseLimit(name, result[name].as<std::string>()); !limit) {
                 return tl::unexpected(limit.error());
+            }
+        }
+        if (program != "operon_enum") {
+            // A population algorithm needs something to evolve: both sizes must be positive.
+            for (auto const* name : { "population-size", "pool-size" }) {
+                if (result[name].as<size_t>() == 0) {
+                    return tl::unexpected(
+                        Error { ErrorCode::InvalidArguments, fmt::format("--{}", name), "must be at least 1" });
+                }
+            }
+            // Initializing the population costs at least one evaluation per individual, so a smaller budget cannot
+            // even pay for it. (The real cost can be larger, e.g. with local search; initialization may overshoot
+            // the budget.)
+            auto const evaluations = *Cli::ParseLimit("evaluations", result["evaluations"].as<std::string>());
+            auto const population = result["population-size"].as<size_t>();
+            if (evaluations < population) {
+                return tl::unexpected(Error { ErrorCode::InvalidArguments, "--evaluations",
+                    fmt::format("{} is smaller than --population-size {}: initializing the population costs at least "
+                                "one evaluation per individual",
+                        evaluations, population) });
             }
         }
         return {};
