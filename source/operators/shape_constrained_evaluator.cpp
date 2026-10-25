@@ -1248,12 +1248,12 @@ auto detail::ShapeConstraintEnforcer::ShapePrepare(Operon::Span<Individual const
 
 auto detail::ShapeConstraintEnforcer::ShapeStructuralStats() const -> std::pair<std::size_t, std::size_t>
 {
-    std::size_t residual = 0;
-    std::size_t jacobian = 0;
+    std::uint64_t residual = 0;
+    std::uint64_t jacobian = 0;
     for (auto const& objective : structural_) {
         auto const [re, je, cc] = objective->Stats();
-        residual += re;
-        jacobian += je;
+        residual = detail::SaturatingAdd(residual, re);
+        jacobian = detail::SaturatingAdd(jacobian, je);
     }
     return std::pair { residual, jacobian };
 }

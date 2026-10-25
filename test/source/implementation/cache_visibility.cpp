@@ -47,9 +47,10 @@
 #include "operon/operators/reinserter.hpp"
 #include "operon/operators/selector.hpp"
 #include "operon/optimizer/optimizer.hpp"
+#include "run_signature.hpp"
 
 // With the transposition cache on and CacheVisibility::Committed, a run does not depend on the number of threads (no
-// stop condition cuts a generation here): the final population, its fitness, the worker RNG states, the generation
+// time limit or stop request cuts a generation here): the final population, its fitness, the worker RNG states, the generation
 // count and the evaluation and cache counters are identical for 1, 4 and 16 threads and between repeated runs. A
 // generation that is cut short leaves no trace in the cache (Zobrist::AbortGeneration).
 namespace Operon::Test {
@@ -117,74 +118,6 @@ namespace {
 
         [[nodiscard]] auto operator==(Outcome const&) const -> bool = default;
     };
-
-    template <typename T> auto Bits(T value) -> std::uint64_t
-    {
-        using Int = std::conditional_t<sizeof(T) == 4, std::uint32_t, std::uint64_t>;
-        return std::bit_cast<Int>(value);
-    }
-
-    // Every field of Node, floating point values bit for bit. (Node::operator== compares the hash only.) Keep in step
-    // with Node; the signature test below changes each field in turn.
-    void Append(std::vector<std::uint64_t>& sig, Node const& node)
-    {
-        sig.push_back(node.HashValue);
-        sig.push_back(node.CalculatedHashValue);
-        sig.push_back(Bits(node.Value));
-        sig.push_back(node.Arity);
-        sig.push_back(node.Length);
-        sig.push_back(node.Depth);
-        sig.push_back(node.Level);
-        sig.push_back(node.Parent);
-        sig.push_back(static_cast<std::uint64_t>(node.Type));
-        sig.push_back(static_cast<std::uint64_t>(node.IsEnabled));
-        sig.push_back(static_cast<std::uint64_t>(node.Optimize));
-        sig.push_back(node.RefTo);
-    }
-
-    auto Signature(Operon::Span<Individual const> parents) -> std::vector<std::uint64_t>
-    {
-        std::vector<std::uint64_t> sig;
-        for (auto const& ind : parents) {
-            for (auto const& node : ind.Genotype.Nodes()) {
-                Append(sig, node);
-            }
-            sig.push_back(~std::uint64_t { 0 }); // separates the individuals
-            for (auto f : ind.Fitness) {
-                sig.push_back(Bits(f));
-            }
-            sig.push_back(ind.Rank);
-            sig.push_back(Bits(ind.Distance));
-        }
-        return sig;
-    }
-
-    auto Signature(std::vector<Operon::RandomGenerator> const& rngs) -> std::vector<std::uint64_t>
-    {
-        std::vector<std::uint64_t> sig;
-        for (auto const& rng : rngs) {
-            for (auto const word : rng.state()) {
-                sig.push_back(word);
-            }
-        }
-        return sig;
-    }
-
-    // The parents as a checkpoint stores them. A tree read back from a checkpoint has its derived node fields
-    // (subtree lengths, depths, levels, cached hashes) recomputed, so an individual that was never modified keeps
-    // other cached values than its restored copy although the model is the same. Comparing runs through this
-    // round trip compares what a checkpoint can carry: genotype, coefficients, fitness, rank and distance.
-    auto Serialized(Operon::Span<Individual const> parents) -> std::vector<Individual>
-    {
-        std::vector<Individual> out;
-        out.reserve(parents.size());
-        for (auto const& ind : parents) {
-            auto restored = Serialization::IndividualFromBeve(Serialization::ToBeve(ind));
-            REQUIRE(restored.has_value());
-            out.push_back(std::move(*restored));
-        }
-        return out;
-    }
 
     template <typename Algo> auto Collect(Algo const& algo) -> Outcome
     {
@@ -297,7 +230,6 @@ namespace {
         Operon::CoefficientOptimizer const coeffOptimizer { &optimizer };
 
         Operon::Evaluator<DTable> errorEvaluator { &problem, &dtable };
-        errorEvaluator.SetBudget(config.Evaluations);
         Operon::RandomGenerator random { Seed };
 
         if (setup.Algo == Algorithm::GP) {
@@ -316,7 +248,6 @@ namespace {
             [](Operon::Tree const& tree) { return static_cast<Operon::Scalar>(tree.Length()); },
             static_cast<Operon::Scalar>(MaxLength) };
         Operon::MultiEvaluator evaluator { &problem };
-        evaluator.SetBudget(config.Evaluations);
         evaluator.Add(&errorEvaluator);
         evaluator.Add(&lengthEvaluator);
         Operon::TreePropertyEvaluator depthEvaluator { &problem,
