@@ -63,6 +63,18 @@ class WrapperTests(unittest.TestCase):
         self.assertEqual(run_srbench.parse_args(["--shuffle"])["shuffle"], True)
         self.assertEqual(run_srbench.parse_args(["--jit"])["jit"], "all")
 
+    def test_cache_visibility_is_an_effective_option(self):
+        self.assertEqual(run_srbench.parse_args(["--cache-visibility=immediate"])["cache-visibility"], "immediate")
+        self.assertEqual(run_srbench.parse_args(["--cache-visibility", "committed"])["cache-visibility"], "committed")
+        with tempfile.TemporaryDirectory() as td:
+            cwd = Path(td)
+            _, effective = run_srbench.canonical_args(["--transposition-cache"], cwd)
+            self.assertEqual(effective["cache-visibility"], "committed")
+            canonical, effective = run_srbench.canonical_args(
+                ["--transposition-cache", "--cache-visibility", "immediate"], cwd)
+            self.assertEqual(effective["cache-visibility"], "immediate")
+            self.assertIn("--cache-visibility=immediate", canonical)
+
     def test_canonical_paths_and_atomic_failure_retry(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td); data = root / "data.csv"; data.write_text("x,y\n1,2\n")
