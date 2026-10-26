@@ -522,6 +522,20 @@ namespace {
     }
 } // namespace
 
+TEST_CASE("Checkpoint rejects all-zero random states", "[serialization][checkpoint]")
+{
+    QuietStderr const quiet;
+    auto cp = MakeSmallCheckpoint();
+    cp.RngState = {};
+    auto bytes = Operon::Serialization::ToBeve(cp);
+    CHECK_FALSE(Operon::Serialization::CheckpointFromBeve(bytes));
+
+    cp = MakeSmallCheckpoint();
+    cp.WorkerRngStates[0] = {};
+    bytes = Operon::Serialization::ToBeve(cp);
+    CHECK_FALSE(Operon::Serialization::CheckpointFromBeve(bytes));
+}
+
 TEST_CASE("Checkpoint BEVE rejects inconsistent cache arrays", "[serialization][checkpoint]")
 {
     QuietStderr const quiet;
@@ -981,6 +995,17 @@ TEST_CASE("SaveCheckpoint refuses a file the reader would refuse", "[serializati
         { std::string(Operon::Serialization::MaxCheckpointGroupNameBytes + 1, 'g') }, { 1 }
     };
     CHECK_FALSE(Operon::Serialization::SaveCheckpoint(longName, path.string()));
+    // Writer validation includes all reader invariants, so a rejected replacement preserves the existing checkpoint.
+    auto mismatchedFingerprint = cp;
+    mismatchedFingerprint.Run = Operon::Serialization::RunFingerprint { { "group" }, {} };
+    CHECK_FALSE(Operon::Serialization::SaveCheckpoint(mismatchedFingerprint, path.string()));
+    auto preserved = Operon::Serialization::LoadCheckpoint(path.string());
+    REQUIRE(preserved.has_value());
+    CHECK(preserved->Generation == newer.Generation);
+    auto noTree = cp;
+    noTree.Population[0].Genotype = {};
+    CHECK_FALSE(Operon::Serialization::SaveCheckpoint(noTree, path.string()));
+    CHECK_FALSE(Operon::Serialization::SaveCheckpoint(Operon::Serialization::Checkpoint {}, path.string()));
     longName.Run->Groups[0].pop_back(); // exactly the limit: written and read back
     CHECK(Operon::Serialization::SaveCheckpoint(longName, path.string()));
     CHECK(Operon::Serialization::LoadCheckpoint(path.string()).has_value());
