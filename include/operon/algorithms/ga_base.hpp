@@ -89,7 +89,7 @@ enum class RunEnd : std::uint8_t {
     ResourceLimit, // a generation was discarded for budget and/or attempt cap (IncompleteGeneration() is set)
     AttemptCap, // a committed generation made more attempts than the cap and ended the run (nothing discarded)
     GenerationLimit, // Generation() reached GeneticAlgorithmConfig::Generations
-    BudgetSpent, // committed work reached the budget (initialization alone may do it), no generation was started
+    BudgetSpent, // committed work reached a positive budget (initialization alone may also do so)
     StopRequested, // RequestStop(), or the report callback returned true
     TimeLimit, // GeneticAlgorithmConfig::TimeLimit expired
 };
