@@ -586,6 +586,71 @@ namespace {
         return proxy;
     }
 
+    [[nodiscard]] auto ValidRandomState(std::array<uint64_t, 4> const& state) -> bool
+    {
+        return std::any_of(state.begin(), state.end(), [](uint64_t word) { return word != 0; });
+    }
+
+    // Empty if `cp` can be encoded and decoded by this version, else why. This is deliberately shared by the reader
+    // and writer: SaveCheckpoint must not replace a readable checkpoint with one its reader will reject.
+    auto CheckpointProblem(Checkpoint const& cp) -> std::string
+    {
+        if (!ValidRandomState(cp.RngState)) {
+            return "the master random state is all zero";
+        }
+        for (std::size_t i = 0; i < cp.WorkerRngStates.size(); ++i) {
+            if (!ValidRandomState(cp.WorkerRngStates[i])) {
+                return fmt::format("worker random state {} is all zero", i);
+            }
+        }
+        if (cp.Population.size() > MaxCheckpointPopulation) {
+            return fmt::format("the population has {} individuals, at most {} can be read back", cp.Population.size(),
+                MaxCheckpointPopulation);
+        }
+        if (cp.WorkerRngStates.size() > MaxCheckpointWorkerStates) {
+            return fmt::format("there are {} worker random states, at most {} can be read back",
+                cp.WorkerRngStates.size(), MaxCheckpointWorkerStates);
+        }
+        for (std::size_t i = 0; i < cp.Population.size(); ++i) {
+            auto const& ind = cp.Population[i];
+            if (ind.Genotype.Length() == 0) {
+                return fmt::format("individual {} of the population has no tree", i);
+            }
+            if (ind.Genotype.Length() > MaxCheckpointTreeNodes) {
+                return fmt::format(
+                    "a tree has {} nodes, at most {} can be read back", ind.Genotype.Length(), MaxCheckpointTreeNodes);
+            }
+            if (auto const valid = ind.Genotype.Validate(); !valid) {
+                return fmt::format("individual {} of the population has a tree that fails validation (error {})", i,
+                    static_cast<int>(valid.error()));
+            }
+            if (ind.Fitness.size() > MaxCheckpointObjectives) {
+                return fmt::format("an individual has {} fitness values, at most {} can be read back",
+                    ind.Fitness.size(), MaxCheckpointObjectives);
+            }
+        }
+        if (cp.Cache) {
+            if (auto const problem = CacheProblem(*cp.Cache); !problem.empty()) {
+                return problem;
+            }
+        }
+        if (cp.Run) {
+            if (cp.Run->Groups.size() != cp.Run->Hashes.size()) {
+                return "the run fingerprint arrays have different lengths";
+            }
+            if (cp.Run->Groups.size() > MaxCheckpointFingerprintEntries) {
+                return fmt::format("the run fingerprint has more than {} groups", MaxCheckpointFingerprintEntries);
+            }
+            for (auto const& group : cp.Run->Groups) {
+                if (group.size() > MaxCheckpointGroupNameBytes) {
+                    return fmt::format("a run fingerprint group name has {} bytes, at most {} can be read back",
+                        group.size(), MaxCheckpointGroupNameBytes);
+                }
+            }
+        }
+        return {};
+    }
+
     // `proxy` is consumed: the arrays that need no conversion are moved, not copied (a cache can be most of a
     // gigabyte).
     auto FromProxy(CheckpointProxy&& proxy) -> std::optional<Checkpoint>
@@ -602,25 +667,10 @@ namespace {
                 CheckpointVersion);
             return std::nullopt;
         }
-        if (proxy.Cache) {
-            if (auto const problem = CacheProblem(*proxy.Cache); !problem.empty()) {
-                fmt::print(stderr, "error: corrupt checkpoint: {}\n", problem);
-                return std::nullopt;
-            }
-        }
-        if (proxy.Run && proxy.Run->Groups.size() != proxy.Run->Hashes.size()) {
-            fmt::print(stderr, "error: corrupt checkpoint: the run fingerprint arrays have different lengths\n");
-            return std::nullopt;
-        }
         Checkpoint cp;
         cp.Population.reserve(proxy.Population.size());
         for (std::size_t i = 0; i < proxy.Population.size(); ++i) {
             auto& ip = proxy.Population[i];
-            // a parent without a genotype cannot be evaluated, selected or recombined
-            if (ip.Tree.Nodes.empty()) {
-                fmt::print(stderr, "error: corrupt checkpoint: individual {} of the population has no tree\n", i);
-                return std::nullopt;
-            }
             std::string problem;
             Individual ind;
             ind.Genotype = ProxiesToTree(ip.Tree.Nodes, problem);
@@ -639,50 +689,13 @@ namespace {
         cp.WorkerRngStates = std::move(proxy.WorkerRngStates);
         cp.Cache = std::move(proxy.Cache);
         cp.Run = std::move(proxy.Run);
+        if (auto const problem = CheckpointProblem(cp); !problem.empty()) {
+            fmt::print(stderr, "error: corrupt checkpoint: {}\n", problem);
+            return std::nullopt;
+        }
         return cp;
     }
 
-    // Empty if the reader accepts the number of elements of every array of `cp`, else the first array that is too big.
-    auto LimitProblem(Checkpoint const& cp) -> std::string
-    {
-        if (cp.Population.size() > MaxCheckpointPopulation) {
-            return fmt::format("the population has {} individuals, at most {} can be read back", cp.Population.size(),
-                MaxCheckpointPopulation);
-        }
-        if (cp.WorkerRngStates.size() > MaxCheckpointWorkerStates) {
-            return fmt::format("there are {} worker random states, at most {} can be read back",
-                cp.WorkerRngStates.size(), MaxCheckpointWorkerStates);
-        }
-        for (auto const& ind : cp.Population) {
-            if (ind.Genotype.Length() > MaxCheckpointTreeNodes) {
-                return fmt::format(
-                    "a tree has {} nodes, at most {} can be read back", ind.Genotype.Length(), MaxCheckpointTreeNodes);
-            }
-            if (ind.Fitness.size() > MaxCheckpointObjectives) {
-                return fmt::format("an individual has {} fitness values, at most {} can be read back",
-                    ind.Fitness.size(), MaxCheckpointObjectives);
-            }
-        }
-        if (cp.Cache) {
-            if (auto const problem = CacheProblem(*cp.Cache); !problem.empty()) {
-                return problem;
-            }
-        }
-        if (cp.Run
-            && (cp.Run->Groups.size() > MaxCheckpointFingerprintEntries
-                || cp.Run->Hashes.size() > MaxCheckpointFingerprintEntries)) {
-            return fmt::format("the run fingerprint has more than {} groups", MaxCheckpointFingerprintEntries);
-        }
-        if (cp.Run) {
-            for (auto const& group : cp.Run->Groups) {
-                if (group.size() > MaxCheckpointGroupNameBytes) {
-                    return fmt::format("a run fingerprint group name has {} bytes, at most {} can be read back",
-                        group.size(), MaxCheckpointGroupNameBytes);
-                }
-            }
-        }
-        return {};
-    }
 } // anonymous namespace
 
 namespace {
@@ -783,7 +796,7 @@ auto SaveCheckpoint(Checkpoint const& cp, std::string_view path, std::uint64_t m
     auto const tmpPath = std::string(path) + ".tmp";
     std::error_code ec;
     try {
-        if (auto const problem = LimitProblem(cp); !problem.empty()) {
+        if (auto const problem = CheckpointProblem(cp); !problem.empty()) {
             fmt::print(stderr, "error: checkpoint not written to '{}': {}\n", path, problem);
             return false;
         }
