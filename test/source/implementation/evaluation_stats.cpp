@@ -931,87 +931,103 @@ namespace {
     constexpr std::size_t GenerationCost = AlgorithmFixture::PoolSize * CostPerCandidate;
 
     // The expectations are independent of the implementation: a candidate costs CostPerCandidate units in total
-    // (one prediction pass plus the fixed search work), the budget is checked before every offspring attempt, and a
-    // single worker makes the stop point exact. Initialization always completes.
-    template <typename Algo> void CheckBudgetedRun(Algo& algo, EvaluatorBase& budgeted)
+    // (one prediction pass plus the fixed search work: scoring and optimizer work together consume the budget,
+    // config.Evaluations), the budget limits committed work (a generation that spends more than what is left is
+    // discarded as a whole), and a single worker makes the stop point exact. Initialization always commits.
+    template <typename Make> void CheckBudgetedRun(Make const& make)
     {
+        struct Result {
+            decltype(make(std::size_t {})) Algorithm;
+            EvaluationStats Stats;
+        };
         auto run = [&](std::size_t budget) {
-            budgeted.SetBudget(budget);
+            auto algo = make(budget);
             Operon::RandomGenerator rng { 7 };
-            algo.Run(rng, nullptr, /*threads=*/1);
-            return algo.DetailedStats();
+            algo->Run(rng, nullptr, /*threads=*/1);
+            auto const stats = algo->DetailedStats();
+            return Result { std::move(algo), stats };
         };
 
         SECTION("initialization alone reaches the budget: it commits and no generation starts")
         {
-            auto const stats = run(InitCost);
-            CHECK(stats.Consumed() == InitCost);
-            CHECK(stats.ResidualOptimizer == AlgorithmFixture::PopSize * FunctionEvaluationsPerSearch);
-            CHECK(stats.JacobianOptimizer == AlgorithmFixture::PopSize * JacobianEvaluationsPerSearch);
-            CHECK(algo.Generation() == 0);
-            CHECK_FALSE(algo.IncompleteGeneration().has_value());
+            auto const result = run(InitCost);
+            CHECK(result.Stats.Consumed() == InitCost);
+            CHECK(result.Stats.ResidualOptimizer == AlgorithmFixture::PopSize * FunctionEvaluationsPerSearch);
+            CHECK(result.Stats.JacobianOptimizer == AlgorithmFixture::PopSize * JacobianEvaluationsPerSearch);
+            CHECK(result.Algorithm->Generation() == 0);
+            CHECK_FALSE(result.Algorithm->IncompleteGeneration().has_value());
         }
 
         SECTION("a budget below the initialization cost: initialization still completes in full")
         {
-            auto const stats = run(1);
-            CHECK(stats.Consumed() == InitCost);
-            CHECK(algo.Generation() == 0);
-            CHECK_FALSE(algo.IncompleteGeneration().has_value());
+            auto const result = run(1);
+            CHECK(result.Stats.Consumed() == InitCost);
+            CHECK(result.Algorithm->Generation() == 0);
+            CHECK_FALSE(result.Algorithm->IncompleteGeneration().has_value());
+            CHECK(result.Algorithm->BudgetReport().BudgetOvershoot == InitCost - 1);
         }
 
-        SECTION("a unit over the initialization: one candidate is generated, the generation is incomplete")
+        SECTION("a unit over the initialization: one candidate is generated, the generation is discarded")
         {
-            auto const stats = run(InitCost + 1);
-            CHECK(stats.Consumed() == InitCost + CostPerCandidate); // the discarded generation's work is executed work
-            CHECK(algo.Generation() == 0);
-            REQUIRE(algo.IncompleteGeneration().has_value());
-            CHECK(algo.IncompleteGeneration()->Completed == 1);
+            auto const result = run(InitCost + 1);
+            // the discarded generation's work is executed work, not committed work
+            CHECK(result.Stats.Consumed() == InitCost + CostPerCandidate);
+            CHECK(result.Algorithm->BudgetReport().EvaluationsCommitted == InitCost);
+            CHECK(result.Algorithm->Generation() == 0);
+            REQUIRE(result.Algorithm->IncompleteGeneration().has_value());
+            CHECK(result.Algorithm->IncompleteGeneration()->Completed == 1);
         }
 
         SECTION("optimizer work alone moves the stop point by whole candidates")
         {
-            auto const stats = run(InitCost + (3 * CostPerCandidate));
-            CHECK(stats.Consumed() == InitCost + (3 * CostPerCandidate));
-            REQUIRE(algo.IncompleteGeneration().has_value());
-            CHECK(algo.IncompleteGeneration()->Completed == 3);
+            // the generation is stopped by the first candidate that takes its spending above what is left
+            auto const result = run(InitCost + (3 * CostPerCandidate));
+            CHECK(result.Stats.Consumed() == InitCost + (4 * CostPerCandidate));
+            REQUIRE(result.Algorithm->IncompleteGeneration().has_value());
+            CHECK(result.Algorithm->IncompleteGeneration()->Completed == 4);
         }
 
         SECTION("exactly one generation fits")
         {
-            auto const stats = run(InitCost + GenerationCost);
-            CHECK(stats.Consumed() == InitCost + GenerationCost);
-            CHECK(algo.Generation() == 1);
-            CHECK_FALSE(algo.IncompleteGeneration().has_value());
+            auto const result = run(InitCost + GenerationCost);
+            CHECK(result.Stats.Consumed() == InitCost + GenerationCost);
+            CHECK(result.Algorithm->Generation() == 1);
+            CHECK_FALSE(result.Algorithm->IncompleteGeneration().has_value());
         }
 
-        SECTION("one unit short of a generation still completes it; one unit over starts the next")
+        SECTION("one unit short of a generation discards it; one unit over commits it and discards the next")
         {
-            auto const stats = run(InitCost + GenerationCost - 1);
-            CHECK(stats.Consumed() == InitCost + GenerationCost);
-            CHECK(algo.Generation() == 1);
-            CHECK_FALSE(algo.IncompleteGeneration().has_value());
+            auto const shortBy = run(InitCost + GenerationCost - 1);
+            CHECK(shortBy.Stats.Consumed() == InitCost + GenerationCost); // executed, not committed
+            CHECK(shortBy.Algorithm->BudgetReport().EvaluationsCommitted == InitCost);
+            CHECK(shortBy.Algorithm->Generation() == 0);
+            REQUIRE(shortBy.Algorithm->IncompleteGeneration().has_value());
+            CHECK(shortBy.Algorithm->IncompleteGeneration()->Completed == AlgorithmFixture::PoolSize);
 
             auto const over = run(InitCost + GenerationCost + 1);
-            CHECK(over.Consumed() == InitCost + GenerationCost + CostPerCandidate);
-            CHECK(algo.Generation() == 1);
-            REQUIRE(algo.IncompleteGeneration().has_value());
+            CHECK(over.Stats.Consumed() == InitCost + GenerationCost + CostPerCandidate);
+            CHECK(over.Algorithm->BudgetReport().EvaluationsCommitted == InitCost + GenerationCost);
+            CHECK(over.Algorithm->Generation() == 1);
+            REQUIRE(over.Algorithm->IncompleteGeneration().has_value());
         }
 
         SECTION("the accounting of a run that discarded a generation is the executed work, and the next run resets it")
         {
-            auto const first = run(InitCost + 1);
-            REQUIRE(algo.IncompleteGeneration().has_value());
+            auto algo = make(InitCost + 1);
             auto const executed = InitCost + CostPerCandidate;
-            CHECK(first.Consumed() == executed);
-            CHECK(algo.Accounting().Snapshot().Evaluations()
+            Operon::RandomGenerator rng { 7 };
+            algo->Run(rng, nullptr, /*threads=*/1);
+            REQUIRE(algo->IncompleteGeneration().has_value());
+            CHECK(algo->DetailedStats().Consumed() == executed);
+            CHECK(algo->Accounting().Snapshot().Evaluations()
                 == (AlgorithmFixture::PopSize + 1) * (FunctionEvaluationsPerSearch + JacobianEvaluationsPerSearch));
 
-            auto const second = run(InitCost + 1);
-            CHECK(second.Consumed() == executed); // not double
-            algo.Reset();
-            CHECK(algo.Accounting().Snapshot().Evaluations() == 0);
-            CHECK(algo.DetailedStats().Consumed() == 0);
+            Operon::RandomGenerator rng2 { 7 };
+            algo->Run(rng2, nullptr, /*threads=*/1);
+            CHECK(algo->DetailedStats().Consumed() == executed); // not double
+            algo->Reset();
+            CHECK(algo->Accounting().Snapshot().Evaluations() == 0);
+            CHECK(algo->DetailedStats().Consumed() == 0);
         }
     }
 } // namespace
@@ -1023,9 +1039,12 @@ TEST_CASE("GP budget consumption includes the optimizer work of initialization a
     Operon::Evaluator<DTable> evaluator { &fix.Problem, &fix.Dtable, MSE {} };
     Operon::BasicOffspringGenerator generator { &evaluator, &fix.Crossover, &fix.Mutator, &fix.FemSel, &fix.MaleSel,
         &fix.CoeffOptimizer };
-    Operon::GeneticProgrammingAlgorithm gp { fix.Config, &fix.Problem, &fix.TreeInit, &fix.CoeffInit, &generator,
-        &fix.Reinserter };
-    CheckBudgetedRun(gp, evaluator);
+    CheckBudgetedRun([&](std::size_t budget) {
+        auto config = fix.Config;
+        config.Evaluations = budget;
+        return std::make_unique<Operon::GeneticProgrammingAlgorithm>(
+            config, &fix.Problem, &fix.TreeInit, &fix.CoeffInit, &generator, &fix.Reinserter);
+    });
 }
 
 TEST_CASE("NSGA2 budget consumption includes the optimizer work of initialization and offspring",
@@ -1034,9 +1053,12 @@ TEST_CASE("NSGA2 budget consumption includes the optimizer work of initializatio
     AlgorithmFixture fix;
     fix.Config.Generations = 100;
     NsgaRig rig { fix };
-    Operon::NSGA2 nsga { fix.Config, &fix.Problem, &fix.TreeInit, &fix.CoeffInit, &rig.Generator, &rig.Reinserter,
-        &rig.Sorter };
-    CheckBudgetedRun(nsga, rig.Multi);
+    CheckBudgetedRun([&](std::size_t budget) {
+        auto config = fix.Config;
+        config.Evaluations = budget;
+        return std::make_unique<Operon::NSGA2>(
+            config, &fix.Problem, &fix.TreeInit, &fix.CoeffInit, &rig.Generator, &rig.Reinserter, &rig.Sorter);
+    });
 }
 
 TEST_CASE("Optimizer work is budgeted even when scoring is free", "[algorithms][budget]")
@@ -1048,20 +1070,22 @@ TEST_CASE("Optimizer work is budgeted even when scoring is free", "[algorithms][
         [](Operon::Tree const& t) { return static_cast<Operon::Scalar>(t.Length()); } };
     Operon::BasicOffspringGenerator generator { &length, &fix.Crossover, &fix.Mutator, &fix.FemSel, &fix.MaleSel,
         &fix.CoeffOptimizer };
-    Operon::GeneticProgrammingAlgorithm gp { fix.Config, &fix.Problem, &fix.TreeInit, &fix.CoeffInit, &generator,
-        &fix.Reinserter };
     constexpr std::size_t searchCost = FunctionEvaluationsPerSearch + JacobianEvaluationsPerSearch;
 
-    length.SetBudget((AlgorithmFixture::PopSize + 2) * searchCost);
+    fix.Config.Evaluations = (AlgorithmFixture::PopSize + 2) * searchCost;
+    Operon::GeneticProgrammingAlgorithm gp { fix.Config, &fix.Problem, &fix.TreeInit, &fix.CoeffInit, &generator,
+        &fix.Reinserter };
     Operon::RandomGenerator rng { 7 };
     gp.Run(rng, nullptr, /*threads=*/1);
 
     auto const stats = gp.DetailedStats();
     CHECK(stats.ResidualScoring == 0);
     CHECK(stats.JacobianScoring == 0);
-    CHECK(stats.Consumed() == (AlgorithmFixture::PopSize + 2) * searchCost);
+    // initialization commits (PopSize searches); the generation that has two searches left is discarded by the third
+    CHECK(stats.Consumed() == (AlgorithmFixture::PopSize + 3) * searchCost);
+    CHECK(gp.BudgetReport().EvaluationsCommitted == AlgorithmFixture::PopSize * searchCost);
     REQUIRE(gp.IncompleteGeneration().has_value());
-    CHECK(gp.IncompleteGeneration()->Completed == 2);
+    CHECK(gp.IncompleteGeneration()->Completed == 3);
 }
 
 TEST_CASE("A warm resume re-evaluates without local search, so it spends no optimizer work", "[algorithms][budget]")
