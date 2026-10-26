@@ -605,13 +605,15 @@ namespace {
         }
 
         auto operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal,
-            double pLamarck, Operon::Span<Operon::Scalar> buf) const -> std::optional<Operon::Individual> override
+            double pLamarck, Operon::Span<Operon::Scalar> buf, Operon::OptimizerAccounting& accounting) const
+            -> std::optional<Operon::Individual> override
         {
             auto const call = call_.fetch_add(1, std::memory_order_relaxed) + 1;
             if (OnCall) {
                 OnCall(attempt_.load(std::memory_order_relaxed), call);
             }
-            return inner_(random, pCrossover, pMutation, pLocal, pLamarck, buf);
+            // The run's accounting is forwarded, not the delegate's own: optimizer work must reach the run.
+            return inner_(random, pCrossover, pMutation, pLocal, pLamarck, buf, accounting);
         }
 
     private:

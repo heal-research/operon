@@ -375,7 +375,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         } else {
             ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(evaluator.get());
         }
-        Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr, nullptr, evaluator.get());
+        Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr);
         if (warmStart && result.contains("probes-config")) {
             fmt::print(stderr,
                 "warning: --probes-config sinks/traces truncate on start; resuming via --resume discards prior "

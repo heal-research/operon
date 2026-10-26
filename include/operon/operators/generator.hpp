@@ -26,7 +26,8 @@ struct RecombinationResult {
 
 class OffspringGeneratorBase : public OperatorBase<std::optional<Individual>, /* crossover prob. */ double,
                                    /* mutation prob. */ double, /* local search prob. */ double,
-                                   /* lamarckian prob */ double, /* memory buffer */ Operon::Span<Operon::Scalar>> {
+                                   /* lamarckian prob */ double, /* memory buffer */ Operon::Span<Operon::Scalar>,
+                                   /* run optimizer accounting */ OptimizerAccounting&> {
 public:
     OffspringGeneratorBase(EvaluatorBase const* eval, CrossoverBase const* cx, MutatorBase const* mut,
         SelectorBase const* femSel, SelectorBase const* maleSel, CoefficientOptimizer const* coeffOptimizer = nullptr)
@@ -53,13 +54,25 @@ public:
         Evaluator()->Prepare(pop);
     }
 
-    [[nodiscard]] virtual auto Terminate() const -> bool { return evaluator_->BudgetExhausted(); }
+    // Whether the run must stop generating: its evaluation budget -- the scoring evaluations of the evaluator tree
+    // (EvaluatorBase::Stats()) plus the optimizer evaluations recorded in `accounting` -- has been consumed. Derived
+    // generators add their own stop conditions.
+    [[nodiscard]] virtual auto Terminate(OptimizerAccounting const& accounting) const -> bool
+    {
+        auto const [residual, jacobian, calls] = evaluator_->Stats();
+        auto const scoring
+            = detail::SaturatingAdd(static_cast<std::uint64_t>(residual), static_cast<std::uint64_t>(jacobian));
+        return detail::SaturatingAdd(scoring, accounting.Evaluations()) >= evaluator_->Budget();
+    }
 
     auto SetCache(Zobrist* cache) const { cache_ = cache; }
     [[nodiscard]] auto Cache() const -> Zobrist* { return cache_; }
 
+    // Every optimizer invocation made while generating a candidate (kept or not) is published to `accounting`, the
+    // run's optimizer accounting, before the candidate can be rejected, lose a brood/polygenic selection or be
+    // discarded with its generation.
     auto Generate(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal, double pLamarck,
-        Operon::Span<Operon::Scalar> buf, RecombinationResult& res) const -> void
+        Operon::Span<Operon::Scalar> buf, OptimizerAccounting& accounting, RecombinationResult& res) const -> void
     {
         auto pop = FemaleSelector()->Population();
         if (!res.Parent1) {
@@ -80,12 +93,14 @@ public:
             res.Child->Genotype = (*Mutator())(random, std::move(res.Child->Genotype));
         }
 
-        auto evaluate
-            = [&]() { ScoreIndividual(random, *res.Child, *Evaluator(), coeffOptimizer_, pLocal, pLamarck, buf); };
+        auto evaluate = [&]() {
+            ScoreIndividual(random, *res.Child, *Evaluator(), coeffOptimizer_, pLocal, pLamarck, buf, accounting);
+        };
 
         // The transposition table keys fitness by structure only. An evaluator whose result depends on the stored
         // coefficients (e.g. ShapeConstrainedValueEvaluator, which publishes a per-genotype completion) opts out: a
-        // structural hit could neither certify the recipient genotype nor publish its completion.
+        // structural hit could neither certify the recipient genotype nor publish its completion. A cache hit also
+        // bypasses ScoreIndividual, hence local search: it costs no optimizer work.
         if (cache_ != nullptr && Evaluator()->StructuralFitnessReusable()) {
             auto const hash = cache_->ComputeHash(res.Child->Genotype);
             Operon::Vector<Operon::Scalar> cached(Evaluator()->ObjectiveCount());
@@ -100,11 +115,12 @@ public:
         }
     }
 
+    // Same as above, returning a fresh result.
     auto Generate(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal, double pLamarck,
-        Operon::Span<Operon::Scalar> buf) const -> RecombinationResult
+        Operon::Span<Operon::Scalar> buf, OptimizerAccounting& accounting) const -> RecombinationResult
     {
         RecombinationResult res;
-        Generate(random, pCrossover, pMutation, pLocal, pLamarck, buf, res);
+        Generate(random, pCrossover, pMutation, pLocal, pLamarck, buf, accounting, res);
         return res;
     }
 
@@ -127,7 +143,8 @@ public:
     }
 
     auto operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal,
-        double pLamarck, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual> final;
+        double pLamarck, Operon::Span<Operon::Scalar> buf, OptimizerAccounting& accounting) const
+        -> std::optional<Individual> final;
 };
 
 class OPERON_EXPORT BroodOffspringGenerator : public OffspringGeneratorBase {
@@ -140,7 +157,8 @@ public:
     }
 
     auto operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal,
-        double pLamarck, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual> final;
+        double pLamarck, Operon::Span<Operon::Scalar> buf, OptimizerAccounting& accounting) const
+        -> std::optional<Individual> final;
 
     void BroodSize(size_t value) { broodSize_ = value; }
     [[nodiscard]] auto BroodSize() const -> size_t { return broodSize_; }
@@ -161,7 +179,8 @@ public:
     }
 
     auto operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal,
-        double pLamarck, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual> final;
+        double pLamarck, Operon::Span<Operon::Scalar> buf, OptimizerAccounting& accounting) const
+        -> std::optional<Individual> final;
 
     void PolygenicSize(size_t value) { broodSize_ = value; }
     [[nodiscard]] auto PolygenicSize() const -> size_t { return broodSize_; }
@@ -181,7 +200,8 @@ public:
     }
 
     auto operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal,
-        double pLamarck, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual> final;
+        double pLamarck, Operon::Span<Operon::Scalar> buf, OptimizerAccounting& accounting) const
+        -> std::optional<Individual> final;
 
     void MaxSelectionPressure(size_t value) { maxSelectionPressure_ = value; }
     auto MaxSelectionPressure() const -> size_t { return maxSelectionPressure_; }
@@ -212,9 +232,10 @@ public:
         return static_cast<double>(e) / static_cast<double>(n);
     }
 
-    auto Terminate() const -> bool override
+    auto Terminate(OptimizerAccounting const& accounting) const -> bool override
     {
-        return OffspringGeneratorBase::Terminate() || SelectionPressure() > static_cast<double>(maxSelectionPressure_);
+        return OffspringGeneratorBase::Terminate(accounting)
+            || SelectionPressure() > static_cast<double>(maxSelectionPressure_);
     };
 
     static constexpr size_t DefaultMaxSelectionPressure { 100 };

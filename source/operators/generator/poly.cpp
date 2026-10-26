@@ -7,14 +7,15 @@
 
 namespace Operon {
 auto PolygenicOffspringGenerator::operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation,
-    double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual>
+    double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf, OptimizerAccounting& accounting) const
+    -> std::optional<Individual>
 {
     std::uniform_real_distribution<double> const uniformReal;
     auto pop = FemaleSelector()->Population();
 
     // assuming the basic generator never fails
     auto makeOffspring = [&]() -> Operon::Individual {
-        auto res = OffspringGeneratorBase::Generate(random, pCrossover, pMutation, pLocal, pLamarck, buf);
+        auto res = OffspringGeneratorBase::Generate(random, pCrossover, pMutation, pLocal, pLamarck, buf, accounting);
         return res ? res.Child.value() : res.Parent1.value();
     };
 
