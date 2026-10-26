@@ -186,13 +186,8 @@ namespace detail {
         // Prepares the structural objectives.
         void ShapePrepare(Operon::Span<Individual const> pop) const;
 
-        // Residual evaluations, Jacobian evaluations and cost-function time accumulated by the structural
-        // objectives.
-        [[nodiscard]] auto ShapeStructuralStats() const -> std::tuple<std::size_t, std::size_t, std::size_t>;
-
-        // Same as ShapeStructuralStats() with the optimizer/scoring split. `Calls` is the sum over the structural
-        // objectives; the adapter keeps its own call count.
-        [[nodiscard]] auto ShapeStructuralDetailedStats() const -> EvaluationStats;
+        // Residual and Jacobian scoring evaluations accumulated by the structural objectives.
+        [[nodiscard]] auto ShapeStructuralStats() const -> std::pair<std::size_t, std::size_t>;
 
         // Zeroes the counters of the structural objectives (they are children of the adapter, not evaluators the
         // algorithm knows about).
@@ -292,26 +287,18 @@ public:
         this->ShapePrepare(pop);
     }
 
-    auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t, std::size_t> override
+    // The base evaluator's scoring counters plus those of the structural objectives; Calls is the adapter's own.
+    auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t> override
     {
-        auto [residual, jacobian, calls, costFunctionTime] = BaseEvaluator::Stats();
-        auto const [structuralResidual, structuralJacobian, structuralTime] = this->ShapeStructuralStats();
-        return std::tuple { residual + structuralResidual, jacobian + structuralJacobian, calls,
-            costFunctionTime + structuralTime };
+        auto [residual, jacobian, calls] = BaseEvaluator::Stats();
+        auto const [structuralResidual, structuralJacobian] = this->ShapeStructuralStats();
+        return std::tuple { residual + structuralResidual, jacobian + structuralJacobian, calls };
     }
 
-    auto DetailedStats() const -> EvaluationStats override
-    {
-        auto stats = BaseEvaluator::DetailedStats();
-        auto const calls = stats.Calls;
-        stats += this->ShapeStructuralDetailedStats();
-        stats.Calls = calls;
-        return stats;
-    }
-
+    // Scoring work only (see EvaluatorBase::BudgetExhausted).
     auto BudgetExhausted() const -> bool override
     {
-        auto const [residual, jacobian, calls, costFunctionTime] = Stats();
+        auto const [residual, jacobian, calls] = Stats();
         return residual + jacobian >= this->Budget();
     }
 

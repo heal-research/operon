@@ -338,32 +338,6 @@ auto OPERON_EXPORT AkaikeInformationCriterionEvaluator<ScalarDispatch>::Score(Op
     return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(aik) };
 }
 
-auto LocalSearch(Operon::RandomGenerator& random, Operon::Individual& ind, Operon::EvaluatorBase const& evaluator,
-    Operon::CoefficientOptimizer const* coeffOptimizer, double pLocal, double pLamarck)
-    -> std::optional<std::vector<Operon::Scalar>>
-{
-    using BernoulliTrial = std::bernoulli_distribution;
-
-    if (coeffOptimizer == nullptr || pLocal <= 0 || !BernoulliTrial { pLocal }(random)) {
-        return std::nullopt;
-    }
-
-    auto c = ind.Genotype.GetCoefficients(); // save original coefficients
-    auto t0 = std::chrono::steady_clock::now();
-    auto [optimizedTree, outcome] = (*coeffOptimizer)(random, std::move(ind.Genotype));
-    auto t1 = std::chrono::steady_clock::now();
-    auto const& diag = Diagnostics(outcome);
-    evaluator.ResidualEvaluations += diag.FunctionEvaluations;
-    evaluator.JacobianEvaluations += diag.JacobianEvaluations;
-    // After the totals: DetailedStats() reads these first and relies on optimizer <= total.
-    evaluator.OptimizerResidualEvaluations += diag.FunctionEvaluations;
-    evaluator.OptimizerJacobianEvaluations += diag.JacobianEvaluations;
-    evaluator.CostFunctionTime += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
-    ind.Genotype = std::move(optimizedTree);
-
-    return BernoulliTrial { pLamarck }(random) ? std::nullopt : std::make_optional(std::move(c));
-}
-
 auto RestoreNonLamarckianCoefficients(Operon::Individual& ind, Operon::EvaluatorBase const& evaluator,
     Operon::Span<Operon::Scalar const> stored, Operon::Span<Operon::Scalar> buf) -> void
 {
@@ -372,12 +346,14 @@ auto RestoreNonLamarckianCoefficients(Operon::Individual& ind, Operon::Evaluator
 
 auto ScoreIndividual(Operon::RandomGenerator& random, Operon::Individual& ind, Operon::EvaluatorBase const& evaluator,
     Operon::CoefficientOptimizer const* coeffOptimizer, double pLocal, double pLamarck,
-    Operon::Span<Operon::Scalar> buf) -> void
+    Operon::Span<Operon::Scalar> buf, Operon::OptimizerAccounting& accounting) -> void
 {
-    auto originalCoeffs = LocalSearch(random, ind, evaluator, coeffOptimizer, pLocal, pLamarck);
+    auto search = LocalSearch(random, ind, coeffOptimizer, pLocal, pLamarck);
+    // Charged now, before scoring can throw and before the caller can reject or discard the candidate.
+    accounting.Record(search);
     ind.Fitness = evaluator(random, ind, buf);
-    if (originalCoeffs) {
-        RestoreNonLamarckianCoefficients(ind, evaluator, *originalCoeffs, buf);
+    if (search.OriginalCoefficients) {
+        RestoreNonLamarckianCoefficients(ind, evaluator, *search.OriginalCoefficients, buf);
     }
 
     for (auto& v : ind.Fitness) {

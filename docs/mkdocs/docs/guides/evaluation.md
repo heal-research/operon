@@ -59,16 +59,55 @@ penalty is dimensionless, while residual metrics scale it to their error units.
 
 `ObjectiveCount()` tells population algorithms the required fitness-vector width. `Prepare(population)` is the per-generation hook for cached or population-level state; the shape-constrained adapter prepares its base and structural evaluators and keeps no certification cache. `ResidualEvaluations`, `JacobianEvaluations`, and `CallCount` are atomic counters; `operator()` increments `CallCount` exactly once per call, including a failed one, so a custom `Score` must not increment it again. A custom evaluator should preserve the base failure behavior rather than translating execution errors into ordinary scores.
 
-`Stats()` returns the four aggregate counters (residual evaluations, Jacobian evaluations, calls, optimizer
-microseconds); `DetailedStats()` returns an `EvaluationStats` with the same totals split by who spent them:
-`ResidualScoring`/`JacobianScoring` (the prediction pass of `Evaluate`, a Jacobian taken by a likelihood scorer, ...)
-and `ResidualOptimizer`/`JacobianOptimizer` (coefficient optimization in `LocalSearch`). The evaluation budget is
-still `ResidualEvaluations + JacobianEvaluations`, i.e. the sum of both parts. `MultiEvaluator` and the
-shape-constrained adapter include their children; `GeneticAlgorithmBase::DetailedStats()` adds the transposition-cache
-hit and lookup counters of the generator's active cache (`OffspringGeneratorBase::Cache()`: initially
-`config.Cache`, replaceable with `SetCache`; `nullopt` when the generator has no active cache). The same cache has
-its generation clock advanced by `Run()`, so entry stamping and age-based expiry, the counters and the reset all
-refer to it. `EvaluatorBase::Reset()` is not virtual: it clears the base counters and then calls the protected
-virtual `ResetChildren()`, which composite evaluators override to reset their children (`MultiEvaluator`, the
-shape-constrained adapter). `GeneticAlgorithmBase::Reset()` (called at the start of every `Run()`) calls it and also
-zeroes the active cache's counters.
+## Evaluation accounting
+
+Evaluation work has two owners, and the two are never mixed.
+
+- **Evaluators own scoring work only.** `Stats()` returns `(residual evaluations, Jacobian evaluations, calls)` of the
+  evaluator's own scoring: the prediction pass of `Evaluate`, a Jacobian taken by a likelihood scorer such as the MDL
+  evaluator, and so on. `MultiEvaluator` and the shape-constrained adapter sum their children's scoring counters slot
+  by slot (a child registered in two slots counts twice, as before); `Calls` is the composite's own. No evaluator
+  holds optimizer counters or optimizer time: coefficient optimization is not something an evaluator performs.
+- **The coefficient optimizer owns per-fit diagnostics.** The `FitOutcome` of `CoefficientOptimizer` (success,
+  non-improving fit, or a typed evaluation/configuration failure) carries `FunctionEvaluations` and
+  `JacobianEvaluations` for that one fit; `Diagnostics(outcome)` reads them whatever the outcome.
+- **The run owns the reduction of optimizer work.** `LocalSearch` no longer takes an evaluator and touches no counter;
+  it returns a `LocalSearchResult` (the outcome, the wall time of the optimizer call, and the coefficients to restore
+  after a non-Lamarckian update). `OptimizerAccounting` (`local_search.hpp`) is the run-level accumulator: saturating
+  residual, Jacobian and time counters, lock-free from any worker thread. `GeneticAlgorithmBase` owns one
+  (`Accounting()`), resets it at the start of every `Run()`, and passes it explicitly to `ScoreIndividual`, to the
+  offspring generators, and to the direct `LocalSearch` calls of cold initialization in GP and NSGA2. The accounting
+  argument is required everywhere: there is no default, no nullable pointer and no thread-local "current run". Each
+  invoked optimizer is recorded exactly once, before the candidate is scored, so a fit that did work stays charged
+  when the candidate is later rejected by offspring selection, loses a brood or polygenic selection, fails scoring, or
+  is discarded with an incomplete generation. A skipped search (`pLocal` trial), an absent optimizer, a zero-iteration
+  optimizer and an error raised before anything was evaluated contribute zero; a transposition-cache hit never reaches
+  local search and so costs no optimizer work. A custom `OffspringGeneratorBase` must forward the accounting it is
+  given to `Generate`/`ScoreIndividual` (or to the generator it delegates to). An optimizer used directly, outside a
+  run, is not attributed to any run.
+
+`GeneticAlgorithmBase::DetailedStats()` is the combined run report, an `EvaluationStats` with disjoint fields:
+`ResidualScoring`/`JacobianScoring`/`Calls` come from the evaluator's `Stats()`,
+`ResidualOptimizer`/`JacobianOptimizer`/`OptimizerTimeUs` from the run's accounting, and `CacheHits`/`CacheLookups`
+from the generator's active cache (`OffspringGeneratorBase::Cache()`: initially `config.Cache`, replaceable with
+`SetCache`; `nullopt` when the generator has no active cache). Nothing is derived by subtracting one source from the
+other. `Consumed()` is the evaluation budget unit, `ResidualTotal() + JacobianTotal()` (saturating); calls, optimizer
+time and cache counters never consume the budget. A report read while workers run is a non-atomic snapshot across the
+counters; one read after `Run()` returned is exact. Optimizer time is a wall-clock sum over threads: it is neither
+deterministic nor thread-count independent.
+
+The evaluation budget (`SetBudget`, `config.Evaluations`) is spent by scoring plus optimizer work. The run applies it
+through `OffspringGeneratorBase::Terminate(OptimizerAccounting const&)`, which adds the evaluator tree's `Stats()`
+residual and Jacobian counts to the run's optimizer evaluations; `EvaluatorBase::BudgetExhausted()` and
+`TotalEvaluations()` see scoring work only and are not the run's stop condition. The budget policy is otherwise
+unchanged: it is checked before each offspring attempt, work done for a generation that is cut short stays counted
+(executed counters are never rolled back), and a stopped generation is discarded as described in the algorithms
+guide. A genotype-only objective that costs nothing to score still consumes budget through the local search it
+triggers.
+
+The same cache has its generation clock advanced by `Run()`, so entry stamping and age-based expiry, the counters and
+the reset all refer to it. `EvaluatorBase::Reset()` is not virtual: it clears the base counters and then calls the
+protected virtual `ResetChildren()`, which composite evaluators override to reset their children (`MultiEvaluator`,
+the shape-constrained adapter). `GeneticAlgorithmBase::Reset()` (called at the start of every `Run()`) calls it, zeroes
+the run's optimizer accounting, and zeroes the active cache's counters. Copying a quiescent algorithm copies its
+optimizer accounting with it.
