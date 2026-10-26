@@ -212,10 +212,9 @@ private:
     std::atomic<std::uint64_t> finalAttempts_ { 0 };
 };
 
-// A population algorithm needs something to evolve: both sizes must be positive. Every individual also costs at
-// least one evaluation to initialize (or, on a warm start, to re-evaluate), so a budget below the population size
-// cannot even pay for initialization. These are the necessary conditions checked here; the real cost of
-// initialization can be larger (local search, several evaluators) and is allowed to overshoot the budget.
+// A population algorithm needs something to evolve: both sizes must be positive. Evaluation cost is defined by the
+// evaluator, so initialization may consume zero work (for example, a structural evaluator) or more than the budget.
+// The ledger records either case after initialization commits.
 inline auto RequireViableConfiguration(GeneticAlgorithmConfig const& config) -> void
 {
     if (config.PopulationSize == 0) {
@@ -223,11 +222,6 @@ inline auto RequireViableConfiguration(GeneticAlgorithmConfig const& config) -> 
     }
     if (config.PoolSize == 0) {
         throw std::invalid_argument("pool size must be at least 1");
-    }
-    if (config.Evaluations < config.PopulationSize) {
-        throw std::invalid_argument("evaluation budget (" + std::to_string(config.Evaluations)
-            + ") is smaller than the population size (" + std::to_string(config.PopulationSize)
-            + "): initializing the population costs at least one evaluation per individual");
     }
 }
 
