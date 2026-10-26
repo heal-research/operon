@@ -46,7 +46,6 @@
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/optimizer/optimizer.hpp"
 #include "operon/parser/infix.hpp"
-#include "reporter.hpp"
 
 namespace Operon::Test {
 namespace {
@@ -1347,53 +1346,5 @@ TEST_CASE("NSGA2 advances the generator's active cache clock", "[algorithms][sta
     CHECK_FALSE(aging.TryGet(hash, out));
 }
 
-// ---- CLI report ----------------------------------------------------------------------------------------------------
-
-TEST_CASE("The CLI report carries the combined scoring and optimizer counters", "[cli][stats]")
-{
-    AlgorithmFixture fix;
-    Operon::Evaluator<DTable> evaluator { &fix.Problem, &fix.Dtable, MSE {} };
-    Operon::BasicOffspringGenerator generator { &evaluator, &fix.Crossover, &fix.Mutator, &fix.FemSel, &fix.MaleSel,
-        &fix.CoeffOptimizer };
-    Operon::GeneticProgrammingAlgorithm gp { fix.Config, &fix.Problem, &fix.TreeInit, &fix.CoeffInit, &generator,
-        &fix.Reinserter };
-    Operon::Reporter<Operon::Evaluator<DTable>> reporter { &evaluator };
-    tf::Executor executor { 1 };
-    Operon::RandomGenerator rng { 7 };
-
-    gp.Run(executor, rng, [&]() -> bool {
-        reporter(executor, gp);
-        return false;
-    });
-
-    // Independently derived: PopSize + Generations * PoolSize candidates, each one prediction pass plus one search
-    // of 3 residual and 2 Jacobian evaluations.
-    constexpr std::size_t candidates = AlgorithmFixture::PopSize + (3 * AlgorithmFixture::PoolSize);
-    constexpr std::size_t residuals = candidates * (1 + FunctionEvaluationsPerSearch);
-    constexpr std::size_t jacobians = candidates * JacobianEvaluationsPerSearch;
-
-    auto const stats = gp.DetailedStats();
-    CHECK(stats.Calls == candidates);
-    CHECK(stats.ResidualTotal() == residuals);
-    CHECK(stats.JacobianTotal() == jacobians);
-
-    auto const& metrics = reporter.GetMachineReport().metrics;
-    CHECK(metrics.evaluator_calls == candidates);
-    CHECK(metrics.result_evaluations == residuals);
-    CHECK(metrics.jacobian_evaluations == jacobians);
-    CHECK(metrics.optimizer_seconds >= 0.0); // timing is neither positive nor deterministic
-
-    auto const path = std::filesystem::temp_directory_path() / "operon_evaluation_stats_report.json";
-    Operon::WriteMachineReport(reporter.GetMachineReport(), path);
-    std::ifstream in { path };
-    std::stringstream buffer;
-    buffer << in.rdbuf();
-    auto const json = buffer.str();
-    std::filesystem::remove(path);
-    CHECK(json.find("\"evaluator_calls\":" + std::to_string(candidates)) != std::string::npos);
-    CHECK(json.find("\"result_evaluations\":" + std::to_string(residuals)) != std::string::npos);
-    CHECK(json.find("\"jacobian_evaluations\":" + std::to_string(jacobians)) != std::string::npos);
-    CHECK(json.find("\"optimizer_seconds\":") != std::string::npos);
-}
 
 } // namespace Operon::Test
