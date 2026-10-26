@@ -943,9 +943,11 @@ TEST_CASE("A zero-cost structural evaluator accepts a zero evaluation budget", "
         Operon::RandomGenerator random { sc.Seed };
         REQUIRE_NOTHROW(algo.Run(random, nullptr, 1));
         CHECK(algo.IsFitted());
+        CHECK(algo.Generation() == 3);
+        CHECK(algo.BudgetReport().GenerationsCommitted == 3);
         CHECK(algo.BudgetReport().EvaluationsCommitted == 0);
         CHECK(algo.BudgetReport().BudgetOvershoot == 0);
-        CHECK(algo.BudgetReport().End == RunEnd::BudgetSpent);
+        CHECK(algo.BudgetReport().End == RunEnd::GenerationLimit);
         return 0;
     });
 }
