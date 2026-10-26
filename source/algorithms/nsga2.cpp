@@ -154,6 +154,8 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
     }
 
     auto const* evaluator = generator->Evaluator();
+    // The run's optimizer accounting (reset by Reset() above): every local search below is recorded here.
+    auto& accounting = Accounting();
 
     // Reuse evaluation buffers across generations.
     auto trainSize = problem->TrainingRange().Size();
@@ -167,15 +169,8 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
     // state: StopRequested() only ever reflects RequestStop() and a true report callback.
     std::atomic_bool terminationObserved { false };
     auto shouldStop = [&](double elapsed) -> bool {
-        return StopRequested() || terminationObserved.load(std::memory_order_relaxed) || generator->Terminate()
-            || Generation() == config.Generations || elapsed > static_cast<double>(config.TimeLimit);
-    };
-    auto stop = [&]() -> bool {
-        auto const stopping = shouldStop(computeElapsed());
-        if (stopping) {
-            terminationObserved.store(true, std::memory_order_relaxed);
-        }
-        return stopping;
+        return StopRequested() || generator->Terminate(accounting) || Generation() == config.Generations
+            || elapsed > static_cast<double>(config.TimeLimit);
     };
     auto loopCondition = [&]() -> bool {
         Elapsed() = computeElapsed();
@@ -221,7 +216,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                               auto const id = executor.this_worker_id();
                               slots[id].resize(trainSize);
                               ScoreIndividual(rngs[i], parents[i], *evaluator, generator->Optimizer(), /*pLocal=*/0.0,
-                                  config.LamarckianProbability, Operon::Span<Operon::Scalar>(slots[id]));
+                                  config.LamarckianProbability, Operon::Span<Operon::Scalar>(slots[id]), accounting);
                           })
                       .name("evaluate population");
             if (warmResume) {
@@ -240,15 +235,21 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                                         (*coeffInit)(rngs[i], parents[i].Genotype);
                                     })
                                 .name("initialize population");
-                // Prepare sees the post-optimization population.
-                auto localSearch = subflow
-                                       .for_each_index(size_t { 0 }, parents.size(), size_t { 1 },
-                                           [&](size_t i) -> void {
-                                               originalCoeffs[i] = LocalSearch(rngs[i], parents[i], *evaluator,
-                                                   generator->Optimizer(), config.LocalSearchProbability,
-                                                   config.LamarckianProbability);
-                                           })
-                                       .name("local search on initial population");
+                // Local search runs before prepareEval (not after, alongside
+                // eval) so that an evaluator snapshotting the population in
+                // Prepare() (e.g. DiversityEvaluator) sees post-optimization
+                // genotypes rather than the raw initial ones.
+                auto localSearch
+                    = subflow
+                          .for_each_index(size_t { 0 }, parents.size(), size_t { 1 },
+                              [&](size_t i) -> void {
+                                  auto search = LocalSearch(rngs[i], parents[i], generator->Optimizer(),
+                                      config.LocalSearchProbability, config.LamarckianProbability);
+                                  // Charged before the initial population is scored or committed.
+                                  accounting.Record(search);
+                                  originalCoeffs[i] = std::move(search.OriginalCoefficients);
+                              })
+                          .name("local search on initial population");
                 auto restoreCoeffs = subflow
                                          .for_each_index(size_t { 0 }, parents.size(), size_t { 1 },
                                              [&](size_t i) -> void {
@@ -298,7 +299,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                                   ++attempts;
                                   auto result
                                       = (*generator)(rngs[i], config.CrossoverProbability, config.MutationProbability,
-                                          config.LocalSearchProbability, config.LamarckianProbability, buf);
+                                          config.LocalSearchProbability, config.LamarckianProbability, buf, accounting);
                                   if (result) {
                                       offspring[i] = std::move(*result);
                                       generatedOffspring.fetch_add(1, std::memory_order_relaxed);

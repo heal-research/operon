@@ -171,41 +171,7 @@ private:
     std::optional<LinearScaling> scaling_;
 };
 
-// Evaluation counters of an evaluator tree, split by who spent them. `Residual*`/`Jacobian*` count the same units
-// that the budget is made of (EvaluatorBase::TotalEvaluations): `*Optimizer` is spent by coefficient optimization
-// (LocalSearch), `*Scoring` by everything else (the prediction pass of Evaluate, a Jacobian taken by a likelihood
-// scorer, ...). Budget consumption is `ResidualTotal() + JacobianTotal()`. Calls is the number of operator() calls
-// (candidate scorings) and OptimizerTimeUs the wall time spent in the optimizer, summed over threads.
-// The cache counters are not known to evaluators: they stay `nullopt` here and are filled by
-// GeneticAlgorithmBase::DetailedStats() when a transposition cache is configured (null means "no cache", not zero).
-struct EvaluationStats {
-    std::size_t Calls {};
-    std::size_t ResidualScoring {};
-    std::size_t ResidualOptimizer {};
-    std::size_t JacobianScoring {};
-    std::size_t JacobianOptimizer {};
-    std::size_t OptimizerTimeUs {};
-    std::optional<std::size_t> CacheHits {};
-    std::optional<std::size_t> CacheLookups {};
-
-    [[nodiscard]] constexpr auto ResidualTotal() const -> std::size_t { return ResidualScoring + ResidualOptimizer; }
-    [[nodiscard]] constexpr auto JacobianTotal() const -> std::size_t { return JacobianScoring + JacobianOptimizer; }
-    [[nodiscard]] constexpr auto Consumed() const -> std::size_t { return ResidualTotal() + JacobianTotal(); }
-
-    // Adds the evaluation counters of `other` (the cache counters belong to the algorithm and are left alone).
-    constexpr auto operator+=(EvaluationStats const& other) -> EvaluationStats&
-    {
-        Calls += other.Calls;
-        ResidualScoring += other.ResidualScoring;
-        ResidualOptimizer += other.ResidualOptimizer;
-        JacobianScoring += other.JacobianScoring;
-        JacobianOptimizer += other.JacobianOptimizer;
-        OptimizerTimeUs += other.OptimizerTimeUs;
-        return *this;
-    }
-
-    [[nodiscard]] constexpr auto operator==(EvaluationStats const&) const -> bool = default;
-};
+class OptimizerAccounting; // operators/local_search.hpp
 
 // An evaluator is an OperatorBase: `operator()` is its sole public execution path. It is `final` and performs, in
 // order, `Evaluate` (prediction phase), failure handling, and `Score` (objective phase). Both phases are protected
@@ -218,15 +184,11 @@ struct EvaluatorBase
     using Base = OperatorBase<Operon::Vector<Operon::Scalar>, Operon::Individual const&, Operon::Span<Operon::Scalar>>;
     using ReturnType = Base::ReturnType;
 
+    // Scoring counters only: what this evaluator's own operator() performed. They never include coefficient
+    // optimization, which is accounted by the run that invoked it (OptimizerAccounting).
     mutable std::atomic_ulong ResidualEvaluations { 0 }; // NOLINT
     mutable std::atomic_ulong JacobianEvaluations { 0 }; // NOLINT
     mutable std::atomic_ulong CallCount { 0 }; // NOLINT
-    mutable std::atomic_ulong CostFunctionTime { 0 }; // NOLINT
-    // The part of ResidualEvaluations/JacobianEvaluations that was spent by coefficient optimization (LocalSearch).
-    // Always incremented after the totals above, so that a reader loading these first never sees more optimizer
-    // than total evaluations (see DetailedStats).
-    mutable std::atomic_ulong OptimizerResidualEvaluations { 0 }; // NOLINT
-    mutable std::atomic_ulong OptimizerJacobianEvaluations { 0 }; // NOLINT
 
     static constexpr size_t DefaultEvaluationBudget = 100'000;
 
@@ -270,41 +232,28 @@ struct EvaluatorBase
     // the stored coefficients, so it bypasses structural fitness reuse.
     [[nodiscard]] virtual auto StructuralFitnessReusable() const -> bool { return true; }
 
+    // Scoring evaluations performed by this evaluator's own operator(): residual + Jacobian, never optimizer work.
     auto TotalEvaluations() const -> size_t { return ResidualEvaluations + JacobianEvaluations; }
 
+    // The configured evaluation budget. The unit is scoring residual + Jacobian evaluations plus the coefficient
+    // optimizer's residual + Jacobian evaluations; the run that owns both sources applies it
+    // (OffspringGeneratorBase::Terminate(OptimizerAccounting const&)).
     void SetBudget(size_t value) { budget_ = value; }
     auto Budget() const -> size_t { return budget_; }
 
-    // virtual because more complex evaluators (e.g. MultiEvaluator) might need to calculate it differently
+    // Whether the scoring work alone (Stats(): residual + Jacobian, children included) reached Budget(). Scoring-only
+    // by ownership: it cannot see the optimizer work of a run, so it is not the run's stop condition. Virtual because
+    // more complex evaluators (e.g. MultiEvaluator) might need to calculate it differently.
     virtual auto BudgetExhausted() const -> bool { return TotalEvaluations() >= Budget(); }
 
-    virtual auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t, std::size_t>
+    // Scoring counters of this evaluator (composite evaluators include their children): residual evaluations,
+    // Jacobian evaluations, calls. Residual/Jacobian evaluations are the ones spent by scoring: the prediction pass
+    // of Evaluate, a Jacobian taken by a likelihood scorer, ... Coefficient-optimizer work is never counted here
+    // (see OptimizerAccounting; GeneticAlgorithmBase::DetailedStats() reports both). Safe to call while the
+    // evaluator is in use (a snapshot), exact once evaluation has stopped.
+    virtual auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t>
     {
-        return std::tuple { ResidualEvaluations.load(), JacobianEvaluations.load(), CallCount.load(),
-            CostFunctionTime.load() };
-    }
-
-    // Like Stats(), with the optimizer/scoring split of the residual and Jacobian evaluations (the totals are the
-    // same as Stats()). Composite evaluators (MultiEvaluator, the shape-constrained adapter) include their children.
-    // Safe to call while the evaluator is in use; the result is then a consistent-enough snapshot (every optimizer
-    // evaluation is also counted in its total, never the other way round), exact once evaluation has stopped.
-    virtual auto DetailedStats() const -> EvaluationStats
-    {
-        // Optimizer counters are read before the totals; LocalSearch bumps the total first, then the optimizer part.
-        auto const optimizerResidual = OptimizerResidualEvaluations.load();
-        auto const optimizerJacobian = OptimizerJacobianEvaluations.load();
-        auto const residual = ResidualEvaluations.load();
-        auto const jacobian = JacobianEvaluations.load();
-        auto const clampedResidual = std::min<std::size_t>(optimizerResidual, residual);
-        auto const clampedJacobian = std::min<std::size_t>(optimizerJacobian, jacobian);
-        return EvaluationStats {
-            .Calls = CallCount.load(),
-            .ResidualScoring = residual - clampedResidual,
-            .ResidualOptimizer = clampedResidual,
-            .JacobianScoring = jacobian - clampedJacobian,
-            .JacobianOptimizer = clampedJacobian,
-            .OptimizerTimeUs = CostFunctionTime.load(),
-        };
+        return std::tuple { ResidualEvaluations.load(), JacobianEvaluations.load(), CallCount.load() };
     }
 
     auto Population() const -> Operon::Span<Individual const> { return population_; }
@@ -321,9 +270,6 @@ struct EvaluatorBase
         ResidualEvaluations = 0;
         JacobianEvaluations = 0;
         CallCount = 0;
-        CostFunctionTime = 0;
-        OptimizerResidualEvaluations = 0;
-        OptimizerJacobianEvaluations = 0;
         ResetChildren();
     }
 
@@ -370,18 +316,14 @@ private:
     size_t budget_ = DefaultEvaluationBudget;
 };
 
-// Optionally runs local search (coefficient optimization) on `ind`'s genotype with
-// probability `pLocal`; does not score it. Non-Lamarckian updates return the original
-// coefficients so the caller can evaluate the optimized genotype, then restore them.
-OPERON_EXPORT auto LocalSearch(Operon::RandomGenerator& random, Operon::Individual& ind,
-    Operon::EvaluatorBase const& evaluator, Operon::CoefficientOptimizer const* coeffOptimizer, double pLocal,
-    double pLamarck) -> std::optional<std::vector<Operon::Scalar>>;
-
-// Runs LocalSearch then scores via `evaluator`; non-finite fitness clamps to ErrMax. A non-Lamarckian update is
-// restored through RestoreNonLamarckianCoefficients after the optimized coefficients are scored.
+// Runs LocalSearch (local_search.hpp), publishes the optimizer work it performed to `accounting` -- immediately,
+// before scoring, so a fit that did work stays charged even if scoring throws and whatever later happens to the
+// candidate -- then scores via `evaluator`; non-finite fitness clamps to ErrMax. A non-Lamarckian update is restored
+// through RestoreNonLamarckianCoefficients after the optimized coefficients are scored. The evaluator's counters
+// only see the scoring; `accounting` is the run's, and is required: there is deliberately no default.
 OPERON_EXPORT auto ScoreIndividual(Operon::RandomGenerator& random, Operon::Individual& ind,
     Operon::EvaluatorBase const& evaluator, Operon::CoefficientOptimizer const* coeffOptimizer, double pLocal,
-    double pLamarck, Operon::Span<Operon::Scalar> buf) -> void;
+    double pLamarck, Operon::Span<Operon::Scalar> buf, Operon::OptimizerAccounting& accounting) -> void;
 
 class OPERON_EXPORT UserDefinedEvaluator : public EvaluatorBase {
 public:
@@ -494,10 +436,10 @@ public:
     explicit MultiEvaluator(Problem const* problem) : EvaluatorBase(problem) {}
 
     // Shared children: Add() does not reject a child that is already registered (directly or through a nested
-    // composite). Stats(), DetailedStats() and BudgetExhausted() all sum the children slot by slot, and a child runs
-    // once per slot (its own counters grow once per run), so a child occupying k slots contributes k times its own
-    // counters. The three always agree and the budget consumes exactly what they report; Reset() reaching a shared
-    // child more than once is harmless.
+    // composite). Stats() and BudgetExhausted() sum the children slot by slot, and a child runs once per slot (its
+    // own counters grow once per run), so a child occupying k slots contributes k times its own counters. The two
+    // always agree and the budget consumes exactly what they report; Reset() reaching a shared child more than once
+    // is harmless.
     // Registers a child that runs through its own operator(). Throws std::invalid_argument for a
     // ShapeConstrainedValueEvaluator: it owns the whole constrained objective vector (including its structural
     // objectives) and its non-Lamarckian restoration step (RestoreNonLamarckianCoefficients) is only reachable when
@@ -523,39 +465,28 @@ public:
         return std::ranges::all_of(evaluators_, [](auto const& ev) { return ev->StructuralFitnessReusable(); });
     }
 
-    auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t, std::size_t> final
+    // Own scoring counters plus those of every child, summed slot by slot (see Add). Calls is the composite's own.
+    // Optimizer work is not an evaluator's: it is recorded once per fit by the orchestration that runs local search.
+    auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t> final
     {
         auto resEval { 0UL };
         auto jacEval { 0UL };
-        auto cfTime { 0UL };
 
         for (auto const& ev : evaluators_) {
-            auto [re, je, cc, ct] = ev->Stats();
+            auto [re, je, cc] = ev->Stats();
             resEval += re;
             jacEval += je;
-            cfTime += ct;
         }
 
         return std::tuple { resEval + ResidualEvaluations.load(), jacEval + JacobianEvaluations.load(),
-            CallCount.load(), cfTime + CostFunctionTime.load() };
+            CallCount.load() };
     }
 
+    // Scoring work only (see EvaluatorBase::BudgetExhausted).
     auto BudgetExhausted() const -> bool final
     {
-        auto [re, je, cc, ct] = Stats();
+        auto [re, je, cc] = Stats();
         return re + je >= Budget();
-    }
-
-    // Own counters plus those of every child (Calls is the composite's own, like Stats()).
-    auto DetailedStats() const -> EvaluationStats override
-    {
-        auto stats = EvaluatorBase::DetailedStats();
-        auto const calls = stats.Calls;
-        for (auto const& ev : evaluators_) {
-            stats += ev->DetailedStats();
-        }
-        stats.Calls = calls;
-        return stats;
     }
 
     auto Evaluators() const { return evaluators_; }

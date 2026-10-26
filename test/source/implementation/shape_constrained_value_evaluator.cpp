@@ -651,7 +651,8 @@ TEST_CASE("Non-Lamarckian restoration does not re-certify the restored genotype"
     auto const holder = fx.MakeGate(IncreasingInX1(), Policy(E::HardReject));
     auto& gate = *holder;
     gate.SetWorstValue(7);
-    ScoreIndividual(rng, ind, gate, &coeffOptimizer, 1.0, 0.0, Operon::Span<Operon::Scalar> { buf });
+    Operon::OptimizerAccounting accounting;
+    ScoreIndividual(rng, ind, gate, &coeffOptimizer, 1.0, 0.0, Operon::Span<Operon::Scalar> { buf }, accounting);
 
     // The fitness describes the evaluated (optimized-coefficient) model: feasible, error 0, one prediction pass.
     CHECK(gate.Predictions.load() == 1);
@@ -764,17 +765,16 @@ TEST_CASE("The adapter aggregates its structural objectives' accounting", "[shap
     CHECK_FALSE(gate.BudgetExhausted());
     static_cast<void>(gate(fx.rng, ind, buf));
     static_cast<void>(gate(fx.rng, ind, buf));
-    auto const [residual, jacobian, calls, time] = gate.Stats();
+    auto const [residual, jacobian, calls] = gate.Stats();
     CHECK(residual == 2);
     CHECK(jacobian == 0);
     CHECK(calls == 2);
-    static_cast<void>(time);
     CHECK_FALSE(gate.BudgetExhausted());
     static_cast<void>(gate(fx.rng, ind, buf));
     CHECK(gate.BudgetExhausted());
 }
 
-TEST_CASE("The adapter's detailed stats and Reset cover its structural objectives", "[shape-adapter][stats]")
+TEST_CASE("The adapter's scoring stats and Reset cover its structural objectives", "[shape-adapter][stats]")
 {
     GateFixture fx;
     using E = ShapeConstraintEnforcement;
@@ -785,30 +785,48 @@ TEST_CASE("The adapter's detailed stats and Reset cover its structural objective
     auto& gate = *holder;
 
     static_cast<void>(gate(fx.rng, ind, buf)); // one scoring prediction on the adapter's base evaluator
-    // Charge the structural objective as local search would: totals first, then the optimizer part.
+    // Charge the structural objective with scoring work, as an evaluator that takes a residual pass and a Jacobian
+    // in its own scoring would.
     length->ResidualEvaluations += 4;
     length->JacobianEvaluations += 3;
-    length->OptimizerResidualEvaluations += 3;
-    length->OptimizerJacobianEvaluations += 2;
-    length->CostFunctionTime += 7;
 
-    auto const stats = gate.DetailedStats();
-    CHECK(stats.Calls == 1);
-    CHECK(stats.ResidualScoring == 2); // 1 prediction + 1 scoring evaluation of the structural objective
-    CHECK(stats.ResidualOptimizer == 3);
-    CHECK(stats.JacobianScoring == 1);
-    CHECK(stats.JacobianOptimizer == 2);
-    CHECK(stats.OptimizerTimeUs == 7);
-    auto const [residual, jacobian, calls, time] = gate.Stats();
-    CHECK(stats.ResidualTotal() == residual);
-    CHECK(stats.JacobianTotal() == jacobian);
-    CHECK(stats.Calls == calls);
-    CHECK(stats.OptimizerTimeUs == time);
+    auto const [residual, jacobian, calls] = gate.Stats();
+    CHECK(residual == 5); // 1 prediction + the structural objective's 4
+    CHECK(jacobian == 3);
+    CHECK(calls == 1); // the adapter's own, not the structural objectives'
+    CHECK(gate.TotalEvaluations() == 1); // own counters only
 
     gate.Reset();
-    CHECK(gate.DetailedStats() == EvaluationStats {});
-    CHECK(length->DetailedStats() == EvaluationStats {});
+    CHECK(gate.Stats() == std::tuple<std::size_t, std::size_t, std::size_t> { 0, 0, 0 });
+    CHECK(length->Stats() == std::tuple<std::size_t, std::size_t, std::size_t> { 0, 0, 0 });
     CHECK(gate.TotalEvaluations() == 0);
+}
+
+TEST_CASE("Optimizer work of a shape-constrained fit is recorded once, by the orchestration", "[shape-adapter][stats]")
+{
+    GateFixture fx;
+    using E = ShapeConstraintEnforcement;
+    auto const length = Length(&fx.problem);
+    auto ind = GateFixture::MakeIndividual(fx.tree);
+    auto buf = fx.Buffer();
+    auto const holder = fx.MakeGate(IncreasingInX1(), Policy(E::HardReject), { length.get() });
+    auto& gate = *holder;
+    ConstantCoefficientOptimizer optimizer { &fx.problem, Operon::Scalar { 1 } };
+    Operon::CoefficientOptimizer coeffOptimizer { &optimizer };
+    Operon::OptimizerAccounting accounting;
+    Operon::RandomGenerator rng { 1 };
+
+    ScoreIndividual(rng, ind, gate, &coeffOptimizer, 1.0, 1.0, Operon::Span<Operon::Scalar> { buf }, accounting);
+
+    // The fit did 1 residual evaluation: the run's accounting has it, neither the adapter nor its objectives do.
+    auto const work = accounting.Snapshot();
+    CHECK(work.Residual == 1);
+    CHECK(work.Jacobian == 0);
+    auto const [residual, jacobian, calls] = gate.Stats();
+    CHECK(residual == 1); // the adapter's single prediction pass
+    CHECK(jacobian == 0);
+    CHECK(calls == 1);
+    CHECK(std::get<0>(length->Stats()) == 0);
 }
 
 } // namespace Operon::Test

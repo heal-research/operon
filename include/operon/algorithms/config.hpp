@@ -13,7 +13,7 @@ class Zobrist; // forward declaration — include operon/hash/zobrist.hpp to use
 
 struct GeneticAlgorithmConfig {
     size_t Generations; // generation limit
-    size_t Evaluations; // evaluation budget
+    size_t Evaluations; // evaluation budget: scoring + coefficient-optimizer residual and Jacobian evaluations
     size_t Iterations; // local search iterations
     size_t PopulationSize;
     size_t PoolSize;
