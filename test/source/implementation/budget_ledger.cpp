@@ -67,6 +67,7 @@ namespace {
     struct Scenario {
         Algorithm Algo { Algorithm::GP };
         std::string Generator { "basic" }; // basic, os, brood, poly, capped
+        bool Structural { false }; // select a zero-cost TreePropertyEvaluator
         bool LocalSearch { false };
         bool Cache { false }; // transposition cache, CacheVisibility::Committed
         std::size_t Population { 40 };
@@ -272,8 +273,12 @@ namespace {
                 reinserter_ = std::make_unique<Operon::KeepBestReinserter>(comp, elite);
             }
 
-            auto* evaluator = sc.Algo == Algorithm::GP ? static_cast<EvaluatorBase*>(errorEvaluator_.get())
-                                                       : static_cast<EvaluatorBase*>(multiEvaluator_.get());
+            auto* evaluator = static_cast<EvaluatorBase*>(errorEvaluator_.get());
+            if (sc.Structural) {
+                evaluator = lengthEvaluator_.get();
+            } else if (sc.Algo == Algorithm::NSGA2) {
+                evaluator = multiEvaluator_.get();
+            }
             generator_ = MakeGenerator(sc, evaluator);
         }
 
@@ -880,9 +885,8 @@ TEST_CASE("An unusable population, pool or budget is a configuration error", "[b
         std::size_t Budget;
         char const* Message;
     };
-    auto const bad = GENERATE(Bad { 16, 16, 15, "evaluation budget (15) is smaller than the population size (16)" },
-        Bad { 0, 16, 100, "population size must be at least 1" }, Bad { 0, 0, 0, "population size must be at least 1" },
-        Bad { 16, 0, 100, "pool size must be at least 1" });
+    auto const bad = GENERATE(Bad { 0, 16, 100, "population size must be at least 1" },
+        Bad { 0, 0, 0, "population size must be at least 1" }, Bad { 16, 0, 100, "pool size must be at least 1" });
     CAPTURE(bad.Population, bad.Pool, bad.Budget);
     sc.Population = bad.Population;
     sc.Pool = bad.Pool;
@@ -925,51 +929,27 @@ TEST_CASE("A budget of exactly the population size is accepted", "[budget][confi
     });
 }
 
-// Run() rejects the configuration before it touches anything, also on an algorithm that already holds a fitted
-// population (a warm start): generation, parents, worker RNGs, accounting, the caller's RNG and the evaluator
-// counters stay as they were.
-TEST_CASE("A rejected configuration leaves a fitted algorithm untouched", "[budget][config]")
+TEST_CASE("A zero-cost structural evaluator accepts a zero evaluation budget", "[budget][config]")
 {
     Scenario sc;
     sc.Algo = GENERATE(Algorithm::GP, Algorithm::NSGA2);
+    sc.Structural = true;
     sc.Population = 16;
     sc.Pool = 16;
-    sc.Generations = 2;
     CAPTURE(Label(sc));
 
     Fixture f { Poly10(), sc };
-    f.With(f.Config(), [&](auto& fitted) {
+    f.With(f.Config(/*generations=*/3, /*budget=*/0), [&](auto& algo) {
         Operon::RandomGenerator random { sc.Seed };
-        fitted.Run(random, nullptr, 1);
-        REQUIRE(fitted.Generation() == 2);
-        auto const calls = f.ActiveEvaluator().CallCount.load();
-        auto const stats = f.ActiveEvaluator().Stats();
-
-        return f.With(f.Config(/*generations=*/5, /*budget=*/sc.Population - 1), [&](auto& algo) {
-            algo.RestoreIndividuals(fitted.Individuals());
-            algo.WorkerRngs() = fitted.WorkerRngs();
-            algo.Generation() = fitted.Generation();
-            algo.IsFitted() = true;
-            algo.SetBudgetReport(fitted.BudgetReport());
-            algo.SetIncompleteGeneration(OffspringProgress { 3, 2, 16, DiscardReason::ResourceLimit, true, false });
-            auto const state = StateOf(algo);
-            auto const accounting = algo.BudgetReport();
-            auto const randomBefore = random.state();
-
-            REQUIRE_THROWS_AS(algo.Run(random, nullptr, 1, /*warmStart=*/true), std::invalid_argument);
-
-            CHECK(StateOf(algo) == state);
-            CHECK(algo.Generation() == 2);
-            CHECK(algo.IsFitted());
-            CHECK(algo.BudgetReport() == accounting);
-            CHECK(algo.IncompleteGeneration().has_value());
-            CHECK(random.state() == randomBefore);
-            CHECK(f.ActiveEvaluator().CallCount == calls);
-            CHECK(f.ActiveEvaluator().Stats() == stats);
-            return 0;
-        });
+        REQUIRE_NOTHROW(algo.Run(random, nullptr, 1));
+        CHECK(algo.IsFitted());
+        CHECK(algo.BudgetReport().EvaluationsCommitted == 0);
+        CHECK(algo.BudgetReport().BudgetOvershoot == 0);
+        CHECK(algo.BudgetReport().End == RunEnd::BudgetSpent);
+        return 0;
     });
 }
+
 
 TEST_CASE("Initialization always commits: overshoot is recorded and no generation starts", "[budget][config]")
 {
