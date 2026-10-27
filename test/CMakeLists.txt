@@ -341,7 +341,7 @@ if(TARGET operon_gp AND TARGET operon_nsgp)
     file(GENERATE
         OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/capabilities-target-options-$<CONFIG>.txt"
         CONTENT "$<JOIN:$<TARGET_PROPERTY:COMPILE_OPTIONS>,|>"
-        TARGET operon_gp
+        TARGET operon_operon
     )
     add_test(
         NAME cli_capabilities_compiler_flags
