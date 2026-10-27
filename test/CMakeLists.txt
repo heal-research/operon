@@ -337,11 +337,22 @@ if(TARGET operon_gp AND TARGET operon_nsgp)
     endforeach()
     # The compile options of operon_operon are resolved by file(GENERATE), the same way as for the reported flags (an
     # add_test() argument is evaluated in a context that omits options inherited from linked targets).
-    file(GENERATE
-        OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/capabilities-target-options-$<CONFIG>.txt"
-        CONTENT "$<JOIN:$<TARGET_PROPERTY:COMPILE_OPTIONS>,|>"
-        TARGET operon_operon
-    )
+    if(CMAKE_CONFIGURATION_TYPES)
+        foreach(operon_cfg IN LISTS CMAKE_CONFIGURATION_TYPES)
+            file(GENERATE
+                OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/capabilities-target-options-${operon_cfg}.txt"
+                CONTENT "$<JOIN:$<TARGET_PROPERTY:COMPILE_OPTIONS>,|>"
+                CONDITION "$<CONFIG:${operon_cfg}>"
+                TARGET operon_operon
+            )
+        endforeach()
+    else()
+        file(GENERATE
+            OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/capabilities-target-options-$<CONFIG>.txt"
+            CONTENT "$<JOIN:$<TARGET_PROPERTY:COMPILE_OPTIONS>,|>"
+            TARGET operon_operon
+        )
+    endif()
     add_test(
         NAME cli_capabilities_compiler_flags
         COMMAND "${CMAKE_COMMAND}"
