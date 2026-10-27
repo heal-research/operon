@@ -503,9 +503,9 @@ string(REPLACE ">" "$<ANGLE-R>" operon_flags_global "${operon_flags_global}")
 string(REPLACE "," "$<COMMA>" operon_flags_global "${operon_flags_global}")
 string(REPLACE ";" "$<SEMICOLON>" operon_flags_global "${operon_flags_global}")
 file(GENERATE
-    TARGET operon_operon
     OUTPUT "${PROJECT_BINARY_DIR}/buildinfo-flags/$<CONFIG>/buildinfo_flags.hpp"
     CONTENT "#define OPERON_BUILD \"$<CONFIG>\"\n#define OPERON_COMPILER_FLAGS R\"operon_flags(${operon_flags_global}${operon_flags_per_config} $<JOIN:$<TARGET_PROPERTY:COMPILE_OPTIONS>, >)operon_flags\"\n"
+    TARGET operon_operon
 )
 target_include_directories(operon_operon PRIVATE "${PROJECT_BINARY_DIR}/buildinfo-flags/$<CONFIG>")
 
