@@ -345,7 +345,7 @@ if(TARGET operon_gp AND TARGET operon_nsgp)
         COMMAND "${CMAKE_COMMAND}"
                 "-DCLI=$<TARGET_FILE:operon_gp>"
                 "-DCONFIG=$<CONFIG>"
-                "-DTARGET_OPTIONS_FILE=${CMAKE_CURRENT_BINARY_DIR}/capabilities-target-options-$<CONFIG>.txt"
+                "-DTARGET_OPTIONS=${operon_target_compile_options}"
                 "-DDEBUG_FLAGS=${CMAKE_CXX_FLAGS_DEBUG}"
                 "-DACTIVE_FLAGS=${operon_active_flags}"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/check_capabilities_flags.cmake"

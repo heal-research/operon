@@ -7,7 +7,7 @@
 # target) must be reported exactly.
 #   -DCLI=<executable> -DCONFIG=<built configuration> -DDEBUG_FLAGS=<CMAKE_CXX_FLAGS_DEBUG> -DACTIVE_FLAGS=<flags
 #   applied to the built configuration: CMAKE_CXX_FLAGS plus CMAKE_CXX_FLAGS_<CONFIG>>
-#   -DTARGET_OPTIONS_FILE=<file holding the COMPILE_OPTIONS of operon_operon joined with '|'>
+#   -DTARGET_OPTIONS=<the COMPILE_OPTIONS of operon_operon joined with '|'>
 execute_process(
     COMMAND "${CLI}" --capabilities
     RESULT_VARIABLE status
@@ -29,12 +29,11 @@ if(NOT "${buildType}" STREQUAL "${CONFIG}")
     message(FATAL_ERROR "build_type is '${buildType}' but the ${CONFIG} configuration was built")
 endif()
 
-file(READ "${TARGET_OPTIONS_FILE}" targetOptions)
-string(REPLACE "|" " " targetOptions "${targetOptions}")
+string(REPLACE "|" " " targetOptions "${TARGET_OPTIONS}")
 string(REGEX REPLACE "[ \t]+" ";" targetTokens "${targetOptions}")
 list(FILTER targetTokens EXCLUDE REGEX "^$")
 if(NOT targetTokens)
-    message(FATAL_ERROR "the operon_operon target has no compile options to check (${TARGET_OPTIONS_FILE})")
+    message(FATAL_ERROR "the operon_operon target has no compile options to check")
 endif()
 string(REGEX REPLACE "[ \t]+" ";" reportedTokens "${reported}")
 string(REGEX REPLACE "[ \t]+" ";" activeTokens "${ACTIVE_FLAGS}")
