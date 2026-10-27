@@ -339,9 +339,9 @@ if(TARGET operon_gp AND TARGET operon_nsgp)
     # The compile options of operon_operon are resolved by file(GENERATE), the same way as for the reported flags (an
     # add_test() argument is evaluated in a context that omits options inherited from linked targets).
     file(GENERATE
-        TARGET operon_gp
         OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/capabilities-target-options-$<CONFIG>.txt"
         CONTENT "$<JOIN:$<TARGET_PROPERTY:COMPILE_OPTIONS>,|>"
+        TARGET operon_gp
     )
     add_test(
         NAME cli_capabilities_compiler_flags
