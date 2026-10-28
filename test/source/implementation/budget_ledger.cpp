@@ -1128,7 +1128,8 @@ TEST_CASE("Ledger arithmetic saturates", "[budget][accounting]")
     CHECK(detail::SaturatingSub(5, 3) == 2);
 
     Operon::Problem problem { gsl::not_null<Dataset*>(&Poly10()) };
-    Operon::Evaluator<DTable> evaluator { &problem, std::make_unique<DTable>().get() };
+    DTable dtable;
+    Operon::Evaluator<DTable> evaluator { &problem, &dtable };
     constexpr std::size_t budget = 100;
     OptimizerAccounting optimizer;
     detail::BudgetLedger ledger { &evaluator, &optimizer, budget };

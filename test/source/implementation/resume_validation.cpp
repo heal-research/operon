@@ -322,6 +322,13 @@ TEST_CASE("CheckPopulation: parents must fit the dataset, the primitive set and 
             Tree const tree { VarNode(x), FuncNode(BuiltinOp::Sin, 1) };
             CHECK_THROWS_AS(check({ tree }), std::runtime_error);
         }
+        SECTION("a function with an out-of-range arity")
+        {
+            auto tree = Sum(x, 3);
+            tree.Nodes().back().Arity = 1;
+            tree.UpdateNodes();
+            CHECK_THAT(Message([&] { check({ tree }); }), ContainsSubstring("arity"));
+        }
         SECTION("a function that is registered but disabled")
         {
             CHECK_NOTHROW(check({ Sum(x, 3) }));

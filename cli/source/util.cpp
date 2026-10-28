@@ -496,25 +496,30 @@ auto MaybeSaveCheckpoint(GeneticAlgorithmBase const& algo, RandomGenerator const
     if (force && gen == lastSaved) {
         return;
     }
-
     auto const path = result["checkpoint-file"].as<std::string>();
-    Serialization::Checkpoint cp;
-    cp.RngState = rng.state();
-    cp.Generation = gen;
-    cp.Population.assign(algo.Parents().begin(), algo.Parents().end());
-    cp.WorkerRngStates.reserve(algo.WorkerRngs().size());
-    for (auto const& worker : algo.WorkerRngs()) {
-        cp.WorkerRngStates.push_back(worker.state());
-    }
-    if (auto const* cache = algo.GetGenerator()->Cache()) {
-        cp.Cache = Serialization::ToCacheCheckpoint(cache->Export());
-    }
-    cp.Run = fingerprint;
-    if (!Serialization::SaveCheckpoint(cp, path)) {
+    try {
+        Serialization::Checkpoint cp;
+        cp.RngState = rng.state();
+        cp.Generation = gen;
+        cp.Population.assign(algo.Parents().begin(), algo.Parents().end());
+        cp.WorkerRngStates.reserve(algo.WorkerRngs().size());
+        for (auto const& worker : algo.WorkerRngs()) {
+            cp.WorkerRngStates.push_back(worker.state());
+        }
+        if (auto const* cache = algo.GetGenerator()->Cache()) {
+            cp.Cache = Serialization::ToCacheCheckpoint(cache->Export());
+        }
+        cp.Run = fingerprint;
+        if (!Serialization::SaveCheckpoint(cp, path)) {
+            fmt::print(stderr,
+                "warning: checkpoint save failed at generation {} — run continues but resume may not be possible\n", gen);
+        } else {
+            lastSaved = gen;
+        }
+    } catch (std::exception const& error) {
         fmt::print(stderr,
-            "warning: checkpoint save failed at generation {} — run continues but resume may not be possible\n", gen);
-    } else {
-        lastSaved = gen;
+            "warning: checkpoint save failed at generation {} ({}): run continues but resume may not be possible\n",
+            gen, error.what());
     }
 }
 
