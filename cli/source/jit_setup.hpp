@@ -36,6 +36,7 @@ struct JitObjects {
 // .Zobrist is a JitZobrist; assign to config.Cache if --transposition-cache is set.
 auto MakeJitObjects(std::string_view jitMode, Operon::Problem& problem, Operon::ScalarDispatch const& dtable,
     std::string const& objective, int jitMaxLength, std::size_t jitMinVisits, int maxLength, std::size_t seed,
-    std::size_t cacheMaxAge = 0, std::optional<Operon::ShapeConstraintSpec> const& shape = std::nullopt) -> JitObjects;
+    Operon::ZobristOptions cacheOptions = {}, std::optional<Operon::ShapeConstraintSpec> const& shape = std::nullopt)
+    -> JitObjects;
 
 } // namespace Operon::CLI

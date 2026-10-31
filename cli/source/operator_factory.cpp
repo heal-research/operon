@@ -96,6 +96,18 @@ auto ParseReinserter(std::string const& str, ComparisonCallback&& comp, size_t e
     return reinserter;
 }
 
+auto ParseCacheVisibility(std::string const& str) -> CacheVisibility
+{
+    if (str == "immediate") {
+        return CacheVisibility::Immediate;
+    }
+    if (str == "committed") {
+        return CacheVisibility::Committed;
+    }
+    throw std::invalid_argument(fmt::format(
+        "{}; --cache-visibility must be one of: immediate, committed", GetErrorString("cache-visibility", str)));
+}
+
 auto ParseSelector(std::string const& str, ComparisonCallback&& comp) -> std::unique_ptr<Operon::SelectorBase>
 {
     auto tok = Split(str, ':');
