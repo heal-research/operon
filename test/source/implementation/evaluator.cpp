@@ -118,6 +118,7 @@ TEST_CASE("ScoreIndividual evaluates optimized coefficients before non-Lamarckia
     FixedCoefficientOptimizer optimizer { &fix.problem };
     CoefficientOptimizer coeffOptimizer { &optimizer };
     Operon::Vector<Operon::Scalar> buf(fix.problem.TrainingRange().Size());
+    Operon::OptimizerAccounting accounting;
 
     SECTION("non-Lamarckian local search restores genotype but keeps optimized fitness")
     {
@@ -125,7 +126,9 @@ TEST_CASE("ScoreIndividual evaluates optimized coefficients before non-Lamarckia
         Operon::RandomGenerator rng { 1 };
 
         ScoreIndividual(rng, ind, evaluator, &coeffOptimizer, /*pLocal=*/1.0, /*pLamarck=*/0.0,
-            Operon::Span<Operon::Scalar> { buf });
+            Operon::Span<Operon::Scalar> { buf }, accounting);
+        CHECK(accounting.Snapshot().Residual == 1);
+        CHECK(evaluator.TotalEvaluations() == 1);
 
         CHECK_THAT(static_cast<double>(ind.Fitness.front()), Catch::Matchers::WithinAbs(0.0, 1e-6));
         for (auto c : ind.Genotype.GetCoefficients()) {
@@ -139,7 +142,10 @@ TEST_CASE("ScoreIndividual evaluates optimized coefficients before non-Lamarckia
         Operon::RandomGenerator rng { 1 };
 
         ScoreIndividual(rng, ind, evaluator, &coeffOptimizer, /*pLocal=*/1.0, /*pLamarck=*/1.0,
-            Operon::Span<Operon::Scalar> { buf });
+            Operon::Span<Operon::Scalar> { buf }, accounting);
+        // The optimizer's single residual evaluation is the run's, not the evaluator's (which scored once).
+        CHECK(accounting.Snapshot().Residual == 1);
+        CHECK(evaluator.TotalEvaluations() == 1);
 
         CHECK_THAT(static_cast<double>(ind.Fitness.front()), Catch::Matchers::WithinAbs(0.0, 1e-6));
         for (auto c : ind.Genotype.GetCoefficients()) {

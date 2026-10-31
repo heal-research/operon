@@ -128,6 +128,13 @@ namespace detail {
         return static_cast<T>(std::min(value, limit));
     }
 
+    // a + b, saturating at T's maximum instead of wrapping.
+    template <std::unsigned_integral T> [[nodiscard]] constexpr auto SaturatingAdd(T a, T b) -> T
+    {
+        constexpr auto limit = std::numeric_limits<T>::max();
+        return b > limit - a ? limit : static_cast<T>(a + b);
+    }
+
     // a * b, saturating at the largest size_t instead of wrapping.
     [[nodiscard]] constexpr auto SaturatingMultiply(std::size_t a, std::size_t b) -> std::size_t
     {
