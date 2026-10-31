@@ -177,3 +177,7 @@ if (outcome) { tree.SetCoefficients(outcome->FinalParameters); }
 | zero parameters | no solver runs; one residual evaluation; `InitialCost == FinalCost`, `Iterations == 0`, `FunctionEvaluations == 1`, `JacobianEvaluations == 0`, empty parameters; `FitFailure` (or `FitEvaluationError` if the evaluation fails) |
 
 Iteration semantics: `Iterations` is an accepted-LM-step budget on both backends, and `Diagnostics().Iterations` is the number of accepted steps taken. Tiny: accepted steps are capped by `Iterations`, with total attempts (accepted or rejected) bounded by `Iterations * (n + 1)`. Eigen: accepted steps are capped by `Iterations` (`lm.iterations() - 1`, since Eigen counts from 1), and `maxfev`, which bounds function evaluations including rejected trial steps, is `max(Iterations * (n + 1), 1)`. `Iterations == 0` performs no step on either backend: the initial point is evaluated and the outcome is a `FitFailure` with unchanged parameters. Budgets larger than the backend's integer type saturate at its maximum instead of wrapping. `FunctionEvaluations` and `JacobianEvaluations` count the cost evaluations that requested residuals and a Jacobian.
+
+## Search-driver layout
+
+`GeneticAlgorithmBase` gains the data member that backs `IncompleteGeneration()`, which changes the object layout of `GeneticProgrammingAlgorithm` and `NSGA2`. Consumers compiled against earlier headers are not ABI-compatible and must be rebuilt.
