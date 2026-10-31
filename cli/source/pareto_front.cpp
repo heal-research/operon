@@ -48,11 +48,8 @@ namespace {
 auto SelectParetoFront(Operon::Span<Individual const> population, NondominatedSorterBase const& sorter,
     Operon::Scalar eps) -> std::vector<Individual const*>
 {
-    // Stored Rank/Distance are relative to the population that was last sorted (parents + offspring), so after
-    // reinsertion they can disagree with the retained parents. Derive the front from the fitness values instead,
-    // with the sorter and epsilon deduplication of NSGA2::Sort, applied to these (retained) individuals:
-    // epsilon-equivalent individuals are collapsed onto the lexicographically smallest one and the configured sorter
-    // ranks the rest under the same epsilon. The sorters only read Fitness.
+    // Rank is relative to the last sorted population, not necessarily the retained parents.
+    // Group epsilon-equivalent individuals before ranking; dominance semantics depend on the sorter.
     std::vector<size_t> order(population.size());
     std::iota(order.begin(), order.end(), size_t { 0 });
     std::ranges::stable_sort(order, [&](size_t a, size_t b) -> bool {

@@ -15,11 +15,9 @@
 
 namespace Operon {
 
-// Non-dominated members of `population`, computed from the fitness vectors (stored Rank is not consulted) with the
-// same sorter and epsilon deduplication as NSGA2::Sort, applied to `population` (the retained parents): epsilon-
-// equivalent individuals (--epsilon) are collapsed onto the lexicographically smallest one, then `sorter` ranks the
-// remaining ones under the same tolerance. Pass the sorter the run used. This is not NSGA2::Best(), which after a
-// completed generation is the front of parents plus offspring (it equals Best() only for the initial population).
+// Compute the front from population fitness, ignoring stored Rank. Epsilon-equivalent individuals are grouped
+// before ranking; whether epsilon affects dominance depends on the sorter. The CLI's rs and ms rank exactly.
+// This is not NSGA2::Best(), which after a completed generation refers to parents plus offspring.
 // Result is ordered by the first objective.
 auto SelectParetoFront(Operon::Span<Individual const> population, NondominatedSorterBase const& sorter,
     Operon::Scalar eps) -> std::vector<Individual const*>;

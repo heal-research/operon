@@ -279,8 +279,7 @@ if(TARGET operon_nsgp)
                 "-DARGS=--dataset;data/Poly-10.csv;--target;Y;--train;0:100;--test;100:200;--population-size;128;--pool-size;128;--threads;1;--seed;7;--generations;30;--evaluations;220;--iterations;0;--objective;nmse"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/check_pareto_front.cmake"
     )
-    # --epsilon reaches the front export: with a tolerance larger than every objective difference all individuals are
-    # equivalent, so exactly one is exported (an exact-dominance export would list the whole trade-off front).
+    # With epsilon larger than every objective difference, grouping leaves one representative for export.
     add_test(
         NAME cli_nsgp_epsilon_front
         COMMAND "${CMAKE_COMMAND}"
