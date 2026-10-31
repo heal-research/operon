@@ -164,13 +164,21 @@ auto CheckPopulation(std::string const& path, Operon::Vector<Individual> const& 
                                                      "was written with another dataset, --target or --inputs)",
                     path, j, i, node.HashValue));
             }
-            if (node.Type == NodeType::Function
-                && !(pset.Contains(node.HashValue) && pset.IsEnabled(node.HashValue)
-                    && pset.Frequency(node.HashValue) > 0)) {
-                throw std::runtime_error(fmt::format("checkpoint '{}': node {} of parent {} uses the function with "
-                                                     "hash {:#x}, which is not an enabled primitive of this run (the "
-                                                     "checkpoint was written with another primitive set)",
-                    path, j, i, node.HashValue));
+            if (node.Type == NodeType::Function) {
+                if (!(pset.Contains(node.HashValue) && pset.IsEnabled(node.HashValue)
+                        && pset.Frequency(node.HashValue) > 0)) {
+                    throw std::runtime_error(fmt::format("checkpoint '{}': node {} of parent {} uses the function with "
+                                                         "hash {:#x}, which is not an enabled primitive of this run "
+                                                         "(the checkpoint was written with another primitive set)",
+                        path, j, i, node.HashValue));
+                }
+                if (node.Arity < pset.MinimumArity(node.HashValue) || node.Arity > pset.MaximumArity(node.HashValue)) {
+                    throw std::runtime_error(fmt::format("checkpoint '{}': node {} of parent {} uses function hash "
+                                                         "{:#x} with arity {}, outside this run's primitive-set "
+                                                         "range [{}, {}]",
+                        path, j, i, node.HashValue, node.Arity, pset.MinimumArity(node.HashValue),
+                        pset.MaximumArity(node.HashValue)));
+                }
             }
         }
     }

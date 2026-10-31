@@ -10,21 +10,15 @@
 #include "operon/operators/generator.hpp"
 #include "stoppable.hpp"
 #include <cstddef>
+#include <cstdint>
 #include <operon/operon_export.hpp>
 #include <optional>
 #include <string>
 
 namespace Operon {
 
-// Evaluation counters of a run, split by who spent them. `Residual*`/`Jacobian*` count the units the evaluation
-// budget is made of: `*Scoring` is spent by evaluator scoring (the prediction pass of Evaluate, a Jacobian taken by
-// a likelihood scorer, ...; EvaluatorBase::Stats()), `*Optimizer` by coefficient optimization (recorded by the run
-// in its OptimizerAccounting, from the per-fit FitOutcome diagnostics). Each pair is read from its own owner: nothing
-// is derived by subtracting one from the other. Budget consumption is `Consumed()`; calls, optimizer time and cache
-// counters never consume it. Calls is the number of evaluator operator() calls (candidate scorings) and
-// OptimizerTimeUs the wall time spent in the optimizer, summed over threads (not deterministic, and 0 for a fit
-// faster than the clock resolution). The cache counters are filled by GeneticAlgorithmBase::DetailedStats() when a
-// transposition cache is configured (nullopt means "no cache", not zero).
+// Evaluation counters split between scoring and coefficient optimization. Consumed() is budget usage; calls, optimizer
+// time, and cache counters are informational. Cache counters are nullopt when no cache is configured.
 struct EvaluationStats {
     std::size_t Calls {};
     std::size_t ResidualScoring {};
@@ -51,11 +45,48 @@ struct EvaluationStats {
     [[nodiscard]] constexpr auto operator==(EvaluationStats const&) const -> bool = default;
 };
 
-// Offspring-generation progress of one generation attempt.
+// Why an offspring generation was not committed. ResourceLimit covers the evaluation budget and attempt cap;
+// asynchronous limits are reported only when no resource limit was observed.
+enum class DiscardReason : std::uint8_t {
+    None,
+    ResourceLimit, // the generation spent more than the budget has left and/or made more attempts than the cap
+    TimeLimit, // the time limit expired before the offspring pool was filled
+    StopRequested, // RequestStop() (or the report callback) ended the generation before the pool was filled
+};
+
+// Informational work performed by an uncommitted generation. Counts and flags may depend on the thread count.
 struct OffspringProgress {
     size_t Attempted { 0 }; // offspring-generator invocations (accepted and rejected)
     size_t Completed { 0 }; // pool slots filled
     size_t PoolSize { 0 }; // pool slots to fill
+    DiscardReason Reason { DiscardReason::None };
+    bool BudgetExceeded { false }; // the executed work spent more than the budget had left
+    bool AttemptCapExceeded { false }; // the executed work made more attempts than the generator's cap
+};
+
+// Why the last Run() ended. ResourceLimit and AttemptCap take precedence over loop-condition checks.
+enum class RunEnd : std::uint8_t {
+    None, // no Run() yet, or it is still running
+    ResourceLimit, // a generation was discarded for budget and/or attempt cap (IncompleteGeneration() is set)
+    AttemptCap, // a committed generation made more attempts than the cap and ended the run (nothing discarded)
+    GenerationLimit, // Generation() reached GeneticAlgorithmConfig::Generations
+    BudgetSpent, // committed work reached a positive budget (initialization alone may also do so)
+    StopRequested, // RequestStop(), or the report callback returned true
+    TimeLimit, // GeneticAlgorithmConfig::TimeLimit expired
+};
+
+// Evaluation-budget accounting for the last Run(). The budget limits committed work; discarded and other executed
+// work is reported separately. Values saturate instead of wrapping and are refreshed during and after Run().
+struct BudgetAccounting {
+    std::uint64_t Budget { 0 }; // GeneticAlgorithmConfig::Evaluations of the run
+    std::uint64_t GenerationsCommitted { 0 }; // generations committed by this Run() (warm-start generations excluded)
+    std::uint64_t EvaluationsCommitted { 0 }; // initialization (or warm-start re-evaluation) + committed generations
+    std::uint64_t EvaluationsExecuted { 0 }; // everything counted since Run() started (scoring + optimizer)
+    std::uint64_t EvaluationsDiscarded { 0 }; // spent by the generation attempts that were discarded
+    std::uint64_t BudgetOvershoot { 0 }; // max(0, committed - budget): only initialization can overshoot
+    RunEnd End { RunEnd::None }; // why Run() ended; None while it is running
+
+    [[nodiscard]] constexpr auto operator==(BudgetAccounting const&) const -> bool = default;
 };
 
 class Problem;
@@ -66,17 +97,7 @@ struct TreeInitializerBase;
 class GeneticAlgorithmBase : public StoppableAlgorithm {
 public:
     ~GeneticAlgorithmBase() override = default;
-    // Not `= default`: parents_/offspring_ are non-owning spans into
-    // individuals_'s storage, so a plain memberwise copy would leave the
-    // copy's spans pointing at the *source* object's individuals_ buffer
-    // (dangling once the source is destroyed, and aliasing it while both
-    // are alive). They're rebound here to the copy's own individuals_,
-    // exactly like the primary constructor and RestoreIndividuals() do -
-    // both derive them from config_.PopulationSize/PoolSize rather than
-    // copying the span objects themselves. The atomic stopRequested_ still
-    // gets its own handling via StoppableAlgorithm's copy ctor/assign
-    // (invoked explicitly here since every other member is memberwise-safe
-    // to copy or, like the spans, needs deriving instead).
+    // Custom copy operations rebind the non-owning spans to the copied individuals_ storage.
     GeneticAlgorithmBase(GeneticAlgorithmBase const& other)
         : StoppableAlgorithm(other)
         , config_(other.config_)
@@ -95,6 +116,7 @@ public:
         , isFitted_(other.isFitted_)
         , incompleteGeneration_(other.incompleteGeneration_)
         , optimizerAccounting_(other.optimizerAccounting_)
+        , budgetReport_(other.budgetReport_)
     {
     }
     GeneticAlgorithmBase(GeneticAlgorithmBase&&) = delete;
@@ -120,6 +142,7 @@ public:
         isFitted_ = other.isFitted_;
         incompleteGeneration_ = other.incompleteGeneration_;
         optimizerAccounting_ = other.optimizerAccounting_;
+        budgetReport_ = other.budgetReport_;
         return *this;
     }
     auto operator=(GeneticAlgorithmBase&&) -> GeneticAlgorithmBase& = delete;
@@ -140,24 +163,7 @@ public:
         generator_->SetCache(config.Cache);
     }
 
-    // Parents()/Offspring() genuinely change *type* between const and
-    // non-const (Span<Individual const> vs Span<Individual>), not just
-    // reference-qualification - a plain forwarding-reference return would
-    // return `Operon::Span<Individual> const&` for a const Self, which
-    // still exposes mutable *elements* through that span (Span's
-    // operator[] isn't disabled by the span object's own constness), i.e.
-    // it wouldn't actually be const-correct. The conditional_t below keeps
-    // the const-correctness the original two overloads had.
-    //
-    // Self& (not Self&&): the original non-ref-qualified overloads were
-    // technically callable on an rvalue *this, immediately returning a Span
-    // into that rvalue's about-to-be-destroyed individuals_ - a dangling
-    // Span by construction. Self& refuses to compile for a *mutable* rvalue
-    // caller instead, a deliberate, source-incompatible tightening (no
-    // in-repo or downstream caller does this). A const rvalue caller still
-    // compiles here (Self deduces to a const type, so Self& becomes
-    // Self const&, which binds a const rvalue same as it always could) -
-    // this only closes off the mutable-rvalue case, not rvalues generally.
+    // Preserve const-correct element types and reject mutable rvalue access to non-owning spans.
     template <typename Self>
     [[nodiscard]] auto Parents(this Self& self)
         -> Operon::Span<std::conditional_t<std::is_const_v<Self>, Individual const, Individual>>
@@ -172,23 +178,7 @@ public:
         return self.offspring_;
     }
 
-    // Individuals()/WorkerRngs()/Timings() only ever changed reference
-    // qualification (T& vs T const&) between overloads (never by-value, so
-    // these don't need the conditional_t treatment Generation()/Elapsed()/
-    // IsFitted() below get), and ordinary forwarding-reference deduction via
-    // `auto&&` reproduces both lvalue cases exactly. It's not a byte-for-
-    // byte match for rvalue callers specifically - the old, non-ref-
-    // qualified overloads always returned a plain T&/T const& regardless of
-    // the object's value category, while `auto&&` forwarding gives T&&/
-    // T const&& for a (mutable or const) rvalue caller instead. Not a new
-    // hazard (both are still references, and neither version's reference
-    // outlives the rvalue any better than the other - no in-repo or
-    // downstream caller does this), just a different reference category
-    // than before. decltype(auto) would have been the wrong choice here for
-    // the lvalue/const-lvalue cases specifically: on an unparenthesized
-    // member-access return expression it yields the *declared* member type
-    // by value (a silent copy), losing reference identity entirely - see
-    // Nodes() in tree.hpp for the full explanation.
+    // Forward accessors for members whose reference qualification may vary with the object.
     template <typename Self> [[nodiscard]] auto&& Individuals(this Self&& self)
     {
         return std::forward<Self>(self).individuals_;
@@ -197,21 +187,13 @@ public:
     [[nodiscard]] auto GetProblem() const -> const Problem* { return problem_.get(); }
     [[nodiscard]] auto GetConfig() const -> GeneticAlgorithmConfig { return config_; }
 
-    // The run-owned accounting of coefficient-optimizer work: every local search of this algorithm's run
-    // (initialization and offspring generation, whether the candidate is kept, rejected or discarded) is recorded
-    // here, and nowhere else. Run() passes it explicitly to ScoreIndividual and to the offspring generator; a
-    // custom driver must do the same. It is reset together with the algorithm at the start of Run().
+    // Run-owned coefficient-optimizer accounting. Custom drivers must pass it to scoring and generation calls.
     template <typename Self> [[nodiscard]] auto&& Accounting(this Self&& self)
     {
         return std::forward<Self>(self).optimizerAccounting_;
     }
 
-    // The combined run report: evaluation counters of the evaluator tree (scoring only), the run's optimizer
-    // accounting, and the transposition-cache counters (nullopt when no cache is active, which is not the same as
-    // zero). The active cache is the generator's (the pointer it actually looks up; initially config.Cache, see the
-    // constructor), which SetCache may have changed since. The scoring and optimizer fields are disjoint, each read
-    // from its own owner; a live report is a non-atomic cross-counter snapshot, one taken after the run's workers
-    // finished is exact. Reset together with the algorithm at the start of Run().
+    // Combined scoring, optimizer, and active-cache counters. A completed run yields an exact snapshot.
     [[nodiscard]] auto DetailedStats() const -> EvaluationStats
     {
         auto const [residual, jacobian, calls] = generator_->Evaluator()->Stats();
@@ -244,27 +226,7 @@ public:
         return std::forward<Self>(self).workerRngs_;
     }
 
-    // Generation()/Elapsed()/IsFitted() are trivially-copyable scalars whose
-    // non-const overload existed only to allow direct assignment (e.g.
-    // `algo.IsFitted() = true;`); neither original overload was ref-
-    // qualified, so the const one returned by value regardless of whether
-    // the object was an lvalue or rvalue. A plain `auto&&` here would get
-    // that wrong for a const *rvalue* specifically: Self deduces to a
-    // non-reference type, and forwarding through it yields a `T const&&`
-    // binding - a reference into a temporary - where the old code always
-    // handed back a safe, independent copy. (Reading through a const
-    // *lvalue* isn't affected: only the reference category changes there,
-    // same as Individuals()/WorkerRngs()/Timings() above.)
-    //
-    // No caller does this today (confirmed: nothing in this repo or its
-    // downstream consumers calls these getters on a const rvalue), but it's
-    // one line of conditional_t to close off entirely rather than leave as
-    // a latent trap. Note this deliberately does *not* forward self: naming
-    // `self` inside the function body is always an lvalue expression
-    // regardless of which reference type Self deduced to, so branching the
-    // return *type* on constness alone (ignoring value category) is enough
-    // to reproduce the original by-value-for-const/reference-for-mutable
-    // split exactly, for all four Self×value-category combinations.
+    // Preserve value returns for const scalar accessors and references for mutable accessors.
     template <typename Self>
     [[nodiscard]] auto Generation(this Self&& self)
         -> std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, size_t, size_t&>
@@ -291,9 +253,12 @@ public:
         return self.isFitted_;
     } // NOLINT(cppcoreguidelines-missing-std-forward)
 
-    // Progress of the generation that was cut short by a stop condition (budget, time, callback) before its offspring
-    // pool was completely filled; nullopt if the last attempted generation completed. Such a generation is neither
-    // reinserted, counted in Generation(), nor reported: Parents() holds the last completed generation.
+    // Budget accounting of the last Run(); distinct from Accounting(), which covers optimizer diagnostics.
+    [[nodiscard]] auto BudgetReport() const -> BudgetAccounting const& { return budgetReport_; }
+    auto SetBudgetReport(BudgetAccounting const& report) -> void { budgetReport_ = report; }
+
+    // Progress of the last uncommitted generation; nullopt if the last generation was committed. Counts and flags
+    // describe executed work and may depend on the thread count.
     [[nodiscard]] auto IncompleteGeneration() const -> std::optional<OffspringProgress> const&
     {
         return incompleteGeneration_;
@@ -305,13 +270,12 @@ public:
 
     // StopRequested()/RequestStop() are inherited from StoppableAlgorithm.
 
-    // Valid to call between runs only. The PhaseTimer observer owns its own
-    // totals and is recreated each Run(), so Reset() mid-run would cause the
-    // next reportProgress sync to overwrite the cleared map with stale data.
+    // Valid between runs only; PhaseTimer owns per-run totals.
     auto Reset() -> void
     {
         generation_ = 0;
         incompleteGeneration_.reset();
+        budgetReport_ = {};
         elapsed_ = 0;
         ClearStopRequested();
         phaseTimes_.clear();
@@ -351,6 +315,7 @@ private:
     bool isFitted_ { false };
     std::optional<OffspringProgress> incompleteGeneration_;
     OptimizerAccounting optimizerAccounting_;
+    BudgetAccounting budgetReport_;
 };
 
 } // namespace Operon

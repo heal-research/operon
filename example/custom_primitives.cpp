@@ -138,7 +138,6 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 
     // evaluator, coefficient optimizer, selectors, offspring generator
     Operon::Evaluator<DT> evaluator { &problem, &dtable, Operon::MSE {} };
-    evaluator.SetBudget(std::numeric_limits<size_t>::max()); // generations is the only stop criterion
 
     Operon::LevenbergMarquardtOptimizer<DT, Operon::OptimizerType::Eigen> lmOptimizer { &dtable, &problem };
     Operon::CoefficientOptimizer const coeffOpt { &lmOptimizer };
@@ -153,7 +152,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 
     Operon::GeneticAlgorithmConfig config {
         .Generations = 100,
-        .Evaluations = std::numeric_limits<size_t>::max(),
+        .Evaluations = std::numeric_limits<size_t>::max(), // generations is the only stop criterion
         .Iterations = 2,
         .PopulationSize = 200,
         .PoolSize = 200,

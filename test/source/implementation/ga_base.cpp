@@ -36,6 +36,7 @@
 #include "operon/operators/non_dominated_sorter.hpp"
 #include "operon/operators/reinserter.hpp"
 #include "operon/operators/selector.hpp"
+#include "run_signature.hpp"
 
 namespace Operon::Test {
 namespace {
@@ -381,8 +382,9 @@ TEST_CASE("Generation/Elapsed/IsFitted return by value for const objects, by ref
 
 namespace {
 
-    // Self-contained GP/NSGA2 setup with a configurable population/pool size and an evaluation budget, used to drive
-    // runs into (or away from) a stop condition in the middle of a generation.
+    // Self-contained GP/NSGA2 setup with a configurable population/pool size and an evaluation budget
+    // (GeneticAlgorithmConfig::Evaluations), used to drive runs into (or away from) a stop condition in the middle of
+    // a generation.
     struct BudgetedRun {
         Operon::Dataset Ds { MakeDataset() };
         Operon::Problem Problem { gsl::not_null<Operon::Dataset*>(&Ds) };
@@ -410,13 +412,13 @@ namespace {
             Config.PopulationSize = popSize;
             Config.PoolSize = poolSize;
             Config.Generations = generations;
+            Config.Evaluations = budget;
             Problem.SetTrainingRange({ 0, 10 });
             Problem.SetTestRange({ 0, 10 });
             Problem.SetTarget("Y");
             TreeInit.ParameterizeDistribution(std::size_t { 1 }, std::size_t { 10 });
             OnePoint.ParameterizeDistribution(Operon::Scalar { 0 }, Operon::Scalar { 1 });
             Mutator.Add(&OnePoint, 1.0);
-            Evaluator.SetBudget(budget);
         }
     };
 
@@ -426,6 +428,7 @@ namespace {
         std::vector<Operon::Scalar> Fitness;
         std::vector<std::size_t> Lengths;
         std::vector<Operon::Hash> Hashes;
+        std::vector<std::uint64_t> Rngs; // state of every worker RNG
         auto operator==(Snapshot const&) const -> bool = default;
     };
 
@@ -438,16 +441,19 @@ namespace {
             s.Lengths.push_back(ind.Genotype.Length());
             s.Hashes.push_back(ind.Genotype.HashValue());
         }
+        s.Rngs = Signature(algo.WorkerRngs());
         return s;
     }
 
-    // pop = pool = 16, budget 24: the 16 initial evaluations leave room for 8 offspring, so generation 1 is cut short.
+    // pop = pool = 16, budget 24: the 16 initial evaluations leave room for 8 of the 16 offspring evaluations that
+    // generation 1 needs, so generation 1 cannot commit.
     constexpr std::size_t PartialPop = 16;
-    constexpr std::size_t PartialBudget = PartialPop + 8;
+    constexpr std::size_t PartialLeft = 8;
+    constexpr std::size_t PartialBudget = PartialPop + PartialLeft;
 
 } // namespace
 
-TEST_CASE("GP: a generation cut short by the evaluation budget is neither reinserted, counted nor reported",
+TEST_CASE("GP: a generation that does not fit in the evaluation budget is neither reinserted, counted nor reported",
     "[algorithms][partial-generation]")
 {
     BudgetedRun f { PartialPop, PartialPop, /*generations=*/100, PartialBudget };
@@ -464,7 +470,7 @@ TEST_CASE("GP: a generation cut short by the evaluation budget is neither reinse
         },
         /*threads=*/1);
 
-    REQUIRE(reports.size() == 1); // only the initial population: generation 1 never completed
+    REQUIRE(reports.size() == 1); // only the initial population: generation 1 never committed
     CHECK(reports.front().Generation == 0);
     CHECK(gp.Generation() == 0);
     CHECK(Capture(gp) == reports.front()); // the population is the last reported one, untouched
@@ -472,9 +478,29 @@ TEST_CASE("GP: a generation cut short by the evaluation budget is neither reinse
     REQUIRE(gp.IncompleteGeneration().has_value());
     auto const progress = *gp.IncompleteGeneration();
     CHECK(progress.PoolSize == PartialPop);
-    CHECK(progress.Completed == PartialBudget - PartialPop);
+    // The generation was discarded because it spent more than what was left (PartialLeft; one evaluation per
+    // offspring here), so more than PartialLeft offspring were produced, and no more than the pool. How much earlier
+    // than the full pool the workers stopped is informational.
+    CHECK(progress.Reason == Operon::DiscardReason::ResourceLimit);
+    CHECK(progress.BudgetExceeded); // one finite limit: the flags are deterministic
+    CHECK_FALSE(progress.AttemptCapExceeded);
+    CHECK(gp.BudgetReport().End == Operon::RunEnd::ResourceLimit);
+    CHECK(progress.Completed > PartialLeft);
+    CHECK(progress.Completed <= PartialPop);
     CHECK(progress.Attempted >= progress.Completed);
-    CHECK(f.Evaluator.TotalEvaluations() == PartialBudget);
+    CHECK_FALSE(gp.StopRequested()); // the budget ends the run without a stop request
+
+    // The budget is a limit on committed work: the discarded attempt is executed but not counted against it.
+    auto const& accounting = gp.BudgetReport();
+    CHECK(accounting.Budget == PartialBudget);
+    CHECK(accounting.GenerationsCommitted == 0);
+    CHECK(accounting.EvaluationsCommitted == PartialPop);
+    CHECK(accounting.EvaluationsExecuted >= accounting.EvaluationsCommitted);
+    CHECK(accounting.EvaluationsDiscarded > PartialLeft);
+    CHECK(accounting.EvaluationsDiscarded <= PartialPop);
+    CHECK(accounting.EvaluationsExecuted == accounting.EvaluationsCommitted + accounting.EvaluationsDiscarded);
+    CHECK(accounting.BudgetOvershoot == 0);
+    CHECK(f.Evaluator.TotalEvaluations() == accounting.EvaluationsExecuted);
 
     SECTION("the incomplete state is copied with the algorithm and cleared by Reset()")
     {
@@ -523,8 +549,8 @@ TEST_CASE(
 TEST_CASE("GP: generations that fill their pool before the budget is reached are reinserted, counted and reported",
     "[algorithms][partial-generation]")
 {
-    // init (16) + 3 complete generations (3 * 16) + 8 evaluations: generation 4 is cut short.
-    BudgetedRun f { PartialPop, PartialPop, /*generations=*/100, 4 * PartialPop + 8 };
+    // init (16) + 3 generations (3 * 16) + 8 evaluations: generation 4 does not fit.
+    BudgetedRun f { PartialPop, PartialPop, /*generations=*/100, 4 * PartialPop + PartialLeft };
     Operon::GeneticProgrammingAlgorithm gp { f.Config, &f.Problem, &f.TreeInit, &f.CoeffInit, &f.Generator,
         &f.KeepBest };
     Operon::RandomGenerator rng { 7 };
@@ -541,13 +567,15 @@ TEST_CASE("GP: generations that fill their pool before the budget is reached are
     CHECK(reported == std::vector<std::size_t> { 0, 1, 2, 3 });
     CHECK(gp.Generation() == 3);
     REQUIRE(gp.IncompleteGeneration().has_value());
-    CHECK(gp.IncompleteGeneration()->Completed == 8);
+    CHECK(gp.IncompleteGeneration()->Completed > PartialLeft);
+    CHECK(gp.IncompleteGeneration()->Reason == Operon::DiscardReason::ResourceLimit);
+    CHECK(gp.BudgetReport().GenerationsCommitted == 3);
+    CHECK(gp.BudgetReport().EvaluationsCommitted == 4 * PartialPop);
 }
 
-TEST_CASE("NSGA2: IncompleteGeneration() reports the cut-short generation", "[algorithms][partial-generation]")
+TEST_CASE("NSGA2: IncompleteGeneration() reports the generation that did not fit", "[algorithms][partial-generation]")
 {
-    // Evaluations in flight when the budget is reached can overshoot it by less than the thread count, which cannot
-    // fill the 16 - 8 = 8 missing pool slots, so the generation is discarded at every thread count.
+    // The budget limits committed work: the generation does not fit and is discarded at every thread count.
     for (std::size_t const threads : { 1UL, 4UL }) {
         BudgetedRun f { PartialPop, PartialPop, /*generations=*/100, PartialBudget };
         Operon::NSGA2 nsga { f.Config, &f.Problem, &f.TreeInit, &f.CoeffInit, &f.Generator, &f.KeepBest, &f.Sorter };
@@ -573,11 +601,11 @@ TEST_CASE("NSGA2: IncompleteGeneration() reports the cut-short generation", "[al
         CHECK(Capture(nsga) == *initial);
         REQUIRE(nsga.IncompleteGeneration().has_value());
         CHECK(nsga.IncompleteGeneration()->PoolSize == PartialPop);
-        CHECK(nsga.IncompleteGeneration()->Completed >= PartialBudget - PartialPop);
-        CHECK(nsga.IncompleteGeneration()->Completed < PartialPop);
-        if (threads == 1) {
-            CHECK(nsga.IncompleteGeneration()->Completed == PartialBudget - PartialPop);
-        }
+        CHECK(nsga.IncompleteGeneration()->Completed > PartialLeft);
+        CHECK(nsga.IncompleteGeneration()->Reason == Operon::DiscardReason::ResourceLimit);
+        CHECK_FALSE(nsga.StopRequested());
+        CHECK(nsga.BudgetReport().GenerationsCommitted == 0);
+        CHECK(nsga.BudgetReport().EvaluationsCommitted == PartialPop);
     }
 }
 
@@ -690,8 +718,12 @@ namespace {
         if (kind == Interruption::StopRequest) {
             CHECK(algo.StopRequested());
             CHECK(progress.Attempted >= stopAfterCalls);
+            CHECK(progress.Reason == Operon::DiscardReason::StopRequested);
+            CHECK(algo.BudgetReport().End == Operon::RunEnd::StopRequested);
         } else {
             CHECK(progress.Attempted >= 1);
+            CHECK(progress.Reason == Operon::DiscardReason::TimeLimit);
+            CHECK(algo.BudgetReport().End == Operon::RunEnd::TimeLimit);
             // Elapsed() covers the discarded generation: the run ended because it exceeded the limit.
             CHECK(algo.Elapsed() > static_cast<double>(f.Config.TimeLimit));
         }
