@@ -194,6 +194,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
     std::vector<Operon::RandomGenerator> savedRngs; // used only on warm resume
     std::vector<std::optional<std::vector<Operon::Scalar>>> originalCoeffs(parents.size());
     std::atomic_size_t generatedOffspring {};
+    std::atomic_size_t attemptedOffspring {};
 
     // Declared here (Run()'s own scope), not inside the "init" task's
     // callable below: a subflow's tasks run after that callable returns, so
@@ -288,6 +289,8 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
             auto prepareGenerator = subflow
                                         .emplace([&]() -> void {
                                             generatedOffspring = 0;
+                                            attemptedOffspring = 0;
+                                            SetIncompleteGeneration(std::nullopt);
                                             generator->Prepare(parents);
                                             // Stamp the cache clock with the generation offspring will
                                             // belong to *before* they're evaluated - Generation() itself
@@ -305,7 +308,9 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                           [&](size_t i) -> void {
                               slots[executor.this_worker_id()].resize(trainSize);
                               auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
+                              size_t attempts = 0;
                               while (!stop()) {
+                                  ++attempts;
                                   auto result
                                       = (*generator)(rngs[i], config.CrossoverProbability, config.MutationProbability,
                                           config.LocalSearchProbability, config.LamarckianProbability, buf);
@@ -313,15 +318,19 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                                       offspring[i] = std::move(*result);
                                       generatedOffspring.fetch_add(1, std::memory_order_relaxed);
                                       ENSURE(offspring[i].Genotype.Length() > 0);
-                                      return;
+                                      break;
                                   }
                               }
+                              attemptedOffspring.fetch_add(attempts, std::memory_order_relaxed);
                           })
                       .name("generate offspring");
             auto nonDominatedSort
                 = subflow
                       .emplace([&]() -> void {
-                          if (generatedOffspring.load(std::memory_order_relaxed) != offspring.size()) {
+                          auto const generated = generatedOffspring.load(std::memory_order_relaxed);
+                          if (generated != offspring.size()) {
+                              SetIncompleteGeneration(OffspringProgress {
+                                  attemptedOffspring.load(std::memory_order_relaxed), generated, offspring.size() });
                               RequestStop();
                               return;
                           }
@@ -348,11 +357,13 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                       .name("increment generation");
             auto reportProgress = subflow
                                       .emplace([&, timer]() -> void {
+                                          // Time and phase telemetry describe the work done even when the
+                                          // generation is discarded; only the report callback is skipped.
+                                          Elapsed() = computeElapsed();
+                                          Timings() = timer->Timings();
                                           if (generatedOffspring.load(std::memory_order_relaxed) != offspring.size()) {
                                               return;
                                           }
-                                          Elapsed() = computeElapsed();
-                                          Timings() = timer->Timings();
                                           if (report && std::invoke(report)) {
                                               RequestStop();
                                           }
