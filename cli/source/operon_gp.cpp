@@ -77,10 +77,10 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 
     // parse and set default values
     Operon::GeneticAlgorithmConfig config {};
-    config.Generations = result["generations"].as<size_t>();
+    config.Generations = Operon::GetLimit(result, "generations");
     config.PopulationSize = result["population-size"].as<size_t>();
     config.PoolSize = result["pool-size"].as<size_t>();
-    config.Evaluations = result["evaluations"].as<size_t>();
+    config.Evaluations = Operon::GetLimit(result, "evaluations");
     config.Iterations = result["iterations"].as<size_t>();
     config.CrossoverProbability = result["crossover-probability"].as<Operon::Scalar>();
     config.MutationProbability = result["mutation-probability"].as<Operon::Scalar>();
@@ -107,7 +107,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     // Apply overrides from parsed options
     dataset = std::make_unique<Operon::Dataset>(result["dataset"].as<std::string>(), /*hasHeader=*/true);
     if (result.contains("seed")) {
-        config.Seed = result["seed"].as<size_t>();
+        config.Seed = result["seed"].as<Operon::RandomGenerator::result_type>();
     }
     if (result.contains("train")) {
         trainingRange = Operon::ParseRange(result["train"].as<std::string>());
