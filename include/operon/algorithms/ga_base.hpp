@@ -16,6 +16,41 @@
 
 namespace Operon {
 
+// Evaluation counters of a run, split by who spent them. `Residual*`/`Jacobian*` count the units the evaluation
+// budget is made of: `*Scoring` is spent by evaluator scoring (the prediction pass of Evaluate, a Jacobian taken by
+// a likelihood scorer, ...; EvaluatorBase::Stats()), `*Optimizer` by coefficient optimization (recorded by the run
+// in its OptimizerAccounting, from the per-fit FitOutcome diagnostics). Each pair is read from its own owner: nothing
+// is derived by subtracting one from the other. Budget consumption is `Consumed()`; calls, optimizer time and cache
+// counters never consume it. Calls is the number of evaluator operator() calls (candidate scorings) and
+// OptimizerTimeUs the wall time spent in the optimizer, summed over threads (not deterministic, and 0 for a fit
+// faster than the clock resolution). The cache counters are filled by GeneticAlgorithmBase::DetailedStats() when a
+// transposition cache is configured (nullopt means "no cache", not zero).
+struct EvaluationStats {
+    std::size_t Calls {};
+    std::size_t ResidualScoring {};
+    std::size_t ResidualOptimizer {};
+    std::size_t JacobianScoring {};
+    std::size_t JacobianOptimizer {};
+    std::size_t OptimizerTimeUs {};
+    std::optional<std::size_t> CacheHits {};
+    std::optional<std::size_t> CacheLookups {};
+
+    [[nodiscard]] constexpr auto ResidualTotal() const -> std::size_t
+    {
+        return detail::SaturatingAdd(ResidualScoring, ResidualOptimizer);
+    }
+    [[nodiscard]] constexpr auto JacobianTotal() const -> std::size_t
+    {
+        return detail::SaturatingAdd(JacobianScoring, JacobianOptimizer);
+    }
+    [[nodiscard]] constexpr auto Consumed() const -> std::size_t
+    {
+        return detail::SaturatingAdd(ResidualTotal(), JacobianTotal());
+    }
+
+    [[nodiscard]] constexpr auto operator==(EvaluationStats const&) const -> bool = default;
+};
+
 // Offspring-generation progress of one generation attempt.
 struct OffspringProgress {
     size_t Attempted { 0 }; // offspring-generator invocations (accepted and rejected)
@@ -59,6 +94,7 @@ public:
         , phaseTimes_(other.phaseTimes_)
         , isFitted_(other.isFitted_)
         , incompleteGeneration_(other.incompleteGeneration_)
+        , optimizerAccounting_(other.optimizerAccounting_)
     {
     }
     GeneticAlgorithmBase(GeneticAlgorithmBase&&) = delete;
@@ -83,6 +119,7 @@ public:
         phaseTimes_ = other.phaseTimes_;
         isFitted_ = other.isFitted_;
         incompleteGeneration_ = other.incompleteGeneration_;
+        optimizerAccounting_ = other.optimizerAccounting_;
         return *this;
     }
     auto operator=(GeneticAlgorithmBase&&) -> GeneticAlgorithmBase& = delete;
@@ -159,6 +196,40 @@ public:
 
     [[nodiscard]] auto GetProblem() const -> const Problem* { return problem_.get(); }
     [[nodiscard]] auto GetConfig() const -> GeneticAlgorithmConfig { return config_; }
+
+    // The run-owned accounting of coefficient-optimizer work: every local search of this algorithm's run
+    // (initialization and offspring generation, whether the candidate is kept, rejected or discarded) is recorded
+    // here, and nowhere else. Run() passes it explicitly to ScoreIndividual and to the offspring generator; a
+    // custom driver must do the same. It is reset together with the algorithm at the start of Run().
+    template <typename Self> [[nodiscard]] auto&& Accounting(this Self&& self)
+    {
+        return std::forward<Self>(self).optimizerAccounting_;
+    }
+
+    // The combined run report: evaluation counters of the evaluator tree (scoring only), the run's optimizer
+    // accounting, and the transposition-cache counters (nullopt when no cache is active, which is not the same as
+    // zero). The active cache is the generator's (the pointer it actually looks up; initially config.Cache, see the
+    // constructor), which SetCache may have changed since. The scoring and optimizer fields are disjoint, each read
+    // from its own owner; a live report is a non-atomic cross-counter snapshot, one taken after the run's workers
+    // finished is exact. Reset together with the algorithm at the start of Run().
+    [[nodiscard]] auto DetailedStats() const -> EvaluationStats
+    {
+        auto const [residual, jacobian, calls] = generator_->Evaluator()->Stats();
+        auto const optimizer = optimizerAccounting_.Snapshot();
+        EvaluationStats stats {
+            .Calls = calls,
+            .ResidualScoring = residual,
+            .ResidualOptimizer = static_cast<std::size_t>(optimizer.Residual),
+            .JacobianScoring = jacobian,
+            .JacobianOptimizer = static_cast<std::size_t>(optimizer.Jacobian),
+            .OptimizerTimeUs = static_cast<std::size_t>(optimizer.TimeUs),
+        };
+        if (auto const* cache = generator_->Cache()) {
+            stats.CacheHits = cache->Hits();
+            stats.CacheLookups = cache->Lookups();
+        }
+        return stats;
+    }
 
     [[nodiscard]] auto GetTreeInitializer() const -> TreeInitializerBase const* { return treeInit_.get(); }
     [[nodiscard]] auto GetCoefficientInitializer() const -> CoefficientInitializerBase const*
@@ -245,6 +316,10 @@ public:
         ClearStopRequested();
         phaseTimes_.clear();
         GetGenerator()->Evaluator()->Reset();
+        optimizerAccounting_.Reset();
+        if (auto* cache = generator_->Cache()) {
+            cache->ResetCounters();
+        }
     }
 
     auto RestoreIndividuals(std::vector<Individual> inds) -> void
@@ -275,6 +350,7 @@ private:
     Operon::Map<std::string, double> phaseTimes_;
     bool isFitted_ { false };
     std::optional<OffspringProgress> incompleteGeneration_;
+    OptimizerAccounting optimizerAccounting_;
 };
 
 } // namespace Operon

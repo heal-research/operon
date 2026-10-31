@@ -170,7 +170,7 @@ namespace detail {
         void SetWorstValue(double value) { worstValue_ = value; }
 
         // Individuals rejected by HardReject so far (paper's Sec. 5.1 "constraint violations" figure). Accumulates
-        // over this evaluator's lifetime; EvaluatorBase::Reset() does not clear it.
+        // over this evaluator's lifetime; Reset() does not clear it.
         [[nodiscard]] auto Violations() const noexcept -> std::size_t { return violations_.load(); }
 
     protected:
@@ -186,9 +186,12 @@ namespace detail {
         // Prepares the structural objectives.
         void ShapePrepare(Operon::Span<Individual const> pop) const;
 
-        // Residual evaluations, Jacobian evaluations and cost-function time accumulated by the structural
-        // objectives.
-        [[nodiscard]] auto ShapeStructuralStats() const -> std::tuple<std::size_t, std::size_t, std::size_t>;
+        // Residual and Jacobian scoring evaluations accumulated by the structural objectives.
+        [[nodiscard]] auto ShapeStructuralStats() const -> std::pair<std::size_t, std::size_t>;
+
+        // Zeroes the counters of the structural objectives (they are children of the adapter, not evaluators the
+        // algorithm knows about).
+        void ShapeStructuralReset() const;
 
         // Measures `tree` under exactly the transform the evaluated prediction carries, before the base
         // evaluator's score rewrites the buffer. Throws std::logic_error if `evaluated` is empty.
@@ -284,21 +287,28 @@ public:
         this->ShapePrepare(pop);
     }
 
-    auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t, std::size_t> override
+    // The base evaluator's scoring counters plus those of the structural objectives; Calls is the adapter's own.
+    auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t> override
     {
-        auto [residual, jacobian, calls, costFunctionTime] = BaseEvaluator::Stats();
-        auto const [structuralResidual, structuralJacobian, structuralTime] = this->ShapeStructuralStats();
-        return std::tuple { residual + structuralResidual, jacobian + structuralJacobian, calls,
-            costFunctionTime + structuralTime };
+        auto [residual, jacobian, calls] = BaseEvaluator::Stats();
+        auto const [structuralResidual, structuralJacobian] = this->ShapeStructuralStats();
+        return std::tuple { residual + structuralResidual, jacobian + structuralJacobian, calls };
     }
 
+    // Scoring work only (see EvaluatorBase::BudgetExhausted).
     auto BudgetExhausted() const -> bool override
     {
-        auto const [residual, jacobian, calls, costFunctionTime] = Stats();
+        auto const [residual, jacobian, calls] = Stats();
         return residual + jacobian >= this->Budget();
     }
 
 protected:
+    void ResetChildren() const override
+    {
+        BaseEvaluator::ResetChildren();
+        this->ShapeStructuralReset();
+    }
+
     auto Score(Operon::RandomGenerator& rng, Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf,
         std::optional<EvaluatedBuffer> evaluated) const -> typename EvaluatorBase::ReturnType override
     {

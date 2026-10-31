@@ -166,6 +166,8 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
     }
 
     auto const* evaluator = generator->Evaluator();
+    // The run's optimizer accounting (reset by Reset() above): every local search below is recorded here.
+    auto& accounting = Accounting();
 
     // we want to allocate all the memory that will be necessary for evaluation (e.g. for storing model responses)
     // in one go and use it throughout the generations in order to minimize the memory pressure
@@ -179,7 +181,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
     // contexts (the loop condition and the report task), which the taskflow
     // graph orders against every reader.
     auto shouldStop = [&](double elapsed) -> bool {
-        return StopRequested() || generator->Terminate() || Generation() == config.Generations
+        return StopRequested() || generator->Terminate(accounting) || Generation() == config.Generations
             || elapsed > static_cast<double>(config.TimeLimit);
     };
     auto stop = [&]() -> bool { return shouldStop(computeElapsed()); };
@@ -234,7 +236,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                               auto const id = executor.this_worker_id();
                               slots[id].resize(trainSize);
                               ScoreIndividual(rngs[i], parents[i], *evaluator, generator->Optimizer(), /*pLocal=*/0.0,
-                                  config.LamarckianProbability, Operon::Span<Operon::Scalar>(slots[id]));
+                                  config.LamarckianProbability, Operon::Span<Operon::Scalar>(slots[id]), accounting);
                           })
                       .name("evaluate population");
             if (warmResume) {
@@ -258,14 +260,17 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                 // eval) so that an evaluator snapshotting the population in
                 // Prepare() (e.g. DiversityEvaluator) sees post-optimization
                 // genotypes rather than the raw initial ones.
-                auto localSearch = subflow
-                                       .for_each_index(size_t { 0 }, parents.size(), size_t { 1 },
-                                           [&](size_t i) -> void {
-                                               originalCoeffs[i] = LocalSearch(rngs[i], parents[i], *evaluator,
-                                                   generator->Optimizer(), config.LocalSearchProbability,
-                                                   config.LamarckianProbability);
-                                           })
-                                       .name("local search on initial population");
+                auto localSearch
+                    = subflow
+                          .for_each_index(size_t { 0 }, parents.size(), size_t { 1 },
+                              [&](size_t i) -> void {
+                                  auto search = LocalSearch(rngs[i], parents[i], generator->Optimizer(),
+                                      config.LocalSearchProbability, config.LamarckianProbability);
+                                  // Charged before the initial population is scored or committed.
+                                  accounting.Record(search);
+                                  originalCoeffs[i] = std::move(search.OriginalCoefficients);
+                              })
+                          .name("local search on initial population");
                 auto restoreCoeffs = subflow
                                          .for_each_index(size_t { 0 }, parents.size(), size_t { 1 },
                                              [&](size_t i) -> void {
@@ -296,8 +301,10 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                                             // belong to *before* they're evaluated - Generation() itself
                                             // isn't incremented until after reinsert() below, so without
                                             // this the cache would stamp entries with the prior
-                                            // generation's number (see incrementGeneration).
-                                            if (auto* cache = config.Cache) {
+                                            // generation's number (see incrementGeneration). The
+                                            // generator's cache is the one entries are stamped in and
+                                            // expired from (SetCache may have replaced config.Cache).
+                                            if (auto* cache = generator->Cache()) {
                                                 cache->SetGeneration(Generation() + 1);
                                             }
                                         })
@@ -313,7 +320,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                                   ++attempts;
                                   auto result
                                       = (*generator)(rngs[i], config.CrossoverProbability, config.MutationProbability,
-                                          config.LocalSearchProbability, config.LamarckianProbability, buf);
+                                          config.LocalSearchProbability, config.LamarckianProbability, buf, accounting);
                                   if (result) {
                                       offspring[i] = std::move(*result);
                                       generatedOffspring.fetch_add(1, std::memory_order_relaxed);
