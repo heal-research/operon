@@ -26,6 +26,8 @@ add_executable(operon_test
     source/implementation/backend.cpp
     source/implementation/autodiff.cpp
     source/implementation/cli_error.cpp
+    source/implementation/pareto_front.cpp
+    ../cli/source/pareto_front.cpp
     source/implementation/tree_diff.cpp
     source/implementation/range_oracles.cpp
     source/implementation/crossover.cpp
@@ -259,5 +261,33 @@ if(NOT PROJECT_IS_TOP_LEVEL)
                 "-DOPERON_CONSUMER_SOURCE_DIR=${operon_package_consumer_optional_backend_source_dir}"
                 "-DOPERON_CONSUMER_BUILD_DIR=${operon_package_consumer_optional_backend_work_dir}/build"
                 -P "${operon_package_consumer_source_dir}/run-consumer-test.cmake"
+    )
+endif()
+
+# ---- operon_nsgp: Pareto front export ----
+# A budget stop inside a generation leaves unfilled offspring with default rank 0 and empty trees; they are not front
+# members. The run must exit 0 and write the front.
+if(TARGET operon_nsgp)
+    # ctest runs operon_nsgp directly, so building operon_test must build it too.
+    add_dependencies(operon_test operon_nsgp)
+    add_test(
+        NAME cli_nsgp_partial_generation_front
+        COMMAND "${CMAKE_COMMAND}"
+                "-DNSGP=$<TARGET_FILE:operon_nsgp>"
+                "-DOUT=${CMAKE_CURRENT_BINARY_DIR}/partial-front.json"
+                "-DWORKDIR=${CMAKE_SOURCE_DIR}"
+                "-DARGS=--dataset;data/Poly-10.csv;--target;Y;--train;0:100;--test;100:200;--population-size;128;--pool-size;128;--threads;1;--seed;7;--generations;30;--evaluations;220;--iterations;0;--objective;nmse"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/check_pareto_front.cmake"
+    )
+    # With epsilon larger than every objective difference, grouping leaves one representative for export.
+    add_test(
+        NAME cli_nsgp_epsilon_front
+        COMMAND "${CMAKE_COMMAND}"
+                "-DNSGP=$<TARGET_FILE:operon_nsgp>"
+                "-DOUT=${CMAKE_CURRENT_BINARY_DIR}/epsilon-front.json"
+                "-DWORKDIR=${CMAKE_SOURCE_DIR}"
+                "-DEXPECT_COUNT=1"
+                "-DARGS=--dataset;data/Poly-10.csv;--target;Y;--train;0:100;--test;100:200;--population-size;50;--pool-size;50;--threads;1;--seed;7;--generations;5;--iterations;0;--objective;nmse;--epsilon;1e9"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/check_pareto_front.cmake"
     )
 endif()

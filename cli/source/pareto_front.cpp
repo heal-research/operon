@@ -8,9 +8,11 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <numeric>
 
 #include <fmt/os.h>
 
+#include "operon/core/comparison.hpp"
 #include "operon/core/types.hpp"
 #include "operon/error_metrics/error_metrics.hpp"
 #include "operon/formatter/formatter.hpp"
@@ -18,6 +20,7 @@
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/evaluator.hpp"
 #include "operon/operators/linear_scaling.hpp"
+#include "operon/operators/non_dominated_sorter.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 
 namespace Operon {
@@ -42,8 +45,51 @@ namespace {
 
 } // namespace
 
+auto SelectParetoFront(Operon::Span<Individual const> population, NondominatedSorterBase const& sorter,
+    Operon::Scalar eps) -> std::vector<Individual const*>
+{
+    // Rank is relative to the last sorted population, not necessarily the retained parents.
+    // Group epsilon-equivalent individuals before ranking; dominance semantics depend on the sorter.
+    std::vector<size_t> order(population.size());
+    std::iota(order.begin(), order.end(), size_t { 0 });
+    std::ranges::stable_sort(order, [&](size_t a, size_t b) -> bool {
+        return std::ranges::lexicographical_compare(population[a].Fitness, population[b].Fitness);
+    });
+    std::vector<size_t> unique;
+    unique.reserve(order.size());
+    for (auto i = order.begin(); i < order.end();) {
+        unique.push_back(*i);
+        auto j = i + 1;
+        while (j < order.end() && Operon::Equal {}(population[*i].Fitness, population[*j].Fitness, eps)) {
+            ++j;
+        }
+        i = j;
+    }
+    std::vector<Individual const*> front;
+    if (unique.empty()) {
+        return front;
+    }
+    Operon::Vector<Individual> fitnessOnly;
+    fitnessOnly.reserve(unique.size());
+    for (auto const i : unique) {
+        Individual ind;
+        ind.Fitness = population[i].Fitness;
+        fitnessOnly.push_back(std::move(ind));
+    }
+    auto const fronts = sorter(Operon::Span<Individual const> { fitnessOnly.data(), fitnessOnly.size() }, eps);
+    if (fronts.empty()) {
+        return front;
+    }
+    std::vector<size_t> members(fronts.front().begin(), fronts.front().end());
+    std::ranges::sort(members);
+    for (auto const m : members) {
+        front.push_back(&population[unique[m]]);
+    }
+    return front; // ordered lexicographically by fitness, i.e. by the first objective
+}
+
 auto WriteParetoFront(std::string const& path, Operon::Span<Individual const> population, ScalarDispatch const& dtable,
-    Problem const& problem) -> void
+    Problem const& problem, NondominatedSorterBase const& sorter, Operon::Scalar eps) -> void
 {
     auto const* ds = problem.GetDataset();
     auto const trainRange = problem.TrainingRange();
@@ -51,13 +97,7 @@ auto WriteParetoFront(std::string const& path, Operon::Span<Individual const> po
     auto const targetTrain = problem.TargetValues(trainRange);
     auto const targetTest = problem.TargetValues(testRange);
 
-    std::vector<Individual const*> front;
-    for (auto const& ind : population) {
-        if (ind.Rank == 0) {
-            front.push_back(&ind);
-        }
-    }
-    std::ranges::sort(front, [](auto const* a, auto const* b) -> bool { return (*a)[0] < (*b)[0]; });
+    auto const front = SelectParetoFront(population, sorter, eps);
 
     auto jsonNum = [](double v) -> std::string {
         if (!std::isfinite(v)) {
