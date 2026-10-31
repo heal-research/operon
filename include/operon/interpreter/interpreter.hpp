@@ -99,14 +99,14 @@ struct Interpreter : public InterpreterBase<T> {
     {
     }
 
-    [[nodiscard]] auto Evaluate(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> result) const
+    [[nodiscard]] auto Evaluate(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> output) const
         -> tl::expected<void, InterpreterError> final
     {
-        if (auto prepared = Prepare(coeff, range, /*needDerivatives=*/false); !prepared) {
-            return prepared;
+        if (auto result = Prepare(coeff, range, /*needDerivatives=*/false); !result) {
+            return result;
         }
-        if (auto sized = CheckOutputSize(range.Size(), result.size()); !sized) {
-            return sized;
+        if (auto result = CheckOutputSize(range.Size(), output.size()); !result) {
+            return result;
         }
         UpdateCoefficients(coeff);
         auto const len = static_cast<int64_t>(range.Size());
@@ -115,7 +115,7 @@ struct Interpreter : public InterpreterBase<T> {
         for (auto row = 0L; row < len; row += S) {
             ForwardPass(range, row, false);
             auto const rem = std::min(S, len - row);
-            std::ranges::copy(std::span(ptr, rem), result.data() + row);
+            std::ranges::copy(std::span(ptr, rem), output.data() + row);
         }
         return {};
     }
@@ -134,12 +134,12 @@ struct Interpreter : public InterpreterBase<T> {
     [[nodiscard]] auto JacRev(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const
         -> tl::expected<void, InterpreterError> final
     {
-        if (auto prepared = Prepare(coeff, range, /*needDerivatives=*/true); !prepared) {
-            return prepared;
+        if (auto result = Prepare(coeff, range, /*needDerivatives=*/true); !result) {
+            return result;
         }
         auto const nCoeff = NumCoefficients();
-        if (auto sized = CheckOutputSize(range.Size() * nCoeff, jacobian.size()); !sized) {
-            return sized;
+        if (auto result = CheckOutputSize(range.Size() * nCoeff, jacobian.size()); !result) {
+            return result;
         }
         UpdateCoefficients(coeff);
         auto const len = static_cast<int64_t>(range.Size());
@@ -156,12 +156,12 @@ struct Interpreter : public InterpreterBase<T> {
     [[nodiscard]] auto JacFwd(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const
         -> tl::expected<void, InterpreterError> final
     {
-        if (auto prepared = Prepare(coeff, range, /*needDerivatives=*/true); !prepared) {
-            return prepared;
+        if (auto result = Prepare(coeff, range, /*needDerivatives=*/true); !result) {
+            return result;
         }
         auto const nCoeff = NumCoefficients();
-        if (auto sized = CheckOutputSize(range.Size() * nCoeff, jacobian.size()); !sized) {
-            return sized;
+        if (auto result = CheckOutputSize(range.Size() * nCoeff, jacobian.size()); !result) {
+            return result;
         }
         UpdateCoefficients(coeff);
         auto const nRows = static_cast<int>(range.Size());
@@ -176,19 +176,19 @@ struct Interpreter : public InterpreterBase<T> {
     }
 
     [[nodiscard]] auto JacRevVariable(Operon::Span<T const> coeff, Operon::Range range, Operon::Hash variable,
-        Operon::Span<T> result) const -> tl::expected<void, InterpreterError> final
+        Operon::Span<T> output) const -> tl::expected<void, InterpreterError> final
     {
-        if (auto prepared = Prepare(coeff, range, /*needDerivatives=*/true); !prepared) {
-            return prepared;
+        if (auto result = Prepare(coeff, range, /*needDerivatives=*/true); !result) {
+            return result;
         }
-        if (auto sized = CheckOutputSize(range.Size(), result.size()); !sized) {
-            return sized;
+        if (auto result = CheckOutputSize(range.Size(), output.size()); !result) {
+            return result;
         }
         UpdateCoefficients(coeff);
         auto const len = static_cast<int64_t>(range.Size());
         ResetTrace();
         auto const colOf = VariableColumns(variable);
-        Eigen::Map<Eigen::Array<T, -1, -1>> jac(result.data(), len, 1);
+        Eigen::Map<Eigen::Array<T, -1, -1>> jac(output.data(), len, 1);
         jac.setZero();
         for (auto row = 0L; row < len; row += BatchSize) {
             ForwardPass(range, row, true);
@@ -209,19 +209,19 @@ struct Interpreter : public InterpreterBase<T> {
     }
 
     [[nodiscard]] auto JacFwdVariable(Operon::Span<T const> coeff, Operon::Range range, Operon::Hash variable,
-        Operon::Span<T> result) const -> tl::expected<void, InterpreterError> final
+        Operon::Span<T> output) const -> tl::expected<void, InterpreterError> final
     {
-        if (auto prepared = Prepare(coeff, range, /*needDerivatives=*/true); !prepared) {
-            return prepared;
+        if (auto result = Prepare(coeff, range, /*needDerivatives=*/true); !result) {
+            return result;
         }
-        if (auto sized = CheckOutputSize(range.Size(), result.size()); !sized) {
-            return sized;
+        if (auto result = CheckOutputSize(range.Size(), output.size()); !result) {
+            return result;
         }
         UpdateCoefficients(coeff);
         auto const nRows = static_cast<int>(range.Size());
         ResetTrace();
         auto const colOf = VariableColumns(variable);
-        Eigen::Map<Eigen::Array<T, -1, -1>> jac(result.data(), nRows, 1);
+        Eigen::Map<Eigen::Array<T, -1, -1>> jac(output.data(), nRows, 1);
         jac.setZero();
         for (int row = 0; row < nRows; row += BatchSize) {
             ForwardPass(range, row, true);
@@ -241,13 +241,13 @@ struct Interpreter : public InterpreterBase<T> {
         return result;
     }
 
-    // Evaluates the full tree and extracts the values at the given node indices into `result` (column-major, one column
+    // Evaluates the full tree and extracts the values at the given node indices into `output` (column-major, one column
     // of range.Size() rows per root; roots set to SIZE_MAX produce zero columns).
     [[nodiscard]] auto EvaluateRoots(Operon::Span<T const> coeff, Operon::Range range,
-        Operon::Span<std::size_t const> roots, Operon::Span<T> result) const -> tl::expected<void, InterpreterError>
+        Operon::Span<std::size_t const> roots, Operon::Span<T> output) const -> tl::expected<void, InterpreterError>
     {
-        if (auto prepared = Prepare(coeff, range, /*needDerivatives=*/false); !prepared) {
-            return tl::unexpected(std::move(prepared.error()));
+        if (auto result = Prepare(coeff, range, /*needDerivatives=*/false); !result) {
+            return tl::unexpected(std::move(result.error()));
         }
         auto const nNodes = static_cast<std::size_t>(tree_->Nodes().size());
         for (auto root : roots) {
@@ -258,8 +258,8 @@ struct Interpreter : public InterpreterBase<T> {
                     .ActualSize = root });
             }
         }
-        if (auto sized = CheckOutputSize(range.Size() * roots.size(), result.size()); !sized) {
-            return sized;
+        if (auto result = CheckOutputSize(range.Size() * roots.size(), output.size()); !result) {
+            return result;
         }
         UpdateCoefficients(coeff);
         auto const len = static_cast<int64_t>(range.Size());
@@ -267,7 +267,7 @@ struct Interpreter : public InterpreterBase<T> {
         constexpr int64_t S = BatchSize;
 
         // Every row is written exactly once by the batch loop below; NoIndex columns are zeroed explicitly.
-        Eigen::Map<Eigen::Array<T, -1, -1>> columns(result.data(), len, nRoots);
+        Eigen::Map<Eigen::Array<T, -1, -1>> columns(output.data(), len, nRoots);
         for (Eigen::Index k = 0; k < nRoots; ++k) {
             if (roots[k] == NoIndex) {
                 columns.col(k).setZero();

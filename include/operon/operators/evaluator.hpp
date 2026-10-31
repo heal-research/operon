@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -171,6 +172,35 @@ private:
     std::optional<LinearScaling> scaling_;
 };
 
+namespace detail {
+    // Counter arithmetic that never wraps: a sum that would overflow stays at kSaturated, a difference below zero is
+    // zero. The budget ledger, the composite evaluators' aggregation and EvaluationStats use it, so that an aggregate
+    // that has reached the maximum stays there. (The per-evaluation counters themselves are plain 64 bit atomics: 2^64
+    // evaluations are not reachable.)
+    inline constexpr std::uint64_t kSaturated = std::numeric_limits<std::uint64_t>::max();
+
+    // 64 bit overload of the templated SaturatingAdd (optimizer/fit_outcome.hpp): counters of mixed integer types
+    // (std::size_t from Stats(), std::uint64_t atomics) all add through it, whatever the platform's size_t is.
+    [[nodiscard]] constexpr auto SaturatingAdd(std::uint64_t a, std::uint64_t b) -> std::uint64_t
+    {
+        return a > kSaturated - b ? kSaturated : a + b;
+    }
+
+    [[nodiscard]] constexpr auto SaturatingSub(std::uint64_t a, std::uint64_t b) -> std::uint64_t
+    {
+        return a > b ? a - b : 0;
+    }
+
+    // Atomic `target += value`, saturating.
+    inline auto SaturatingFetchAdd(std::atomic<std::uint64_t>& target, std::uint64_t value) -> void
+    {
+        auto current = target.load(std::memory_order_relaxed);
+        while (!target.compare_exchange_weak(
+            current, SaturatingAdd(current, value), std::memory_order_relaxed, std::memory_order_relaxed)) {
+        }
+    }
+} // namespace detail
+
 class OptimizerAccounting; // operators/local_search.hpp
 
 // An evaluator is an OperatorBase: `operator()` is its sole public execution path. It is `final` and performs, in
@@ -186,9 +216,11 @@ struct EvaluatorBase
 
     // Scoring counters only: what this evaluator's own operator() performed. They never include coefficient
     // optimization, which is accounted by the run that invoked it (OptimizerAccounting).
-    mutable std::atomic_ulong ResidualEvaluations { 0 }; // NOLINT
-    mutable std::atomic_ulong JacobianEvaluations { 0 }; // NOLINT
-    mutable std::atomic_ulong CallCount { 0 }; // NOLINT
+    // 64 bit on every platform (unsigned long is 32 bit on LLP64): the evaluation budget is a 64 bit quantity and the
+    // budget ledger relies on these counters never wrapping.
+    mutable std::atomic<std::uint64_t> ResidualEvaluations { 0 }; // NOLINT
+    mutable std::atomic<std::uint64_t> JacobianEvaluations { 0 }; // NOLINT
+    mutable std::atomic<std::uint64_t> CallCount { 0 }; // NOLINT
 
     static constexpr size_t DefaultEvaluationBudget = 100'000;
 
@@ -233,7 +265,10 @@ struct EvaluatorBase
     [[nodiscard]] virtual auto StructuralFitnessReusable() const -> bool { return true; }
 
     // Scoring evaluations performed by this evaluator's own operator(): residual + Jacobian, never optimizer work.
-    auto TotalEvaluations() const -> size_t { return ResidualEvaluations + JacobianEvaluations; }
+    auto TotalEvaluations() const -> size_t
+    {
+        return detail::SaturatingAdd(ResidualEvaluations.load(), JacobianEvaluations.load());
+    }
 
     // The configured evaluation budget. The unit is scoring residual + Jacobian evaluations plus the coefficient
     // optimizer's residual + Jacobian evaluations; the run that owns both sources applies it
@@ -469,24 +504,26 @@ public:
     // Optimizer work is not an evaluator's: it is recorded once per fit by the orchestration that runs local search.
     auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t> final
     {
-        auto resEval { 0UL };
-        auto jacEval { 0UL };
+        // 64 bit and saturating: unsigned long is 32 bit on LLP64 platforms, and a sum that wrapped would let an
+        // exceeded budget look unexceeded again.
+        std::uint64_t resEval = 0;
+        std::uint64_t jacEval = 0;
 
         for (auto const& ev : evaluators_) {
             auto [re, je, cc] = ev->Stats();
-            resEval += re;
-            jacEval += je;
+            resEval = detail::SaturatingAdd(resEval, re);
+            jacEval = detail::SaturatingAdd(jacEval, je);
         }
 
-        return std::tuple { resEval + ResidualEvaluations.load(), jacEval + JacobianEvaluations.load(),
-            CallCount.load() };
+        return std::tuple { detail::SaturatingAdd(resEval, ResidualEvaluations.load()),
+            detail::SaturatingAdd(jacEval, JacobianEvaluations.load()), CallCount.load() };
     }
 
     // Scoring work only (see EvaluatorBase::BudgetExhausted).
     auto BudgetExhausted() const -> bool final
     {
         auto [re, je, cc] = Stats();
-        return re + je >= Budget();
+        return detail::SaturatingAdd(re, je) >= Budget();
     }
 
     auto Evaluators() const { return evaluators_; }

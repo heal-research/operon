@@ -322,7 +322,6 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
                     &dtable, &problem);
             }
         }
-        evaluator->SetBudget(config.Evaluations);
         optimizer->SetIterations(config.Iterations);
 
         // The constrained evaluator (when shape constraints are configured) is `evaluator` itself: it is the

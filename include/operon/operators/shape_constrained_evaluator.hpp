@@ -292,14 +292,15 @@ public:
     {
         auto [residual, jacobian, calls] = BaseEvaluator::Stats();
         auto const [structuralResidual, structuralJacobian] = this->ShapeStructuralStats();
-        return std::tuple { residual + structuralResidual, jacobian + structuralJacobian, calls };
+        return std::tuple { detail::SaturatingAdd(residual, structuralResidual),
+            detail::SaturatingAdd(jacobian, structuralJacobian), calls };
     }
 
     // Scoring work only (see EvaluatorBase::BudgetExhausted).
     auto BudgetExhausted() const -> bool override
     {
         auto const [residual, jacobian, calls] = Stats();
-        return residual + jacobian >= this->Budget();
+        return detail::SaturatingAdd(residual, jacobian) >= this->Budget();
     }
 
 protected:

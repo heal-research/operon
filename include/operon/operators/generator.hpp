@@ -5,6 +5,10 @@
 #ifndef OPERON_GENERATOR_HPP
 #define OPERON_GENERATOR_HPP
 
+#include <cstddef>
+#include <limits>
+#include <optional>
+
 #include "operon/core/operator.hpp"
 #include "operon/hash/zobrist.hpp"
 #include "operon/operators/crossover.hpp"
@@ -54,15 +58,34 @@ public:
         Evaluator()->Prepare(pop);
     }
 
-    // Whether the run must stop generating: its evaluation budget -- the scoring evaluations of the evaluator tree
-    // (EvaluatorBase::Stats()) plus the optimizer evaluations recorded in `accounting` -- has been consumed. Derived
-    // generators add their own stop conditions.
+    // DEPRECATED. GeneticProgrammingAlgorithm and NSGA2 no longer call Terminate(): the evaluation budget is
+    // GeneticAlgorithmConfig::Evaluations, enforced by the algorithm on committed work, and the offspring-selection
+    // pressure limit is MaxAttempts(). An override (in C++ or in a binding) is not consulted any more. The virtual is
+    // kept so that existing subclasses and bindings still compile; it still reports whether the evaluation budget of
+    // the evaluator -- its scoring evaluations (EvaluatorBase::Stats()) plus the optimizer evaluations recorded in
+    // `accounting` -- has been consumed.
     [[nodiscard]] virtual auto Terminate(OptimizerAccounting const& accounting) const -> bool
     {
         auto const [residual, jacobian, calls] = evaluator_->Stats();
         auto const scoring
             = detail::SaturatingAdd(static_cast<std::uint64_t>(residual), static_cast<std::uint64_t>(jacobian));
         return detail::SaturatingAdd(scoring, accounting.Evaluations()) >= evaluator_->Budget();
+    }
+
+    // Largest number of attempts that one generation may make, given the number of parents; nullopt means no limit.
+    // One attempt is one invocation of the generator (operator()) for a pool slot: a candidate is generated, evaluated
+    // or taken from the transposition cache, and accepted or rejected. The algorithm counts the attempts of every pool
+    // slot and commits the generation only if the count stays within the cap, with the sequential rule of the budget
+    // ledger (an attempt may start while the attempts so far do not exceed the cap, so the last accepted attempt is
+    // not counted against it). It is a cap on what is *committed*, not a bound on executed work: attempts already
+    // running when the cap is passed finish, and their work is discarded with the generation.
+    //
+    // Counting attempts, not evaluator calls, is what makes the cap a bound for every generator: a rejected
+    // candidate that is a cache hit still advances it, so a slot cannot retry for ever. The generator needs no
+    // cooperation: the algorithm counts its invocations, wherever it evaluates.
+    [[nodiscard]] virtual auto MaxAttempts(std::size_t /*parents*/) const -> std::optional<std::size_t>
+    {
+        return std::nullopt;
     }
 
     auto SetCache(Zobrist* cache) const { cache_ = cache; }
@@ -215,13 +238,11 @@ public:
         lastEvaluations_ = this->Evaluator()->CallCount;
     }
 
-    // Counts real offspring-candidate attempts (one CallCount increment per
-    // individual scored, regardless of local search), not local search's own
-    // internal residual/Jacobian evaluations - TotalEvaluations() (used here
-    // previously) counts the latter, wildly overstating selection pressure
-    // whenever local search runs (each attempt can cost dozens of internal
-    // LM evaluations, all counted as if they were separate failed
-    // candidates).
+    // DEPRECATED, telemetry only: evaluator calls since the last Prepare(), per parent, read from the shared
+    // CallCount. The algorithms do not use it (see MaxAttempts(), which counts the attempts per pool slot; the two
+    // differ when transposition-cache hits make attempts without an evaluator call). Counts one CallCount increment
+    // per scored individual, regardless of local search, not local search's own internal residual/Jacobian
+    // evaluations.
     auto SelectionPressure() const -> double
     {
         auto n = this->FemaleSelector()->Population().size();
@@ -232,11 +253,27 @@ public:
         return static_cast<double>(e) / static_cast<double>(n);
     }
 
+    // DEPRECATED, no longer consulted by the algorithms (see OffspringGeneratorBase::Terminate()).
     auto Terminate(OptimizerAccounting const& accounting) const -> bool override
     {
         return OffspringGeneratorBase::Terminate(accounting)
             || SelectionPressure() > static_cast<double>(maxSelectionPressure_);
     };
+
+    // The selection pressure of a generation is the number of attempts (candidates generated, whether evaluated or
+    // taken from the transposition cache) divided by the parents, as in offspring selection genetic algorithms. The
+    // generation may make at most MaxSelectionPressure() * parents attempts (saturating); see
+    // OffspringGeneratorBase::MaxAttempts() for the exact commit rule. Without a transposition cache an attempt is
+    // one evaluator call, and at one thread the rule is `calls / parents > MaxSelectionPressure()` that stopped the
+    // generation before the ledger existed.
+    [[nodiscard]] auto MaxAttempts(std::size_t parents) const -> std::optional<std::size_t> override
+    {
+        constexpr auto limit = std::numeric_limits<std::size_t>::max();
+        if (parents != 0 && maxSelectionPressure_ > limit / parents) {
+            return limit;
+        }
+        return maxSelectionPressure_ * parents;
+    }
 
     static constexpr size_t DefaultMaxSelectionPressure { 100 };
     static constexpr double DefaultComparisonFactor { 1.0 };
