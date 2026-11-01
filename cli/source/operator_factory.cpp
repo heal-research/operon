@@ -3,6 +3,7 @@
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include "operator_factory.hpp"
+#include "cli_args.hpp"
 #include "operon/operators/creator.hpp" // for CreatorBase, BalancedTreeC...
 #include "operon/operators/evaluator.hpp" // for Evaluator, EvaluatorBase
 #include "operon/operators/generator.hpp" // for OffspringGeneratorBase
@@ -38,6 +39,46 @@ namespace {
     auto GetErrorString(std::string const& name, std::string const& arg)
     {
         return fmt::format("unable to parse {} argument '{}'", name, arg);
+    }
+
+    // Scans one numeric field of a `name:field:...` spec; the error names the option, the whole spec and the field.
+    template <typename T>
+    auto ScanField(std::string const& option, std::string const& spec, std::string const& token, std::string_view field)
+        -> T
+    {
+        auto const value = Cli::ScanExact<T>(token);
+        if (!value) {
+            throw std::invalid_argument(
+                fmt::format("unable to parse {} argument '{}': '{}' is not a valid {}", option, spec, token, field));
+        }
+        return *value;
+    }
+
+    // Splits on `delimiter` keeping empty fields (also a trailing one), unlike Split(): "os:" has two fields.
+    auto SplitFields(std::string const& s, char delimiter) -> std::vector<std::string>
+    {
+        std::vector<std::string> fields { std::string {} };
+        for (char const c : s) {
+            if (c == delimiter) {
+                fields.emplace_back();
+            } else {
+                fields.back().push_back(c);
+            }
+        }
+        return fields;
+    }
+
+    // A size field that must be at least one: zero would build an empty brood and dereference its end iterator.
+    auto ScanPositiveSize(
+        std::string const& option, std::string const& spec, std::string const& token, std::string_view field) -> size_t
+    {
+        auto const value = ScanField<size_t>(option, spec, token, field);
+        if (value == 0) {
+            throw std::invalid_argument(
+                fmt::format("unable to parse {} argument '{}': '{}' is not a valid {} (must be at least 1)", option,
+                    spec, token, field));
+        }
+        return value;
     }
 } // namespace
 
@@ -252,18 +293,24 @@ auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& 
     -> std::unique_ptr<OffspringGeneratorBase>
 {
     std::unique_ptr<OffspringGeneratorBase> generator;
-    auto tok = Split(str, ':');
-    auto name = tok[0];
+    auto tok = SplitFields(str, ':');
+    auto const& name = tok[0];
+    auto const maxFields = name == "basic" ? 1UL : (name == "os" ? 3UL : 2UL);
+    if ((name == "basic" || name == "os" || name == "brood" || name == "poly") && tok.size() > maxFields) {
+        throw std::invalid_argument(
+            fmt::format("unable to parse generator argument '{}': '{}' takes at most {} field(s) after the name", str,
+                name, maxFields - 1));
+    }
     if (name == "basic") {
         generator = std::make_unique<BasicOffspringGenerator>(&eval, &cx, &mut, &femSel, &maleSel, coeffOptimizer);
     } else if (name == "os") {
         size_t maxSelectionPressure { 100 };
         double comparisonFactor { 0 };
         if (tok.size() > 1) {
-            maxSelectionPressure = scn::scan<size_t>(tok[1], "{}")->value();
+            maxSelectionPressure = ScanField<size_t>("generator", str, tok[1], "maximum selection pressure");
         }
         if (tok.size() > 2) {
-            comparisonFactor = scn::scan<double>(tok[2], "{}")->value();
+            comparisonFactor = ScanField<double>("generator", str, tok[2], "comparison factor");
         }
         generator = std::make_unique<OffspringSelectionGenerator>(&eval, &cx, &mut, &femSel, &maleSel, coeffOptimizer);
         dynamic_cast<OffspringSelectionGenerator*>(generator.get())->MaxSelectionPressure(maxSelectionPressure);
@@ -272,14 +319,14 @@ auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& 
         generator = std::make_unique<BroodOffspringGenerator>(&eval, &cx, &mut, &femSel, &maleSel, coeffOptimizer);
         size_t broodSize { BroodOffspringGenerator::DefaultBroodSize };
         if (tok.size() > 1) {
-            broodSize = scn::scan<size_t>(tok[1], "{}")->value();
+            broodSize = ScanPositiveSize("generator", str, tok[1], "brood size");
         }
         dynamic_cast<BroodOffspringGenerator*>(generator.get())->BroodSize(broodSize);
     } else if (name == "poly") {
         generator = std::make_unique<PolygenicOffspringGenerator>(&eval, &cx, &mut, &femSel, &maleSel, coeffOptimizer);
         size_t polygenicSize { PolygenicOffspringGenerator::DefaultBroodSize };
         if (tok.size() > 1) {
-            polygenicSize = scn::scan<size_t>(tok[1], "{}")->value();
+            polygenicSize = ScanPositiveSize("generator", str, tok[1], "polygenic size");
         }
         dynamic_cast<PolygenicOffspringGenerator*>(generator.get())->PolygenicSize(polygenicSize);
     } else {

@@ -18,6 +18,8 @@
 #include <string>
 #include <taskflow/taskflow.hpp>
 
+#include "population_stats.hpp"
+
 // Versioned machine-readable report. This is deliberately Operon-specific;
 // tree_node_count is not SRBench's model-complexity definition.
 namespace Operon {
@@ -240,29 +242,17 @@ public:
                                maeTest = Operon::MAE {}(estimatedTest, targetTest);
                            }).name("calc stats");
 
-        double avgLength = 0;
-        double avgQuality = 0;
-
-        auto calculateLength
-            = tf.transform_reduce(pop.begin(), pop.end(), avgLength, std::plus {}, [](auto const& ind) {
-                    return ind.Genotype.Length();
-                }).name("calc length");
-        auto calculateQuality
-            = tf.transform_reduce(pop.begin(), pop.end(), avgQuality, std::plus {}, [idx = idx](auto const& ind) {
-                    return ind[idx];
-                }).name("calc quality");
-
         // define task graph
         evaluate.precede(linearScaling);
         calcStats.succeed(linearScaling);
-        calcStats.precede(calculateLength, calculateQuality);
         // taskflow.dump(std::cout);
 
         executor.corun(tf);
         // executor.wait_for_all();
 
-        avgLength /= static_cast<double>(pop.size());
-        avgQuality /= static_cast<double>(pop.size());
+        auto const means = ComputePopulationMeans(pop, idx);
+        auto const avgLength = means.Length;
+        auto const avgQuality = means.Fitness;
 
         using T = std::tuple<std::string, double, std::string>;
         auto const* format = ":>#8.3g"; // see https://fmt.dev/latest/syntax.html

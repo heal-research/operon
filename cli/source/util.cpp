@@ -14,6 +14,9 @@
 #include <stdexcept>
 #include <string_view>
 
+#include "capabilities.hpp"
+#include "cli_args.hpp"
+#include "cli_error.hpp"
 #include "util.hpp"
 
 #include "operon/core/node.hpp"
@@ -134,7 +137,7 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         cxxopts::value<std::string>())("test", "Test range specified as start:end", cxxopts::value<std::string>())(
         "target", "Name of the target variable (required)", cxxopts::value<std::string>())(
         "inputs", "Comma-separated list of input variables", cxxopts::value<std::string>())("epsilon",
-        "Tolerance for fitness comparison (needed e.g. for eps-dominance)",
+        "Tolerance for fitness comparison in non-dominated sorting (operon_nsgp only; rejected by the other programs)",
         cxxopts::value<Operon::Scalar>()->default_value("1e-6"))("objective",
         "The error metric used for calculating fitness",
         cxxopts::value<std::string>()->default_value("r2"))("linear-scaling",
@@ -153,16 +156,21 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         cxxopts::value<std::size_t>()->default_value("1"))(
         "population-size", "Population size", cxxopts::value<size_t>()->default_value("1000"))("pool-size",
         "Recombination pool size (how many generated offspring per generation)",
-        cxxopts::value<size_t>()->default_value("1000"))(
-        "seed", "Random number seed", cxxopts::value<Operon::RandomGenerator::result_type>()->default_value("0"))(
-        "generations", "Number of generations", cxxopts::value<size_t>()->default_value("1000"))(
-        "evaluations", "Evaluation budget", cxxopts::value<size_t>()->default_value("1000000"))(
-        "iterations", "Local optimization iterations", cxxopts::value<size_t>()->default_value("0"))(
-        "selection-pressure", "Selection pressure", cxxopts::value<size_t>()->default_value("100"))(
-        "maxlength", "Maximum length", cxxopts::value<size_t>()->default_value("50"))("maxdepth", "Maximum depth",
-        cxxopts::value<size_t>()->default_value("10"))("crossover-probability", "The probability to apply crossover",
-        cxxopts::value<Operon::Scalar>()->default_value("1.0"))("crossover-internal-probability",
-        "Crossover bias towards swapping function nodes",
+        cxxopts::value<size_t>()->default_value("1000"))("seed",
+        "Random number seed. If omitted, all three programs draw a random seed (operon_gp and operon_nsgp print it in "
+        "the 'seed' output column); operon_enum also treats 0 as random",
+        cxxopts::value<Operon::RandomGenerator::result_type>())("generations",
+        "Number of generations, or 'unlimited' (also any value >= 2^62)",
+        cxxopts::value<std::string>()->default_value("1000"))("evaluations",
+        "Evaluation budget in residual + Jacobian evaluations, or 'unlimited' (also any value >= 2^62)",
+        cxxopts::value<std::string>()->default_value("1000000"))("iterations", "Local optimization iterations",
+        cxxopts::value<size_t>()->default_value("0"))("selection-pressure",
+        "Not supported (rejected); in operon_gp/operon_nsgp set the maximum selection pressure with "
+        "--offspring-generator os:<max-pressure>[:<comparison-factor>]",
+        cxxopts::value<std::string>())("maxlength", "Maximum length", cxxopts::value<size_t>()->default_value("50"))(
+        "maxdepth", "Maximum depth", cxxopts::value<size_t>()->default_value("10"))("crossover-probability",
+        "The probability to apply crossover", cxxopts::value<Operon::Scalar>()->default_value("1.0"))(
+        "crossover-internal-probability", "Crossover bias towards swapping function nodes",
         cxxopts::value<Operon::Scalar>()->default_value("0.9"))("mutation-probability",
         "The probability to apply mutation", cxxopts::value<Operon::Scalar>()->default_value("0.25"))("creator",
         "Tree creator: name:bias:mindepth:maxdepth:maxlength (e.g. --creator ptc2:0.5::20:30). Omitted fields use "
@@ -177,7 +185,8 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         cxxopts::value<std::string>()->default_value("tournament"))("male-selector",
         "Male selection operator, with optional parameters separated by : (eg, --selector tournament:5)",
         cxxopts::value<std::string>()->default_value("tournament"))("offspring-generator",
-        "OffspringGenerator operator, with optional parameters separated by : (eg --offspring-generator brood:10:10)",
+        "OffspringGenerator operator, with optional parameters separated by : basic, os[:pressure[:factor]], "
+        "brood[:size], poly[:size] (eg --offspring-generator os:10:0.5 or --offspring-generator brood:10)",
         cxxopts::value<std::string>()->default_value("basic"))("reinserter",
         "Reinsertion operator merging offspring in the recombination pool back into the population",
         cxxopts::value<std::string>()->default_value("keep-best"))("mutators",
@@ -198,8 +207,9 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         "Operate in symbolic mode - no coefficient tuning or coefficient mutation",
         cxxopts::value<bool>()->default_value("false"))(
         "show-primitives", "Display the primitive set used by the algorithm")("threads",
-        "Number of threads to use for parallelism", cxxopts::value<size_t>()->default_value("0"))("timelimit",
-        "Time limit after which the algorithm will terminate",
+        "Number of threads to use for parallelism (default: all hardware threads); operon_gp and operon_nsgp require "
+        "at least 1, operon_enum treats 0 as all hardware threads",
+        cxxopts::value<size_t>())("timelimit", "Time limit after which the algorithm will terminate",
         cxxopts::value<size_t>()->default_value(std::to_string(std::numeric_limits<size_t>::max())))(
         "transposition-cache",
         "Cache fitness values keyed by Zobrist hash of tree structure; most effective with coefficient optimization "
@@ -238,7 +248,9 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         "depth :N (0-20; the bound is the hull over the 2^N sub-boxes of the domain box, 0 or no suffix is the whole "
         "box), e.g. interval:4",
         cxxopts::value<std::string>()->default_value("interval"))("debug", "Debug mode (more information displayed)")(
-        "help", "Print help")("version", "Print version and program information");
+        "help", "Print help")("version", "Print version and program information")("capabilities",
+        "Print build identity, precision, ISA, optional features and registered option names as one JSON object and "
+        "exit");
     return opts;
 }
 
@@ -382,9 +394,60 @@ auto BuildInputs(cxxopts::ParseResult const& result, Dataset const& dataset, Has
     return inputs;
 }
 
+namespace {
+    // Options registered for every program but acted on by only some of them. Accepting one silently hides a
+    // misconfiguration (the run is unaffected), so each is rejected with a pointer to what does work.
+    auto CheckOptions(cxxopts::ParseResult const& result, std::string_view program) -> Cli::Result<void>
+    {
+        using Cli::Error;
+        using Cli::ErrorCode;
+        if (result.count("selection-pressure") != 0) {
+            auto const advice = program == "operon_enum"
+                ? std::string {}
+                : std::string { "; set the maximum selection pressure with --offspring-generator "
+                                "os:<max-pressure>[:<comparison-factor>]" };
+            return tl::unexpected(Error { ErrorCode::InvalidArguments, "--selection-pressure",
+                fmt::format("is not supported and has no effect{}", advice) });
+        }
+        if (result.count("epsilon") != 0 && program != "operon_nsgp") {
+            return tl::unexpected(Error { ErrorCode::InvalidArguments, "--epsilon",
+                fmt::format("is only used by operon_nsgp (comparison tolerance in non-dominated sorting); {} does not "
+                            "read it",
+                    program) });
+        }
+        // operon_enum treats an explicit 0 as "all hardware threads" (see EnumerationEngine::Build); the
+        // population-based programs construct their executor from the value directly.
+        if (result.count("threads") != 0 && program != "operon_enum") {
+            if (auto threads = Cli::ParseThreads(result["threads"].as<size_t>()); !threads) {
+                return tl::unexpected(threads.error());
+            }
+        }
+        for (auto const* name : { "generations", "evaluations" }) {
+            if (auto limit = Cli::ParseLimit(name, result[name].as<std::string>()); !limit) {
+                return tl::unexpected(limit.error());
+            }
+        }
+        return {};
+    }
+} // namespace
+
+auto GetLimit(cxxopts::ParseResult const& result, std::string const& name) -> size_t
+{
+    auto const limit = Cli::ParseLimit(name, result[name].as<std::string>());
+    ENSURE(limit.has_value(), "ParseOptions validates --generations/--evaluations before any caller reads them");
+    return *limit;
+}
+
 auto ParseOptions(cxxopts::Options&& opts, int argc, char** argv) -> cxxopts::ParseResult
 {
     auto const helpText = opts.help(); // capture before move
+    auto const program = opts.program();
+    std::vector<std::string> optionNames;
+    for (auto const& group : opts.groups()) {
+        for (auto const& option : opts.group_help(group).options) {
+            optionNames.insert(optionNames.end(), option.l.begin(), option.l.end());
+        }
+    }
     cxxopts::ParseResult result;
     try {
         result = std::move(opts).parse(argc, argv);
@@ -399,6 +462,13 @@ auto ParseOptions(cxxopts::Options&& opts, int argc, char** argv) -> cxxopts::Pa
     if (result.contains("version")) {
         fmt::print("{}\n", Operon::Version());
         std::exit(EXIT_SUCCESS);
+    }
+    if (result.contains("capabilities")) {
+        fmt::print("{}\n", Cli::CapabilitiesJson(program, std::move(optionNames), Operon::GetBuildInfo()));
+        std::exit(EXIT_SUCCESS);
+    }
+    if (auto const checked = CheckOptions(result, program); !checked) {
+        std::exit(Cli::Report(checked.error()));
     }
     // --show-primitives is a "just print primitives/recipes and exit" flag (see PrintPrimitives /
     // operon_enum's PrintEnumerationFunctions) - it never touches the dataset/target, so it's exempt
