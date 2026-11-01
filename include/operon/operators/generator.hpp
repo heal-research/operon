@@ -81,7 +81,7 @@ public:
         }
 
         auto evaluate
-            = [&]() { ScoreIndividual(random, *res.Child, *Evaluator(), coeffOptimizer_, pLocal, pLamarck, buf); };
+            = [&]() -> void { ScoreIndividual(random, *res.Child, *Evaluator(), coeffOptimizer_, pLocal, pLamarck, buf); };
 
         // The transposition table keys fitness by structure only. An evaluator whose result depends on the stored
         // coefficients (e.g. ShapeConstrainedValueEvaluator, which publishes a per-genotype completion) opts out: a
@@ -135,7 +135,6 @@ public:
     explicit BroodOffspringGenerator(EvaluatorBase const* eval, CrossoverBase const* cx, MutatorBase const* mut,
         SelectorBase const* femSel, SelectorBase const* maleSel, CoefficientOptimizer const* coeffOptimizer = nullptr)
         : OffspringGeneratorBase(eval, cx, mut, femSel, maleSel, coeffOptimizer)
-        , broodSize_(DefaultBroodSize)
     {
     }
 
@@ -148,7 +147,7 @@ public:
     static constexpr size_t DefaultBroodSize { 10 };
 
 private:
-    size_t broodSize_;
+    size_t broodSize_{DefaultBroodSize};
 };
 
 class OPERON_EXPORT PolygenicOffspringGenerator : public OffspringGeneratorBase {
@@ -156,7 +155,6 @@ public:
     explicit PolygenicOffspringGenerator(EvaluatorBase const* eval, CrossoverBase const* cx, MutatorBase const* mut,
         SelectorBase const* femSel, SelectorBase const* maleSel, CoefficientOptimizer const* coeffOptimizer = nullptr)
         : OffspringGeneratorBase(eval, cx, mut, femSel, maleSel, coeffOptimizer)
-        , broodSize_(DefaultBroodSize)
     {
     }
 
@@ -169,7 +167,7 @@ public:
     static constexpr size_t DefaultBroodSize = 10;
 
 private:
-    size_t broodSize_;
+    size_t broodSize_{DefaultBroodSize};
 };
 
 class OPERON_EXPORT OffspringSelectionGenerator : public OffspringGeneratorBase {

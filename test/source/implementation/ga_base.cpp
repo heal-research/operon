@@ -475,6 +475,7 @@ TEST_CASE("GP: a generation cut short by the evaluation budget is neither reinse
     CHECK(progress.Completed == PartialBudget - PartialPop);
     CHECK(progress.Attempted >= progress.Completed);
     CHECK(f.Evaluator.TotalEvaluations() == PartialBudget);
+    CHECK_FALSE(gp.StopRequested()); // budget exhaustion is internal termination, not a user stop
 
     SECTION("the incomplete state is copied with the algorithm and cleared by Reset()")
     {
@@ -578,6 +579,7 @@ TEST_CASE("NSGA2: IncompleteGeneration() reports the cut-short generation", "[al
         if (threads == 1) {
             CHECK(nsga.IncompleteGeneration()->Completed == PartialBudget - PartialPop);
         }
+        CHECK_FALSE(nsga.StopRequested()); // budget exhaustion is internal termination, not a user stop
     }
 }
 
@@ -596,6 +598,16 @@ namespace {
         }
 
         std::function<void(std::size_t, std::size_t)> OnCall;
+
+        // Makes exactly one subsequent Terminate() poll return true, after which the condition has cleared again
+        // (like a selection-pressure limit that Prepare() resets). Exactly one poller observes it.
+        auto ArmTransientTerminate() const -> void { transientTerminate_.store(true, std::memory_order_release); }
+        [[nodiscard]] auto Attempts() const -> std::size_t { return attempt_.load(std::memory_order_relaxed); }
+
+        auto Terminate() const -> bool override
+        {
+            return transientTerminate_.exchange(false, std::memory_order_acq_rel) || OffspringGeneratorBase::Terminate();
+        }
 
         auto Prepare(Operon::Span<Operon::Individual const> pop) const -> void override
         {
@@ -617,10 +629,11 @@ namespace {
     private:
         Operon::BasicOffspringGenerator inner_;
         mutable std::atomic_size_t attempt_ { 0 };
+        mutable std::atomic_bool transientTerminate_ { false };
         mutable std::atomic_size_t call_ { 0 };
     };
 
-    enum class Interruption { StopRequest, TimeLimit };
+    enum class Interruption { StopRequest, TimeLimit, TransientTermination };
 
     // Interrupts generation attempt 2 after the first complete generation was reported. Asserts that the interrupted
     // generation is not counted, reinserted or reported, and that IncompleteGeneration() describes it.
@@ -648,6 +661,8 @@ namespace {
             }
             if (kind == Interruption::StopRequest && call == stopAfterCalls) {
                 algo.RequestStop();
+            } else if (kind == Interruption::TransientTermination && call == stopAfterCalls) {
+                hg.ArmTransientTerminate();
             } else if (kind == Interruption::TimeLimit && call == 1) {
                 // Spin (no sleep) until the run is provably past its time limit; firstReport is not earlier than
                 // the run's own start. The stop check that preceded this call has already passed.
@@ -688,7 +703,12 @@ namespace {
         if (kind == Interruption::StopRequest) {
             CHECK(algo.StopRequested());
             CHECK(progress.Attempted >= stopAfterCalls);
+        } else if (kind == Interruption::TransientTermination) {
+            // Internal termination is not a user stop, and it ended the run: attempt 2 was never retried.
+            CHECK_FALSE(algo.StopRequested());
+            CHECK(hg.Attempts() == 2);
         } else {
+            CHECK_FALSE(algo.StopRequested());
             CHECK(progress.Attempted >= 1);
             // Elapsed() covers the discarded generation: the run ended because it exceeded the limit.
             CHECK(algo.Elapsed() > static_cast<double>(f.Config.TimeLimit));
@@ -712,6 +732,25 @@ TEST_CASE("GP: a stop request during offspring generation discards the unfinishe
 {
     for (std::size_t const threads : { 1UL, 4UL }) {
         CheckInterruptedGeneration<Operon::GeneticProgrammingAlgorithm>(Interruption::StopRequest, threads, MakeGp);
+    }
+}
+
+TEST_CASE("GP: a generator-defined termination that clears during offspring generation still ends the run without "
+          "a stop request",
+    "[algorithms][partial-generation]")
+{
+    for (std::size_t const threads : { 1UL, 4UL }) {
+        CheckInterruptedGeneration<Operon::GeneticProgrammingAlgorithm>(
+            Interruption::TransientTermination, threads, MakeGp);
+    }
+}
+
+TEST_CASE("NSGA2: a generator-defined termination that clears during offspring generation still ends the run "
+          "without a stop request",
+    "[algorithms][partial-generation]")
+{
+    for (std::size_t const threads : { 1UL, 4UL }) {
+        CheckInterruptedGeneration<Operon::NSGA2>(Interruption::TransientTermination, threads, MakeNsga2);
     }
 }
 

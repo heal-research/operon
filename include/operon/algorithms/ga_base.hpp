@@ -31,17 +31,7 @@ struct TreeInitializerBase;
 class GeneticAlgorithmBase : public StoppableAlgorithm {
 public:
     ~GeneticAlgorithmBase() override = default;
-    // Not `= default`: parents_/offspring_ are non-owning spans into
-    // individuals_'s storage, so a plain memberwise copy would leave the
-    // copy's spans pointing at the *source* object's individuals_ buffer
-    // (dangling once the source is destroyed, and aliasing it while both
-    // are alive). They're rebound here to the copy's own individuals_,
-    // exactly like the primary constructor and RestoreIndividuals() do -
-    // both derive them from config_.PopulationSize/PoolSize rather than
-    // copying the span objects themselves. The atomic stopRequested_ still
-    // gets its own handling via StoppableAlgorithm's copy ctor/assign
-    // (invoked explicitly here since every other member is memberwise-safe
-    // to copy or, like the spans, needs deriving instead).
+    // Rebind the spans to the copied individuals rather than the source storage.
     GeneticAlgorithmBase(GeneticAlgorithmBase const& other)
         : StoppableAlgorithm(other)
         , config_(other.config_)
@@ -103,24 +93,8 @@ public:
         generator_->SetCache(config.Cache);
     }
 
-    // Parents()/Offspring() genuinely change *type* between const and
-    // non-const (Span<Individual const> vs Span<Individual>), not just
-    // reference-qualification - a plain forwarding-reference return would
-    // return `Operon::Span<Individual> const&` for a const Self, which
-    // still exposes mutable *elements* through that span (Span's
-    // operator[] isn't disabled by the span object's own constness), i.e.
-    // it wouldn't actually be const-correct. The conditional_t below keeps
-    // the const-correctness the original two overloads had.
-    //
-    // Self& (not Self&&): the original non-ref-qualified overloads were
-    // technically callable on an rvalue *this, immediately returning a Span
-    // into that rvalue's about-to-be-destroyed individuals_ - a dangling
-    // Span by construction. Self& refuses to compile for a *mutable* rvalue
-    // caller instead, a deliberate, source-incompatible tightening (no
-    // in-repo or downstream caller does this). A const rvalue caller still
-    // compiles here (Self deduces to a const type, so Self& becomes
-    // Self const&, which binds a const rvalue same as it always could) -
-    // this only closes off the mutable-rvalue case, not rvalues generally.
+    // Const access returns spans of const elements; const spans alone are insufficient.
+    // Mutable rvalues are rejected; const rvalues can still produce dangling spans.
     template <typename Self>
     [[nodiscard]] auto Parents(this Self& self)
         -> Operon::Span<std::conditional_t<std::is_const_v<Self>, Individual const, Individual>>
@@ -135,24 +109,8 @@ public:
         return self.offspring_;
     }
 
-    // Individuals()/WorkerRngs()/Timings() only ever changed reference
-    // qualification (T& vs T const&) between overloads (never by-value, so
-    // these don't need the conditional_t treatment Generation()/Elapsed()/
-    // IsFitted() below get), and ordinary forwarding-reference deduction via
-    // `auto&&` reproduces both lvalue cases exactly. It's not a byte-for-
-    // byte match for rvalue callers specifically - the old, non-ref-
-    // qualified overloads always returned a plain T&/T const& regardless of
-    // the object's value category, while `auto&&` forwarding gives T&&/
-    // T const&& for a (mutable or const) rvalue caller instead. Not a new
-    // hazard (both are still references, and neither version's reference
-    // outlives the rvalue any better than the other - no in-repo or
-    // downstream caller does this), just a different reference category
-    // than before. decltype(auto) would have been the wrong choice here for
-    // the lvalue/const-lvalue cases specifically: on an unparenthesized
-    // member-access return expression it yields the *declared* member type
-    // by value (a silent copy), losing reference identity entirely - see
-    // Nodes() in tree.hpp for the full explanation.
-    template <typename Self> [[nodiscard]] auto&& Individuals(this Self&& self)
+    // Preserve reference qualification when forwarding access to storage.
+    template <typename Self> [[nodiscard]] auto Individuals(this Self&& self) -> auto&&
     {
         return std::forward<Self>(self).individuals_;
     }
@@ -173,27 +131,7 @@ public:
         return std::forward<Self>(self).workerRngs_;
     }
 
-    // Generation()/Elapsed()/IsFitted() are trivially-copyable scalars whose
-    // non-const overload existed only to allow direct assignment (e.g.
-    // `algo.IsFitted() = true;`); neither original overload was ref-
-    // qualified, so the const one returned by value regardless of whether
-    // the object was an lvalue or rvalue. A plain `auto&&` here would get
-    // that wrong for a const *rvalue* specifically: Self deduces to a
-    // non-reference type, and forwarding through it yields a `T const&&`
-    // binding - a reference into a temporary - where the old code always
-    // handed back a safe, independent copy. (Reading through a const
-    // *lvalue* isn't affected: only the reference category changes there,
-    // same as Individuals()/WorkerRngs()/Timings() above.)
-    //
-    // No caller does this today (confirmed: nothing in this repo or its
-    // downstream consumers calls these getters on a const rvalue), but it's
-    // one line of conditional_t to close off entirely rather than leave as
-    // a latent trap. Note this deliberately does *not* forward self: naming
-    // `self` inside the function body is always an lvalue expression
-    // regardless of which reference type Self deduced to, so branching the
-    // return *type* on constness alone (ignoring value category) is enough
-    // to reproduce the original by-value-for-const/reference-for-mutable
-    // split exactly, for all four Self×value-category combinations.
+    // Return const scalars by value and mutable scalars by reference.
     template <typename Self>
     [[nodiscard]] auto Generation(this Self&& self)
         -> std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, size_t, size_t&>
@@ -208,7 +146,7 @@ public:
         return self.elapsed_;
     } // NOLINT(cppcoreguidelines-missing-std-forward)
 
-    template <typename Self> [[nodiscard]] auto&& Timings(this Self&& self)
+    template <typename Self> [[nodiscard]] auto Timings(this Self&& self) -> auto&&
     {
         return std::forward<Self>(self).phaseTimes_;
     }
@@ -220,9 +158,8 @@ public:
         return self.isFitted_;
     } // NOLINT(cppcoreguidelines-missing-std-forward)
 
-    // Progress of the generation that was cut short by a stop condition (budget, time, callback) before its offspring
-    // pool was completely filled; nullopt if the last attempted generation completed. Such a generation is neither
-    // reinserted, counted in Generation(), nor reported: Parents() holds the last completed generation.
+    // Discarded generation progress, or nullopt if the last attempt completed.
+    // Parents() retains the last completed generation.
     [[nodiscard]] auto IncompleteGeneration() const -> std::optional<OffspringProgress> const&
     {
         return incompleteGeneration_;
@@ -234,9 +171,7 @@ public:
 
     // StopRequested()/RequestStop() are inherited from StoppableAlgorithm.
 
-    // Valid to call between runs only. The PhaseTimer observer owns its own
-    // totals and is recreated each Run(), so Reset() mid-run would cause the
-    // next reportProgress sync to overwrite the cleared map with stale data.
+    // Call only between runs; the active observer retains its own totals.
     auto Reset() -> void
     {
         generation_ = 0;

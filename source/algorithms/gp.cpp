@@ -49,7 +49,7 @@ auto GeneticProgrammingAlgorithm::Run(
         return static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count()) / ms;
     };
 
-    // random seeds for each thread — reuse existing states on warm resume, seed fresh otherwise
+    // Reuse worker RNG states on warm resume.
     size_t const s = std::max(config.PopulationSize, config.PoolSize);
     auto& rngs = WorkerRngs();
     if (rngs.size() != s) {
@@ -62,22 +62,28 @@ auto GeneticProgrammingAlgorithm::Run(
 
     auto const& evaluator = generator->Evaluator();
 
-    // we want to allocate all the memory that will be necessary for evaluation (e.g. for storing model responses)
-    // in one go and use it throughout the generations in order to minimize the memory pressure
+    // Reuse evaluation buffers across generations.
     auto trainSize = problem->TrainingRange().Size();
 
     ENSURE(executor.num_workers() > 0);
     std::vector<Operon::Vector<Operon::Scalar>> slots(executor.num_workers());
 
-    // stop() is polled concurrently by offspring-generation workers and must
-    // not write shared state; Elapsed() is published only from single-task
-    // contexts (the loop condition and the report task), which the taskflow
-    // graph orders against every reader.
+    // Workers poll stop() concurrently; only ordered tasks publish Elapsed().
+    // A worker that observes a stop condition latches it here, so a condition that is transient (e.g. selection
+    // pressure, which Prepare() resets) still ends the run after the generation it cut short. This is internal
+    // state: StopRequested() only ever reflects RequestStop() and a true report callback.
+    std::atomic_bool terminationObserved { false };
     auto shouldStop = [&](double elapsed) -> bool {
-        return StopRequested() || generator->Terminate() || Generation() == config.Generations
-            || elapsed > static_cast<double>(config.TimeLimit);
+        return StopRequested() || terminationObserved.load(std::memory_order_relaxed) || generator->Terminate()
+            || Generation() == config.Generations || elapsed > static_cast<double>(config.TimeLimit);
     };
-    auto stop = [&]() -> bool { return shouldStop(computeElapsed()); };
+    auto stop = [&]() -> bool {
+        auto const stopping = shouldStop(computeElapsed());
+        if (stopping) {
+            terminationObserved.store(true, std::memory_order_relaxed);
+        }
+        return stopping;
+    };
     auto loopCondition = [&]() -> bool {
         Elapsed() = computeElapsed();
         return shouldStop(Elapsed());
@@ -90,10 +96,7 @@ auto GeneticProgrammingAlgorithm::Run(
     std::atomic_size_t generatedOffspring {}; // pool slots filled in the current generation
     std::atomic_size_t attemptedOffspring {}; // generator invocations (accepted + rejected) in the current generation
 
-    // Declared here (Run()'s own scope), not inside the "init" task's
-    // callable below: a subflow's tasks run after that callable returns, so
-    // a variable local to it and captured by reference would be dangling by
-    // the time a worker thread actually reads it.
+    // Subflow tasks outlive the init callable, so keep this in Run's scope.
     bool const warmResume = IsFitted() && warmStart;
 
     auto timer = executor.make_observer<PhaseTimer>();
@@ -113,10 +116,7 @@ auto GeneticProgrammingAlgorithm::Run(
                                       })
                                       .name("report progress");
 
-            // Local search (if any) always runs before prepareEval below, either
-            // here (cold start) or not at all (warm resume, pLocal=0), so this
-            // loop itself never applies local search - passing pLocal=0 makes it
-            // a plain evaluate.
+            // Local search runs separately before evaluation on cold start.
             auto eval
                 = subflow
                       .for_each_index(size_t { 0 }, parents.size(), size_t { 1 },
@@ -130,10 +130,9 @@ auto GeneticProgrammingAlgorithm::Run(
                           })
                       .name("evaluate population");
             if (warmResume) {
-                // Re-evaluate to catch evaluator/objective config mismatches, but snapshot and restore
-                // the worker RNG states so that subsequent generations remain deterministic.
-                auto saveRngs = subflow.emplace([&]() { savedRngs = rngs; }).name("save rng states");
-                auto restoreRngs = subflow.emplace([&]() { rngs = std::move(savedRngs); }).name("restore rng states");
+                // Re-evaluate on resume without advancing worker RNG states.
+                auto saveRngs = subflow.emplace([&]() -> void { savedRngs = rngs; }).name("save rng states");
+                auto restoreRngs = subflow.emplace([&]() -> void { rngs = std::move(savedRngs); }).name("restore rng states");
                 prepareEval.precede(saveRngs);
                 saveRngs.precede(eval);
                 eval.precede(restoreRngs);
@@ -146,10 +145,7 @@ auto GeneticProgrammingAlgorithm::Run(
                                         (*coeffInit)(rngs[i], parents[i].Genotype);
                                     })
                                 .name("initialize population");
-                // Local search runs before prepareEval (not after, alongside
-                // eval) so that an evaluator snapshotting the population in
-                // Prepare() (e.g. DiversityEvaluator) sees post-optimization
-                // genotypes rather than the raw initial ones.
+                // Prepare sees the post-optimization population.
                 auto localSearch = subflow
                                        .for_each_index(size_t { 0 }, parents.size(), size_t { 1 },
                                            [&](size_t i) -> void {
@@ -180,21 +176,13 @@ auto GeneticProgrammingAlgorithm::Run(
         }, // init
         loopCondition, // loop condition
         [&, timer](tf::Subflow& subflow) -> void {
-            // Elitism (if any) is now handled uniformly by ReinserterBase
-            // (reinserter.hpp) - it protects the top EliteCount() parents
-            // before reinsert() runs, so no offspring slot needs to be
-            // reserved for a hand-picked elite here anymore.
             auto prepareGenerator = subflow
                                         .emplace([&]() -> void {
                                             generatedOffspring = 0;
                                             attemptedOffspring = 0;
                                             SetIncompleteGeneration(std::nullopt);
                                             generator->Prepare(parents);
-                                            // Stamp the cache clock with the generation offspring will
-                                            // belong to *before* they're evaluated - Generation() itself
-                                            // isn't incremented until after reinsert() below, so without
-                                            // this the cache would stamp entries with the prior
-                                            // generation's number (see incrementGeneration).
+                                            // Offspring belong to the next generation.
                                             if (auto* cache = config.Cache) {
                                                 cache->SetGeneration(Generation() + 1);
                                             }
@@ -221,17 +209,18 @@ auto GeneticProgrammingAlgorithm::Run(
                               attemptedOffspring.fetch_add(attempts, std::memory_order_relaxed);
                           })
                       .name("generate offspring");
-            // A generation whose pool was not completely filled (a stop condition fired mid-generation) is not a
-            // generation: the unfilled slots hold stale or default individuals, so nothing is reinserted, counted or
-            // reported (same rule as NSGA2). The partial progress is kept in IncompleteGeneration().
+            // Discard incomplete pools; unfilled slots may contain stale individuals.
             auto reinsert
                 = subflow
                       .emplace([&]() -> void {
                           auto const generated = generatedOffspring.load(std::memory_order_relaxed);
                           if (generated != offspring.size()) {
                               SetIncompleteGeneration(OffspringProgress {
-                                  attemptedOffspring.load(std::memory_order_relaxed), generated, offspring.size() });
-                              RequestStop();
+                                  .Attempted = attemptedOffspring.load(std::memory_order_relaxed),
+                                  .Completed = generated,
+                                  .PoolSize = offspring.size() });
+                              // No RequestStop(): the latched termination ends the run, and StopRequested() stays
+                              // false unless the user asked.
                               return;
                           }
                           (*reinserter)(random, Parents(), offspring);
@@ -247,8 +236,7 @@ auto GeneticProgrammingAlgorithm::Run(
                       .name("increment generation");
             auto reportProgress = subflow
                                       .emplace([&, timer]() -> void {
-                                          // Time and phase telemetry describe the work done even when the
-                                          // generation is discarded; only the report callback is skipped.
+                                          // Include discarded work in telemetry, but skip its report.
                                           Elapsed() = computeElapsed();
                                           Timings() = timer->Timings();
                                           if (generatedOffspring.load(std::memory_order_relaxed) != offspring.size()) {

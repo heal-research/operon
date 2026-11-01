@@ -68,17 +68,7 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
     auto eq
         = [eps](auto const& lhs, auto const& rhs) -> auto { return Operon::Equal {}(lhs.Fitness, rhs.Fitness, eps); };
 
-    // Sort an index permutation instead of physically reordering `pop`.
-    // `pop` here is the caller's combined parents+offspring storage, and
-    // Run() hands ReinserterBase::operator() fixed Parents()/Offspring()
-    // subspans over that same storage after this call returns - if we
-    // physically reordered pop, those subspans would silently become
-    // arbitrary halves of a fitness-sorted array rather than "the actual
-    // previous parents" / "the actual freshly generated offspring", which
-    // would undermine reinsertion strategies that rely on that distinction
-    // (e.g. ReplaceWorstReinserter). Rank/Distance below are still written
-    // directly into pop[order[i]], so they land on the correct individual
-    // regardless of pop's storage order.
+    // Preserve the parent and offspring subspans by sorting indices.
     Operon::Vector<size_t> order(pop.size());
     std::iota(order.begin(), order.end(), size_t { 0 });
     std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) -> auto {
@@ -94,13 +84,11 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
         i = j;
     }
     auto r = std::stable_partition(order.begin(), order.end(), [&](size_t i) -> auto { return !pop[i].Rank; });
-    // The sorter needs Span<Individual const>, but only ever reads .Fitness
-    // (never .Genotype/.Rank/.Distance) - build lightweight fitness-only
-    // stand-ins instead of deep-copying every unique individual's tree.
+    // The sorter reads only fitness; avoid copying genotypes.
     Operon::Vector<Individual> uniq;
     uniq.reserve(static_cast<size_t>(std::distance(order.begin(), r)));
     for (auto it = order.begin(); it < r; ++it) {
-        Individual ind; // default ctor only fills a 1-element placeholder Fitness, unlike Individual(nObj)
+        Individual ind;
         ind.Fitness = pop[*it].Fitness;
         uniq.push_back(std::move(ind));
     }
@@ -154,7 +142,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
         return static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count()) / us;
     };
 
-    // random seeds for each thread — reuse existing states on warm resume, seed fresh otherwise
+    // Reuse worker RNG states on warm resume.
     size_t const s = std::max(config.PopulationSize, config.PoolSize);
     auto& rngs = WorkerRngs();
     if (rngs.size() != s) {
@@ -167,22 +155,28 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
 
     auto const* evaluator = generator->Evaluator();
 
-    // we want to allocate all the memory that will be necessary for evaluation (e.g. for storing model responses)
-    // in one go and use it throughout the generations in order to minimize the memory pressure
+    // Reuse evaluation buffers across generations.
     auto trainSize = problem->TrainingRange().Size();
 
     ENSURE(executor.num_workers() > 0);
     std::vector<std::vector<Operon::Scalar>> slots(executor.num_workers());
 
-    // stop() is polled concurrently by offspring-generation workers and must
-    // not write shared state; Elapsed() is published only from single-task
-    // contexts (the loop condition and the report task), which the taskflow
-    // graph orders against every reader.
+    // Workers poll stop() concurrently; only ordered tasks publish Elapsed().
+    // A worker that observes a stop condition latches it here, so a condition that is transient (e.g. selection
+    // pressure, which Prepare() resets) still ends the run after the generation it cut short. This is internal
+    // state: StopRequested() only ever reflects RequestStop() and a true report callback.
+    std::atomic_bool terminationObserved { false };
     auto shouldStop = [&](double elapsed) -> bool {
-        return StopRequested() || generator->Terminate() || Generation() == config.Generations
-            || elapsed > static_cast<double>(config.TimeLimit);
+        return StopRequested() || terminationObserved.load(std::memory_order_relaxed) || generator->Terminate()
+            || Generation() == config.Generations || elapsed > static_cast<double>(config.TimeLimit);
     };
-    auto stop = [&]() -> bool { return shouldStop(computeElapsed()); };
+    auto stop = [&]() -> bool {
+        auto const stopping = shouldStop(computeElapsed());
+        if (stopping) {
+            terminationObserved.store(true, std::memory_order_relaxed);
+        }
+        return stopping;
+    };
     auto loopCondition = [&]() -> bool {
         Elapsed() = computeElapsed();
         return shouldStop(Elapsed());
@@ -196,10 +190,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
     std::atomic_size_t generatedOffspring {};
     std::atomic_size_t attemptedOffspring {};
 
-    // Declared here (Run()'s own scope), not inside the "init" task's
-    // callable below: a subflow's tasks run after that callable returns, so
-    // a variable local to it and captured by reference would be dangling by
-    // the time a worker thread actually reads it.
+    // Subflow tasks outlive the init callable, so keep this in Run's scope.
     bool const warmResume = IsFitted() && warmStart;
 
     // while loop control flow
@@ -222,11 +213,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                                       .name("report progress");
             nonDominatedSort.precede(reportProgress);
 
-            // nonDominatedSort runs after eval in both paths to rebuild fronts_ from current fitness.
-            // Local search (if any) always runs before prepareEval below, either
-            // in the cold-start localSearch task or not at all (warm resume,
-            // pLocal=0), so this loop itself never applies local search -
-            // passing pLocal=0 makes it a plain evaluate.
+            // Sort after evaluation; local search runs separately on cold start.
             auto eval
                 = subflow
                       .for_each_index(size_t { 0 }, parents.size(), size_t { 1 },
@@ -238,8 +225,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                           })
                       .name("evaluate population");
             if (warmResume) {
-                // Re-evaluate to catch evaluator/objective config mismatches, but snapshot and restore
-                // the worker RNG states so that subsequent generations remain deterministic.
+                // Re-evaluate on resume without advancing worker RNG states.
                 auto saveRngs = subflow.emplace([&]() { savedRngs = rngs; }).name("save rng states");
                 auto restoreRngs = subflow.emplace([&]() { rngs = std::move(savedRngs); }).name("restore rng states");
                 prepareEval.precede(saveRngs);
@@ -254,10 +240,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                                         (*coeffInit)(rngs[i], parents[i].Genotype);
                                     })
                                 .name("initialize population");
-                // Local search runs before prepareEval (not after, alongside
-                // eval) so that an evaluator snapshotting the population in
-                // Prepare() (e.g. DiversityEvaluator) sees post-optimization
-                // genotypes rather than the raw initial ones.
+                // Prepare sees the post-optimization population.
                 auto localSearch = subflow
                                        .for_each_index(size_t { 0 }, parents.size(), size_t { 1 },
                                            [&](size_t i) -> void {
@@ -292,11 +275,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                                             attemptedOffspring = 0;
                                             SetIncompleteGeneration(std::nullopt);
                                             generator->Prepare(parents);
-                                            // Stamp the cache clock with the generation offspring will
-                                            // belong to *before* they're evaluated - Generation() itself
-                                            // isn't incremented until after reinsert() below, so without
-                                            // this the cache would stamp entries with the prior
-                                            // generation's number (see incrementGeneration).
+                                            // Offspring belong to the next generation.
                                             if (auto* cache = config.Cache) {
                                                 cache->SetGeneration(Generation() + 1);
                                             }
@@ -330,16 +309,16 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                           auto const generated = generatedOffspring.load(std::memory_order_relaxed);
                           if (generated != offspring.size()) {
                               SetIncompleteGeneration(OffspringProgress {
-                                  attemptedOffspring.load(std::memory_order_relaxed), generated, offspring.size() });
-                              RequestStop();
+                                  .Attempted=attemptedOffspring.load(std::memory_order_relaxed),
+                                  .Completed=generated,
+                                  .PoolSize=offspring.size() });
+                              // No RequestStop(): the latched termination ends the run, and StopRequested() stays
+                              // false unless the user asked.
                               return;
                           }
                           Sort(individuals);
                       })
                       .name(std::string { SortTaskName });
-            // Delegates to the reinserter's actual merge strategy (same call
-            // shape as GP, gp.cpp) instead of just truncating a globally
-            // sorted array via ReinserterBase::Sort.
             auto reinsert = subflow
                                 .emplace([&]() -> void {
                                     if (generatedOffspring.load(std::memory_order_relaxed) == offspring.size()) {
@@ -357,8 +336,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                       .name("increment generation");
             auto reportProgress = subflow
                                       .emplace([&, timer]() -> void {
-                                          // Time and phase telemetry describe the work done even when the
-                                          // generation is discarded; only the report callback is skipped.
+                                          // Include discarded work in telemetry, but skip its report.
                                           Elapsed() = computeElapsed();
                                           Timings() = timer->Timings();
                                           if (generatedOffspring.load(std::memory_order_relaxed) != offspring.size()) {
