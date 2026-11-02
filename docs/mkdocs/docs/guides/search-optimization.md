@@ -17,6 +17,10 @@ The GP and NSGA-II drivers share the same operator boundary. Initializers create
 
 `GeneticAlgorithmConfig` bounds generations, evaluations, iterations, population size, pool size, and seed. Its evaluation budget is consumed by evaluator work—not by offspring attempts—so operators should not embed untracked objective calculations.
 
+A generation counts only if its offspring pool was completely filled. If a stop condition (evaluation budget, generator termination such as `OffspringGeneratorBase::Terminate()` and the offspring-selection pressure limit, time limit, stop request) fires while the pool is being filled, both drivers discard that generation: nothing is reinserted, `Generation()` is not incremented and the report callback is not invoked, so `Parents()` holds the last completed generation. `IncompleteGeneration()` returns the attempted/completed/pool counts of such a cut-short generation, or `nullopt` if the last generation completed.
+
+An incomplete generation is not itself a stop reason and does not set `StopRequested()`: the run ends only because the stop condition that cut the generation short (evaluation budget, generator termination, time limit, stop request or a `true` report) holds. A generator-defined termination that clears again before the loop checks it, such as the selection-pressure limit, still ends the run. `StopRequested()` is true only after `RequestStop()` or a `true` report callback.
+
 ## Fitness and ordering
 
 Fitness is a minimization vector. Single-objective GP commonly uses `SingleObjectiveComparison`; NSGA-II computes `Rank` and `Distance` and uses crowded comparison. `ParetoComparison` assumes minimization in every dimension. A custom comparator must be consistent for selection and reinsertion or the search transition no longer has a coherent ordering.
