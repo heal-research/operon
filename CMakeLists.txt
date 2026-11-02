@@ -475,6 +475,44 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$" AND NOT WIN32)
     target_compile_options(operon_operon PUBLIC "-march=x86-64-v3")
 endif()
 
+# ---- Build configuration and effective compiler flags for BuildInfo / Version() ----
+# OPERON_BUILD (the configuration being built) and OPERON_COMPILER_FLAGS (CMAKE_CXX_FLAGS, the CMAKE_CXX_FLAGS_<CONFIG>
+# of that configuration only, and the compile options set on operon_operon, e.g. -march=x86-64-v3) are resolved with
+# generator expressions, so multi-config generators report the configuration actually built. The configurations
+# considered are those of the generator (CMAKE_CONFIGURATION_TYPES, which may include custom ones) or the active
+# CMAKE_BUILD_TYPE for single-config generators. Not captured: options added by consumers or by the toolchain file's
+# compiler wrapper. The flag text is embedded as a raw string literal, so quotes in the flags need no escaping.
+if(CMAKE_CONFIGURATION_TYPES)
+    set(operon_flag_configs ${CMAKE_CONFIGURATION_TYPES})
+elseif(CMAKE_BUILD_TYPE)
+    set(operon_flag_configs ${CMAKE_BUILD_TYPE})
+else()
+    set(operon_flag_configs "")
+endif()
+set(operon_flags_per_config "")
+foreach(operon_cfg IN LISTS operon_flag_configs)
+    string(TOUPPER "${operon_cfg}" operon_cfg_upper)
+    set(operon_cfg_flags "${CMAKE_CXX_FLAGS_${operon_cfg_upper}}")
+    string(REPLACE ">" "$<ANGLE-R>" operon_cfg_flags "${operon_cfg_flags}")
+    string(REPLACE "," "$<COMMA>" operon_cfg_flags "${operon_cfg_flags}")
+    string(REPLACE ";" "$<SEMICOLON>" operon_cfg_flags "${operon_cfg_flags}")
+    string(APPEND operon_flags_per_config "$<$<CONFIG:${operon_cfg}>: ${operon_cfg_flags}>")
+endforeach()
+set(operon_flags_global "${CMAKE_CXX_FLAGS}")
+string(REPLACE ">" "$<ANGLE-R>" operon_flags_global "${operon_flags_global}")
+string(REPLACE "," "$<COMMA>" operon_flags_global "${operon_flags_global}")
+string(REPLACE ";" "$<SEMICOLON>" operon_flags_global "${operon_flags_global}")
+get_target_property(operon_target_compile_options operon_operon COMPILE_OPTIONS)
+if(operon_target_compile_options STREQUAL "operon_target_compile_options-NOTFOUND")
+    set(operon_target_compile_options "")
+endif()
+string(REPLACE ";" " " operon_target_compile_options "${operon_target_compile_options}")
+file(GENERATE
+    OUTPUT "${PROJECT_BINARY_DIR}/buildinfo-flags/$<CONFIG>/buildinfo_flags.hpp"
+    CONTENT "#define OPERON_BUILD \"$<CONFIG>\"\n#define OPERON_COMPILER_FLAGS R\"operon_flags(${operon_flags_global}${operon_flags_per_config} ${operon_target_compile_options})operon_flags\"\n"
+)
+target_include_directories(operon_operon PRIVATE "${PROJECT_BINARY_DIR}/buildinfo-flags/$<CONFIG>")
+
 if (HAVE_ASMJIT)
     target_link_libraries(operon_operon PUBLIC asmjit::asmjit)
     target_sources(operon_operon PRIVATE
