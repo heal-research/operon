@@ -62,10 +62,12 @@ using FitnessEntry = CacheEntry<FitnessData>;
 // Duplicate inserts in one generation keep the smallest fitness vector, and age-based expiry runs at the generation
 // boundary. Hit/miss decisions then do not depend on the order in which slots run.
 //
-// That makes a run independent of the thread count only if no stop condition cuts a generation: evaluation budget,
-// offspring-selection pressure (the `os` generator), time limit, stop request. How far a cut generation got depends
-// on the thread count. JIT evaluation is not covered: JIT results differ between runs even at one thread,
-// independent of the cache, and a JitZobrist visit threshold above 1 makes compilation depend on arrival order.
+// With the commit rule of the evaluation budget (a generation commits or is discarded as a whole; the budget and the
+// offspring-selection attempt cap bind on committed work) that makes the committed run independent of the thread count,
+// also when the budget or the offspring-selection pressure binds. A time limit and a stop request still cut a
+// generation at a moment that depends on timing: the discarded generation leaves no trace, but where the run stops
+// does. JIT evaluation is not covered: JIT results differ between runs even at one thread, independent of the
+// cache, and a JitZobrist visit threshold above 1 makes compilation depend on arrival order.
 //
 // Cost: lookups that used to hit an entry of the same generation become evaluations. The search trajectory then
 // changes, so the number of evaluations a run consumes changes too, in either direction; measure it with the

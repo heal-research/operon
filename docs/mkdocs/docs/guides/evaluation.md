@@ -96,18 +96,23 @@ time and cache counters never consume the budget. A report read while workers ru
 counters; one read after `Run()` returned is exact. Optimizer time is a wall-clock sum over threads: it is neither
 deterministic nor thread-count independent.
 
-The evaluation budget (`SetBudget`, `config.Evaluations`) is spent by scoring plus optimizer work. The run applies it
-through `OffspringGeneratorBase::Terminate(OptimizerAccounting const&)`, which adds the evaluator tree's `Stats()`
-residual and Jacobian counts to the run's optimizer evaluations; `EvaluatorBase::BudgetExhausted()` and
-`TotalEvaluations()` see scoring work only and are not the run's stop condition. The budget policy is otherwise
-unchanged: it is checked before each offspring attempt, work done for a generation that is cut short stays counted
-(executed counters are never rolled back), and a stopped generation is discarded as described in the algorithms
-guide. A genotype-only objective that costs nothing to score still consumes budget through the local search it
-triggers.
+The unit of the evaluation budget is scoring plus optimizer work, but what ends a run is
+`GeneticAlgorithmConfig::Evaluations`, applied by the algorithm to committed work (see
+[Evaluation budget and commit rule](../reference/search.md#evaluation-budget-and-commit-rule)). The algorithm sums the
+cost of a generation from the evaluator tree's `Stats()` and the run's optimizer accounting after its workers finish.
+The evaluator's own `Budget()`/`BudgetExhausted()` and `TotalEvaluations()` see scoring work only and are telemetry,
+as is the deprecated `OffspringGeneratorBase::Terminate(OptimizerAccounting const&)`: none of them stops a run. What a
+slot costs must be a function of the slot alone: a custom evaluator has to charge the base counters
+deterministically (not depending on other slots or on arrival order), and an evaluator or cache whose cost depends on
+what another slot did in the same generation (a transposition cache with `CacheVisibility::Immediate`, JIT compilation
+gated by `--jit-min-visits` above 1) voids the thread-count independence of the commit decision. An evaluator that
+charges nothing is simply not budgeted; a genotype-only objective that costs nothing to score still consumes budget
+through the local search it triggers. Work done with the evaluator outside a generation (for example in a report
+callback) is not committed.
 
-The same cache has its generation clock advanced by `Run()`, so entry stamping, entry visibility (`CacheVisibility`) and age-based expiry, the
-counters and the reset all refer to it. `EvaluatorBase::Reset()` is not virtual: it clears the base counters and then
-calls the protected virtual `ResetChildren()`, which composite evaluators override to reset their children (`MultiEvaluator`,
-the shape-constrained adapter). `GeneticAlgorithmBase::Reset()` (called at the start of every `Run()`) calls it, zeroes
-the run's optimizer accounting, and zeroes the active cache's counters. Copying a quiescent algorithm copies its
-optimizer accounting with it.
+The same cache has its generation clock advanced by `Run()`, so entry stamping, entry visibility (`CacheVisibility`)
+and age-based expiry, the counters and the reset all refer to it. `EvaluatorBase::Reset()` is not virtual: it clears
+the base counters and then calls the protected virtual `ResetChildren()`, which composite evaluators override to reset
+their children (`MultiEvaluator`, the shape-constrained adapter). `GeneticAlgorithmBase::Reset()` (called at the start
+of every `Run()`) calls it, zeroes the run's optimizer accounting and the budget report, and zeroes the active cache's
+counters. Copying a quiescent algorithm copies its optimizer accounting and budget report with it.

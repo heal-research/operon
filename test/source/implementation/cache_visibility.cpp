@@ -47,11 +47,12 @@
 #include "operon/operators/reinserter.hpp"
 #include "operon/operators/selector.hpp"
 #include "operon/optimizer/optimizer.hpp"
+#include "run_signature.hpp"
 
 // With the transposition cache on and CacheVisibility::Committed, a run does not depend on the number of threads (no
-// stop condition cuts a generation here): the final population, its fitness, the worker RNG states, the generation
-// count and the evaluation and cache counters are identical for 1, 4 and 16 threads and between repeated runs. A
-// generation that is cut short leaves no trace in the cache (Zobrist::AbortGeneration).
+// time limit or stop request cuts a generation here): the final population, its fitness, the worker RNG states, the
+// generation count and the evaluation and cache counters are identical for 1, 4 and 16 threads and between repeated
+// runs. A generation that is cut short leaves no trace in the cache (Zobrist::AbortGeneration).
 namespace Operon::Test {
 namespace {
 
@@ -73,6 +74,7 @@ namespace {
         CacheVisibility Visibility;
         std::size_t MaxAge;
         std::size_t Threads;
+        std::size_t RunSeed { Seed };
         // Every individual has one of a handful of structures and neither crossover nor mutation changes a structure
         // (mutation only moves coefficients, and the structures differ in length, so fitness varies between
         // individuals and between structures, which offspring selection needs to accept children). From the second
@@ -118,58 +120,6 @@ namespace {
         [[nodiscard]] auto operator==(Outcome const&) const -> bool = default;
     };
 
-    template <typename T> auto Bits(T value) -> std::uint64_t
-    {
-        using Int = std::conditional_t<sizeof(T) == 4, std::uint32_t, std::uint64_t>;
-        return std::bit_cast<Int>(value);
-    }
-
-    // Every field of Node, floating point values bit for bit. (Node::operator== compares the hash only.) Keep in step
-    // with Node; the signature test below changes each field in turn.
-    void Append(std::vector<std::uint64_t>& sig, Node const& node)
-    {
-        sig.push_back(node.HashValue);
-        sig.push_back(node.CalculatedHashValue);
-        sig.push_back(Bits(node.Value));
-        sig.push_back(node.Arity);
-        sig.push_back(node.Length);
-        sig.push_back(node.Depth);
-        sig.push_back(node.Level);
-        sig.push_back(node.Parent);
-        sig.push_back(static_cast<std::uint64_t>(node.Type));
-        sig.push_back(static_cast<std::uint64_t>(node.IsEnabled));
-        sig.push_back(static_cast<std::uint64_t>(node.Optimize));
-        sig.push_back(node.RefTo);
-    }
-
-    auto Signature(Operon::Span<Individual const> parents) -> std::vector<std::uint64_t>
-    {
-        std::vector<std::uint64_t> sig;
-        for (auto const& ind : parents) {
-            for (auto const& node : ind.Genotype.Nodes()) {
-                Append(sig, node);
-            }
-            sig.push_back(~std::uint64_t { 0 }); // separates the individuals
-            for (auto f : ind.Fitness) {
-                sig.push_back(Bits(f));
-            }
-            sig.push_back(ind.Rank);
-            sig.push_back(Bits(ind.Distance));
-        }
-        return sig;
-    }
-
-    auto Signature(std::vector<Operon::RandomGenerator> const& rngs) -> std::vector<std::uint64_t>
-    {
-        std::vector<std::uint64_t> sig;
-        for (auto const& rng : rngs) {
-            for (auto const word : rng.state()) {
-                sig.push_back(word);
-            }
-        }
-        return sig;
-    }
-
     // The parents as a checkpoint stores them. A tree read back from a checkpoint has its derived node fields
     // (subtree lengths, depths, levels, cached hashes) recomputed, so an individual that was never modified keeps
     // other cached values than its restored copy although the model is the same. Comparing runs through this
@@ -199,13 +149,10 @@ namespace {
             Serialization::ToBeve(cacheOnly) };
     }
 
-    // `duplicates`: the structures are few and fixed (see Setup::Duplicates). Offspring selection then accepts a child
-    // whenever its parents differ in fitness (a huge negative comparison factor makes the threshold exceed any
-    // child), so a cache hit that is worse than the parents cannot make it retry forever; parents of one structure
-    // with equal fitness still need a child that is no worse, and the population holds parents of several
-    // structures with different fitness.
+    // Offspring selection counts attempts, cache hits included, so even a population that has converged on one
+    // structure (Setup::Duplicates) cannot make a slot retry for ever: the attempt cap ends the generation.
     auto MakeGenerator(std::string const& name, EvaluatorBase& eval, CrossoverBase& cx, MutatorBase& mut,
-        SelectorBase& fem, SelectorBase& male, CoefficientOptimizer const* opt, bool duplicates)
+        SelectorBase& fem, SelectorBase& male, CoefficientOptimizer const* opt)
         -> std::unique_ptr<OffspringGeneratorBase>
     {
         if (name == "basic") {
@@ -214,7 +161,7 @@ namespace {
         if (name == "os") {
             auto g = std::make_unique<OffspringSelectionGenerator>(&eval, &cx, &mut, &fem, &male, opt);
             g->MaxSelectionPressure(10);
-            g->ComparisonFactor(duplicates ? -1e30 : 0);
+            g->ComparisonFactor(0);
             return g;
         }
         if (name == "brood") {
@@ -283,11 +230,11 @@ namespace {
         config.Iterations = setup.LocalSearch ? 3 : 0;
         config.PopulationSize = PopulationSize;
         config.PoolSize = PopulationSize;
-        config.Seed = Seed;
+        config.Seed = setup.RunSeed;
         config.LocalSearchProbability = 1.0;
         config.LamarckianProbability = 1.0;
 
-        Operon::RandomGenerator cacheRng { Seed };
+        Operon::RandomGenerator cacheRng { setup.RunSeed };
         Operon::Zobrist cache { cacheRng, static_cast<int>(MaxLength), problem.GetInputs(),
             { .MaxAge = setup.MaxAge, .Visibility = setup.Visibility } };
         config.Cache = &cache;
@@ -297,15 +244,13 @@ namespace {
         Operon::CoefficientOptimizer const coeffOptimizer { &optimizer };
 
         Operon::Evaluator<DTable> errorEvaluator { &problem, &dtable };
-        errorEvaluator.SetBudget(config.Evaluations);
-        Operon::RandomGenerator random { Seed };
+        Operon::RandomGenerator random { setup.RunSeed };
 
         if (setup.Algo == Algorithm::GP) {
             Operon::ComparisonCallback const comp = Operon::SingleObjectiveComparison { 0 };
             Operon::TournamentSelector fem { comp };
             Operon::TournamentSelector male { comp };
-            auto generator
-                = MakeGenerator(setup.Generator, errorEvaluator, cx, mut, fem, male, &coeffOptimizer, setup.Duplicates);
+            auto generator = MakeGenerator(setup.Generator, errorEvaluator, cx, mut, fem, male, &coeffOptimizer);
             Operon::KeepBestReinserter reinserter { comp, /*eliteCount=*/1 };
             Operon::GeneticProgrammingAlgorithm gp { config, &problem, &initializer, &coeffInit, generator.get(),
                 &reinserter };
@@ -316,7 +261,6 @@ namespace {
             [](Operon::Tree const& tree) { return static_cast<Operon::Scalar>(tree.Length()); },
             static_cast<Operon::Scalar>(MaxLength) };
         Operon::MultiEvaluator evaluator { &problem };
-        evaluator.SetBudget(config.Evaluations);
         evaluator.Add(&errorEvaluator);
         evaluator.Add(&lengthEvaluator);
         Operon::TreePropertyEvaluator depthEvaluator { &problem,
@@ -328,8 +272,7 @@ namespace {
         Operon::CrowdedComparison const comp;
         Operon::TournamentSelector fem { comp };
         Operon::TournamentSelector male { comp };
-        auto generator
-            = MakeGenerator(setup.Generator, evaluator, cx, mut, fem, male, &coeffOptimizer, setup.Duplicates);
+        auto generator = MakeGenerator(setup.Generator, evaluator, cx, mut, fem, male, &coeffOptimizer);
         Operon::KeepBestReinserter reinserter { comp };
         Operon::RankIntersectSorter sorter;
         Operon::NSGA2 nsga { config, &problem, &initializer, &coeffInit, generator.get(), &reinserter, &sorter };
@@ -478,13 +421,16 @@ namespace {
     // Generation 1 completes, generation attempt 2 is cut by a stop request after 5 generator calls and attempt 3 (the
     // warm resume) completes generations 2 and 3. Attempt 2 plants an entry with fitness -10 (a value no real
     // fitness has), attempt 3 one with +10 for the same hash.
+    // Returns whether attempt 2 inserted at least one structure the cache had not seen (checked, with one worker only,
+    // that a discarded generation erased all of them); whether it did depends on the platform's random draws, so the
+    // callers scan seeds until one did.
     template <typename Algo, typename Make>
-    void CheckCutGeneration(CacheVisibility visibility, std::size_t threads, Make make)
+    auto CheckCutGeneration(CacheVisibility visibility, std::size_t threads, Make make, std::uint64_t seed) -> bool
     {
         constexpr Operon::Hash planted { 0xBADBADU };
         CutRun f { visibility };
         Algo algo = make(f);
-        Operon::RandomGenerator rng { 7 };
+        Operon::RandomGenerator rng { seed };
 
         std::mutex mutex;
         std::vector<Operon::Hash> fresh; // structures inserted for the first time by attempt 2
@@ -514,9 +460,6 @@ namespace {
         if (visibility == CacheVisibility::Committed) {
             CHECK_FALSE(kept.has_value());
             if (threads == 1) { // the hit/miss bookkeeping of OnChild is exact with one worker only
-                // `fresh` holds whatever structures the cut generation inserted; which ones that is depends on the
-                // random sequence of the standard library, so the planted entry above is what makes the rollback
-                // check non-vacuous on every platform. Size equality covers any other entry.
                 for (auto const hash : fresh) {
                     CHECK_FALSE(Lookup(f.Cache, hash).has_value());
                 }
@@ -535,6 +478,18 @@ namespace {
         // Committed: the retry's +10 is the only entry of generation 2, the discarded -10 never took part in the
         // minimum. Immediate: the first writer, the discarded attempt, keeps the entry.
         CHECK(*resumed == (visibility == CacheVisibility::Committed ? Operon::Scalar { 10 } : Operon::Scalar { -10 }));
+        return !fresh.empty();
+    }
+
+    // Runs `check(seed)` for seeds from 7 until one of them reports that attempt 2 inserted fresh structures.
+    template <typename Check> void ForSomeSeed(Check&& check)
+    {
+        bool fresh = false;
+        for (std::uint64_t seed = 7; seed < 7 + 64 && !fresh; ++seed) {
+            CAPTURE(seed);
+            fresh = check(seed);
+        }
+        REQUIRE(fresh); // non-vacuous: some seed gave the discarded generation entries that had to be erased
     }
 
     // Generation 1 completes and is reported; the first generator call of attempt 2 plants an entry (fitness -10, a
@@ -770,37 +725,61 @@ TEST_CASE("Committed cache visibility makes a run independent of the thread coun
     auto const duplicates = GENERATE(false, true);
     CAPTURE(algorithm == Algorithm::GP ? "gp" : "nsga2", generator, localSearch, maxAge, duplicates);
 
-    if (duplicates && generator == "os" && maxAge > 0) {
-        // Offspring selection ends a generation by the evaluator calls it makes, and a cache hit makes none. Once the
-        // population has converged on one structure, an expired entry is re-evaluated to a value that can be worse
-        // than every parent, and the slot then retries on its own cached copies for ever: nothing raises the
-        // selection pressure. (Without expiry the cached value is the parents' own.)
-        SUCCEED("offspring selection can retry for ever on cache hits once entries expire");
-        return;
-    }
-
     Dataset ds { "./data/Poly-10.csv", /*hasHeader=*/true };
-    auto const reference
-        = Run(ds, { algorithm, generator, localSearch, CacheVisibility::Committed, maxAge, /*Threads=*/1, duplicates });
 
-    REQUIRE(reference.Generation == Generations);
-    REQUIRE(reference.Counters[6] > 0); // the cache was consulted
-    if (duplicates) {
-        // Hits are guaranteed by construction here (see Setup::Duplicates). With random operators a hit depends on
-        // the random sequence of the standard library, so the random cells do not require one.
-        REQUIRE(reference.Counters[5] > 0);
+    // Whether `os` pressure ends the run early depends on the platform's random distributions, so a cell scans seeds
+    // until a run completes all generations and consults the cache, and compares that run across thread counts. A
+    // cell with random operators does not require a cache hit (whether one happens also depends on the platform's
+    // distributions); a cell with duplicate structures has hits by construction (see Setup::Duplicates) and
+    // requires them. Offspring selection counts cache hits as attempts, so once the population has converged and
+    // an expired entry makes every candidate a rejected hit, the attempt cap ends the run early at every seed. That
+    // outcome is as deterministic as a complete run (the cap binds on committed work), so an `os` cell that no seed
+    // completes compares the run that got furthest instead.
+    bool compared = false;
+    std::optional<std::size_t> furthestSeed;
+    std::size_t furthestGeneration = 0;
+    auto const compare = [&](std::size_t seed, Outcome const& reference) {
+        CAPTURE(seed, reference.Generation);
+        if (duplicates) {
+            REQUIRE(reference.Counters[5] > 0);
+        }
+        for (auto const threads : { std::size_t { 4 }, std::size_t { 16 }, std::size_t { 16 } }) {
+            CAPTURE(threads);
+            auto const outcome = Run(ds,
+                { algorithm, generator, localSearch, CacheVisibility::Committed, maxAge, threads, seed, duplicates });
+            CHECK(outcome.Generation == reference.Generation);
+            if (reference.Generation == Generations) { // a discarded generation's executed work depends on the threads
+                CHECK(Same(outcome.Counters, reference.Counters));
+            }
+            CHECK(Same(outcome.Population, reference.Population));
+            CHECK(Same(outcome.Rngs, reference.Rngs));
+            CHECK(Same(outcome.Cache, reference.Cache)); // the final cache: entries, stamps and clock
+        }
+    };
+    for (std::size_t seed = Seed; seed < Seed + 64 && !compared; ++seed) {
+        auto const reference = Run(ds,
+            { algorithm, generator, localSearch, CacheVisibility::Committed, maxAge, /*Threads=*/1, seed, duplicates });
+        if (reference.Counters[6] == 0) {
+            continue; // the cache was not consulted
+        }
+        if (reference.Generation != Generations) { // a limit ended the run
+            if (reference.Generation > furthestGeneration) {
+                furthestGeneration = reference.Generation;
+                furthestSeed = seed;
+            }
+            continue;
+        }
+        compared = true;
+        compare(seed, reference);
     }
-
-    for (auto const threads : { std::size_t { 4 }, std::size_t { 16 }, std::size_t { 16 } }) {
-        CAPTURE(threads);
-        auto const outcome
-            = Run(ds, { algorithm, generator, localSearch, CacheVisibility::Committed, maxAge, threads, duplicates });
-        CHECK(outcome.Generation == reference.Generation);
-        CHECK(Same(outcome.Counters, reference.Counters));
-        CHECK(Same(outcome.Population, reference.Population));
-        CHECK(Same(outcome.Rngs, reference.Rngs));
-        CHECK(Same(outcome.Cache, reference.Cache)); // the final cache: entries, stamps and clock
+    if (!compared && generator == "os" && furthestSeed) {
+        compared = true;
+        compare(*furthestSeed,
+            Run(ds,
+                { algorithm, generator, localSearch, CacheVisibility::Committed, maxAge, /*Threads=*/1, *furthestSeed,
+                    duplicates }));
     }
+    REQUIRE(compared); // non-vacuous: some seed ran every generation (or, for os, as far as the cap allowed)
 }
 
 TEST_CASE(
@@ -967,8 +946,13 @@ TEST_CASE("Committed: a generation cut short leaves nothing in the cache, also a
 {
     for (auto const threads : { std::size_t { 1 }, std::size_t { 4 } }) {
         CAPTURE(threads);
-        CheckCutGeneration<Operon::GeneticProgrammingAlgorithm>(CacheVisibility::Committed, threads, MakeGp);
-        CheckCutGeneration<Operon::NSGA2>(CacheVisibility::Committed, threads, MakeNsga2);
+        ForSomeSeed([&](std::uint64_t seed) {
+            return CheckCutGeneration<Operon::GeneticProgrammingAlgorithm>(
+                CacheVisibility::Committed, threads, MakeGp, seed);
+        });
+        ForSomeSeed([&](std::uint64_t seed) {
+            return CheckCutGeneration<Operon::NSGA2>(CacheVisibility::Committed, threads, MakeNsga2, seed);
+        });
     }
 }
 
@@ -999,8 +983,12 @@ TEST_CASE("Committed: an exception in the report callback keeps the generation t
 
 TEST_CASE("Immediate: the entries of a generation cut short are kept", "[cache][partial-generation]")
 {
-    CheckCutGeneration<Operon::GeneticProgrammingAlgorithm>(CacheVisibility::Immediate, 1, MakeGp);
-    CheckCutGeneration<Operon::NSGA2>(CacheVisibility::Immediate, 1, MakeNsga2);
+    ForSomeSeed([&](std::uint64_t seed) {
+        return CheckCutGeneration<Operon::GeneticProgrammingAlgorithm>(CacheVisibility::Immediate, 1, MakeGp, seed);
+    });
+    ForSomeSeed([&](std::uint64_t seed) {
+        return CheckCutGeneration<Operon::NSGA2>(CacheVisibility::Immediate, 1, MakeNsga2, seed);
+    });
 }
 
 TEST_CASE("A warm start needs a fitted object: completed or restored, never after an exception or never run",
