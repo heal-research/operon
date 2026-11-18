@@ -109,6 +109,9 @@ auto main(int argc, char** argv) -> int
     auto symbolic = result["symbolic"].as<bool>();
     try {
         shapeBoundOptions = Operon::ParseShapeBoundOptions(result["shape-bound-mode"].as<std::string>());
+        // validated even without --transposition-cache, so a typo is not silently ignored
+        auto const cacheOptions = Operon::ZobristOptions { .MaxAge = result["cache-max-age"].as<size_t>(),
+            .Visibility = Operon::ParseCacheVisibility(result["cache-visibility"].as<std::string>()) };
         for (const auto& kv : result.arguments()) {
             const auto& key = kv.key();
             const auto& value = kv.value();
@@ -330,7 +333,7 @@ auto main(int argc, char** argv) -> int
             if (result["transposition-cache"].as<bool>()) {
                 Operon::RandomGenerator cacheRng(config.Seed);
                 zobrist = std::make_unique<Operon::Zobrist>(
-                    cacheRng, static_cast<int>(maxLength), problem.GetInputs(), result["cache-max-age"].as<size_t>());
+                    cacheRng, static_cast<int>(maxLength), problem.GetInputs(), cacheOptions);
                 config.Cache = zobrist.get();
             }
             errorEvaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable,
@@ -341,7 +344,7 @@ auto main(int argc, char** argv) -> int
         } else {
             auto jobj = Operon::CLI::MakeJitObjects(jitMode, problem, dtable, result["objective"].as<std::string>(),
                 result["jit-max-length"].as<int>(), result["jit-min-visits"].as<std::size_t>(),
-                static_cast<int>(maxLength), config.Seed, result["cache-max-age"].as<std::size_t>(), shapeSpec);
+                static_cast<int>(maxLength), config.Seed, cacheOptions, shapeSpec);
             if (jobj.Error) {
                 return EXIT_FAILURE;
             }
@@ -466,7 +469,8 @@ auto main(int argc, char** argv) -> int
             ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(errorEvaluator.get());
         }
         Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr, std::move(modelSelector));
-        auto const warmStart = Operon::ResumeFromCheckpoint(gp, random, result);
+        auto const fingerprint = Operon::MakeRunFingerprint(gp, shapeSpec ? &shapeSpec->Constraints : nullptr);
+        auto const warmStart = Operon::ResumeFromCheckpoint(gp, random, result, fingerprint);
         if (warmStart && result.contains("probes-config")) {
             fmt::print(stderr,
                 "warning: --probes-config sinks/traces truncate on start; resuming via --resume discards prior "
@@ -485,14 +489,14 @@ auto main(int argc, char** argv) -> int
                 if (probes) {
                     (*probes)(gp);
                 }
-                Operon::MaybeSaveCheckpoint(gp, random, result);
+                Operon::MaybeSaveCheckpoint(gp, random, result, fingerprint);
                 return false;
             },
             warmStart);
         if (probes) {
             probes->Finish();
         }
-        Operon::MaybeSaveCheckpoint(gp, random, result, /*force=*/true);
+        Operon::MaybeSaveCheckpoint(gp, random, result, fingerprint, /*force=*/true);
         jitReport();
         auto best = reporter.GetBest();
         if (shapeEvaluator != nullptr) {

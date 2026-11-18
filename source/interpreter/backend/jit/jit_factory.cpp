@@ -11,12 +11,12 @@ namespace Operon::JIT {
 
 auto MakeJitObjects(std::string_view mode, Operon::Problem& problem, Operon::ScalarDispatch const& dtable,
     Operon::ErrorMetric const& metric, int maxLength, int jitMaxLength, std::size_t jitMinVisits, std::size_t seed,
-    std::size_t cacheMaxAge, std::optional<Operon::ShapeConstraintSpec> const& shape) -> JitObjects
+    Operon::ZobristOptions cacheOptions, std::optional<Operon::ShapeConstraintSpec> const& shape) -> JitObjects
 {
     JitObjects out;
 
     Operon::RandomGenerator cacheRng(seed);
-    auto jz = std::make_unique<JitZobrist>(cacheRng, maxLength, problem.GetInputs(), cacheMaxAge);
+    auto jz = std::make_unique<JitZobrist>(cacheRng, maxLength, problem.GetInputs(), cacheOptions);
     auto* jzp = jz.get();
     out.Zobrist = std::move(jz);
 

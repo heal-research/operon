@@ -8,6 +8,7 @@
 #include "operon/core/dispatch.hpp" // for DispatchTable
 #include "operon/core/individual.hpp" // for Comparison
 #include "operon/core/types.hpp" // for Span
+#include "operon/hash/zobrist.hpp" // for CacheVisibility
 #include "operon/interpreter/interpreter.hpp" // for Interpreter
 #include "operon/operators/shape_constrained_evaluator.hpp" // for ShapeConstraintSpec
 #include "operon/optimizer/optimizer.hpp"
@@ -71,6 +72,10 @@ auto ParseReinserter(std::string const& str, ComparisonCallback&& comp, size_t e
     -> std::unique_ptr<ReinserterBase>;
 
 auto ParseSelector(std::string const& str, ComparisonCallback&& comp) -> std::unique_ptr<SelectorBase>;
+
+// Parses a --cache-visibility value: "immediate" or "committed". Throws std::invalid_argument naming the supported
+// values for anything else.
+auto ParseCacheVisibility(std::string const& str) -> CacheVisibility;
 
 // Result of parsing a --creator spec ("name:bias:mindepth:maxdepth:maxlength",
 // all but name optional). mindepth/maxdepth/maxlength are UniformTreeInitializer

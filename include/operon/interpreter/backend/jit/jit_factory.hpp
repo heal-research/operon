@@ -44,7 +44,8 @@ struct JitObjects {
 // constrained interpreter evaluator.
 OPERON_EXPORT auto MakeJitObjects(std::string_view mode, Operon::Problem& problem, Operon::ScalarDispatch const& dtable,
     Operon::ErrorMetric const& metric, int maxLength, int jitMaxLength, std::size_t jitMinVisits, std::size_t seed,
-    std::size_t cacheMaxAge = 0, std::optional<Operon::ShapeConstraintSpec> const& shape = std::nullopt) -> JitObjects;
+    Operon::ZobristOptions cacheOptions = {}, std::optional<Operon::ShapeConstraintSpec> const& shape = std::nullopt)
+    -> JitObjects;
 
 } // namespace Operon::JIT
 

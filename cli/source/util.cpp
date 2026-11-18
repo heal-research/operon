@@ -2,21 +2,26 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fmt/format.h>
+#include <fmt/ranges.h>
 #include <limits>
 #include <memory>
 #include <scn/scan.h>
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
+#include <system_error>
 
 #include "capabilities.hpp"
 #include "cli_args.hpp"
 #include "cli_error.hpp"
+#include "resume_validation.hpp"
 #include "util.hpp"
 
 #include "operon/core/node.hpp"
@@ -24,6 +29,8 @@
 #include "operon/core/serialization.hpp"
 #include "operon/core/types.hpp"
 #include "operon/core/version.hpp"
+#include "operon/hash/hash.hpp"
+#include "operon/hash/zobrist.hpp"
 
 using Operon::BuiltinOp;
 using Operon::NodeType;
@@ -217,7 +224,14 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         cxxopts::value<bool>()->default_value("false"))("cache-max-age",
         "Expire transposition cache entries older than this many generations (0 = never expire); only effective with "
         "--transposition-cache",
-        cxxopts::value<size_t>()->default_value("0"))("pareto-front",
+        cxxopts::value<size_t>()->default_value("0"))("cache-visibility",
+        "When a transposition cache entry becomes visible: committed (to other offspring slots only from the next "
+        "generation, duplicate entries keep the smallest fitness, expiry at the generation boundary; cache hits then "
+        "do not depend on slot arrival order, and the run does not depend on the thread count unless a stop condition "
+        "cuts a generation: evaluation budget, offspring-selection pressure, time limit, stop request; JIT "
+        "evaluation is not covered) or immediate (to every slot at once; results can depend on thread timing); only "
+        "effective with --transposition-cache",
+        cxxopts::value<std::string>()->default_value("committed"))("pareto-front",
         "Write the non-dominated members of the retained parent population to this JSON file after the run (only "
         "effective with Pareto-based algorithms, e.g. operon_nsgp). The front is computed from the fitness vectors "
         "with the --epsilon tolerance used by the search: epsilon-equivalent individuals are listed once",
@@ -228,8 +242,27 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         cxxopts::value<std::string>()->default_value("gaussian"))("checkpoint-interval",
         "Save a checkpoint every N generations (0 = disabled)", cxxopts::value<std::size_t>()->default_value("0"))(
         "checkpoint-file", "Path for checkpoint output (BEVE binary format)",
-        cxxopts::value<std::string>()->default_value("checkpoint.beve"))(
-        "resume", "Resume a previous run from this checkpoint file", cxxopts::value<std::string>())("probes-config",
+        cxxopts::value<std::string>()->default_value("checkpoint.beve"))("resume",
+        "Resume a previous run from this checkpoint file (a file that does not exist starts a fresh run with a "
+        "warning; any other problem is an error). The checkpoint carries the parent population, the random number "
+        "generator states, a fingerprint of the build, dataset and options, and for a run with --transposition-cache "
+        "the cache (entries, insertion generations, generation clock), under a checksum. Resume with the same "
+        "dataset and options as the checkpointed run, with a build of the same revision, precision, architecture "
+        "and ISA level (the compiler and its flags are not compared). The run then continues like the uninterrupted "
+        "one unless --evaluations (or another limit that cuts a generation) binds: the evaluation budget applies "
+        "per invocation, so a resumed run gets a fresh --evaluations and re-evaluates every parent once; its charge "
+        "is the objective's residual and Jacobian work. Only these may differ: --threads; --generations "
+        "(finite: at least the "
+        "generation of the checkpoint); --evaluations; --timelimit; what is only reported or written "
+        "(--checkpoint-interval, --checkpoint-file, --pareto-front, --model-selection, --mdl-likelihood, "
+        "--probes-config, --report-json, --debug); the options that name the data (--dataset, --train, --test, "
+        "--target, --inputs, --shape-constraints-config: the data content, resolved ranges, target, inputs and "
+        "constraints are compared, not the paths); and --seed, only for a run without --transposition-cache. "
+        "--transposition-cache, --cache-visibility and --cache-max-age must agree with the checkpoint (a cache-less "
+        "checkpoint cannot be resumed with a cache, nor the reverse). A corrupt file, a checkpoint of another format "
+        "version, another build, or a checkpoint that does not fit the dataset and primitive set is rejected. "
+        "Fingerprints and cache-bearing checkpoints are only valid on the architecture that wrote them",
+        cxxopts::value<std::string>())("probes-config",
         R"(Path to a JSON config file describing per-generation instrumentation probes to run, e.g. {"probes":[{"type":"cache_hit_rate","every":1}],"sink":{"type":"jsonl","path":"metrics.jsonl"}})",
         cxxopts::value<std::string>())("shape-constraints-config",
         R"(Path to a JSON config file describing shape constraints (function/derivative sign or value bounds over a domain box) to reject infeasible individuals during fitness evaluation, e.g. {"domains":{"x":[0.1,15]},"constraints":[{"op":"derivative","variable":"x","order":1,"sign":-1}]})",
@@ -254,16 +287,147 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
     return opts;
 }
 
-auto ResumeFromCheckpoint(GeneticAlgorithmBase& algo, RandomGenerator& rng, cxxopts::ParseResult const& result) -> bool
+namespace {
+    auto NormalizedOptionsStorage() -> std::vector<std::pair<std::string, std::string>>&
+    {
+        static std::vector<std::pair<std::string, std::string>> storage;
+        return storage;
+    }
+} // namespace
+
+auto NormalizedOptions() -> std::vector<std::pair<std::string, std::string>> const&
+{
+    return NormalizedOptionsStorage();
+}
+
+auto RunFingerprintExcludedOptions() -> std::vector<std::string> const&
+{
+    static std::vector<std::string> const excluded { "threads", "generations", "evaluations", "timelimit",
+        "checkpoint-interval", "checkpoint-file", "resume", "pareto-front", "model-selection", "mdl-likelihood",
+        "probes-config", "report-json", "debug", "help", "version", "capabilities", "show-primitives", "dataset",
+        "train", "test", "target", "inputs", "shape-constraints-config", "transposition-cache", "cache-visibility",
+        "cache-max-age", "seed" };
+    return excluded;
+}
+
+auto MakeRunFingerprint(GeneticAlgorithmBase const& algo, ShapeConstraintSet const* shapeConstraints)
+    -> Serialization::RunFingerprint
+{
+    Serialization::RunFingerprint fp;
+    auto const add = [&](std::string name, std::uint64_t hash) {
+        fp.Groups.push_back(std::move(name));
+        fp.Hashes.push_back(hash);
+    };
+
+    auto const& problem = *algo.GetProblem();
+    auto const& config = algo.GetConfig();
+    add(std::string { BuildIdentityGroup }, BuildIdentityHash(GetBuildInfo()));
+    add("shape.constraints", ShapeConstraintsHash(shapeConstraints));
+
+    // dataset contents: the values of every variable (in variable order) as the problem sees them now, i.e. after
+    // --standardize, and the names that bind them
+    auto const* dataset = problem.GetDataset();
+    std::uint64_t content = 0;
+    auto names = dataset->VariableNames();
+    for (auto const& variable : dataset->VariableHashes()) {
+        auto const values = dataset->GetValues(variable);
+        content = CombineHashes(content, variable);
+        content = CombineHashes(content, HashBytes(values.data(), values.size() * sizeof(Scalar)));
+    }
+    for (auto const& name : names) {
+        content = CombineHashes(content, HashText(name));
+    }
+    add("dataset.content", content);
+    add("dataset.target", CombineHashes(HashText(problem.TargetVariable().Name), problem.TargetVariable().Hash));
+    std::uint64_t inputs = 0;
+    for (auto const input : problem.GetInputs()) {
+        inputs = CombineHashes(inputs, input);
+    }
+    add("dataset.inputs", inputs);
+    add("dataset.train", CombineHashes(problem.TrainingRange().Start(), problem.TrainingRange().End()));
+    add("dataset.test", CombineHashes(problem.TestRange().Start(), problem.TestRange().End()));
+
+    // the resolved configuration of the algorithm (what the options turned into)
+    add("config.population-size", config.PopulationSize);
+    add("config.pool-size", config.PoolSize);
+    add("config.iterations", config.Iterations);
+    add("config.epsilon", HashBytes(&config.Epsilon, sizeof(config.Epsilon)));
+    add("config.crossover-probability", HashBytes(&config.CrossoverProbability, sizeof(config.CrossoverProbability)));
+    add("config.mutation-probability", HashBytes(&config.MutationProbability, sizeof(config.MutationProbability)));
+    add("config.local-search-probability",
+        HashBytes(&config.LocalSearchProbability, sizeof(config.LocalSearchProbability)));
+    add("config.lamarckian-probability",
+        HashBytes(&config.LamarckianProbability, sizeof(config.LamarckianProbability)));
+    add("config.objectives", algo.GetGenerator()->Evaluator()->ObjectiveCount());
+
+    // every other option, by its effective value
+    auto const& excluded = RunFingerprintExcludedOptions();
+    for (auto const& [name, value] : NormalizedOptions()) {
+        if (std::ranges::find(excluded, name) == excluded.end()) {
+            add("option." + name, HashText(value));
+        }
+    }
+    return fp;
+}
+
+namespace {
+    auto VisibilityName(CacheVisibility visibility) -> char const*
+    {
+        return visibility == CacheVisibility::Immediate ? "immediate" : "committed";
+    }
+
+    // Restores the transposition cache that the checkpoint carries into the cache of the resumed run (the presence
+    // of a cache on both sides was checked by CheckCachePresence). The two runs have to agree on what the entries
+    // mean (visibility, maximum age, the random table the keys come from); otherwise the resumed run would not
+    // continue the checkpointed one, so the mismatch is an error.
+    auto RestoreCache(Zobrist* cache, std::size_t objectiveCount, Serialization::Checkpoint const& cp,
+        std::string const& path) -> void
+    {
+        if (!cp.Cache || cache == nullptr) {
+            return;
+        }
+        ZobristState state;
+        try {
+            state = Serialization::ToZobristState(*cp.Cache);
+        } catch (std::invalid_argument const& e) {
+            throw std::runtime_error(fmt::format("checkpoint '{}' is corrupt: {}", path, e.what()));
+        }
+        if (state.Visibility != cache->Visibility()) {
+            throw std::runtime_error(fmt::format(
+                "checkpoint '{}' was written with --cache-visibility={} but this run uses --cache-visibility={}", path,
+                VisibilityName(state.Visibility), VisibilityName(cache->Visibility())));
+        }
+        if (state.MaxAge != cache->MaxAge()) {
+            throw std::runtime_error(
+                fmt::format("checkpoint '{}' was written with --cache-max-age={} but this run uses --cache-max-age={}",
+                    path, state.MaxAge, cache->MaxAge()));
+        }
+        try {
+            cache->Import(state, objectiveCount);
+        } catch (std::invalid_argument const& e) {
+            throw std::runtime_error(
+                fmt::format("cannot restore the transposition cache of checkpoint '{}': {}", path, e.what()));
+        }
+    }
+} // namespace
+
+auto ResumeFromCheckpoint(GeneticAlgorithmBase& algo, RandomGenerator& rng, cxxopts::ParseResult const& result,
+    Serialization::RunFingerprint const& fingerprint) -> bool
 {
     if (!result.contains("resume")) {
         return false;
     }
     auto const path = result["resume"].as<std::string>();
+    std::error_code existsError;
+    if (!std::filesystem::exists(path, existsError) && !existsError) {
+        // "resume if present": a checkpoint that was never written (the first run of a restartable job) is not an
+        // error. Anything else that keeps the file from being used is.
+        fmt::print(stderr, "warning: checkpoint '{}' does not exist, starting fresh\n", path);
+        return false;
+    }
     auto cp = Serialization::LoadCheckpoint(path);
     if (!cp) {
-        fmt::print(stderr, "warning: checkpoint '{}' could not be loaded, starting fresh\n", path);
-        return false;
+        throw std::runtime_error(fmt::format("cannot resume: checkpoint '{}' could not be read (see above)", path));
     }
     auto const& config = algo.GetConfig();
     auto const popSize = config.PopulationSize;
@@ -271,46 +435,50 @@ auto ResumeFromCheckpoint(GeneticAlgorithmBase& algo, RandomGenerator& rng, cxxo
         throw std::runtime_error(fmt::format(
             "checkpoint population size {} doesn't match --population-size {}", cp->Population.size(), popSize));
     }
+    // Before anything of the checkpoint is used: it must come from a run that computes what this one computes.
+    if (!cp->Run) {
+        throw std::runtime_error(fmt::format(
+            "checkpoint '{}' carries no run fingerprint, so it cannot be checked against this run's options", path));
+    }
+    if (auto const message = FingerprintMismatchMessage(path, *cp->Run, fingerprint); !message.empty()) {
+        throw std::runtime_error(message);
+    }
+    // Everything is checked before any state of the algorithm is replaced.
+    CheckGenerationLimit(path, cp->Generation, config.Generations);
+    CheckCachePresence(path, cp->Cache.has_value(), algo.GetGenerator()->Cache() != nullptr);
+    CheckPopulation(path, cp->Population, *algo.GetProblem(), result["maxlength"].as<std::size_t>());
+    auto const workerCount = std::max(config.PopulationSize, config.PoolSize);
+    // Exactly one random state per offspring slot: without them the resumed run cannot continue the checkpointed one.
+    if (cp->WorkerRngStates.size() != workerCount) {
+        throw std::runtime_error(fmt::format(
+            "checkpoint '{}' has {} worker RNG states but this run needs {} (max of --population-size and --pool-size)",
+            path, cp->WorkerRngStates.size(), workerCount));
+    }
+
+    // The only step that can still throw is the import of the cache, and it leaves the cache as it was when it does:
+    // it comes first, so a rejected checkpoint changes nothing. What follows only assigns.
+    RestoreCache(algo.GetGenerator()->Cache(), algo.GetGenerator()->Evaluator()->ObjectiveCount(), *cp, path);
     rng.set_state(cp->RngState);
     algo.Generation() = cp->Generation;
-    // The cache's own generation clock always starts at 0 for a freshly
-    // constructed Zobrist, regardless of the checkpoint's generation - align
-    // it here so the resumed population's re-evaluation (which runs before
-    // the GA loop's own SetGeneration(Generation() + 1) call) is stamped
-    // with the resumed generation instead of 0, which would otherwise make
-    // every entry read as ancient (and get evicted) the moment the loop
-    // advances the clock past the checkpoint's generation.
-    if (auto* cache = algo.GetGenerator()->Cache()) {
-        cache->SetGeneration(cp->Generation);
-    }
     auto parents = algo.Parents();
     for (std::size_t i = 0; i < cp->Population.size(); ++i) {
         parents[i] = std::move(cp->Population[i]);
     }
-    auto const workerCount = std::max(config.PopulationSize, config.PoolSize);
-    if (cp->WorkerRngStates.empty()) {
-        fmt::print(
-            stderr, "warning: checkpoint has no worker RNG states — bit-exactness of resumed run is not guaranteed\n");
-    } else if (cp->WorkerRngStates.size() != workerCount) {
-        throw std::runtime_error(fmt::format(
-            "checkpoint worker RNG count {} doesn't match expected {} (max of --population-size and --pool-size)",
-            cp->WorkerRngStates.size(), workerCount));
-    } else {
-        auto& workers = algo.WorkerRngs();
-        workers.clear();
-        workers.reserve(cp->WorkerRngStates.size());
-        for (auto const& state : cp->WorkerRngStates) {
-            RandomGenerator worker(0ULL);
-            worker.set_state(state);
-            workers.push_back(std::move(worker));
-        }
+    auto& workers = algo.WorkerRngs();
+    workers.clear();
+    workers.reserve(cp->WorkerRngStates.size());
+    for (auto const& state : cp->WorkerRngStates) {
+        RandomGenerator worker(0ULL);
+        worker.set_state(state);
+        workers.push_back(std::move(worker));
     }
+    // The restored population is what a warm Run() continues: the object counts as fitted.
     algo.IsFitted() = true;
     return true;
 }
 
 auto MaybeSaveCheckpoint(GeneticAlgorithmBase const& algo, RandomGenerator const& rng,
-    cxxopts::ParseResult const& result, bool force) -> void
+    cxxopts::ParseResult const& result, Serialization::RunFingerprint const& fingerprint, bool force) -> void
 {
     auto const interval = result["checkpoint-interval"].as<std::size_t>();
     auto const gen = algo.Generation();
@@ -336,6 +504,10 @@ auto MaybeSaveCheckpoint(GeneticAlgorithmBase const& algo, RandomGenerator const
     for (auto const& worker : algo.WorkerRngs()) {
         cp.WorkerRngStates.push_back(worker.state());
     }
+    if (auto const* cache = algo.GetGenerator()->Cache()) {
+        cp.Cache = Serialization::ToCacheCheckpoint(cache->Export());
+    }
+    cp.Run = fingerprint;
     if (!Serialization::SaveCheckpoint(cp, path)) {
         fmt::print(stderr,
             "warning: checkpoint save failed at generation {} — run continues but resume may not be possible\n", gen);
@@ -443,8 +615,10 @@ auto ParseOptions(cxxopts::Options&& opts, int argc, char** argv) -> cxxopts::Pa
     auto const helpText = opts.help(); // capture before move
     auto const program = opts.program();
     std::vector<std::string> optionNames;
+    std::vector<cxxopts::HelpGroupDetails> optionGroups;
     for (auto const& group : opts.groups()) {
-        for (auto const& option : opts.group_help(group).options) {
+        optionGroups.push_back(opts.group_help(group));
+        for (auto const& option : optionGroups.back().options) {
             optionNames.insert(optionNames.end(), option.l.begin(), option.l.end());
         }
     }
@@ -454,6 +628,26 @@ auto ParseOptions(cxxopts::Options&& opts, int argc, char** argv) -> cxxopts::Pa
     } catch (cxxopts::exceptions::parsing const& ex) {
         fmt::print(stderr, "error: {}. rerun with --help to see available options.\n", ex.what());
         std::exit(EXIT_FAILURE);
+    }
+    {
+        // effective value of every registered option, for the run fingerprint of checkpoints
+        auto& normalized = NormalizedOptionsStorage();
+        normalized.clear();
+        for (auto const& group : optionGroups) {
+            for (auto const& option : group.options) {
+                if (option.l.empty()) {
+                    continue;
+                }
+                auto const& name = option.l.front();
+                std::string value = option.has_default ? option.default_value : std::string { "<unset>" };
+                for (auto const& argument : result.arguments()) {
+                    if (argument.key() == name) {
+                        value = argument.value();
+                    }
+                }
+                normalized.emplace_back(name, std::move(value));
+            }
+        }
     }
     if (result.arguments().empty() || result.contains("help")) {
         fmt::print("{}\n", helpText);
