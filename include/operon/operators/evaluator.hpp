@@ -171,6 +171,8 @@ private:
     std::optional<LinearScaling> scaling_;
 };
 
+class OptimizerAccounting; // operators/local_search.hpp
+
 // An evaluator is an OperatorBase: `operator()` is its sole public execution path. It is `final` and performs, in
 // order, `Evaluate` (prediction phase), failure handling, and `Score` (objective phase). Both phases are protected
 // implementation hooks: a derived evaluator calls its base's phases on itself (ShapeConstrainedValueEvaluator),
@@ -182,10 +184,11 @@ struct EvaluatorBase
     using Base = OperatorBase<Operon::Vector<Operon::Scalar>, Operon::Individual const&, Operon::Span<Operon::Scalar>>;
     using ReturnType = Base::ReturnType;
 
+    // Scoring counters only: what this evaluator's own operator() performed. They never include coefficient
+    // optimization, which is accounted by the run that invoked it (OptimizerAccounting).
     mutable std::atomic_ulong ResidualEvaluations { 0 }; // NOLINT
     mutable std::atomic_ulong JacobianEvaluations { 0 }; // NOLINT
     mutable std::atomic_ulong CallCount { 0 }; // NOLINT
-    mutable std::atomic_ulong CostFunctionTime { 0 }; // NOLINT
 
     static constexpr size_t DefaultEvaluationBudget = 100'000;
 
@@ -229,18 +232,28 @@ struct EvaluatorBase
     // the stored coefficients, so it bypasses structural fitness reuse.
     [[nodiscard]] virtual auto StructuralFitnessReusable() const -> bool { return true; }
 
+    // Scoring evaluations performed by this evaluator's own operator(): residual + Jacobian, never optimizer work.
     auto TotalEvaluations() const -> size_t { return ResidualEvaluations + JacobianEvaluations; }
 
+    // The configured evaluation budget. The unit is scoring residual + Jacobian evaluations plus the coefficient
+    // optimizer's residual + Jacobian evaluations; the run that owns both sources applies it
+    // (OffspringGeneratorBase::Terminate(OptimizerAccounting const&)).
     void SetBudget(size_t value) { budget_ = value; }
     auto Budget() const -> size_t { return budget_; }
 
-    // virtual because more complex evaluators (e.g. MultiEvaluator) might need to calculate it differently
+    // Whether the scoring work alone (Stats(): residual + Jacobian, children included) reached Budget(). Scoring-only
+    // by ownership: it cannot see the optimizer work of a run, so it is not the run's stop condition. Virtual because
+    // more complex evaluators (e.g. MultiEvaluator) might need to calculate it differently.
     virtual auto BudgetExhausted() const -> bool { return TotalEvaluations() >= Budget(); }
 
-    virtual auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t, std::size_t>
+    // Scoring counters of this evaluator (composite evaluators include their children): residual evaluations,
+    // Jacobian evaluations, calls. Residual/Jacobian evaluations are the ones spent by scoring: the prediction pass
+    // of Evaluate, a Jacobian taken by a likelihood scorer, ... Coefficient-optimizer work is never counted here
+    // (see OptimizerAccounting; GeneticAlgorithmBase::DetailedStats() reports both). Safe to call while the
+    // evaluator is in use (a snapshot), exact once evaluation has stopped.
+    virtual auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t>
     {
-        return std::tuple { ResidualEvaluations.load(), JacobianEvaluations.load(), CallCount.load(),
-            CostFunctionTime.load() };
+        return std::tuple { ResidualEvaluations.load(), JacobianEvaluations.load(), CallCount.load() };
     }
 
     auto Population() const -> Operon::Span<Individual const> { return population_; }
@@ -248,15 +261,24 @@ struct EvaluatorBase
     auto GetProblem() const -> Problem const* { return problem_; }
     auto SetProblem(gsl::not_null<Problem const*> problem) { problem_ = problem; }
 
+    // Zeroes every counter of this evaluator, then calls ResetChildren() so that composite evaluators also clear
+    // the evaluators they hold and a re-run in the same process starts from a clean budget. Deliberately not
+    // virtual: a derived `Reset()` of its own hides this one instead of replacing it, so the base counters are
+    // always cleared when called through an `EvaluatorBase`. Extend it through ResetChildren().
     void Reset() const
     {
         ResidualEvaluations = 0;
         JacobianEvaluations = 0;
         CallCount = 0;
-        CostFunctionTime = 0;
+        ResetChildren();
     }
 
 protected:
+    // Extension point of Reset(): reset whatever counters this evaluator owns beyond the base ones (child
+    // evaluators, structural counters). Called after the base counters were cleared; must not call Reset() on
+    // `this`.
+    virtual void ResetChildren() const {}
+
     // Prediction phase. Returns `nullopt` for an objective-only evaluator, or the prediction proof for a value
     // evaluator; an error is turned into the ErrMax vector by `operator()`.
     [[nodiscard]] virtual auto Evaluate(Operon::Individual const& /*ind*/, Operon::Span<Operon::Scalar> /*buf*/) const
@@ -294,18 +316,14 @@ private:
     size_t budget_ = DefaultEvaluationBudget;
 };
 
-// Optionally runs local search (coefficient optimization) on `ind`'s genotype with
-// probability `pLocal`; does not score it. Non-Lamarckian updates return the original
-// coefficients so the caller can evaluate the optimized genotype, then restore them.
-OPERON_EXPORT auto LocalSearch(Operon::RandomGenerator& random, Operon::Individual& ind,
-    Operon::EvaluatorBase const& evaluator, Operon::CoefficientOptimizer const* coeffOptimizer, double pLocal,
-    double pLamarck) -> std::optional<std::vector<Operon::Scalar>>;
-
-// Runs LocalSearch then scores via `evaluator`; non-finite fitness clamps to ErrMax. A non-Lamarckian update is
-// restored through RestoreNonLamarckianCoefficients after the optimized coefficients are scored.
+// Runs LocalSearch (local_search.hpp), publishes the optimizer work it performed to `accounting` -- immediately,
+// before scoring, so a fit that did work stays charged even if scoring throws and whatever later happens to the
+// candidate -- then scores via `evaluator`; non-finite fitness clamps to ErrMax. A non-Lamarckian update is restored
+// through RestoreNonLamarckianCoefficients after the optimized coefficients are scored. The evaluator's counters
+// only see the scoring; `accounting` is the run's, and is required: there is deliberately no default.
 OPERON_EXPORT auto ScoreIndividual(Operon::RandomGenerator& random, Operon::Individual& ind,
     Operon::EvaluatorBase const& evaluator, Operon::CoefficientOptimizer const* coeffOptimizer, double pLocal,
-    double pLamarck, Operon::Span<Operon::Scalar> buf) -> void;
+    double pLamarck, Operon::Span<Operon::Scalar> buf, Operon::OptimizerAccounting& accounting) -> void;
 
 class OPERON_EXPORT UserDefinedEvaluator : public EvaluatorBase {
 public:
@@ -417,6 +435,11 @@ public:
 
     explicit MultiEvaluator(Problem const* problem) : EvaluatorBase(problem) {}
 
+    // Shared children: Add() does not reject a child that is already registered (directly or through a nested
+    // composite). Stats() and BudgetExhausted() sum the children slot by slot, and a child runs once per slot (its
+    // own counters grow once per run), so a child occupying k slots contributes k times its own counters. The two
+    // always agree and the budget consumes exactly what they report; Reset() reaching a shared child more than once
+    // is harmless.
     // Registers a child that runs through its own operator(). Throws std::invalid_argument for a
     // ShapeConstrainedValueEvaluator: it owns the whole constrained objective vector (including its structural
     // objectives) and its non-Lamarckian restoration step (RestoreNonLamarckianCoefficients) is only reachable when
@@ -442,32 +465,40 @@ public:
         return std::ranges::all_of(evaluators_, [](auto const& ev) { return ev->StructuralFitnessReusable(); });
     }
 
-    auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t, std::size_t> final
+    // Own scoring counters plus those of every child, summed slot by slot (see Add). Calls is the composite's own.
+    // Optimizer work is not an evaluator's: it is recorded once per fit by the orchestration that runs local search.
+    auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t> final
     {
         auto resEval { 0UL };
         auto jacEval { 0UL };
-        auto cfTime { 0UL };
 
         for (auto const& ev : evaluators_) {
-            auto [re, je, cc, ct] = ev->Stats();
+            auto [re, je, cc] = ev->Stats();
             resEval += re;
             jacEval += je;
-            cfTime += ct;
         }
 
         return std::tuple { resEval + ResidualEvaluations.load(), jacEval + JacobianEvaluations.load(),
-            CallCount.load(), cfTime + CostFunctionTime.load() };
+            CallCount.load() };
     }
 
+    // Scoring work only (see EvaluatorBase::BudgetExhausted).
     auto BudgetExhausted() const -> bool final
     {
-        auto [re, je, cc, ct] = Stats();
+        auto [re, je, cc] = Stats();
         return re + je >= Budget();
     }
 
     auto Evaluators() const { return evaluators_; }
 
 protected:
+    void ResetChildren() const override
+    {
+        for (auto const& ev : evaluators_) {
+            ev->Reset();
+        }
+    }
+
     // Children run exclusively through their operator().
     auto Score(Operon::RandomGenerator& rng, Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf,
         std::optional<EvaluatedBuffer> evaluated) const -> typename EvaluatorBase::ReturnType override;

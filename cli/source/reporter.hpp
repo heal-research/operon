@@ -111,15 +111,12 @@ using ModelSelectorFn = std::function<Individual(Span<Individual const>)>;
 
 template <typename Evaluator> class Reporter {
     gsl::not_null<Evaluator const*> evaluator_;
-    EvaluatorBase const* statsSource_ { nullptr }; // non-owning; must outlive Reporter (null → use evaluator_)
     mutable Operon::Individual best_;
     ModelSelectorFn selector_;
 
 public:
-    explicit Reporter(gsl::not_null<Evaluator const*> evaluator, ModelSelectorFn selector = nullptr,
-        EvaluatorBase const* statsSource = nullptr)
+    explicit Reporter(gsl::not_null<Evaluator const*> evaluator, ModelSelectorFn selector = nullptr)
         : evaluator_(evaluator)
-        , statsSource_(statsSource)
         , selector_(std::move(selector))
     {
     }
@@ -257,7 +254,13 @@ public:
         using T = std::tuple<std::string, double, std::string>;
         auto const* format = ":>#8.3g"; // see https://fmt.dev/latest/syntax.html
 
-        auto [resEval, jacEval, callCount, cfTime] = statsSource_ ? statsSource_->Stats() : evaluator_->Stats();
+        // Scoring plus optimizer work of the run, from the algorithm that owns both sources (not from an evaluator,
+        // which only knows its scoring).
+        auto const runStats = gp.DetailedStats();
+        auto const callCount = runStats.Calls;
+        auto const resEval = runStats.ResidualTotal();
+        auto const jacEval = runStats.JacobianTotal();
+        auto const optimizerSeconds = static_cast<double>(runStats.OptimizerTimeUs) / 1e6;
         std::array stats {
             T { "iteration", gp.Generation(), ":>" },
             T { "r2_tr", r2Train, format },
@@ -275,7 +278,7 @@ public:
             T { "eval_cnt", callCount, ":>" },
             T { "res_eval", resEval, ":>" },
             T { "jac_eval", jacEval, ":>" },
-            T { "opt_time", cfTime / 1e6, format },
+            T { "opt_time", optimizerSeconds, format },
             T { "seed", config.Seed, ":>10" },
             T { "sort_ms",
                 [&] {
@@ -291,7 +294,7 @@ public:
         latest_.symbolic_model.clear();
         latest_.metrics = MachineMetrics { r2Train, r2Test, maeTrain, maeTest, nmseTrain, nmseTest, mseTrain, mseTest,
             best_[idx], avgQuality, avgLength, gp.Elapsed(), static_cast<std::uint64_t>(callCount),
-            static_cast<std::uint64_t>(resEval), static_cast<std::uint64_t>(jacEval), cfTime / 1e6 };
+            static_cast<std::uint64_t>(resEval), static_cast<std::uint64_t>(jacEval), optimizerSeconds };
         PrintStats({ stats.begin(), stats.end() }, gp.Generation() == 0);
     }
 

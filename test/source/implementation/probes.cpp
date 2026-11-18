@@ -691,6 +691,99 @@ TEST_CASE("CacheHitRateProbe does not underflow when the cache is Clear()-ed bet
     }
 }
 
+TEST_CASE("CacheHitRateProbe re-baselines when the active cache is replaced", "[probes]")
+{
+    CacheProbeFixture f;
+    Operon::CacheHitRateProbe probe;
+    Operon::Vector<Operon::Scalar> val;
+
+    // cache A: 1 hit, 2 lookups
+    f.Cache.Insert(Operon::Hash { 1 }, { Operon::Scalar { 0.1 } });
+    std::ignore = f.Cache.TryGet(Operon::Hash { 1 }, val);
+    std::ignore = f.Cache.TryGet(Operon::Hash { 2 }, val);
+    {
+        Operon::ResultRecord record;
+        Operon::ProbeContext ctx { f.Gp, record };
+        probe(ctx);
+        CHECK(std::get<std::int64_t>(record.at("cache_hits")) == 1);
+        CHECK(std::get<std::int64_t>(record.at("cache_lookups")) == 2);
+    }
+
+    // cache B already holds more activity than A had: 7 hits, 12 lookups
+    Operon::RandomGenerator rngB { 99 };
+    Operon::Zobrist cacheB { rngB, /*maxLength=*/50, f.Vars };
+    cacheB.Insert(Operon::Hash { 1 }, { Operon::Scalar { 0.1 } });
+    for (auto i = 0; i < 7; ++i) {
+        std::ignore = cacheB.TryGet(Operon::Hash { 1 }, val);
+    }
+    for (auto i = 0; i < 5; ++i) {
+        std::ignore = cacheB.TryGet(Operon::Hash { 2 }, val);
+    }
+    f.Generator.SetCache(&cacheB);
+    {
+        Operon::ResultRecord record;
+        Operon::ProbeContext ctx { f.Gp, record };
+        probe(ctx);
+        // not 6 / 10, which is B's totals minus A's baseline
+        CHECK(std::get<std::int64_t>(record.at("cache_hits")) == 7);
+        CHECK(std::get<std::int64_t>(record.at("cache_lookups")) == 12);
+        CHECK(std::get<double>(record.at("cache_hit_rate")) == 7.0 / 12.0);
+    }
+
+    // B keeps being tracked incrementally
+    std::ignore = cacheB.TryGet(Operon::Hash { 1 }, val);
+    {
+        Operon::ResultRecord record;
+        Operon::ProbeContext ctx { f.Gp, record };
+        probe(ctx);
+        CHECK(std::get<std::int64_t>(record.at("cache_hits")) == 1);
+        CHECK(std::get<std::int64_t>(record.at("cache_lookups")) == 1);
+    }
+
+    // switching back to A re-baselines again: A's totals, 1 hit out of 2 lookups
+    f.Generator.SetCache(&f.Cache);
+    {
+        Operon::ResultRecord record;
+        Operon::ProbeContext ctx { f.Gp, record };
+        probe(ctx);
+        CHECK(std::get<std::int64_t>(record.at("cache_hits")) == 1);
+        CHECK(std::get<std::int64_t>(record.at("cache_lookups")) == 2);
+    }
+}
+
+TEST_CASE("CacheHitRateProbe re-baselines when the generation counter goes backwards", "[probes]")
+{
+    CacheProbeFixture f;
+    Operon::CacheHitRateProbe probe;
+    Operon::Vector<Operon::Scalar> val;
+
+    f.Cache.Insert(Operon::Hash { 1 }, { Operon::Scalar { 0.1 } });
+    std::ignore = f.Cache.TryGet(Operon::Hash { 1 }, val);
+    f.Gp.Generation() = 5;
+    {
+        Operon::ResultRecord record;
+        Operon::ProbeContext ctx { f.Gp, record };
+        probe(ctx);
+        CHECK(std::get<std::int64_t>(record.at("cache_lookups")) == 1);
+    }
+
+    // a new run: the cache was cleared and has already seen more lookups than the old baseline (1) by the time the
+    // probe runs again at generation 0
+    f.Cache.Clear();
+    f.Cache.Insert(Operon::Hash { 1 }, { Operon::Scalar { 0.1 } });
+    for (auto i = 0; i < 4; ++i) {
+        std::ignore = f.Cache.TryGet(Operon::Hash { 1 }, val);
+    }
+    f.Gp.Generation() = 0;
+    {
+        Operon::ResultRecord record;
+        Operon::ProbeContext ctx { f.Gp, record };
+        probe(ctx);
+        CHECK(std::get<std::int64_t>(record.at("cache_hits")) == 4); // not 3
+        CHECK(std::get<std::int64_t>(record.at("cache_lookups")) == 4);
+    }
+}
+
 TEST_CASE("PopulationDiversity: 0 for identical trees, positive for different ones, 0 below 2 individuals", "[probes]")
 {
     ProbeFixture f;

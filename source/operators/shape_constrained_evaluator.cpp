@@ -1246,18 +1246,23 @@ auto detail::ShapeConstraintEnforcer::ShapePrepare(Operon::Span<Individual const
     }
 }
 
-auto detail::ShapeConstraintEnforcer::ShapeStructuralStats() const -> std::tuple<std::size_t, std::size_t, std::size_t>
+auto detail::ShapeConstraintEnforcer::ShapeStructuralStats() const -> std::pair<std::size_t, std::size_t>
 {
     std::size_t residual = 0;
     std::size_t jacobian = 0;
-    std::size_t costFunctionTime = 0;
     for (auto const& objective : structural_) {
-        auto const [re, je, cc, ct] = objective->Stats();
+        auto const [re, je, cc] = objective->Stats();
         residual += re;
         jacobian += je;
-        costFunctionTime += ct;
     }
-    return std::tuple { residual, jacobian, costFunctionTime };
+    return std::pair { residual, jacobian };
+}
+
+auto detail::ShapeConstraintEnforcer::ShapeStructuralReset() const -> void
+{
+    for (auto const& objective : structural_) {
+        objective->Reset();
+    }
 }
 
 auto detail::ShapeConstraintEnforcer::ShapeCertify(Operon::Tree const& tree,

@@ -465,7 +465,7 @@ auto main(int argc, char** argv) -> int
         } else {
             ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(errorEvaluator.get());
         }
-        Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr, std::move(modelSelector), activeEvaluator);
+        Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr, std::move(modelSelector));
         auto const warmStart = Operon::ResumeFromCheckpoint(gp, random, result);
         if (warmStart && result.contains("probes-config")) {
             fmt::print(stderr,

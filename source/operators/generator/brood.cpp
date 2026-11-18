@@ -7,7 +7,8 @@
 
 namespace Operon {
 auto BroodOffspringGenerator::operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation,
-    double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual>
+    double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf, OptimizerAccounting& accounting) const
+    -> std::optional<Individual>
 {
     auto const& fsel = *FemaleSelector();
     auto const& msel = *MaleSelector();
@@ -19,7 +20,7 @@ auto BroodOffspringGenerator::operator()(Operon::RandomGenerator& random, double
     // the brood offspring generator creates a brood of offspring from the same two parents
     auto makeOffspring = [&]() -> Operon::Individual {
         RecombinationResult res { .Child = {}, .Parent1 = p1, .Parent2 = p2 };
-        OffspringGeneratorBase::Generate(random, pCrossover, pMutation, pLocal, pLamarck, buf, res);
+        OffspringGeneratorBase::Generate(random, pCrossover, pMutation, pLocal, pLamarck, buf, accounting, res);
         return res ? res.Child.value() : res.Parent1.value();
     };
 

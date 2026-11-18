@@ -14,7 +14,7 @@ gp.Run(executor, rng, report);
 
 `GeneticProgrammingAlgorithm` is assembled from borrowed components. `Run(tf::Executor&, RandomGenerator&, ReportCallback, warmStart)` uses the supplied executor; the convenience overload creates its own execution context and accepts a thread count. The callback is the observation/stop hook. The supplied `Problem`, initializers, generator, and reinserter MUST outlive the algorithm.
 
-`GeneticAlgorithmConfig` supplies `Generations`, `Evaluations`, `Iterations`, `PopulationSize`, `PoolSize`, and `Seed`. Population algorithms consume evaluator work under the evaluation budget. A warm start retains the existing population; otherwise initialization happens before the first transition.
+`GeneticAlgorithmConfig` supplies `Generations`, `Evaluations`, `Iterations`, `PopulationSize`, `PoolSize`, and `Seed`. Population algorithms consume scoring work (evaluator `Stats()`) plus coefficient-optimizer work (the run's `Accounting()`) under the evaluation budget; `DetailedStats()` reports both with disjoint fields. A warm start retains the existing population; otherwise initialization happens before the first transition. Cold initialization runs `LocalSearch` directly and records its fits; a warm start re-evaluates without local search and spends no optimizer work.
 
 ## Operator assembly
 
@@ -27,8 +27,8 @@ Headers: `operon/operators/{creator,initializer,generator,selector,crossover,mut
 | coefficient initializer | `NormalCoefficientInitializer` | initialize `Optimize` constants |
 | selectors | `TournamentSelector` | choose parents under a comparison |
 | variation | `SubtreeCrossover`, `MultiMutation` | produce valid bounded offspring |
-| local search | `CoefficientOptimizer` | apply an `OptimizerBase` result to coefficients |
-| offspring generator | `BasicOffspringGenerator` | compose selection, variation, local search, evaluation |
+| local search | `CoefficientOptimizer`, `LocalSearch` | apply an `OptimizerBase` result to coefficients; `LocalSearch` returns the fit outcome, which the run records in its `OptimizerAccounting` |
+| offspring generator | `BasicOffspringGenerator` | compose selection, variation, local search, evaluation; forwards the run's `OptimizerAccounting&` to every scored candidate |
 | reinserter | `ReplaceWorstReinserter` | combine offspring and parent population |
 
 The comparison supplied to selectors and reinserters defines the meaning of “better.” Use the same minimization convention across both. For NSGA-II, use rank/crowding-aware ordering after non-dominated sorting rather than an arbitrary scalar comparison.
