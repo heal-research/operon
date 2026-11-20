@@ -183,13 +183,19 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
     ENSURE(executor.num_workers() > 0);
     std::vector<std::vector<Operon::Scalar>> slots(executor.num_workers());
 
-    // stop() is polled concurrently by offspring-generation workers; PollStop records the conditions that hold
-    // with an atomic fetch_or, so it writes no other shared state. Elapsed() is published only from single-task
-    // contexts (the loop condition and the report task), which the taskflow graph orders against every reader.
-    auto stop = [&]() -> bool { return PollStop(computeElapsed()); };
+    // A worker can observe a transient generator condition such as selection pressure before Prepare() clears it.
+    // Latch that observation so the loop cannot start another generation after the incomplete pool is discarded.
+    std::atomic_bool terminationObserved { false };
+    auto stop = [&]() -> bool {
+        auto const stopping = terminationObserved.load(std::memory_order_relaxed) || PollStop(computeElapsed());
+        if (stopping) {
+            terminationObserved.store(true, std::memory_order_relaxed);
+        }
+        return stopping;
+    };
     auto loopCondition = [&]() -> bool {
         Elapsed() = computeElapsed();
-        return PollStop(Elapsed());
+        return terminationObserved.load(std::memory_order_relaxed) || PollStop(Elapsed());
     };
 
     auto& individuals = Individuals();
