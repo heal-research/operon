@@ -34,14 +34,16 @@ every condition that holds with an atomic `fetch_or`, and so tolerate concurrent
 report callback returning `true` records), `Signal` or `EngineError`; it is async-signal-safe. `StopRequested()` is
 true only for these external requests. `Progress()` is the offspring accounting of the generation body started last
 and `GenerationsCompleted()` the index of the last generation whose pool was filled.
-`OffspringGeneratorBase::Terminate()` is the union of `BudgetExhausted()` and `PressureExhausted()`.
+`OffspringGeneratorBase::Terminate()` remains virtual for custom generators. Its default combines `BudgetExhausted()`
+and `PressureExhausted()`; an override without a more specific reason is recorded as `pressure_limit`.
 
 `operon_gp` and `operon_nsgp` write these, with the final counters read from the evaluator after `Run()` returns and
 the final model's `ModelRef` (SHA-256 of `ModelSerialization`), as an `operon.final` JSON document with
 `--final-json PATH --run-id ID --attempt-id UUID`. The file is published atomically, also when the run fails
-(`exit_status` `error`, reason `engine_error`). With `--final-json`, SIGINT and SIGTERM stop the run gracefully
-(reason `signal`) and the process exits with 128 plus the signal number; a second signal terminates it immediately.
-The document's schema is `docs/schemas/final.schema.json`.
+(`exit_status` `error`, reason `engine_error`). Final records require a fresh run: `--final-json` rejects `--resume`
+until checkpoints persist the prior evaluation counters. With `--final-json`, SIGINT and SIGTERM stop the run
+gracefully (reason `signal`) and the process exits with 128 plus the signal number; a second signal terminates it
+immediately. The document's schema is `docs/schemas/final.schema.json`.
 
 ## Lossless generation records
 

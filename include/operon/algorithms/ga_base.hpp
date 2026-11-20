@@ -264,18 +264,21 @@ public:
     // pool was full is discarded and not counted, so this is Generation().
     [[nodiscard]] auto GenerationsCompleted() const -> std::size_t { return generation_; }
 
-    // Every stop condition that holds right now, as a mask: generation limit, evaluation budget, selection
-    // pressure, and the time limit against `elapsed` (seconds). Does not record anything.
+    // Every stop condition that holds right now, as a mask: generation limit, evaluation budget, generator
+    // termination, and the time limit against `elapsed` (seconds). Does not record anything. Legacy or custom
+    // generators may override Terminate() without exposing a specific condition; classify those as pressure limits.
     [[nodiscard]] auto StopConditions(double elapsed) const -> StopMask
     {
         StopMask mask {};
         if (generation_ >= config_.Generations) {
             mask |= MaskOf(StopReason::GenerationLimit);
         }
-        if (generator_->BudgetExhausted()) {
+        auto const budget = generator_->BudgetExhausted();
+        auto const pressure = generator_->PressureExhausted();
+        if (budget) {
             mask |= MaskOf(StopReason::EvaluationLimit);
         }
-        if (generator_->PressureExhausted()) {
+        if (pressure || (!budget && !pressure && generator_->Terminate())) {
             mask |= MaskOf(StopReason::PressureLimit);
         }
         if (elapsed > static_cast<double>(config_.TimeLimit)) {

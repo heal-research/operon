@@ -9,8 +9,11 @@
 #include <numeric>
 #include <sstream>
 #include <thread>
+#if defined(_WIN32)
+#include <process.h>
+#else
 #include <unistd.h>
-
+#endif
 #include "operon/algorithms/generation_record.hpp"
 #include "operon/hash/model_ref.hpp"
 #include "operon/parser/infix.hpp"
@@ -18,13 +21,22 @@
 
 namespace Operon::Test {
 namespace {
+    auto ProcessId() -> int
+    {
+#if defined(_WIN32)
+        return ::_getpid();
+#else
+        return static_cast<int>(::getpid());
+#endif
+    }
+
     struct RecordingFixture : StopFixture {
         std::filesystem::path Directory;
         GenerationRecorderOptions Options;
         std::unique_ptr<GeneticProgrammingAlgorithm> Gp;
         explicit RecordingFixture(std::string const& name)
             : Directory(std::filesystem::temp_directory_path()
-                  / ("operon-generation-" + name + "-" + std::to_string(::getpid())))
+                  / ("operon-generation-" + name + "-" + std::to_string(ProcessId())))
         {
             std::filesystem::remove_all(Directory);
             Options.Directory = Directory;

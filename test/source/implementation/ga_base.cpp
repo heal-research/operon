@@ -625,14 +625,14 @@ namespace {
 
         std::function<void(std::size_t, std::size_t)> OnCall;
 
-        // Makes exactly one subsequent PressureExhausted() poll return true, after which the condition has cleared
-        // again (like a selection-pressure limit that Prepare() resets). Exactly one poller observes it.
+        // Makes exactly one subsequent Terminate() poll return true, after which the condition has cleared again
+        // (like a selection-pressure limit that Prepare() resets). Exactly one poller observes it.
         auto ArmTransientTerminate() const -> void { transientTerminate_.store(true, std::memory_order_release); }
         [[nodiscard]] auto Attempts() const -> std::size_t { return attempt_.load(std::memory_order_relaxed); }
 
-        auto PressureExhausted() const -> bool override
+        auto Terminate() const -> bool override
         {
-            return transientTerminate_.exchange(false, std::memory_order_acq_rel);
+            return transientTerminate_.exchange(false, std::memory_order_acq_rel) || OffspringGeneratorBase::Terminate();
         }
 
         auto Prepare(Operon::Span<Operon::Individual const> pop) const -> void override

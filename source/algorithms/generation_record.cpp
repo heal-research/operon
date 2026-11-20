@@ -7,13 +7,20 @@
 #include <bit>
 #include <cerrno>
 #include <charconv>
+#include <climits>
 #include <cmath>
 #include <cstring>
 #include <fcntl.h>
 #include <fmt/format.h>
+#include <limits>
 #include <stdexcept>
 #include <system_error>
+#if defined(_WIN32)
+#include <io.h>
+#include <sys/stat.h>
+#else
 #include <unistd.h>
+#endif
 
 #include "operon/algorithms/phase_timer.hpp"
 #include "operon/hash/model_ref.hpp"
@@ -23,19 +30,52 @@ namespace Operon {
 namespace {
     auto IoError(char const* operation) -> void { throw std::system_error(errno, std::generic_category(), operation); }
 
+    auto OpenDirectory(std::filesystem::path const& path) -> int
+    {
+#if defined(_WIN32)
+        static_cast<void>(path);
+        return -1; // Windows has no portable directory flush through the CRT.
+#else
+        return ::open(path.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC); // NOLINT
+#endif
+    }
+
+    auto OpenExclusive(std::filesystem::path const& path) -> int
+    {
+#if defined(_WIN32)
+        return ::_open(path.string().c_str(), _O_WRONLY | _O_CREAT | _O_EXCL | _O_BINARY, _S_IREAD | _S_IWRITE);
+#else
+        return ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644); // NOLINT
+#endif
+    }
+
     auto Sync(int fd) -> void
     {
+        if (fd < 0) {
+            return;
+        }
+#if defined(_WIN32)
+        if (::_commit(fd) != 0) {
+            IoError("generation log fsync");
+        }
+#else
         while (::fsync(fd) != 0) {
             if (errno != EINTR) {
                 IoError("generation log fsync");
             }
         }
+#endif
     }
 
     auto WriteAll(int fd, std::string_view bytes) -> void
     {
         while (!bytes.empty()) {
+#if defined(_WIN32)
+            auto const count = static_cast<unsigned>(std::min(bytes.size(), std::size_t { INT_MAX }));
+            auto const n = ::_write(fd, bytes.data(), count);
+#else
             auto const n = ::write(fd, bytes.data(), bytes.size());
+#endif
             if (n < 0 && errno == EINTR) {
                 continue;
             }
@@ -46,10 +86,19 @@ namespace {
         }
     }
 
+    auto CloseFd(int fd) -> int
+    {
+#if defined(_WIN32)
+        return ::_close(fd);
+#else
+        return ::close(fd);
+#endif
+    }
+
     auto CloseFile(int& fd) -> void
     {
         auto const old = std::exchange(fd, -1);
-        if (old >= 0 && ::close(old) != 0) {
+        if (old >= 0 && CloseFd(old) != 0) {
             IoError("generation log close");
         }
     }
@@ -186,27 +235,28 @@ GenerationRecorder::GenerationRecorder(GenerationRecorderOptions options) : opti
     previousBoundary_ = options_.ProcessStart;
     try {
         std::filesystem::create_directories(options_.Directory);
-        directoryFd_ = ::open(options_.Directory.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC); // NOLINT
+        directoryFd_ = OpenDirectory(options_.Directory);
         if (directoryFd_ < 0) {
+#if !defined(_WIN32)
             IoError("generation log directory open");
+#endif
         }
         // Never replace an earlier attempt's records, even if the caller accidentally reuses its directory.
         if (std::filesystem::exists(options_.Directory / "generation-000000.jsonl")
             || std::filesystem::exists(options_.Directory / "generation-000000.jsonl.part")) {
             throw std::runtime_error("generation log directory already contains a stream");
         }
-        modelsFd_ = ::open(
-            (options_.Directory / "models.jsonl.txt").c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644); // NOLINT
+        modelsFd_ = OpenExclusive(options_.Directory / "models.jsonl.txt");
         if (modelsFd_ < 0) {
             IoError("generation model sidecar open");
         }
         sealThread_ = std::jthread([this](std::stop_token stop) { SealWorker(stop); });
     } catch (...) {
         if (modelsFd_ >= 0) {
-            ::close(modelsFd_);
+            static_cast<void>(CloseFd(modelsFd_));
         }
         if (directoryFd_ >= 0) {
-            ::close(directoryFd_);
+            static_cast<void>(CloseFd(directoryFd_));
         }
         throw;
     }
@@ -223,13 +273,13 @@ GenerationRecorder::~GenerationRecorder()
         sealThread_.join();
     }
     if (segmentFd_ >= 0) {
-        ::close(segmentFd_);
+        static_cast<void>(CloseFd(segmentFd_));
     }
     if (modelsFd_ >= 0) {
-        ::close(modelsFd_);
+        static_cast<void>(CloseFd(modelsFd_));
     }
     if (directoryFd_ >= 0) {
-        ::close(directoryFd_);
+        static_cast<void>(CloseFd(directoryFd_));
     }
 }
 
@@ -326,7 +376,7 @@ auto GenerationRecorder::Write(GeneticAlgorithmBase const& algorithm, Individual
             sealedPath_ = options_.Directory / fmt::format("generation-{:06}.jsonl", segments_.size());
             partPath_ = sealedPath_;
             partPath_ += ".part";
-            segmentFd_ = ::open(partPath_.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644); // NOLINT
+            segmentFd_ = OpenExclusive(partPath_);
             if (segmentFd_ < 0) {
                 IoError("generation segment open");
             }

@@ -351,8 +351,8 @@ endif()
 # Each case runs the real executable through cli/expect.cmake: `fail` cases need exit status 1 and a stderr match
 # (a crash or abort does not count), `ok` cases need exit status 0 and a stdout match.
 if(TARGET operon_gp AND TARGET operon_nsgp)
-    # CI builds only operon_test; the CLI cases below run the real executables.
-    add_dependencies(operon_test operon_gp operon_nsgp)
+    # ctest runs both binaries directly, so CI's --target operon_test must build both.
+    add_dependencies(operon_test operon_gp)
     set(operon_cli_data "data/Poly-10.csv")
 
     function(add_cli_test NAME PROGRAM EXPECT REGEX)
@@ -449,5 +449,9 @@ if(TARGET operon_gp AND TARGET operon_nsgp)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(NAME cli_resolved_config
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/cli/resolved_config_smoke.py"
+                --gp "$<TARGET_FILE:operon_gp>" --nsgp "$<TARGET_FILE:operon_nsgp>")
+
+    add_test(NAME cli_final_json
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/cli/final_json_smoke.py"
                 --gp "$<TARGET_FILE:operon_gp>" --nsgp "$<TARGET_FILE:operon_nsgp>")
 endif()

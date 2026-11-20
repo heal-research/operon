@@ -64,7 +64,8 @@ namespace {
     {
         cxxopts::Options opts("test", "test");
         opts.add_options()("final-json", "", cxxopts::value<std::string>())(
-            "run-id", "", cxxopts::value<std::string>())("attempt-id", "", cxxopts::value<std::string>());
+            "run-id", "", cxxopts::value<std::string>())("attempt-id", "", cxxopts::value<std::string>())(
+            "resume", "", cxxopts::value<std::string>());
         args.insert(args.begin(), "test");
         std::vector<char*> argv;
         for (auto& a : args) {
@@ -256,6 +257,14 @@ TEST_CASE("FinalRun validates its options", "[final-record]")
         CHECK_THROWS_AS(make(RunId, "11111111-2222-4333-8444-55555555555"), std::invalid_argument);
         CHECK_THROWS_AS(make(RunId, "11111111-2222-4333-8444-55555555555G"), std::invalid_argument);
         CHECK_NOTHROW(make(RunId, AttemptId));
+    }
+
+    SECTION("--final-json rejects resumed counters without checkpoint accounting")
+    {
+        auto const path = (std::filesystem::temp_directory_path() / "operon-final-record-never.json").string();
+        CHECK_THROWS_AS(FinalRun { ParseFinalOptions(
+                            { "--final-json", path, "--run-id", RunId, "--attempt-id", AttemptId, "--resume", "run.beve" }) },
+            std::invalid_argument);
     }
 
     SECTION("identifiers without --final-json are a mistake")

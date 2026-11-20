@@ -58,14 +58,14 @@ public:
         Evaluator()->Prepare(pop);
     }
 
-    // The two independent reasons an offspring generator can ask the algorithm to stop. Terminate() is their union
-    // and is not overridable: the algorithms poll the two parts separately so that a run can report which fired.
-    // Budget: the evaluator's evaluation budget is used up.
+    // The two independent reasons an offspring generator can ask the algorithm to stop. Subclasses can override
+    // Terminate() for an additional generator-specific condition; drivers retain that virtual contract and classify
+    // an otherwise-unclassified termination as a pressure limit.
     [[nodiscard]] auto BudgetExhausted() const -> bool { return evaluator_->BudgetExhausted(); }
     // Selection pressure: offspring selection has needed more than its maximum candidates per parent (never true
     // for generators without a selection-pressure limit).
     [[nodiscard]] virtual auto PressureExhausted() const -> bool { return false; }
-    [[nodiscard]] auto Terminate() const -> bool { return BudgetExhausted() || PressureExhausted(); }
+    [[nodiscard]] virtual auto Terminate() const -> bool { return BudgetExhausted() || PressureExhausted(); }
 
     auto SetCache(Zobrist* cache) const { cache_ = cache; }
     [[nodiscard]] auto Cache() const -> Zobrist* { return cache_; }

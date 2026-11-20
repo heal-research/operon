@@ -315,6 +315,9 @@ FinalRun::FinalRun(cxxopts::ParseResult const& result, Operon::GenerationRecorde
     if (!result.contains("run-id") || !result.contains("attempt-id")) {
         throw std::invalid_argument("--final-json and --generation-log require --run-id and --attempt-id");
     }
+    if (result.contains("final-json") && result.contains("resume")) {
+        throw std::invalid_argument("--final-json requires a fresh run; --resume is unsupported");
+    }
     runId_ = result["run-id"].as<std::string>();
     attemptId_ = result["attempt-id"].as<std::string>();
     if (!IsRunId(runId_)) {

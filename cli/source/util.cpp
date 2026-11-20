@@ -662,6 +662,18 @@ auto ParseOptions(cxxopts::Options&& opts, int argc, char** argv) -> cxxopts::Pa
             optionNames.insert(optionNames.end(), option.l.begin(), option.l.end());
         }
     }
+    // Do not advertise registered compatibility options that this executable rejects or ignores.
+    auto unsupported = [&](std::string_view option) {
+        if (option == "selection-pressure") {
+            return true;
+        }
+        if (option == "epsilon") {
+            return program != "operon_nsgp";
+        }
+        return program == "operon_gp"
+            && (option == "pareto-front" || option == "model-selection" || option == "mdl-likelihood");
+    };
+    std::erase_if(optionNames, unsupported);
     cxxopts::ParseResult result;
     try {
         result = std::move(opts).parse(argc, argv);
