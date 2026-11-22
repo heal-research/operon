@@ -24,22 +24,22 @@ An incomplete generation is not itself a stop reason and does not set `StopReque
 
 ## Stop reasons
 
-A run records *why* it stopped as a `StopMask` (`stop_reason.hpp`): `GenerationLimit`, `EvaluationLimit`,
-`PressureLimit`, `TimeLimit`, `Callback`, `Signal`, `EngineError`. The drivers poll the four limits (generation count,
-evaluator budget, `OffspringGeneratorBase::PressureExhausted()`, time) together with the external requests, record
-every condition that holds with an atomic `fetch_or`, and so tolerate concurrent polls from worker threads.
-`StopReasons()` is what was recorded, `TerminationReasons()` adds the conditions that hold in the final state, and
-`PrimaryStopReason()` picks the one to report first (`engine_error`, `signal`, `callback`, `evaluation_limit`,
-`pressure_limit`, `generation_limit`, `time_limit`). `RequestStop(source)` takes `Callback` (the default, and what a
-report callback returning `true` records), `Signal` or `EngineError`; it is async-signal-safe. `StopRequested()` is
-true only for these external requests. `Progress()` is the offspring accounting of the generation body started last
-and `GenerationsCompleted()` the index of the last generation whose pool was filled.
+A run records why it stopped as a `StopMask` (`stop_reason.hpp`): `GenerationLimit`, `EvaluationLimit`,
+`PressureLimit`, `TimeLimit`, `GeneratorTermination`, `Callback`, `Signal`, `EngineError`. The drivers poll the four
+limits (generation count, evaluator budget, `OffspringGeneratorBase::PressureExhausted()`, time) together with
+external requests, record every condition that holds with an atomic `fetch_or`, and so tolerate concurrent worker
+polls. `StopReasons()` is what was recorded, `TerminationReasons()` adds final-state conditions, and
+`PrimaryStopReason()` uses `engine_error`, `signal`, `callback`, `generator_termination`, `evaluation_limit`,
+`pressure_limit`, `generation_limit`, `time_limit`. `RequestStop(source)` takes `Callback`, `Signal` or
+`EngineError`; `StopRequested()` is true only for external requests.
 `OffspringGeneratorBase::Terminate()` remains virtual for custom generators. Its default combines `BudgetExhausted()`
-and `PressureExhausted()`; an override without a more specific reason is recorded as `pressure_limit`.
+and `PressureExhausted()`; an override without a more specific reason is recorded as `generator_termination`.
 
 `operon_gp` and `operon_nsgp` write these, with the final counters read from the evaluator after `Run()` returns and
 the final model's `ModelRef` (SHA-256 of `ModelSerialization`), as an `operon.final` JSON document with
-`--final-json PATH --run-id ID --attempt-id UUID`. The file is published atomically, also when the run fails
+`--final-json PATH --run-id ID --attempt-id UUID`. The file is published atomically (a flushed temporary sibling
+replaces any existing file in one step; POSIX `rename` plus directory `fsync`, Windows `MoveFileExW` with
+`MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH`), also when the run fails
 (`exit_status` `error`, reason `engine_error`). Final records require a fresh run: `--final-json` rejects `--resume`
 until checkpoints persist the prior evaluation counters. With `--final-json`, SIGINT and SIGTERM stop the run
 gracefully (reason `signal`) and the process exits with 128 plus the signal number; a second signal terminates it
@@ -51,12 +51,16 @@ Both CLIs accept `--generation-log DIR --run-id HEX64 --attempt-id UUID`. The di
 stream. Generation 0 is `initialized`, followed by one `generation_complete` per fully filled offspring pool.
 `--segment-generations 1000` and `--segment-seconds 5` seal at the first reached threshold, checked at each completed
 record; `--sync segment` is the default. Every line is written directly to the OS in `generation-000000.jsonl.part`.
-Sealing syncs the model sidecar and segment, closes the segment, renames it to `.jsonl`, and syncs the directory.
+Sealing syncs the model sidecar and segment, closes the segment and renames it to `.jsonl`. On POSIX it then syncs the
+directory, which makes the rename durable; on Windows the file contents are flushed (`_commit`) but the directory
+entry is not, so the rename itself is not guaranteed to survive power loss.
 One persistent seal worker overlaps that durability sequence with the next generation's computation. Before writing
 another record the callback waits for the pending seal, so there is never more than one `.part`; worker errors are
 re-thrown on the callback thread or by `Close()`. `Drain()` waits for an already-requested count/time seal.
 `--sync record` additionally syncs after every record. SIGKILL can leave one `.part`, whose trailing incomplete line
-must be ignored; only sealed segments are power-loss durable. Open/write/serialization/sync errors fail the run.
+must be ignored; on POSIX only sealed segments are power-loss durable, on Windows a sealed segment's contents are
+durable but its name may revert to `.part`. A failed `Close()` is terminal: later calls rethrow the same error.
+Open/write/serialization/sync errors fail the run.
 With `--final-json`, the final document includes sealed segment ranges, byte-identical SHA-256 hashes, record count
 and instrumentation error count. A stream can also be requested without a final document.
 Each line follows `docs/schemas/generation.schema.json`.

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$comment": "Shared definitions for the operon record family (JSON Schema 2020-12 subset: type, enum, const, required, properties, additionalProperties, items, minItems, maxItems, uniqueItems, minimum, maximum, exclusiveMinimum, minLength, maxLength, pattern, $ref).",
   "x-schema": "common",
-  "x-version": "1.1",
+  "x-version": "1.2",
   "$defs": {
     "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "nullable_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
@@ -23,7 +23,7 @@
     },
     "stop_reason": {
       "type": "string",
-      "enum": ["generation_limit", "evaluation_limit", "pressure_limit", "time_limit", "callback", "signal", "engine_error"]
+      "enum": ["generation_limit", "evaluation_limit", "pressure_limit", "time_limit", "generator_termination", "callback", "signal", "engine_error"]
     },
     "counters": {
       "description": "Cumulative evaluation counters. residual_total = residual_scoring + residual_optimizer; jacobian_total = jacobian_scoring + jacobian_optimizer; budget consumption = residual_total + jacobian_total. Since schema 1.1 the four scoring/optimizer split fields may be null when the producer cannot supply the split (declared in unsupported_fields); the totals are always required.",

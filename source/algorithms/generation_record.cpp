@@ -15,7 +15,7 @@
 #include <limits>
 #include <stdexcept>
 #include <system_error>
-#if defined(_WIN32)
+#ifdef _WIN32
 #include <io.h>
 #include <sys/stat.h>
 #else
@@ -32,7 +32,7 @@ namespace {
 
     auto OpenDirectory(std::filesystem::path const& path) -> int
     {
-#if defined(_WIN32)
+#ifdef _WIN32
         static_cast<void>(path);
         return -1; // Windows has no portable directory flush through the CRT.
 #else
@@ -42,8 +42,8 @@ namespace {
 
     auto OpenExclusive(std::filesystem::path const& path) -> int
     {
-#if defined(_WIN32)
-        return ::_open(path.string().c_str(), _O_WRONLY | _O_CREAT | _O_EXCL | _O_BINARY, _S_IREAD | _S_IWRITE);
+#ifdef _WIN32
+        return ::_wopen(path.c_str(), _O_WRONLY | _O_CREAT | _O_EXCL | _O_BINARY, _S_IREAD | _S_IWRITE);
 #else
         return ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644); // NOLINT
 #endif
@@ -54,7 +54,7 @@ namespace {
         if (fd < 0) {
             return;
         }
-#if defined(_WIN32)
+#ifdef _WIN32
         if (::_commit(fd) != 0) {
             IoError("generation log fsync");
         }
@@ -237,7 +237,7 @@ GenerationRecorder::GenerationRecorder(GenerationRecorderOptions options) : opti
         std::filesystem::create_directories(options_.Directory);
         directoryFd_ = OpenDirectory(options_.Directory);
         if (directoryFd_ < 0) {
-#if !defined(_WIN32)
+#ifndef _WIN32
             IoError("generation log directory open");
 #endif
         }
@@ -250,7 +250,7 @@ GenerationRecorder::GenerationRecorder(GenerationRecorderOptions options) : opti
         if (modelsFd_ < 0) {
             IoError("generation model sidecar open");
         }
-        sealThread_ = std::jthread([this](std::stop_token stop) { SealWorker(stop); });
+        sealThread_ = std::jthread([this](std::stop_token stop) -> void { SealWorker(std::move(stop)); });
     } catch (...) {
         if (modelsFd_ >= 0) {
             static_cast<void>(CloseFd(modelsFd_));
@@ -265,7 +265,7 @@ GenerationRecorder::GenerationRecorder(GenerationRecorderOptions options) : opti
 GenerationRecorder::~GenerationRecorder()
 {
     {
-        std::lock_guard lock(sealMutex_);
+        const std::scoped_lock lock(sealMutex_);
         sealThread_.request_stop();
     }
     sealCondition_.notify_all();
@@ -369,7 +369,10 @@ auto GenerationRecorder::Write(GeneticAlgorithmBase const& algorithm, Individual
 {
     Drain();
     try {
-        if (!captured_ || closed_) {
+        if (closed_) {
+            throw std::logic_error("generation recorder write after close");
+        }
+        if (!captured_) {
             throw std::logic_error("generation recorder write without capture");
         }
         if (segmentFd_ < 0) {
@@ -399,7 +402,9 @@ auto GenerationRecorder::Write(GeneticAlgorithmBase const& algorithm, Individual
             previousModel_ = selected.Genotype;
             if (auto const* shape
                 = dynamic_cast<detail::ShapeConstraintEnforcer const*>(algorithm.GetGenerator()->Evaluator())) {
-                auto const summary = shape->Certifier().Measure(selected.Genotype, std::nullopt);
+                // The published verdict describes the model the reported fitness scored: the canonical scaling
+                // transform (the same one every evaluator fits), not the raw unscaled tree.
+                auto const summary = shape->Certifier().MeasureCanonical(selected.Genotype);
                 shapeFeasible_ = summary.Feasible;
                 shapeViolation_ = summary.Violation;
             }
@@ -416,7 +421,7 @@ auto GenerationRecorder::Write(GeneticAlgorithmBase const& algorithm, Individual
         if (seq_ - firstSeq_ >= options_.SegmentGenerations
             || std::chrono::duration<double>(Clock::now() - segmentStart_).count() >= options_.SegmentSeconds) {
             {
-                std::lock_guard lock(sealMutex_);
+                const std::scoped_lock lock(sealMutex_);
                 sealPending_ = true;
             }
             sealCondition_.notify_all();
@@ -447,7 +452,7 @@ auto GenerationRecorder::SealWorker(std::stop_token stop) -> void
 {
     std::unique_lock lock(sealMutex_);
     for (;;) {
-        sealCondition_.wait(lock, [&] { return sealPending_ || stop.stop_requested(); });
+        sealCondition_.wait(lock, [&] -> bool { return sealPending_ || stop.stop_requested(); });
         if (!sealPending_) {
             return;
         }
@@ -469,7 +474,7 @@ auto GenerationRecorder::SealWorker(std::stop_token stop) -> void
 auto GenerationRecorder::Drain() -> void
 {
     std::unique_lock lock(sealMutex_);
-    sealCondition_.wait(lock, [&] { return !sealPending_; });
+    sealCondition_.wait(lock, [&] -> bool { return !sealPending_; });
     if (auto error = std::exchange(sealError_, {})) {
         std::rethrow_exception(error);
     }
@@ -477,22 +482,32 @@ auto GenerationRecorder::Drain() -> void
 
 auto GenerationRecorder::Close() -> void
 {
+    // A failed close is terminal: it is remembered and rethrown, never retried into a false success.
+    if (closeError_) {
+        std::rethrow_exception(closeError_);
+    }
     if (closed_) {
         return;
     }
-    Drain();
+    closed_ = true;
+    try {
+        Drain(); // a seal error was already counted by the seal worker
+    } catch (...) {
+        closeError_ = std::current_exception();
+        throw;
+    }
     try {
         Seal();
         Sync(modelsFd_);
         CloseFile(modelsFd_);
         Sync(directoryFd_);
         CloseFile(directoryFd_);
-        closed_ = true;
         if (captured_ && errors_ == 0) {
             throw std::runtime_error("generation report did not complete");
         }
     } catch (...) {
         ++errors_;
+        closeError_ = std::current_exception();
         throw;
     }
 }
@@ -617,7 +632,16 @@ auto GenerationRecorder::Serialize(
     j.Field("nmse_train", train);
     j.Field("nmse_validation", nullptr);
     j.Field("nmse_test", test);
-    j.Field("metric_status", std::isfinite(train) ? "ok" : std::isnan(train) ? "nan" : train > 0 ? "+inf" : "-inf");
+    auto const* const metricStatus = [&]() -> char const* {
+        if (std::isfinite(train)) {
+            return "ok";
+        }
+        if (std::isnan(train)) {
+            return "nan";
+        }
+        return train > 0 ? "+inf" : "-inf";
+    }();
+    j.Field("metric_status", metricStatus);
     j.End();
     j.Begin("validity");
     j.Field("finite_prediction_fraction", finiteFraction);
@@ -626,7 +650,7 @@ auto GenerationRecorder::Serialize(
     j.Key("unsupported_fields");
     j.Raw("[\"selected_model.nmse_validation\"");
     if (!shapeFeasible_) {
-        j.Raw(",\"validity.shape_feasible\",\"validity.shape_violation\"");
+        j.Raw(R"(,"validity.shape_feasible","validity.shape_violation")");
     }
     j.Raw("]");
     j.End();

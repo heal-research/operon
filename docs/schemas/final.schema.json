@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "operon.final: engine-produced termination record (final.json). Counters are read from the evaluator at termination, never copied from the last generation record.",
   "x-schema": "operon.final",
-  "x-version": "1.1",
+  "x-version": "1.2",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -64,7 +64,7 @@
           }
         },
         "precedence_version": {
-          "const": 1
+          "enum": [1, 2]
         }
       }
     },

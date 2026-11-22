@@ -164,30 +164,10 @@ auto GeneticProgrammingAlgorithm::Run(
                           })
                       .name("evaluate population");
             if (warmResume) {
-                // Re-evaluate to catch evaluator/objective config mismatches, but snapshot and restore
-                // the worker RNG states so that subsequent generations remain deterministic.
-                auto saveRngs = subflow
-                                    .emplace([&]() {
-                                        savedRngs = rngs;
-                                        savedFitness.clear();
-                                        for (auto const& ind : parents) {
-                                            savedFitness.push_back(ind.Fitness);
-                                        }
-                                    })
-                                    .name("save rng states");
-                auto restoreRngs = subflow
-                                       .emplace([&]() {
-                                           rngs = std::move(savedRngs);
-                                           // keep the checkpointed fitness of an individual unless the objective
-                                           // count changed (an evaluator that does not match the checkpoint): then the
-                                           // re-evaluation wins
-                                           for (size_t i = 0; i < savedFitness.size(); ++i) {
-                                               if (savedFitness[i].size() == parents[i].Fitness.size()) {
-                                                   parents[i].Fitness = std::move(savedFitness[i]);
-                                               }
-                                           }
-                                       })
-                                       .name("restore rng states");
+                // Re-evaluate on resume without advancing worker RNG states.
+                auto saveRngs = subflow.emplace([&]() -> void { savedRngs = rngs; }).name("save rng states");
+                auto restoreRngs
+                    = subflow.emplace([&]() -> void { rngs = std::move(savedRngs); }).name("restore rng states");
                 prepareEval.precede(saveRngs);
                 saveRngs.precede(eval);
                 eval.precede(restoreRngs);

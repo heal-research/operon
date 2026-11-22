@@ -45,6 +45,7 @@ namespace {
     constexpr auto Evaluation = Operon::StopReason::EvaluationLimit;
     constexpr auto Pressure = Operon::StopReason::PressureLimit;
     constexpr auto Time = Operon::StopReason::TimeLimit;
+    constexpr auto GeneratorTermination = Operon::StopReason::GeneratorTermination;
     constexpr auto Callback = Operon::StopReason::Callback;
     constexpr auto Signal = Operon::StopReason::Signal;
     constexpr auto EngineError = Operon::StopReason::EngineError;
@@ -65,6 +66,7 @@ TEST_CASE("Stop reasons: names, masks and precedence", "[stop]")
     CHECK(Operon::ToString(Evaluation) == "evaluation_limit");
     CHECK(Operon::ToString(Pressure) == "pressure_limit");
     CHECK(Operon::ToString(Time) == "time_limit");
+    CHECK(Operon::ToString(GeneratorTermination) == "generator_termination");
     CHECK(Operon::ToString(Callback) == "callback");
     CHECK(Operon::ToString(Signal) == "signal");
     CHECK(Operon::ToString(EngineError) == "engine_error");
@@ -75,13 +77,17 @@ TEST_CASE("Stop reasons: names, masks and precedence", "[stop]")
         CHECK((all & Operon::MaskOf(reason)) == 0);
         all |= Operon::MaskOf(reason);
     }
-    CHECK(std::popcount(all) == 7);
+    CHECK(std::popcount(all) == 8);
 
     CHECK_FALSE(Operon::PrimaryStopReason(0).has_value());
-    // engine_error > signal > callback > evaluation_limit > pressure_limit > generation_limit > time_limit
+    // engine_error > signal > callback > generator_termination > evaluation_limit > pressure_limit > generation_limit
+    // > time_limit
     CHECK(Operon::PrimaryStopReason(all) == EngineError);
     CHECK(Operon::PrimaryStopReason(all & ~Mask(EngineError)) == Signal);
-    CHECK(Operon::PrimaryStopReason(Mask(Callback, Evaluation, Pressure, Generation, Time)) == Callback);
+    CHECK(Operon::PrimaryStopReason(Mask(Callback, GeneratorTermination, Evaluation, Pressure, Generation, Time))
+        == Callback);
+    CHECK(Operon::PrimaryStopReason(Mask(GeneratorTermination, Evaluation, Pressure, Generation, Time))
+        == GeneratorTermination);
     CHECK(Operon::PrimaryStopReason(Mask(Evaluation, Pressure, Generation, Time)) == Evaluation);
     CHECK(Operon::PrimaryStopReason(Mask(Pressure, Generation, Time)) == Pressure);
     CHECK(Operon::PrimaryStopReason(Mask(Generation, Time)) == Generation);

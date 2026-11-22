@@ -108,10 +108,10 @@ TEST_CASE("operon.final document: golden text", "[final-record]")
         = R"({"evaluator_calls":40,"residual_scoring":40,"residual_optimizer":12,"jacobian_scoring":1,)"
           R"("jacobian_optimizer":8,"residual_total":52,"jacobian_total":9,"cache_hits":10,"cache_misses":40,)"
           R"("optimizer_seconds":2.5})";
-    auto const expected = std::string { R"({"schema":"operon.final","schema_version":"1.1","run_id":")" } + RunId
+    auto const expected = std::string { R"({"schema":"operon.final","schema_version":"1.2","run_id":")" } + RunId
         + R"(","attempt_id":")" + AttemptId + R"(","exit_status":"ok",)"
         + R"("termination":{"primary":"evaluation_limit","reasons":["evaluation_limit","generation_limit"],)"
-        + R"("precedence_version":1},"generations_completed":4,)"
+        + R"("precedence_version":2},"generations_completed":4,)"
         + R"("incomplete_generation":{"attempted_offspring":7,"completed_offspring":5,"pool_count":12},)"
         + R"("budgets":{"generations":{"limit":10},)"
         + R"("evaluations":{"unit":"residual+jacobian","limit":100,"consumed":61,"overshoot":0},)"
@@ -262,8 +262,8 @@ TEST_CASE("FinalRun validates its options", "[final-record]")
     SECTION("--final-json rejects resumed counters without checkpoint accounting")
     {
         auto const path = (std::filesystem::temp_directory_path() / "operon-final-record-never.json").string();
-        CHECK_THROWS_AS(FinalRun { ParseFinalOptions(
-                            { "--final-json", path, "--run-id", RunId, "--attempt-id", AttemptId, "--resume", "run.beve" }) },
+        CHECK_THROWS_AS(FinalRun { ParseFinalOptions({ "--final-json", path, "--run-id", RunId, "--attempt-id",
+                            AttemptId, "--resume", "run.beve" }) },
             std::invalid_argument);
     }
 

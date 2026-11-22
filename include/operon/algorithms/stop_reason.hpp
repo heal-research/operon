@@ -19,6 +19,7 @@ enum class StopReason : std::uint8_t {
     EvaluationLimit, // the evaluation budget (residual + Jacobian evaluations) is used up
     PressureLimit, // offspring selection exceeded its maximum selection pressure
     TimeLimit, // the time limit elapsed
+    GeneratorTermination, // a custom offspring generator requested termination
     Callback, // the report callback asked to stop (or RequestStop() was called without another source)
     Signal, // an operating-system signal handler asked to stop
     EngineError, // the run is being abandoned because of an error
@@ -39,17 +40,18 @@ using StopMask = std::uint32_t;
 inline constexpr StopMask RequestedStopMask
     = MaskOf(StopReason::Callback) | MaskOf(StopReason::Signal) | MaskOf(StopReason::EngineError);
 
-// Reporting precedence (precedence_version 1). Earlier entries win when several reasons hold at once.
-inline constexpr std::array<StopReason, 7> StopPrecedence {
+// Reporting precedence (precedence_version 2). Earlier entries win when several reasons hold at once.
+inline constexpr std::array<StopReason, 8> StopPrecedence {
     StopReason::EngineError,
     StopReason::Signal,
     StopReason::Callback,
+    StopReason::GeneratorTermination,
     StopReason::EvaluationLimit,
     StopReason::PressureLimit,
     StopReason::GenerationLimit,
     StopReason::TimeLimit,
 };
-inline constexpr int StopPrecedenceVersion = 1;
+inline constexpr int StopPrecedenceVersion = 2;
 
 // The highest-precedence reason in `mask`, or nullopt if the mask is empty.
 [[nodiscard]] constexpr auto PrimaryStopReason(StopMask mask) -> std::optional<StopReason>
@@ -74,6 +76,8 @@ inline constexpr int StopPrecedenceVersion = 1;
         return "pressure_limit";
     case StopReason::TimeLimit:
         return "time_limit";
+    case StopReason::GeneratorTermination:
+        return "generator_termination";
     case StopReason::Callback:
         return "callback";
     case StopReason::Signal:

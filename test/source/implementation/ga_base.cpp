@@ -632,7 +632,8 @@ namespace {
 
         auto Terminate() const -> bool override
         {
-            return transientTerminate_.exchange(false, std::memory_order_acq_rel) || OffspringGeneratorBase::Terminate();
+            return transientTerminate_.exchange(false, std::memory_order_acq_rel)
+                || OffspringGeneratorBase::Terminate();
         }
 
         auto Prepare(Operon::Span<Operon::Individual const> pop) const -> void override
@@ -732,9 +733,11 @@ namespace {
             CHECK(algo.StopRequested());
             CHECK(progress.Attempted >= stopAfterCalls);
         } else if (kind == Interruption::TransientTermination) {
-            // Internal termination is not a user stop, and it ended the run: attempt 2 was never retried.
+            // Internal custom termination is a distinct non-request stop reason; attempt 2 was never retried.
             CHECK_FALSE(algo.StopRequested());
             CHECK(hg.Attempts() == 2);
+            CHECK(algo.StopReasons() == Operon::MaskOf(Operon::StopReason::GeneratorTermination));
+            CHECK(algo.TerminationReasons() == Operon::MaskOf(Operon::StopReason::GeneratorTermination));
         } else {
             CHECK_FALSE(algo.StopRequested());
             CHECK(progress.Attempted >= 1);

@@ -74,8 +74,9 @@ struct GenerationRecorderOptions {
 
 // One callback-thread writer per attempt. Capture precedes reporting; Write consumes the reporter's exact model
 // and metrics. A single seal worker overlaps durability I/O with computation, but Write waits before opening the
-// next .part (at most one exists). Close is explicit and throwing; destruction joins already-requested seals but
-// never seals the trailing unrequested segment.
+// next .part (at most one exists). Close is explicit and throwing; a failed Close is terminal (later Close calls
+// rethrow the same error, Capture/Write throw). Destruction joins already-requested seals but never seals the
+// trailing unrequested segment.
 class OPERON_EXPORT GenerationRecorder {
 public:
     using Clock = std::chrono::steady_clock;
@@ -120,6 +121,7 @@ private:
     std::condition_variable sealCondition_;
     bool sealPending_ { false };
     std::exception_ptr sealError_;
+    std::exception_ptr closeError_;
     std::jthread sealThread_;
 };
 

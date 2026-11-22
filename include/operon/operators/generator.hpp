@@ -58,9 +58,8 @@ public:
         Evaluator()->Prepare(pop);
     }
 
-    // The two independent reasons an offspring generator can ask the algorithm to stop. Subclasses can override
-    // Terminate() for an additional generator-specific condition; drivers retain that virtual contract and classify
-    // an otherwise-unclassified termination as a pressure limit.
+    // Terminate() remains virtual for custom generator-specific conditions; the driver records an otherwise
+    // unclassified true result as StopReason::GeneratorTermination.
     [[nodiscard]] auto BudgetExhausted() const -> bool { return evaluator_->BudgetExhausted(); }
     // Selection pressure: offspring selection has needed more than its maximum candidates per parent (never true
     // for generators without a selection-pressure limit).
@@ -95,8 +94,8 @@ public:
             res.Child->Genotype = (*Mutator())(random, std::move(res.Child->Genotype));
         }
 
-        auto evaluate = [&]() {
-            ScoreIndividual(random, *res.Child, *Evaluator(), coeffOptimizer_, pLocal, pLamarck, buf, accounting);
+        auto evaluate = [&]() -> void {
+            ScoreIndividual(random, *res.Child, *Evaluator(), coeffOptimizer_, pLocal, pLamarck, buf);
         };
 
         // The transposition table keys fitness by structure only. An evaluator whose result depends on the stored
@@ -167,7 +166,7 @@ public:
     static constexpr size_t DefaultBroodSize { 10 };
 
 private:
-    size_t broodSize_{DefaultBroodSize};
+    size_t broodSize_ { DefaultBroodSize };
 };
 
 class OPERON_EXPORT PolygenicOffspringGenerator : public OffspringGeneratorBase {
@@ -188,7 +187,7 @@ public:
     static constexpr size_t DefaultBroodSize = 10;
 
 private:
-    size_t broodSize_{DefaultBroodSize};
+    size_t broodSize_ { DefaultBroodSize };
 };
 
 class OPERON_EXPORT OffspringSelectionGenerator : public OffspringGeneratorBase {

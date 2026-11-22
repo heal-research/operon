@@ -1,12 +1,24 @@
 #!/usr/bin/env python3
 """Engine-native stream canaries, determinism, kill safety and interleaved overhead.
 
+POSIX only: the harness uses `resource` (child CPU time), SIGKILL (kill-safety scenario) and POSIX process-exit
+semantics (`-signal.SIGKILL`). On any other platform it prints a SKIP line and exits with status 77 (the
+conventional "skipped" code) before importing anything POSIX-specific. It is a manual harness, not registered in
+CTest: the benchmark and kill scenarios are timing dependent.
+
 Run with --gp/--nsgp paths, --data pointing at a directory holding I_6_20-without_noise-rep00.csv and
 I_6_20-shape.json, and --out a fresh scratch directory. --benchmark adds seven interleaved pairs per cell.
 Every generation record and every final document is checked against docs/schemas/generation.schema.json and
 final.schema.json with the stdlib validator in schema_lite.py. A different validator can be run over the kept
 output directories (OUT/<cell>/generation-*.jsonl, OUT/<cell>/final.json) afterwards.
 """
+import os
+import sys
+
+if os.name != "posix":
+    print(f"SKIP generation_json_smoke.py: requires POSIX (resource, SIGKILL); running on os.name={os.name!r}")
+    sys.exit(77)
+
 import argparse
 import copy
 import gzip
@@ -190,7 +202,9 @@ def main():
                                                        "parts": len(parts), "complete_parseable_records": parsed}
         failure_dir = a.out / (binary.name + "-io-failure")
         failure_dir.mkdir()
-        cmd = command(binary, failure_dir, log=False) + ["--generation-log", "/proc/operon-generation-unwritable"]
+        not_a_directory = failure_dir / "not-a-directory"  # a regular file where the stream directory must be
+        not_a_directory.write_text("x")
+        cmd = command(binary, failure_dir, log=False) + ["--generation-log", str(not_a_directory)]
         result = subprocess.run(cmd, capture_output=True)
         assert result.returncode == 1, (cmd, result.returncode, result.stderr)
         failed = load(failure_dir / "final.json")

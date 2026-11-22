@@ -11,6 +11,8 @@ CMakeLists.txt.user
 CMakeUserPresets.json
 project-include-after.cmake
 .direnv
+__pycache__/
+*.pyc
 
 docs/mkdocs/docs/assets/diagrams/
 # Local scratch/analysis scripts and outputs — not part of the library,

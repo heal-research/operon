@@ -7,10 +7,10 @@ runner) vendor a pinned copy and check the `x-version` they were built against.
 
 | Schema file | `schema` value | Version | Written by |
 |---|---|---|---|
-| `final.schema.json` | `operon.final` | 1.1 | `--final-json PATH` |
+| `final.schema.json` | `operon.final` | 1.2 | `--final-json PATH` |
 | `resolved-config.schema.json` | `operon.resolved_config` | 1.0 | `--print-config` (stdout) and `--config-out PATH` |
 | `generation.schema.json` | `operon.generation` | 1.1 | `--generation-log DIR` (one record per line in `generation-NNNNNN.jsonl` segments) |
-| `common.schema.json` | (shared `$defs`, no document) | 1.1 | referenced by the schemas above via `common.schema.json#/$defs/...` |
+| `common.schema.json` | (shared `$defs`, no document) | 1.2 | referenced by the schemas above via `common.schema.json#/$defs/...` |
 
 The `schema` and `schema_version` properties of every document name the schema and the version it was written
 against; `schema_version` is `"<major>.<minor>"`. The version a schema file describes is its top-level `x-version`

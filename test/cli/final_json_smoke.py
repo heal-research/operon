@@ -7,7 +7,8 @@ Runs both programs on a toy dataset under every way a run can end (generation li
 selection-pressure limit, time limit, SIGTERM, SIGINT, error) and checks the operon.final document each one
 leaves behind: conformance to docs/schemas/final.schema.json (stdlib validator, schema_lite.py), internal
 consistency, agreement with the evaluator counters printed in the stdout table, atomic publication, exit status.
-Standard library only.
+Standard library only. The SIGTERM/SIGINT scenarios run on POSIX only and are skipped, with a printed note, elsewhere;
+every other scenario is platform independent.
 
     python3 final_json_smoke.py --gp build/cli/operon_gp --nsgp build/cli/operon_nsgp [--keep DIR]
                                 [--validator-command "CMD ARGS" [--validator-cwd DIR] [--validator-tolerate CODE]]
@@ -34,7 +35,7 @@ import schema_lite
 RUN_ID = "a" * 64
 ATTEMPT_ID = "11111111-2222-4333-8444-555555555555"
 UNLIMITED = str(1 << 62)
-PRECEDENCE = ["engine_error", "signal", "callback", "evaluation_limit", "pressure_limit", "generation_limit", "time_limit"]
+PRECEDENCE = ["engine_error", "signal", "callback", "generator_termination", "evaluation_limit", "pressure_limit", "generation_limit", "time_limit"]
 
 failures = []
 checks = 0
@@ -112,12 +113,12 @@ def verify(doc, label, expect_reasons=None, expect_primary=None, exit_status="ok
            "instrumentation_errors"]
     check(all(k in doc for k in req), f"{label}: all required keys present")
     check(set(doc) <= set(req) | {"producer"}, f"{label}: no unknown keys")
-    check(doc["schema"] == "operon.final" and doc["schema_version"] == "1.1", f"{label}: schema name/version")
+    check(doc["schema"] == "operon.final" and doc["schema_version"] == "1.2", f"{label}: schema name/version")
     check(doc["run_id"] == RUN_ID and doc["attempt_id"] == ATTEMPT_ID, f"{label}: identifiers are echoed")
     check(doc["exit_status"] == exit_status, f"{label}: exit_status {doc['exit_status']} == {exit_status}")
     term = doc["termination"]
     reasons = term["reasons"]
-    check(term["precedence_version"] == 1, f"{label}: precedence_version")
+    check(term["precedence_version"] == 2, f"{label}: precedence_version")
     check(len(set(reasons)) == len(reasons) and reasons, f"{label}: reasons unique and non-empty")
     check(reasons == sorted(reasons, key=PRECEDENCE.index), f"{label}: reasons listed in precedence order")
     check(term["primary"] == reasons[0], f"{label}: primary is the highest-precedence reason")
@@ -294,8 +295,11 @@ def scenario_runs(program_name, binary, workdir, dataset, opts):
     p = subprocess.run([str(binary)] + base_args(dataset, ["--generations", "2"] + unlimited), capture_output=True, text=True)
     check(p.returncode == 0, f"{program_name}: without --final-json nothing changes")
 
-    # signals
-    for sig, name, code in ((signal.SIGTERM, "sigterm", 143), (signal.SIGINT, "sigint", 130)):
+    # signals (POSIX only: Windows has no SIGTERM/SIGINT delivery to a child via Popen.send_signal)
+    posix_signals = ((signal.SIGTERM, "sigterm", 143), (signal.SIGINT, "sigint", 130)) if os.name == "posix" else ()
+    if not posix_signals:
+        print(f"[{program_name}] signal scenarios skipped: POSIX only")
+    for sig, name, code in posix_signals:
         print(f"[{program_name}] {name} mid-run")
         path = final_path(name)
         cmd = [str(binary)] + base_args(dataset, ["--generations", "100000000", "--population-size", "100", "--pool-size",

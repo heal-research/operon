@@ -14,8 +14,11 @@
 #else
 #include <unistd.h>
 #endif
+
 #include "operon/algorithms/generation_record.hpp"
+#include "operon/core/constraint.hpp"
 #include "operon/hash/model_ref.hpp"
+#include "operon/operators/shape_constrained_evaluator.hpp"
 #include "operon/parser/infix.hpp"
 #include "stop_fixture.hpp"
 
@@ -228,10 +231,14 @@ TEST_CASE("generation model sidecar emits only changed lossless objects", "[gene
 TEST_CASE("generation log failures throw instead of producing a successful stream", "[generation-record]")
 {
     RecordingFixture f("errors");
-    SECTION("unwritable directory")
+    SECTION("regular file in place of the directory")
     {
-        f.Options.Directory = "/proc/operon-generation-unwritable";
-        CHECK_THROWS(GenerationRecorder { f.Options });
+        std::filesystem::create_directories(f.Directory);
+        auto const file = f.Directory / "not-a-directory";
+        std::ofstream { file } << "x";
+        REQUIRE(std::filesystem::is_regular_file(file));
+        f.Options.Directory = file;
+        CHECK_THROWS_AS(GenerationRecorder { f.Options }, std::system_error);
     }
     SECTION("invalid segment settings")
     {
@@ -254,6 +261,12 @@ TEST_CASE("generation log failures throw instead of producing a successful strea
         std::filesystem::create_directory(f.Directory / "generation-000000.jsonl");
         CHECK_THROWS(recorder.Close());
         CHECK(recorder.Errors() == 1);
+        // A failed close is terminal: it never turns into a later success, and nothing else can be recorded.
+        CHECK_THROWS(recorder.Close());
+        CHECK_THROWS(recorder.Close());
+        CHECK(recorder.Errors() == 1);
+        CHECK_THROWS(recorder.Capture(*f.Gp));
+        CHECK_THROWS(recorder.Write(*f.Gp, f.Gp->Parents()[0], 0, 0, 1));
     }
     SECTION("asynchronous seal errors are rethrown on close")
     {
@@ -264,6 +277,8 @@ TEST_CASE("generation log failures throw instead of producing a successful strea
         CHECK_THROWS(recorder.Close());
         CHECK(recorder.Errors() == 1);
         CHECK(recorder.RecordCount() == 1);
+        CHECK_THROWS(recorder.Close());
+        CHECK(recorder.Errors() == 1);
     }
     SECTION("existing stream cannot be overwritten")
     {
@@ -274,5 +289,38 @@ TEST_CASE("generation log failures throw instead of producing a successful strea
         }
         CHECK_THROWS(GenerationRecorder { f.Options });
     }
+}
+
+TEST_CASE("generation shape validity is certified under the canonical scaling transform", "[generation-record]")
+{
+    // y = 2 * X1 on X1 in [1, 10]. The raw model X1 stays inside [-0.5, 10.5], but its canonical linear-scaling
+    // transform (slope 2) reaches [2, 20], which is what the shape-constrained evaluator scored.
+    RecordingFixture f("shape-scaling");
+    ShapeConstraintSet constraints;
+    constraints.Domains.insert_or_assign("X1", std::pair { Scalar { 1 }, Scalar { 10 } });
+    constraints.Constraints.push_back({ .Op = ShapeConstraintOp::Identity,
+        .Variable = "",
+        .Sign = std::nullopt,
+        .Bound = std::pair { static_cast<Scalar>(-0.5), static_cast<Scalar>(10.5) } });
+    ShapeConstrainedValueEvaluator<Evaluator<DTable>> shapeEvaluator(
+        ShapeConstraintSpec { .Constraints = constraints }, &f.Dtable, &f.Problem, &f.Dtable, MSE {});
+    BasicOffspringGenerator generator(&shapeEvaluator, &f.Crossover, &f.Mutator, &f.FemSel, &f.MaleSel);
+    auto gp = f.MakeGp(&generator);
+    for (auto& ind : gp->Parents()) {
+        ind.Genotype = InfixParser::ParseOrThrow("X1", f.Ds);
+        ind.Fitness[0] = Scalar { 1 };
+    }
+
+    auto const& tree = gp->Parents()[0].Genotype;
+    REQUIRE(shapeEvaluator.Certifier().Measure(tree, std::nullopt).Feasible);
+    REQUIRE_FALSE(shapeEvaluator.Certifier().MeasureCanonical(tree).Feasible);
+
+    GenerationRecorder recorder(f.Options);
+    recorder.Capture(*gp);
+    recorder.Write(*gp, gp->Parents()[0], 0.25, 0.5, 1.0);
+    recorder.Close();
+    auto const text = Contents(f.Directory / "generation-000000.jsonl");
+    CHECK(text.find("\"shape_feasible\":false") != std::string::npos);
+    CHECK(text.find("\"shape_feasible\":true") == std::string::npos);
 }
 } // namespace Operon::Test

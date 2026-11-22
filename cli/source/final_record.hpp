@@ -74,8 +74,10 @@ inline constexpr std::uint64_t UnlimitedThreshold = std::uint64_t { 1 } << 62U;
 // The JSON text (one object, trailing newline). Non-finite numbers are written as null, never as NaN/Infinity.
 [[nodiscard]] auto SerializeFinalRecord(FinalRecord const& record) -> std::string;
 
-// Writes `content` to `path` so that readers see either the old file or the complete new one: temporary file in
-// the same directory, fsync, rename, fsync of the directory. Throws std::runtime_error on failure.
+// Writes `content` to `path` so that readers see either the old file or the complete new one. The content goes to
+// a temporary sibling file that is flushed to disk and then replaces `path` in one step: POSIX rename() followed by
+// an fsync of the directory, Windows MoveFileExW(MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH). A temporary
+// file is removed on failure. Throws std::runtime_error on failure.
 auto WriteFileAtomically(std::filesystem::path const& path, std::string_view content) -> void;
 
 // ---------------------------------------------------------------------------------------------------------------

@@ -12,15 +12,23 @@
 #include <exception>
 #include <fmt/core.h>
 #include <fmt/format.h>
-#include <fstream>
 #include <random>
 #include <stdexcept>
+#include <system_error>
 
 #include "operon/hash/model_ref.hpp"
 #include "operon/operators/generator.hpp"
 #include "stop_signal.hpp"
 
-#if !defined(_WIN32)
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
 #include <fcntl.h>
 #include <unistd.h>
 #endif
@@ -210,7 +218,7 @@ auto SerializeFinalRecord(FinalRecord const& r) -> std::string
             s.FirstSeq, s.LastSeq, s.Count, Quote(s.Sha256));
     }
     return fmt::format(
-        R"({{"schema":"operon.final","schema_version":"1.1","run_id":{},"attempt_id":{},"exit_status":{},)"
+        R"({{"schema":"operon.final","schema_version":"1.2","run_id":{},"attempt_id":{},"exit_status":{},)"
         R"("termination":{{"primary":{},"reasons":[{}],"precedence_version":{}}},)"
         R"("generations_completed":{},"incomplete_generation":{},)"
         R"("budgets":{{"generations":{{"limit":{}}},)"
@@ -232,22 +240,56 @@ auto WriteFileAtomically(std::filesystem::path const& path, std::string_view con
     tmp += fmt::format(".tmp-{}-{}",
         static_cast<unsigned long long>(
 #if defined(_WIN32)
-            0
+            ::GetCurrentProcessId()
 #else
             ::getpid()
 #endif
-            ),
+                ),
         std::random_device {}());
 
 #if defined(_WIN32)
-    {
-        std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
-        out.write(content.data(), static_cast<std::streamsize>(content.size()));
-        out.close();
-        if (!out) {
-            std::filesystem::remove(tmp);
-            throw std::runtime_error(fmt::format("could not write {}", tmp.string()));
+    // The temporary file is a sibling of the destination, so the final replacement never crosses a volume.
+    auto const handle
+        = ::CreateFileW(tmp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr); // NOLINT
+    if (handle == INVALID_HANDLE_VALUE) {
+        throw std::runtime_error(fmt::format("could not create {}: {}", tmp.string(),
+            std::system_category().message(static_cast<int>(::GetLastError()))));
+    }
+    auto fail = [&](char const* what) {
+        auto const err = static_cast<int>(::GetLastError());
+        ::CloseHandle(handle);
+        std::error_code ignored;
+        std::filesystem::remove(tmp, ignored);
+        throw std::runtime_error(fmt::format("{} {}: {}", what, tmp.string(), std::system_category().message(err)));
+    };
+    std::size_t written = 0;
+    while (written < content.size()) {
+        auto const chunk = static_cast<DWORD>(std::min<std::size_t>(content.size() - written, 1U << 30U));
+        DWORD n = 0;
+        if (!::WriteFile(handle, content.data() + written, chunk, &n, nullptr) || n == 0) {
+            fail("could not write");
         }
+        written += n;
+    }
+    if (!::FlushFileBuffers(handle)) {
+        fail("could not sync");
+    }
+    if (!::CloseHandle(handle)) {
+        auto const err = static_cast<int>(::GetLastError());
+        std::error_code ignored;
+        std::filesystem::remove(tmp, ignored);
+        throw std::runtime_error(
+            fmt::format("could not close {}: {}", tmp.string(), std::system_category().message(err)));
+    }
+
+    // MoveFileExW with MOVEFILE_REPLACE_EXISTING replaces an existing destination in one operation;
+    // MOVEFILE_WRITE_THROUGH returns only once the move is flushed to disk.
+    if (!::MoveFileExW(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        auto const err = static_cast<int>(::GetLastError());
+        std::error_code ignored;
+        std::filesystem::remove(tmp, ignored);
+        throw std::runtime_error(
+            fmt::format("could not publish {}: {}", path.string(), std::system_category().message(err)));
     }
 #else
     auto const fd = ::open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644); // NOLINT
@@ -278,7 +320,6 @@ auto WriteFileAtomically(std::filesystem::path const& path, std::string_view con
         std::filesystem::remove(tmp);
         throw std::runtime_error(fmt::format("could not close {}: {}", tmp.string(), std::strerror(errno)));
     }
-#endif
 
     std::error_code ec;
     std::filesystem::rename(tmp, path, ec);
@@ -286,7 +327,6 @@ auto WriteFileAtomically(std::filesystem::path const& path, std::string_view con
         std::filesystem::remove(tmp);
         throw std::runtime_error(fmt::format("could not publish {}: {}", path.string(), ec.message()));
     }
-#if !defined(_WIN32)
     // Make the rename itself durable.
     auto dir = path.parent_path();
     if (dir.empty()) {
