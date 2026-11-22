@@ -9,6 +9,7 @@
 #include <charconv>
 #include <climits>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <fcntl.h>
 #include <fmt/format.h>
@@ -84,6 +85,37 @@ namespace {
             }
             bytes.remove_prefix(static_cast<std::size_t>(n));
         }
+    }
+
+    // Restores `fd` to `size` bytes and repositions the write offset there. Returns false if that was impossible.
+    auto Rollback(int fd, std::uint64_t size) -> bool
+    {
+#ifdef _WIN32
+        return ::_chsize_s(fd, static_cast<long long>(size)) == 0
+            && ::_lseeki64(fd, static_cast<long long>(size), SEEK_SET) >= 0;
+#else
+        while (::ftruncate(fd, static_cast<off_t>(size)) != 0) {
+            if (errno != EINTR) {
+                return false;
+            }
+        }
+        return ::lseek(fd, static_cast<off_t>(size), SEEK_SET) >= 0;
+#endif
+    }
+
+    // Appends one complete record at offset `size`. A failed or short write is rolled back so a partial record never
+    // stays in the file; when even that fails, `tainted` is set and the file must not be trusted or published.
+    auto Append(int fd, std::string_view bytes, std::uint64_t& size, bool& tainted) -> void
+    {
+        try {
+            WriteAll(fd, bytes);
+        } catch (...) {
+            if (!Rollback(fd, size)) {
+                tainted = true;
+            }
+            throw;
+        }
+        size += bytes.size();
     }
 
     auto CloseFd(int fd) -> int
@@ -201,7 +233,8 @@ namespace {
         j.Field("jacobian_total", s.JacobianTotal());
         j.Field("cache_hits", s.CacheHits);
         j.Field("cache_misses",
-            s.CacheHits && s.CacheLookups ? std::optional { *s.CacheLookups - *s.CacheHits } : std::nullopt);
+            s.CacheHits && s.CacheLookups ? std::optional { *s.CacheLookups - std::min(*s.CacheLookups, *s.CacheHits) }
+                                          : std::nullopt);
         j.Field("optimizer_seconds", static_cast<double>(s.OptimizerTimeUs) / 1e6);
         j.End();
     }
@@ -319,7 +352,9 @@ auto GenerationRecorder::Capture(GeneticAlgorithmBase const& algorithm) -> void
             r.Length.Add(ind.Genotype.Length());
             r.Depth.Add(ind.Genotype.Depth());
             if (options_.Nsga2) {
-                if (ind.Rank >= pop.size()) {
+                // Retained parents keep the rank assigned by the sort of parents+offspring (the reinserter does not
+                // re-sort), so a rank is bounded by the combined individual count, not the population size.
+                if (ind.Rank >= algorithm.Individuals().size()) {
                     throw std::logic_error("invalid population rank");
                 }
                 if (r.Ranks.size() <= ind.Rank) {
@@ -375,6 +410,9 @@ auto GenerationRecorder::Write(GeneticAlgorithmBase const& algorithm, Individual
         if (!captured_) {
             throw std::logic_error("generation recorder write without capture");
         }
+        if (tainted_) {
+            throw std::runtime_error("generation log holds a partial record after a failed write");
+        }
         if (segmentFd_ < 0) {
             sealedPath_ = options_.Directory / fmt::format("generation-{:06}.jsonl", segments_.size());
             partPath_ = sealedPath_;
@@ -386,19 +424,21 @@ auto GenerationRecorder::Write(GeneticAlgorithmBase const& algorithm, Individual
             segmentStart_ = Clock::now();
             firstSeq_ = seq_;
             hash_.Reset();
+            segmentBytes_ = 0;
         }
         auto const changed = modelRef_.empty() || !SameModel(previousModel_, selected.Genotype);
         if (changed) {
             auto const serialization = ModelSerialization(selected.Genotype);
-            modelRef_ = Sha256Hex(serialization);
+            auto ref = Sha256Hex(serialization);
             buffer_.clear();
             Json j(buffer_);
             j.Raw("{");
-            j.Field("model_ref", modelRef_);
+            j.Field("model_ref", ref);
             j.Field("serialization", serialization);
             j.End();
             j.Raw("\n");
-            WriteAll(modelsFd_, buffer_);
+            Append(modelsFd_, buffer_, modelsBytes_, tainted_);
+            modelRef_ = std::move(ref);
             previousModel_ = selected.Genotype;
             if (auto const* shape
                 = dynamic_cast<detail::ShapeConstraintEnforcer const*>(algorithm.GetGenerator()->Evaluator())) {
@@ -410,7 +450,7 @@ auto GenerationRecorder::Write(GeneticAlgorithmBase const& algorithm, Individual
             }
         }
         Serialize(selected, nmseTrain, nmseTest, finitePredictionFraction, changed);
-        WriteAll(segmentFd_, buffer_);
+        Append(segmentFd_, buffer_, segmentBytes_, tainted_);
         hash_.Update(buffer_);
         ++seq_;
         captured_ = false;
@@ -435,6 +475,18 @@ auto GenerationRecorder::Write(GeneticAlgorithmBase const& algorithm, Individual
 auto GenerationRecorder::Seal() -> void
 {
     if (segmentFd_ < 0) {
+        return;
+    }
+    if (tainted_) {
+        // Keep the .part for inspection but never publish bytes the recorded hash does not cover.
+        static_cast<void>(CloseFd(std::exchange(segmentFd_, -1)));
+        throw std::runtime_error("generation segment not sealed: unrecoverable partial write");
+    }
+    if (seq_ == firstSeq_) {
+        // Every record of this segment was rolled back after a failed write: nothing to publish.
+        CloseFile(segmentFd_);
+        std::filesystem::remove(partPath_);
+        Sync(directoryFd_);
         return;
     }
     Sync(modelsFd_);

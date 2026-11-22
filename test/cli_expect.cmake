@@ -2,9 +2,9 @@
 # SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 #
 # Runs a CLI program and checks its exit status and output.
-#   -DCLI=<executable> -DARGS=<arg1|arg2|...> -DEXPECT=fail|ok -DREGEX=<regular expression>
 # EXPECT=fail: exit status must be exactly 1 (a crash or abort is not accepted) and stderr must match REGEX.
 # EXPECT=ok:   exit status must be 0 and stdout must match REGEX.
+# Optional -DFORBID=<regular expression>: the checked stream (stderr for fail, stdout for ok) must not match it.
 string(REPLACE "|" ";" args "${ARGS}")
 execute_process(
     COMMAND "${CLI}" ${args}
@@ -29,4 +29,8 @@ endif()
 
 if(NOT text MATCHES "${REGEX}")
     message(FATAL_ERROR "output does not match '${REGEX}'\nstdout: ${out}\nstderr: ${err}")
+endif()
+
+if(DEFINED FORBID AND NOT FORBID STREQUAL "" AND text MATCHES "${FORBID}")
+    message(FATAL_ERROR "output unexpectedly matches '${FORBID}'\nstdout: ${out}\nstderr: ${err}")
 endif()

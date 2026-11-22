@@ -291,19 +291,25 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
             "config-out", "Write operon.resolved_config atomically before running", cxxopts::value<std::string>());
     }
 
-    // Machine-readable run record (operon.final) and the identifiers that are stamped into it.
-    opts.add_options()("final-json",
-        "Write the operon.final termination record (stop reasons, final counters, final model) to this path, "
-        "atomically, also when the run fails; SIGINT/SIGTERM then stop the run gracefully and exit with 128+signal",
-        cxxopts::value<std::string>())("run-id",
-        "Opaque run identifier (64 lowercase hex characters) recorded in --final-json",
-        cxxopts::value<std::string>())("attempt-id",
-        "Opaque attempt identifier (lowercase UUID) recorded in --final-json", cxxopts::value<std::string>());
-    opts.add_options()("generation-log", "Write lossless generation segments and model sidecar in this directory",
-        cxxopts::value<std::string>())("segment-generations", "Seal a generation segment after this many records",
-        cxxopts::value<std::size_t>()->default_value("1000"))("segment-seconds",
-        "Seal a generation segment after this many seconds", cxxopts::value<double>()->default_value("5"))("sync",
-        "Generation log durability: record or segment", cxxopts::value<std::string>()->default_value("segment"));
+    // Machine-readable run record (operon.final), the identifiers stamped into it and the generation log. Only the
+    // population-based programs write them (FinalRun in final_record.hpp); operon_enum does not register them, so
+    // they are neither accepted nor advertised by --help/--capabilities.
+    if (name != "operon_enum") {
+        opts.add_options()("final-json",
+            "Write the operon.final termination record (stop reasons, final counters, final model) to this path, "
+            "atomically, also when the run fails; SIGINT/SIGTERM then stop the run gracefully and exit with "
+            "128+signal (also with --generation-log alone)",
+            cxxopts::value<std::string>())("run-id",
+            "Opaque run identifier (64 lowercase hex characters) recorded in --final-json and --generation-log",
+            cxxopts::value<std::string>())("attempt-id",
+            "Opaque attempt identifier (lowercase UUID) recorded in --final-json and --generation-log",
+            cxxopts::value<std::string>());
+        opts.add_options()("generation-log", "Write lossless generation segments and model sidecar in this directory",
+            cxxopts::value<std::string>())("segment-generations", "Seal a generation segment after this many records",
+            cxxopts::value<std::size_t>()->default_value("1000"))("segment-seconds",
+            "Seal a generation segment after this many seconds", cxxopts::value<double>()->default_value("5"))("sync",
+            "Generation log durability: record or segment", cxxopts::value<std::string>()->default_value("segment"));
+    }
     return opts;
 }
 

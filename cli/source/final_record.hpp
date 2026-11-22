@@ -92,7 +92,9 @@ auto WriteFileAtomically(std::filesystem::path const& path, std::string_view con
 //   finalRun.SetModel(...);  finalRun.SetFrontRef(...);
 //   return finalRun.Finish(exitCode);                   // writes the record, returns the process exit status
 //
-// Without --final-json the object does nothing at all: no signal handlers, no file.
+// Without --final-json and without --generation-log the object does nothing at all: no signal handlers, no file.
+// With --generation-log alone the signal handlers are installed (SIGINT/SIGTERM stop the run gracefully, the stream
+// is sealed and the process exits with 128 + the signal number) but no final document is written.
 class FinalRun {
 public:
     explicit FinalRun(cxxopts::ParseResult const& result,

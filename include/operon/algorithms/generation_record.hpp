@@ -6,6 +6,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <exception>
 #include <filesystem>
 #include <limits>
@@ -74,9 +75,10 @@ struct GenerationRecorderOptions {
 
 // One callback-thread writer per attempt. Capture precedes reporting; Write consumes the reporter's exact model
 // and metrics. A single seal worker overlaps durability I/O with computation, but Write waits before opening the
-// next .part (at most one exists). Close is explicit and throwing; a failed Close is terminal (later Close calls
-// rethrow the same error, Capture/Write throw). Destruction joins already-requested seals but never seals the
-// trailing unrequested segment.
+// next .part (at most one exists). A failed record write is rolled back to the last complete record, so a segment
+// never holds unhashed bytes; if the rollback itself fails the segment is left as .part and never sealed. Close is
+// explicit and throwing; a failed Close is terminal (later Close calls rethrow the same error, Capture/Write throw).
+// Destruction joins already-requested seals but never seals the trailing unrequested segment.
 class OPERON_EXPORT GenerationRecorder {
 public:
     using Clock = std::chrono::steady_clock;
@@ -115,6 +117,8 @@ private:
     std::filesystem::path partPath_, sealedPath_;
     std::size_t seq_ {}, firstSeq_ {};
     std::atomic_size_t errors_ {};
+    std::uint64_t segmentBytes_ {}, modelsBytes_ {};
+    bool tainted_ { false };
     int directoryFd_ { -1 }, segmentFd_ { -1 }, modelsFd_ { -1 };
     bool captured_ { false }, closed_ { false };
     std::mutex sealMutex_;

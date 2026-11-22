@@ -9,6 +9,10 @@
 #include <numeric>
 #include <sstream>
 #include <thread>
+#if !defined(_WIN32)
+#include <sys/resource.h>
+#endif
+#include <csignal>
 #if defined(_WIN32)
 #include <process.h>
 #else
@@ -289,6 +293,83 @@ TEST_CASE("generation log failures throw instead of producing a successful strea
         }
         CHECK_THROWS(GenerationRecorder { f.Options });
     }
+}
+
+#if !defined(_WIN32)
+namespace {
+    // Caps the size any file of this process may grow to. Writes that cross the cap are first shortened, then fail
+    // with EFBIG, which makes a partial record deterministic. SIGXFSZ would otherwise terminate the process.
+    struct FileSizeLimit {
+        rlimit Saved {};
+        void (*Handler)(int) { nullptr };
+        explicit FileSizeLimit(std::uintmax_t bytes)
+        {
+            REQUIRE(::getrlimit(RLIMIT_FSIZE, &Saved) == 0);
+            Handler = std::signal(SIGXFSZ, SIG_IGN);
+            auto limit = Saved;
+            limit.rlim_cur = static_cast<rlim_t>(bytes);
+            REQUIRE(::setrlimit(RLIMIT_FSIZE, &limit) == 0);
+        }
+        ~FileSizeLimit()
+        {
+            ::setrlimit(RLIMIT_FSIZE, &Saved);
+            std::signal(SIGXFSZ, Handler);
+        }
+        FileSizeLimit(FileSizeLimit const&) = delete;
+        auto operator=(FileSizeLimit const&) -> FileSizeLimit& = delete;
+    };
+}
+
+TEST_CASE("generation recorder never seals a partially written record", "[generation-record]")
+{
+    RecordingFixture f("partial-write");
+    GenerationRecorder recorder(f.Options);
+    f.Write(recorder);
+    auto const part = f.Directory / "generation-000000.jsonl.part";
+    auto const complete = std::filesystem::file_size(part);
+    auto const first = Contents(part);
+    recorder.Capture(*f.Gp);
+    {
+        // The second record is about as long as the first, so half a record fits and the rest fails.
+        FileSizeLimit const limit(complete + complete / 2);
+        CHECK_THROWS_AS(recorder.Write(*f.Gp, f.Gp->Parents()[0], 0.25, 0.5, 1.0), std::system_error);
+    }
+    CHECK(recorder.Errors() == 1);
+    CHECK(recorder.RecordCount() == 1);
+    // The partial bytes were removed again: the open segment still holds exactly the one hashed record.
+    CHECK(std::filesystem::file_size(part) == complete);
+    CHECK_NOTHROW(recorder.Close());
+    CHECK(recorder.Errors() == 1);
+    REQUIRE(recorder.Segments().size() == 1);
+    auto const& s = recorder.Segments()[0];
+    CHECK(s.Count == 1);
+    CHECK(s.FirstSeq == 0);
+    CHECK(s.LastSeq == 0);
+    auto const sealed = f.Directory / "generation-000000.jsonl";
+    CHECK_FALSE(std::filesystem::exists(part));
+    CHECK(Contents(sealed) == first);
+    CHECK(s.Sha256 == Sha256FileHex(sealed));
+}
+#endif
+
+TEST_CASE("generation record ranks are bounded by the combined parent and offspring count", "[generation-record]")
+{
+    // Retained parents keep ranks from the parents+offspring sort, e.g. offspring that replace dominated parents.
+    RecordingFixture f("ranks");
+    f.Options.Nsga2 = true;
+    auto pop = f.Gp->Parents();
+    auto const combined = f.Gp->Individuals().size();
+    REQUIRE(combined > pop.size() + 3);
+    pop[0].Rank = pop.size() + 3;
+    GenerationRecorder recorder(f.Options);
+    REQUIRE_NOTHROW(recorder.Capture(*f.Gp));
+    auto const& ranks = recorder.Record().Ranks;
+    REQUIRE(ranks.size() == pop.size() + 4);
+    CHECK(ranks[0] == pop.size() - 1);
+    CHECK(ranks[pop.size() + 3] == 1);
+    pop[1].Rank = combined;
+    CHECK_THROWS_AS(recorder.Capture(*f.Gp), std::logic_error);
+    CHECK(recorder.Errors() == 1);
 }
 
 TEST_CASE("generation shape validity is certified under the canonical scaling transform", "[generation-record]")

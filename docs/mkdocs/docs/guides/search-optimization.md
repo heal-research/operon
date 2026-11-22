@@ -41,9 +41,9 @@ the final model's `ModelRef` (SHA-256 of `ModelSerialization`), as an `operon.fi
 replaces any existing file in one step; POSIX `rename` plus directory `fsync`, Windows `MoveFileExW` with
 `MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH`), also when the run fails
 (`exit_status` `error`, reason `engine_error`). Final records require a fresh run: `--final-json` rejects `--resume`
-until checkpoints persist the prior evaluation counters. With `--final-json`, SIGINT and SIGTERM stop the run
-gracefully (reason `signal`) and the process exits with 128 plus the signal number; a second signal terminates it
-immediately. The document's schema is `docs/schemas/final.schema.json`.
+until checkpoints persist the prior evaluation counters. With `--final-json` or `--generation-log`, SIGINT and SIGTERM
+stop the run gracefully (reason `signal`) and the process exits with 128 plus the signal number; a second signal
+terminates it immediately. The final document's schema is `docs/schemas/final.schema.json`.
 
 ## Lossless generation records
 
