@@ -26,9 +26,9 @@ annotation.
   generation stream is written, could not be started, or could not be sealed).
 * **Generation records.** One `operon.generation` record per completed generation, generation 0 (`initialized`)
   included, with a dense per-attempt `seq`. A value the engine cannot count is `null` and is named in
-  `validity.unsupported_fields`; metric means cover finite, non-rejected individuals only. With `--final-json` the
-  `operon.final` document carries the sealed segments (`segments`, `record_count`, byte hashes) and no longer
-  lists them in `producer.unsupported_fields`.
+  `validity.unsupported_fields`; metric means cover finite, non-rejected individuals only. With `--final-json`, an
+  `operon.final` document for a complete generation stream carries the sealed segments (`segments`, `record_count`,
+  byte hashes) and does not list those fields in `producer.unsupported_fields`.
 * **Resolved configuration.** `operon.resolved_config` makes every default explicit and lists the dotted paths that
   were defaulted in `defaulted`. An explicitly unlimited budget (`--generations unlimited`, `--evaluations unlimited`)
   is `null`. Unknown extra keys are tolerated at every level so that minor versions can add properties.
