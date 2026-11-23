@@ -332,7 +332,8 @@ auto RunFingerprintExcludedOptions() -> std::vector<std::string> const&
         "checkpoint-interval", "checkpoint-file", "resume", "pareto-front", "model-selection", "mdl-likelihood",
         "probes-config", "report-json", "debug", "help", "version", "capabilities", "show-primitives", "dataset",
         "train", "test", "target", "inputs", "shape-constraints-config", "transposition-cache", "cache-visibility",
-        "cache-max-age", "seed" };
+        "cache-max-age", "seed", "print-config", "config-out", "final-json", "run-id", "attempt-id", "generation-log",
+        "segment-generations", "segment-seconds", "sync" };
     return excluded;
 }
 

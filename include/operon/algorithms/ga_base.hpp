@@ -264,25 +264,28 @@ public:
     // pool was full is discarded and not counted, so this is Generation().
     [[nodiscard]] auto GenerationsCompleted() const -> std::size_t { return generation_; }
 
-    // Every stop condition that holds right now: generation, evaluation budget, known pressure, custom generator
-    // termination, and time. Does not record anything.
+    // Every stop condition that holds in the current state, derived from what the run recorded: the generation limit;
+    // the evaluation budget (committed work reached a positive budget, or a generation was discarded for spending
+    // more than the budget had left); selection pressure (a generation was discarded for exceeding the generator's
+    // attempt cap, or a committed generation crossed it and ended the run, see BudgetReport().End); and the time
+    // limit. Exact between generations and after Run() returned. Does not record anything. A custom generator's
+    // Terminate() is deprecated and not consulted (see OffspringGeneratorBase::Terminate()), so the engine never
+    // reports StopReason::GeneratorTermination.
     [[nodiscard]] auto StopConditions(double elapsed) const -> StopMask
     {
         StopMask mask {};
         if (generation_ >= config_.Generations) {
             mask |= MaskOf(StopReason::GenerationLimit);
         }
-        auto const terminated = generator_->Terminate();
-        auto const budget = generator_->BudgetExhausted();
-        auto const pressure = generator_->PressureExhausted();
-        if (budget) {
+        auto const& budget = budgetReport_;
+        auto const spent = budget.EvaluationsCommitted > budget.Budget
+            || (budget.EvaluationsCommitted == budget.Budget && budget.Budget != 0);
+        auto const discarded = incompleteGeneration_ && incompleteGeneration_->Reason == DiscardReason::ResourceLimit;
+        if (spent || (discarded && incompleteGeneration_->BudgetExceeded)) {
             mask |= MaskOf(StopReason::EvaluationLimit);
         }
-        if (pressure) {
+        if (budget.End == RunEnd::AttemptCap || (discarded && incompleteGeneration_->AttemptCapExceeded)) {
             mask |= MaskOf(StopReason::PressureLimit);
-        }
-        if (terminated && !budget && !pressure) {
-            mask |= MaskOf(StopReason::GeneratorTermination);
         }
         if (elapsed > static_cast<double>(config_.TimeLimit)) {
             mask |= MaskOf(StopReason::TimeLimit);
@@ -387,18 +390,6 @@ public:
     }
 
 protected:
-    // Polls every stop condition (see StopConditions) for the run loop: records the ones that hold in the stop mask
-    // (atomic fetch_or, so concurrent polls from worker threads are fine) and returns whether the run must stop,
-    // i.e. whether a condition holds or an external stop was requested. `elapsed` is in seconds.
-    auto PollStop(double elapsed) -> bool
-    {
-        auto const conditions = StopConditions(elapsed);
-        if (conditions != 0) {
-            RecordStop(conditions);
-        }
-        return conditions != 0 || StopRequested();
-    }
-
     // Offspring accounting for Run(): begin a generation body, then add each worker's slot (the generator
     // invocations it needed and whether it filled the slot; thread-safe).
     auto BeginOffspringProgress() -> void

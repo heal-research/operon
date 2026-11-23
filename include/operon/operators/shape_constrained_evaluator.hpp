@@ -320,6 +320,12 @@ public:
     }
 
 protected:
+    void ResetChildren() const override
+    {
+        BaseEvaluator::ResetChildren();
+        this->ShapeStructuralReset();
+    }
+
     auto Evaluate(Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf) const
         -> tl::expected<std::optional<EvaluatedBuffer>, InterpreterError> override
     {

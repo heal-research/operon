@@ -20,6 +20,8 @@
 #include "operon/core/tree.hpp"
 #include "operon/operators/evaluator.hpp"
 
+#include "cli_args.hpp"
+
 // The `operon.final` document written by `--final-json PATH` (schema: docs/schemas/final.schema.json): how a run
 // ended, the budgets and counters it consumed (read from the evaluator after Run() returned, never copied from the
 // last report), and the final model. The document is written atomically and always, also when the run failed.
@@ -59,8 +61,7 @@ struct FinalRecord {
     std::vector<std::string> UnsupportedFields; // producer.unsupported_fields
 };
 
-// A limit at or above this is "unlimited" in the records (reported as null).
-inline constexpr std::uint64_t UnlimitedThreshold = std::uint64_t { 1 } << 62U;
+// UnlimitedThreshold (cli_args.hpp): a limit at or above it is "unlimited" in the records (reported as null).
 
 // Snapshot of an algorithm that is no longer running (or never got to run): limits, counters, progress, stop
 // reasons. Model, front reference and identifiers are filled in by the caller. The reasons are the recorded ones

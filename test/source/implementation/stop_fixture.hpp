@@ -83,7 +83,7 @@ struct StopFixture {
         Config.PoolSize = PoolSize;
         Config.Generations = 1000;
         Config.LocalSearchProbability = 0.0;
-        Evaluator.SetBudget(std::size_t { 1 } << 40U);
+        Config.Evaluations = std::size_t { 1 } << 40U;
     }
 
     [[nodiscard]] auto MakeGp(Operon::OffspringGeneratorBase const* generator = nullptr)

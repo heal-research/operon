@@ -322,7 +322,6 @@ auto RunGp(cxxopts::ParseResult const& result, Operon::Cli::FinalRun& finalRun, 
                     &dtable, &problem);
             }
         }
-        evaluator->SetBudget(config.Evaluations);
         evaluator->SetObjectiveName(result["objective"].as<std::string>());
         optimizer->SetIterations(config.Iterations);
         if (config.PopulationSize == 0 || config.PoolSize == 0 || problem.TrainingRange().Size() == 0) {

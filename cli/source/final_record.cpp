@@ -137,14 +137,14 @@ namespace {
 auto MakeFinalRecord(Operon::GeneticAlgorithmBase const& algorithm) -> FinalRecord
 {
     auto const config = algorithm.GetConfig();
-    auto const* evaluator = algorithm.GetGenerator()->Evaluator();
 
     FinalRecord record;
     record.Reasons = algorithm.TerminationReasons();
     record.GenerationsCompleted = algorithm.GenerationsCompleted();
     record.Incomplete = algorithm.IncompleteGeneration();
     record.GenerationLimit = Unlimited(config.Generations);
-    record.EvaluationLimit = Unlimited(evaluator->Budget());
+    // The evaluation budget is the algorithm's (GeneticAlgorithmConfig::Evaluations), not the evaluator's.
+    record.EvaluationLimit = Unlimited(config.Evaluations);
     record.TimeLimitSeconds = Unlimited(config.TimeLimit).transform([](auto v) { return static_cast<double>(v); });
     record.ElapsedSeconds = algorithm.Elapsed();
     if (auto const* os = dynamic_cast<Operon::OffspringSelectionGenerator const*>(algorithm.GetGenerator())) {

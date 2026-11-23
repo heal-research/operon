@@ -333,7 +333,7 @@ auto GenerationRecorder::Capture(GeneticAlgorithmBase const& algorithm) -> void
         r.PoolCount = algorithm.GetConfig().PoolSize;
         r.Progress = algorithm.Progress();
         r.Stats = algorithm.DetailedStats();
-        auto const budget = algorithm.GetGenerator()->Evaluator()->Budget();
+        auto const budget = algorithm.GetConfig().Evaluations; // the algorithm's budget, not the evaluator's
         r.EvaluationLimit = budget >= (std::uint64_t { 1 } << 62U) ? std::nullopt : std::optional { budget };
         r.Length = {};
         r.Depth = {};

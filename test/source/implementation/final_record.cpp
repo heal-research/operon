@@ -15,6 +15,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 #include "operon/algorithms/stop_reason.hpp"
@@ -301,11 +302,11 @@ TEST_CASE("FinalRun writes the record of a finished run", "[final-record]")
         CHECK(Contains(text, R"("primary":"generation_limit","reasons":["generation_limit"])"));
         CHECK(Contains(text, R"("generations_completed":3,"incomplete_generation":null)"));
         CHECK(Contains(text, R"("generations":{"limit":3})"));
-        // counters are the evaluator's, read after Run()
-        auto const stats = fix.Evaluator.DetailedStats();
-        CHECK(stats.Calls == StopFixture::PopSize * 4); // initialization + three generations
-        CHECK(Contains(text, "\"evaluator_calls\":" + std::to_string(stats.Calls)));
-        CHECK(Contains(text, "\"consumed\":" + std::to_string(stats.Consumed())));
+        // counters are the evaluator's, read after Run(); no local search, so scoring is all the work there is
+        auto const [residual, jacobian, calls] = fix.Evaluator.Stats();
+        CHECK(calls == StopFixture::PopSize * 4); // initialization + three generations
+        CHECK(Contains(text, "\"evaluator_calls\":" + std::to_string(calls)));
+        CHECK(Contains(text, "\"consumed\":" + std::to_string(residual + jacobian)));
         CHECK(Contains(
             text, "\"model_ref\":\"" + Operon::ModelRef(Operon::InfixParser::ParseOrThrow("X1 * 2", fix.Ds)) + "\""));
         CHECK(Contains(text, R"("front_ref":null,"segments":[],"record_count":0)"));
@@ -315,7 +316,7 @@ TEST_CASE("FinalRun writes the record of a finished run", "[final-record]")
     {
         // initialization + one full generation + half of the second pool
         fix.Config.Generations = 100;
-        fix.Evaluator.SetBudget(StopFixture::PopSize + StopFixture::PoolSize + (StopFixture::PoolSize / 2));
+        fix.Config.Evaluations = StopFixture::PopSize + StopFixture::PoolSize + (StopFixture::PoolSize / 2);
         FinalRun run { result };
         {
             auto gp = fix.MakeGp();
@@ -328,9 +329,10 @@ TEST_CASE("FinalRun writes the record of a finished run", "[final-record]")
         CHECK(Contains(text, R"("exit_status":"ok")"));
         CHECK(Contains(text, R"("primary":"evaluation_limit","reasons":["evaluation_limit"])"));
         CHECK(Contains(text, R"("generations_completed":1,)"));
+        // the second generation is discarded once it has spent more than the 6 evaluations the budget had left
         CHECK(Contains(
-            text, R"("incomplete_generation":{"attempted_offspring":6,"completed_offspring":6,"pool_count":12})"));
-        CHECK(Contains(text, R"("consumed":30,"overshoot":0)"));
+            text, R"("incomplete_generation":{"attempted_offspring":7,"completed_offspring":7,"pool_count":12})"));
+        CHECK(Contains(text, R"("consumed":31,"overshoot":1)"));
     }
 
     SECTION("a failing process makes it an error record, and the counters are still there")
@@ -346,7 +348,7 @@ TEST_CASE("FinalRun writes the record of a finished run", "[final-record]")
         CHECK(Contains(text, R"("exit_status":"error")"));
         CHECK(Contains(text, R"("primary":"engine_error")"));
         CHECK(Contains(text, R"("final_model":null)"));
-        CHECK(Contains(text, "\"evaluator_calls\":" + std::to_string(fix.Evaluator.DetailedStats().Calls)));
+        CHECK(Contains(text, "\"evaluator_calls\":" + std::to_string(std::get<2>(fix.Evaluator.Stats()))));
     }
 
     SECTION("an exception that unwinds through the watch still leaves the snapshot")
@@ -369,8 +371,8 @@ TEST_CASE("FinalRun writes the record of a finished run", "[final-record]")
         CHECK(run.Finish(EXIT_FAILURE) == EXIT_FAILURE);
         auto const text = ReadFile(path);
         CHECK(Contains(text, R"("exit_status":"error")"));
-        CHECK(Contains(text, "\"evaluator_calls\":" + std::to_string(fix.Evaluator.DetailedStats().Calls)));
-        CHECK(fix.Evaluator.DetailedStats().Calls == StopFixture::PopSize); // initialization was evaluated
+        CHECK(Contains(text, "\"evaluator_calls\":" + std::to_string(std::get<2>(fix.Evaluator.Stats()))));
+        CHECK(std::get<2>(fix.Evaluator.Stats()) == StopFixture::PopSize); // initialization was evaluated
     }
 
     SECTION("a run that never started has zero counters and its configured limits")

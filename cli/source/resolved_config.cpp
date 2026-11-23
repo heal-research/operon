@@ -83,7 +83,7 @@ auto BuildResolvedConfig(cxxopts::ParseResult const& r, ResolvedObjects const& o
     }
     Object budgets;
     budgets.Add("generations", Limit(c.Generations));
-    budgets.Add("evaluations", "{\"limit\":" + Limit(o.Evaluator.Budget()) + ",\"unit\":\"residual+jacobian\"}");
+    budgets.Add("evaluations", "{\"limit\":" + Limit(c.Evaluations) + ",\"unit\":\"residual+jacobian\"}");
     budgets.Add("time_limit_s", Limit(c.TimeLimit));
     budgets.Add("pressure_limit", pressure);
     doc.Add("budgets", budgets.Finish());

@@ -300,7 +300,7 @@ public:
         latest_.symbolic_model.clear();
         latest_.metrics = MachineMetrics { r2Train, r2Test, maeTrain, maeTest, nmseTrain, nmseTest, mseTrain, mseTest,
             best_[idx], avgQuality, avgLength, gp.Elapsed(), static_cast<std::uint64_t>(callCount),
-            static_cast<std::uint64_t>(resEval), static_cast<std::uint64_t>(jacEval), cfTime / 1e6 };
+            static_cast<std::uint64_t>(resEval), static_cast<std::uint64_t>(jacEval), optimizerSeconds };
         if (recorder_) {
             auto const finite = std::ranges::count_if(estimatedTrain, [](auto x) { return std::isfinite(x); })
                 + std::ranges::count_if(estimatedTest, [](auto x) { return std::isfinite(x); });

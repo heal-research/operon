@@ -22,20 +22,29 @@ The evaluation budget limits committed work. Initialization always commits (a ze
 // keep both
 An incomplete generation is not itself a stop reason and does not set `StopRequested()`: the run ends only because the stop condition that cut the generation short (evaluation budget, generator termination, time limit, stop request or a `true` report) holds. A generator-defined termination that clears again before the loop checks it, such as the selection-pressure limit, still ends the run. `StopRequested()` is true only after `RequestStop()` or a `true` report callback.
 
+## Transposition cache
+
+With `GeneticAlgorithmConfig::Cache` set, offspring that are structurally identical to an earlier one reuse its fitness instead of being scored again. By default (`CacheVisibility::Committed`) an entry becomes visible to other offspring slots only in the next generation, which makes the cache hit/miss decisions independent of slot arrival order. The whole run is independent of the thread count, also when the evaluation budget or the offspring-selection pressure binds, as long as no time limit or stop request cuts a generation; JIT evaluation is not covered. Lookups that used to hit an entry of the same generation become evaluations, which changes the search trajectory and therefore the number of evaluations a run consumes, in either direction. `CacheVisibility::Immediate` shares entries at once and depends on thread timing. **Offspring selection and the cache:** the selection pressure of `os` counts attempts, so a cache hit counts like an evaluated offspring (it made no evaluator call, and used to be free). With a cache an `os` run therefore reaches its pressure cap sooner and may stop earlier than before, also at one thread: on Poly-10 with `os:20:0.5`, population and pool 100, seed 3, 18 generations instead of 60. Without a cache, and for `basic`, `brood` and `poly`, results are unchanged, except when the evaluation budget binds inside an attempt that costs more than one evaluation (such a generation used to overshoot the budget and is now discarded). The cap also guarantees that offspring selection terminates when every candidate is a rejected cache hit. See the [search reference](../reference/search.md#transposition-cache). Checkpoints written with `--checkpoint-interval` carry the cache, so `--resume` continues a run with the cache on exactly like the uninterrupted run, unless `--evaluations` (or another limit that cuts a generation) binds (a resumed run gets a fresh evaluation budget and is charged one evaluation per parent for the re-evaluation at the warm start); resume with the same `--seed`, `--cache-visibility` and `--cache-max-age` (a mismatch is rejected).
+
 ## Stop reasons
 
 A run records why it stopped as a `StopMask` (`stop_reason.hpp`): `GenerationLimit`, `EvaluationLimit`,
-`PressureLimit`, `TimeLimit`, `GeneratorTermination`, `Callback`, `Signal`, `EngineError`. The drivers poll the four
-limits (generation count, evaluator budget, `OffspringGeneratorBase::PressureExhausted()`, time) together with
-external requests, record every condition that holds with an atomic `fetch_or`, and so tolerate concurrent worker
-polls. `StopReasons()` is what was recorded, `TerminationReasons()` adds final-state conditions, and
-`PrimaryStopReason()` uses `engine_error`, `signal`, `callback`, `generator_termination`, `evaluation_limit`,
-`pressure_limit`, `generation_limit`, `time_limit`. `RequestStop(source)` takes `Callback`, `Signal` or
-`EngineError`; `StopRequested()` is true only for external requests.
-`OffspringGeneratorBase::Terminate()` remains virtual for custom generators. Its default combines `BudgetExhausted()`
-and `PressureExhausted()`; an override without a more specific reason is recorded as `generator_termination`.
+`PressureLimit`, `TimeLimit`, `GeneratorTermination`, `Callback`, `Signal`, `EngineError`. The reasons are derived
+from the budget accounting of the run (`GeneticAlgorithmBase::StopConditions()`): the generation limit; the
+evaluation limit when committed work reached a positive budget or a generation was discarded for spending more than
+the budget had left; the pressure limit when a generation was discarded for exceeding the generator's attempt cap
+(`OffspringGeneratorBase::MaxAttempts()`) or a committed generation crossed it and ended the run; the time limit when
+it expired. The loop records every condition that holds, and a worker that sees the time limit expire records it,
+with an atomic `fetch_or`, so concurrent worker polls are safe. `StopReasons()` is what was recorded,
+`TerminationReasons()` adds final-state conditions, and `PrimaryStopReason()` uses `engine_error`, `signal`,
+`callback`, `generator_termination`, `evaluation_limit`, `pressure_limit`, `generation_limit`, `time_limit`.
+`RequestStop(source)` takes `Callback`, `Signal` or `EngineError`; `StopRequested()` is true only for external
+requests (a generation cut short by the time limit does not request a stop). `OffspringGeneratorBase::Terminate()` is
+deprecated and not consulted by the drivers, so the engine never records `GeneratorTermination` (the value remains
+for producers that map their own termination onto it).
 
-`operon_gp` and `operon_nsgp` write these, with the final counters read from the evaluator after `Run()` returns and
+`operon_gp` and `operon_nsgp` write these, with the final counters read after `Run()` returns (the evaluation limit
+is `GeneticAlgorithmConfig::Evaluations`) and
 the final model's `ModelRef` (SHA-256 of `ModelSerialization`), as an `operon.final` JSON document with
 `--final-json PATH --run-id ID --attempt-id UUID`. The file is published atomically (a flushed temporary sibling
 replaces any existing file in one step; POSIX `rename` plus directory `fsync`, Windows `MoveFileExW` with

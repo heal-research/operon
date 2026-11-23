@@ -101,7 +101,8 @@ inline auto CapabilitiesJson(std::string_view program, std::vector<std::string> 
         fmt::arg("compilerId", JsonEscape(info.CompilerId)),
         fmt::arg("compilerVersion", JsonEscape(info.CompilerVersion)),
         fmt::arg("flags", JsonEscape(info.CompilerFlags)), fmt::arg("eigen", JsonEscape(info.EigenVersion)),
-        fmt::arg("taskflow", JsonEscape(info.TaskflowVersion)), fmt::arg("level", levelJson),
+        fmt::arg("taskflow", JsonEscape(info.TaskflowVersion)), fmt::arg("ceres", ceresJson),
+        fmt::arg("timestamp", JsonEscape(info.BuildTimestamp)), fmt::arg("level", levelJson),
         fmt::arg("capabilities", JsonStringArray(BuildCapabilities(info))),
         fmt::arg("isaFeatures", JsonStringArray(info.IsaFeatures)), fmt::arg("jit", info.Jit ? "true" : "false"),
         fmt::arg("machineReport", machineReportVersions), fmt::arg("options", JsonStringArray(options)));

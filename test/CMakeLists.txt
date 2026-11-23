@@ -56,6 +56,7 @@ add_executable(operon_test
     source/implementation/nondominatedsort.cpp
     source/implementation/permutation_importance.cpp
     source/implementation/evaluation_stats.cpp
+    source/implementation/reporter.cpp
     source/implementation/final_record.cpp
     source/implementation/generation_record.cpp
     source/implementation/evaluator.cpp
@@ -65,6 +66,7 @@ add_executable(operon_test
     source/implementation/selection.cpp
     source/implementation/stop_reasons.cpp
     source/implementation/serialization.cpp
+    source/implementation/resume_validation.cpp
     source/implementation/sha256.cpp
     source/implementation/shape_constrained_evaluator.cpp
     source/implementation/shape_constrained_value_evaluator.cpp
@@ -351,8 +353,8 @@ endif()
 # Each case runs the real executable through cli/expect.cmake: `fail` cases need exit status 1 and a stderr match
 # (a crash or abort does not count), `ok` cases need exit status 0 and a stdout match.
 if(TARGET operon_gp AND TARGET operon_nsgp)
-    # ctest runs both binaries directly, so CI's --target operon_test must build both.
-    add_dependencies(operon_test operon_gp)
+    # CI builds only operon_test; the CLI cases below run the real executables.
+    add_dependencies(operon_test operon_gp operon_nsgp)
     set(operon_cli_data "data/Poly-10.csv")
 
     function(add_cli_test NAME PROGRAM EXPECT REGEX)
@@ -452,6 +454,17 @@ if(TARGET operon_gp AND TARGET operon_nsgp)
                     -P "${CMAKE_CURRENT_SOURCE_DIR}/cli_expect.cmake"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         )
+
+        # seed/threads may be omitted (random seed, all hardware threads); GP-only options are rejected
+        add_cli_test(enum_capabilities operon_enum ok "\"program\":\"operon_enum\"" "--capabilities")
+        add_cli_test(enum_default_seed_and_threads operon_enum ok "mdl_bits="
+            "--dataset;${operon_cli_data};--target;Y;--train;0:50;--max-complexity;4;--top-k;1")
+        add_cli_test(enum_rejects_epsilon operon_enum fail
+            "error: --epsilon: is only used by operon_nsgp"
+            "--dataset;${operon_cli_data};--target;Y;--epsilon;1e-3")
+        add_cli_test(enum_rejects_selection_pressure operon_enum fail
+            "error: --selection-pressure: is not supported and has no effect"
+            "--dataset;${operon_cli_data};--target;Y;--selection-pressure;5")
     endif()
 
     # threads

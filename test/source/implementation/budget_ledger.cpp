@@ -952,7 +952,6 @@ TEST_CASE("A zero-cost structural evaluator accepts a zero evaluation budget", "
     });
 }
 
-
 TEST_CASE("Initialization always commits: overshoot is recorded and no generation starts", "[budget][config]")
 {
     Scenario sc;

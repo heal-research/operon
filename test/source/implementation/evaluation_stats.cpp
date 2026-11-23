@@ -421,8 +421,8 @@ TEST_CASE("Scoring counters stay exact under concurrent scoring and recording", 
             std::vector<Operon::Scalar> buf(10);
             auto ind = fix.MakeIndividual("X1 + 0.5");
             for (std::size_t i = 0; i < perThread; ++i) {
-                ScoreIndividual(rng, ind, evaluator, &fix.CoeffOptimizer, 1.0, 1.0, Operon::Span<Operon::Scalar> { buf },
-                    fix.Accounting);
+                ScoreIndividual(rng, ind, evaluator, &fix.CoeffOptimizer, 1.0, 1.0,
+                    Operon::Span<Operon::Scalar> { buf }, fix.Accounting);
             }
         });
     }
@@ -623,9 +623,8 @@ TEST_CASE("LocalSearch performs no work and charges nothing when no optimizer is
 TEST_CASE("LocalSearch with a zero-iteration optimizer reports a failure without work", "[stats][local-search]")
 {
     StatsFixture fix;
-    ScriptedOptimizer optimizer { &fix.Problem, [](Tree const& t) -> FitOutcome {
-                                     return detail::MakeFitOutcome(ScriptedDiagnostics(t, 9, 9));
-                                 } };
+    ScriptedOptimizer optimizer { &fix.Problem,
+        [](Tree const& t) -> FitOutcome { return detail::MakeFitOutcome(ScriptedDiagnostics(t, 9, 9)); } };
     optimizer.SetIterations(0);
     Operon::CoefficientOptimizer const coeffOptimizer { &optimizer };
     auto ind = fix.MakeIndividual("X1 + 0.5");
@@ -663,9 +662,8 @@ TEST_CASE("LocalSearch publishes the complete outcome of every invoked optimizer
 
     SECTION("a successful fit")
     {
-        auto const result = run([](Tree const& t) -> FitOutcome {
-            return detail::MakeFitOutcome(ScriptedDiagnostics(t, 4, 3));
-        });
+        auto const result
+            = run([](Tree const& t) -> FitOutcome { return detail::MakeFitOutcome(ScriptedDiagnostics(t, 4, 3)); });
         CHECK(result.Outcome->has_value());
         CHECK_FALSE(result.OriginalCoefficients.has_value()); // Lamarckian: the genotype keeps the update
         auto const updated = ind.Genotype.GetCoefficients();
@@ -857,8 +855,8 @@ TEST_CASE("Optimizer work is accounted for every generator and every candidate p
 
     SECTION("basic")
     {
-        Operon::BasicOffspringGenerator generator { &evaluator, &fix.Crossover, &fix.Mutator, &fix.FemSel,
-            &fix.MaleSel, &fix.CoeffOptimizer };
+        Operon::BasicOffspringGenerator generator { &evaluator, &fix.Crossover, &fix.Mutator, &fix.FemSel, &fix.MaleSel,
+            &fix.CoeffOptimizer };
         auto const [stats, generation] = run(generator);
         CheckFixedWorkAccounting(stats);
         CHECK(stats.Calls == AlgorithmFixture::PopSize + (generation * AlgorithmFixture::PoolSize));
@@ -866,8 +864,8 @@ TEST_CASE("Optimizer work is accounted for every generator and every candidate p
 
     SECTION("brood: every candidate of the brood is charged, not only the survivor")
     {
-        Operon::BroodOffspringGenerator generator { &evaluator, &fix.Crossover, &fix.Mutator, &fix.FemSel,
-            &fix.MaleSel, &fix.CoeffOptimizer };
+        Operon::BroodOffspringGenerator generator { &evaluator, &fix.Crossover, &fix.Mutator, &fix.FemSel, &fix.MaleSel,
+            &fix.CoeffOptimizer };
         generator.BroodSize(broodSize);
         auto const [stats, generation] = run(generator);
         CheckFixedWorkAccounting(stats);
@@ -1047,8 +1045,8 @@ TEST_CASE("GP budget consumption includes the optimizer work of initialization a
     });
 }
 
-TEST_CASE("NSGA2 budget consumption includes the optimizer work of initialization and offspring",
-    "[algorithms][budget]")
+TEST_CASE(
+    "NSGA2 budget consumption includes the optimizer work of initialization and offspring", "[algorithms][budget]")
 {
     AlgorithmFixture fix;
     fix.Config.Generations = 100;
@@ -1133,8 +1131,8 @@ TEST_CASE("Copying a quiescent algorithm preserves its run accounting", "[algori
     CHECK(copy.Accounting().Snapshot().TimeUs == work.TimeUs);
     CHECK(copy.DetailedStats() == gp.DetailedStats());
 
-    Operon::GeneticProgrammingAlgorithm assigned { fix.Config, &fix.Problem, &fix.TreeInit, &fix.CoeffInit,
-        &generator, &fix.Reinserter };
+    Operon::GeneticProgrammingAlgorithm assigned { fix.Config, &fix.Problem, &fix.TreeInit, &fix.CoeffInit, &generator,
+        &fix.Reinserter };
     assigned = gp;
     CHECK(assigned.Accounting().Snapshot().Residual == work.Residual);
 
@@ -1387,6 +1385,5 @@ TEST_CASE("NSGA2 advances the generator's active cache clock", "[algorithms][sta
     REQUIRE(nsga.Generation() >= 2);
     CHECK_FALSE(aging.TryGet(hash, out));
 }
-
 
 } // namespace Operon::Test

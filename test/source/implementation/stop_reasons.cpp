@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <random>
 #include <string_view>
 #include <thread>
@@ -223,7 +224,7 @@ TEST_CASE("GP records why it stopped", "[stop][algorithms]")
     SECTION("evaluation budget")
     {
         // initialization costs PopSize evaluations; the budget runs out in the middle of the first generation
-        fix.Evaluator.SetBudget(StopFixture::PopSize + (StopFixture::PoolSize / 2));
+        fix.Config.Evaluations = StopFixture::PopSize + (StopFixture::PoolSize / 2);
         auto gp = fix.MakeGp();
         gp->Run(rng, nullptr, /*threads=*/1);
         CHECK(gp->StopReasons() == Mask(Evaluation));
@@ -231,27 +232,28 @@ TEST_CASE("GP records why it stopped", "[stop][algorithms]")
         auto const incomplete = gp->IncompleteGeneration();
         REQUIRE(incomplete.has_value());
         CHECK(incomplete->PoolSize == StopFixture::PoolSize);
-        CHECK(incomplete->Completed == StopFixture::PoolSize / 2);
+        CHECK(incomplete->Completed > StopFixture::PoolSize / 2); // the attempt that crossed the budget completes
+        CHECK(incomplete->Completed < StopFixture::PoolSize);
+        CHECK(incomplete->BudgetExceeded);
         CHECK(incomplete->Attempted >= incomplete->Completed);
         CHECK(gp->GenerationsCompleted() == 0);
     }
 
     SECTION("selection pressure: a maximum of zero is exceeded by the first candidate")
     {
-        // The pressure is candidates evaluated since the generator's Prepare() per parent, so it is 0 until the
-        // first generation starts and > 0 after the very first candidate.
+        // The generator's attempt cap is MaxSelectionPressure() * parents attempts per generation: zero, so the first
+        // attempt of the generation exceeds it.
         fix.OffspringSelection.MaxSelectionPressure(0);
         auto gp = fix.MakeGp(&fix.OffspringSelection);
         gp->Run(rng, nullptr, /*threads=*/1);
         CHECK(gp->StopReasons() == Mask(Pressure));
         CHECK(gp->TerminationReasons() == Mask(Pressure));
-        CHECK(fix.OffspringSelection.PressureExhausted());
-        CHECK_FALSE(fix.OffspringSelection.BudgetExhausted());
-        CHECK(fix.OffspringSelection.Terminate());
+        CHECK(fix.OffspringSelection.MaxAttempts(StopFixture::PopSize) == std::optional<std::size_t> { 0 });
         auto const incomplete = gp->IncompleteGeneration();
         REQUIRE(incomplete.has_value());
         CHECK(incomplete->Attempted == 1);
         CHECK(incomplete->Completed <= 1);
+        CHECK(incomplete->AttemptCapExceeded);
         CHECK(gp->GenerationsCompleted() == 0);
     }
 
@@ -334,7 +336,7 @@ TEST_CASE("Simultaneous stop conditions are all recorded", "[stop][algorithms]")
     StopFixture fix;
     Operon::RandomGenerator rng { 5 };
     fix.Config.Generations = 0; // reached right after initialization
-    fix.Evaluator.SetBudget(1); // used up by initialization
+    fix.Config.Evaluations = 1; // used up by initialization
     fix.Config.TimeLimit = 0;
     auto gp = fix.MakeGp();
 
@@ -353,7 +355,7 @@ TEST_CASE("Simultaneous stop conditions are all recorded", "[stop][algorithms]")
 
     // A later Run() starts from a clean mask.
     fix.Config.Generations = 0;
-    fix.Evaluator.SetBudget(std::size_t { 1 } << 40U);
+    fix.Config.Evaluations = std::size_t { 1 } << 40U;
     fix.Config.TimeLimit = ~std::size_t { 0 };
     auto fresh = fix.MakeGp();
     fresh->Run(rng, nullptr, /*threads=*/1);
@@ -367,7 +369,7 @@ TEST_CASE("Concurrent stop polling at four threads records exactly the true cond
         StopFixture fix;
         Operon::RandomGenerator rng { static_cast<std::size_t>(round) };
         // the budget runs out in the middle of the first generation, while four workers poll for it
-        fix.Evaluator.SetBudget(StopFixture::PopSize + (StopFixture::PoolSize / 2));
+        fix.Config.Evaluations = StopFixture::PopSize + (StopFixture::PoolSize / 2);
         auto gp = fix.MakeGp();
         gp->Run(rng, nullptr, threads);
 
@@ -377,9 +379,10 @@ TEST_CASE("Concurrent stop polling at four threads records exactly the true cond
         REQUIRE(incomplete.has_value());
         CHECK(incomplete->Completed < incomplete->PoolSize);
         CHECK(incomplete->Attempted >= incomplete->Completed);
-        // the budget is checked before each attempt, so a few attempts per worker may overshoot it, no more
-        CHECK(fix.Evaluator.TotalEvaluations() >= fix.Evaluator.Budget());
-        CHECK(fix.Evaluator.TotalEvaluations() <= fix.Evaluator.Budget() + threads);
+        // a generation is discarded once it has spent more than the budget has left; attempts already running on
+        // the four workers may overshoot that by at most one evaluation each
+        CHECK(fix.Evaluator.TotalEvaluations() > fix.Config.Evaluations);
+        CHECK(fix.Evaluator.TotalEvaluations() <= fix.Config.Evaluations + threads);
     }
 }
 
@@ -410,7 +413,7 @@ TEST_CASE("NSGA2 records why it stopped", "[stop][algorithms]")
 
     SECTION("evaluation budget: the generation that ran out of budget is not counted")
     {
-        fix.Evaluator.SetBudget(StopFixture::PopSize + (StopFixture::PoolSize / 2));
+        fix.Config.Evaluations = StopFixture::PopSize + (StopFixture::PoolSize / 2);
         auto nsga = make();
         nsga->Run(rng, nullptr, /*threads=*/1);
         CHECK(nsga->StopReasons() == Mask(Evaluation));
@@ -419,7 +422,7 @@ TEST_CASE("NSGA2 records why it stopped", "[stop][algorithms]")
         CHECK(nsga->GenerationsCompleted() == 0);
         auto const incomplete = nsga->IncompleteGeneration();
         REQUIRE(incomplete.has_value());
-        CHECK(incomplete->Completed == StopFixture::PoolSize / 2);
+        CHECK(incomplete->Completed > StopFixture::PoolSize / 2);
         CHECK(incomplete->PoolSize == StopFixture::PoolSize);
     }
 

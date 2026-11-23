@@ -372,7 +372,6 @@ auto RunNsgp(cxxopts::ParseResult const& result, Operon::Cli::FinalRun& finalRun
                     &dtable, &problem);
             }
         }
-        errorEvaluator->SetBudget(config.Evaluations);
         errorEvaluator->SetObjectiveName(result["objective"].as<std::string>());
         optimizer->SetIterations(config.Iterations);
         if (config.PopulationSize == 0 || config.PoolSize == 0 || problem.TrainingRange().Size() == 0) {
