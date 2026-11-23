@@ -47,7 +47,7 @@ def main():
         root = Path(args.out or tmp)
         root.mkdir(parents=True, exist_ok=True)
         dataset = root / 'data.csv'
-        dataset.write_text('x,y\n' + ''.join(f'{i},{i*i+1}\n' for i in range(12)))
+        dataset.write_bytes(('x,y\n' + ''.join(f'{i},{i*i+1}\n' for i in range(12))).encode())
         base = ['--dataset', str(dataset), '--target', 'y', '--train', '0:8', '--test', '8:12',
                 '--seed', '7', '--threads', '1', '--population-size', '8', '--generations', '1',
                 '--objective', 'nmse', '--creator', 'ptc2:0.5:2:4:8', '--maxlength', '8', '--maxdepth', '4',

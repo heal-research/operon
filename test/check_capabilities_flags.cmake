@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 #
+cmake_policy(SET CMP0057 NEW)
+
 # --capabilities must report the configuration that was built and its flags: build_type must equal the built
 # configuration, the flags that only the Debug configuration sets must be absent from any other configuration, and the
 # flags that do apply (the global and per-configuration CMake flags followed by the compile options of the operon_operon
