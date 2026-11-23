@@ -523,6 +523,33 @@ TEST_CASE("FinalRun declares the stream manifest unsupported when no complete st
         CHECK_FALSE(Contains(text, R"("record_count":2)"));
     }
 
+    SECTION("a background seal failure consumed by a later write still leaves the manifest unsupported")
+    {
+        auto const result = ParseStreamOptions(StreamArgs(path, stream, { "--segment-generations", "1" }));
+        FinalRun run { result };
+        run.SetConfig(fix.Config);
+        auto gp = fix.MakeGp();
+        PrepareParents(*gp, fix.Ds);
+        auto* const recorder = run.StartGenerationLog(result, false, 1);
+        REQUIRE(recorder != nullptr);
+        std::filesystem::create_directory(stream / "generation-000000.jsonl"); // the first seal cannot publish
+        WriteRecord(*recorder, *gp); // the seal fails in the background
+        // The next write waits for the seal worker and consumes (rethrows) its error, so that Close() finds nothing
+        // to rethrow and returns normally.
+        CHECK_THROWS(WriteRecord(*recorder, *gp));
+        CHECK_NOTHROW(recorder->Close());
+        CHECK(recorder->Errors() == 1);
+        CHECK(recorder->RecordCount() == 1); // the count includes the segment that was never sealed
+        CHECK(recorder->Segments().empty());
+        CHECK(run.Finish(0) == EXIT_FAILURE);
+
+        auto const text = ReadFile(path);
+        CHECK(Contains(text, R"("exit_status":"error")"));
+        CHECK(Contains(text, NoStream));
+        CHECK(Contains(text, UnsupportedStream));
+        CHECK_FALSE(Contains(text, R"("record_count":1)"));
+    }
+
     SECTION("close failed with no sealed segment")
     {
         auto const result = ParseStreamOptions(StreamArgs(path, stream));

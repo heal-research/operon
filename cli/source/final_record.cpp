@@ -479,7 +479,9 @@ auto FinalRun::Finish(int exitCode) -> int
     if (recorder_) {
         try {
             recorder_->Close();
-            streamComplete = true;
+            // A background seal failure can be consumed by a later Write() so Close() returns normally; the
+            // recorder's error count is the only signal that the stream is not whole.
+            streamComplete = recorder_->Errors() == 0;
         } catch (std::exception const& e) {
             fmt::print(stderr, "error: could not seal generation log: {}\n", e.what());
             error_ = true;
