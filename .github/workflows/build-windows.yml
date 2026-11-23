@@ -9,7 +9,8 @@ on:
 
 jobs:
   windows:
-    runs-on: windows-latest
+    # windows-latest currently resolves to VS 2026, whose STL requires Clang 22 while the hosted LLVM is Clang 20.
+    runs-on: windows-2022
 
     steps:
       - name: Checkout repository
