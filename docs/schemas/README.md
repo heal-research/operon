@@ -23,7 +23,7 @@ annotation.
   therefore nullable in the schema.
 * **`producer.unsupported_fields`.** Lists the contract properties the producer could not supply, so that a
   `null` in them is a declared absence rather than a defect (for `operon.final`: `segments` and `record_count` when no
-  generation stream is written).
+  generation stream is written, could not be started, or could not be sealed).
 * **Generation records.** One `operon.generation` record per completed generation, generation 0 (`initialized`)
   included, with a dense per-attempt `seq`. A value the engine cannot count is `null` and is named in
   `validity.unsupported_fields`; metric means cover finite, non-rejected individuals only. With `--final-json` the

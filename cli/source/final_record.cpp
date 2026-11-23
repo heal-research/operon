@@ -327,14 +327,28 @@ auto WriteFileAtomically(std::filesystem::path const& path, std::string_view con
         std::filesystem::remove(tmp);
         throw std::runtime_error(fmt::format("could not publish {}: {}", path.string(), ec.message()));
     }
-    // Make the rename itself durable.
+    // Make the rename itself durable. The file is already published at this point, so a failure here is reported
+    // (the record is not known to survive a crash) without removing the published file.
     auto dir = path.parent_path();
     if (dir.empty()) {
         dir = ".";
     }
-    if (auto const dfd = ::open(dir.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC); dfd >= 0) { // NOLINT
-        static_cast<void>(::fsync(dfd));
-        ::close(dfd);
+    auto const dfd = ::open(dir.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC); // NOLINT
+    if (dfd < 0) {
+        throw std::runtime_error(fmt::format(
+            "published {} but could not open {} to sync it: {}", path.string(), dir.string(), std::strerror(errno)));
+    }
+    auto const syncResult = ::fsync(dfd);
+    auto const syncError = errno;
+    auto const closeResult = ::close(dfd);
+    auto const closeError = errno;
+    if (syncResult != 0) {
+        throw std::runtime_error(fmt::format(
+            "published {} but could not sync {}: {}", path.string(), dir.string(), std::strerror(syncError)));
+    }
+    if (closeResult != 0) {
+        throw std::runtime_error(fmt::format(
+            "published {} but could not close {}: {}", path.string(), dir.string(), std::strerror(closeError)));
     }
 #endif
 }
@@ -411,6 +425,7 @@ auto FinalRun::StartGenerationLog(cxxopts::ParseResult const& result, bool nsga2
         return recorder_.get();
     } catch (...) {
         ++instrumentationErrors_;
+        error_ = true;
         throw;
     }
 }
@@ -460,9 +475,11 @@ auto FinalRun::Finish(int exitCode) -> int
     if (!enabled_) {
         return exitCode;
     }
+    auto streamComplete = false;
     if (recorder_) {
         try {
             recorder_->Close();
+            streamComplete = true;
         } catch (std::exception const& e) {
             fmt::print(stderr, "error: could not seal generation log: {}\n", e.what());
             error_ = true;
@@ -475,13 +492,13 @@ auto FinalRun::Finish(int exitCode) -> int
     record.Model = model_;
     record.FrontRef = frontRef_;
     record.InstrumentationErrors = instrumentationErrors_ + (recorder_ ? recorder_->Errors() : 0);
-    if (streamRequested_) {
-        if (recorder_) {
-            record.Segments = recorder_->Segments();
-            record.RecordCount = recorder_->RecordCount();
-        }
-    } else {
+    if (!streamRequested_ || !streamComplete) {
+        // No stream (not requested, never started, or not sealed): the manifest is not available, never an empty or
+        // partial one presented as the whole stream. record_count would include records that were never sealed.
         record.UnsupportedFields = { "segments", "record_count" };
+    } else {
+        record.Segments = recorder_->Segments();
+        record.RecordCount = recorder_->RecordCount();
     }
     if (frontExpected_ && !record.FrontRef) {
         record.UnsupportedFields.emplace_back("front_ref");
@@ -491,6 +508,7 @@ auto FinalRun::Finish(int exitCode) -> int
     if (failed) {
         record.Error = true;
         record.Reasons |= Operon::MaskOf(Operon::StopReason::EngineError);
+        exitCode = EXIT_FAILURE;
     }
     auto const signal = StopSignals::Received();
     try {

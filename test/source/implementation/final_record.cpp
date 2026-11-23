@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <cmath>
 #include <csignal>
@@ -17,6 +18,11 @@
 #include <thread>
 #include <tuple>
 #include <vector>
+
+#if !defined(_WIN32)
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 #include "operon/algorithms/stop_reason.hpp"
 #include "operon/core/dataset.hpp"
@@ -406,6 +412,219 @@ TEST_CASE("FinalRun writes the record of a finished run", "[final-record]")
 
     std::filesystem::remove_all(dir);
 }
+
+namespace {
+    // The options of a --generation-log run, parsed the way the CLI parses them (defaults included).
+    auto ParseStreamOptions(std::vector<std::string> args) -> cxxopts::ParseResult
+    {
+        cxxopts::Options opts("test", "test");
+        opts.add_options()("final-json", "", cxxopts::value<std::string>())(
+            "run-id", "", cxxopts::value<std::string>())("attempt-id", "", cxxopts::value<std::string>())(
+            "resume", "", cxxopts::value<std::string>())("generation-log", "", cxxopts::value<std::string>())(
+            "sync", "", cxxopts::value<std::string>()->default_value("record"))(
+            "objective", "", cxxopts::value<std::string>()->default_value("mse"))(
+            "offspring-generator", "", cxxopts::value<std::string>()->default_value("basic"))(
+            "model-selection", "", cxxopts::value<std::string>()->default_value("mdl"))(
+            "segment-generations", "", cxxopts::value<std::size_t>()->default_value("1000"))(
+            "segment-seconds", "", cxxopts::value<double>()->default_value("5"));
+        args.insert(args.begin(), "test");
+        std::vector<char*> argv;
+        for (auto& a : args) {
+            argv.push_back(a.data());
+        }
+        return opts.parse(static_cast<int>(argv.size()), argv.data());
+    }
+
+    auto StreamArgs(std::filesystem::path const& final, std::filesystem::path const& stream,
+        std::vector<std::string> extra = {}) -> std::vector<std::string>
+    {
+        std::vector<std::string> args { "--final-json", final.string(), "--run-id", RunId, "--attempt-id", AttemptId,
+            "--generation-log", stream.string() };
+        args.insert(args.end(), extra.begin(), extra.end());
+        return args;
+    }
+
+    // One-objective parents with distinct fitness values, so that the recorder can capture and write a record.
+    auto PrepareParents(Operon::GeneticProgrammingAlgorithm& gp, Operon::Dataset& ds) -> void
+    {
+        std::size_t i = 0;
+        for (auto& ind : gp.Parents()) {
+            ind.Genotype = Operon::InfixParser::ParseOrThrow(i % 2 ? "X1" : "X1 * 2", ds);
+            ind.Fitness[0] = static_cast<Operon::Scalar>(++i);
+        }
+    }
+
+    auto WriteRecord(Operon::GenerationRecorder& recorder, Operon::GeneticProgrammingAlgorithm& gp) -> void
+    {
+        recorder.Capture(gp);
+        recorder.Write(gp, gp.Parents()[0], 0.25, 0.5, 1.0);
+        ++gp.Generation();
+    }
+
+    constexpr auto NoStream = R"("segments":[],"record_count":0,"instrumentation_errors":1,)";
+    constexpr auto UnsupportedStream
+        = R"("producer":{"adapter":"operon","unsupported_fields":["segments","record_count"],"derived_fields":[]}})";
+} // namespace
+
+TEST_CASE("FinalRun declares the stream manifest unsupported when no complete stream exists", "[final-record]")
+{
+    auto const dir = ScratchDir("stream");
+    auto const path = dir / "final.json";
+    auto const stream = dir / "stream";
+    StopFixture fix;
+
+    SECTION("the recorder could not be started: invalid option")
+    {
+        auto const result = ParseStreamOptions(StreamArgs(path, stream, { "--sync", "bogus" }));
+        FinalRun run { result };
+        run.SetConfig(fix.Config);
+        CHECK_THROWS_AS(run.StartGenerationLog(result, false, 1), std::invalid_argument);
+        CHECK(run.Finish(0) == EXIT_FAILURE);
+        auto const text = ReadFile(path);
+        CHECK(Contains(text, R"("exit_status":"error")"));
+        CHECK(Contains(text, NoStream));
+        CHECK(Contains(text, UnsupportedStream));
+    }
+
+    SECTION("the recorder could not be started: the directory is a regular file")
+    {
+        std::ofstream { dir / "occupied" } << "x";
+        auto const result = ParseStreamOptions(StreamArgs(path, dir / "occupied"));
+        FinalRun run { result };
+        run.SetConfig(fix.Config);
+        CHECK_THROWS(run.StartGenerationLog(result, false, 1));
+        CHECK(run.Finish(0) == EXIT_FAILURE);
+        auto const text = ReadFile(path);
+        CHECK(Contains(text, R"("exit_status":"error")"));
+        CHECK(Contains(text, NoStream));
+        CHECK(Contains(text, UnsupportedStream));
+    }
+
+    SECTION("sealing failed: the manifest is neither empty-and-complete nor partial")
+    {
+        auto const result = ParseStreamOptions(StreamArgs(path, stream, { "--segment-generations", "1" }));
+        FinalRun run { result };
+        run.SetConfig(fix.Config);
+        auto gp = fix.MakeGp();
+        PrepareParents(*gp, fix.Ds);
+        auto* const recorder = run.StartGenerationLog(result, false, 1);
+        REQUIRE(recorder != nullptr);
+        WriteRecord(*recorder, *gp); // sealed into generation-000000.jsonl
+        std::filesystem::create_directory(stream / "generation-000001.jsonl"); // the next seal cannot publish
+        WriteRecord(*recorder, *gp);
+        CHECK(run.Finish(0) == EXIT_FAILURE);
+
+        auto const sealed = Operon::Sha256FileHex(stream / "generation-000000.jsonl");
+        auto const text = ReadFile(path);
+        CHECK(Contains(text, R"("exit_status":"error")"));
+        CHECK(Contains(text, NoStream)); // not "segments":[{...one sealed segment...}],"record_count":2
+        CHECK(Contains(text, UnsupportedStream));
+        CHECK_FALSE(Contains(text, sealed));
+        CHECK_FALSE(Contains(text, R"("record_count":2)"));
+    }
+
+    SECTION("close failed with no sealed segment")
+    {
+        auto const result = ParseStreamOptions(StreamArgs(path, stream));
+        FinalRun run { result };
+        run.SetConfig(fix.Config);
+        auto gp = fix.MakeGp();
+        PrepareParents(*gp, fix.Ds);
+        auto* const recorder = run.StartGenerationLog(result, false, 1);
+        REQUIRE(recorder != nullptr);
+        WriteRecord(*recorder, *gp);
+        std::filesystem::create_directory(stream / "generation-000000.jsonl");
+        CHECK(run.Finish(0) == EXIT_FAILURE);
+        auto const text = ReadFile(path);
+        CHECK(Contains(text, NoStream));
+        CHECK(Contains(text, UnsupportedStream));
+    }
+
+    SECTION("a sealed stream keeps its manifest and declares nothing unsupported")
+    {
+        auto const result = ParseStreamOptions(StreamArgs(path, stream));
+        FinalRun run { result };
+        fix.Config.Generations = 1;
+        Operon::RandomGenerator rng { 3 };
+        auto recording = fix.MakeGp();
+        PrepareParents(*recording, fix.Ds);
+        auto* const recorder = run.StartGenerationLog(result, false, 1);
+        REQUIRE(recorder != nullptr);
+        WriteRecord(*recorder, *recording);
+        {
+            auto gp = fix.MakeGp();
+            FinalRun::Watch const watch { run, *gp };
+            gp->Run(rng, nullptr, /*threads=*/1);
+        }
+        CHECK(run.Finish(0) == 0);
+        auto const text = ReadFile(path);
+        CHECK(Contains(text, R"("exit_status":"ok")"));
+        CHECK(Contains(text,
+            R"("segments":[{"segment_id":0,"first_seq":0,"last_seq":0,"count":1,"sha256":")"
+                + Operon::Sha256FileHex(stream / "generation-000000.jsonl")
+                + R"("}],"record_count":1,"instrumentation_errors":0})" + "\n"));
+        CHECK_FALSE(Contains(text, "producer"));
+    }
+
+    std::filesystem::remove_all(dir);
+}
+
+#if !defined(_WIN32)
+TEST_CASE("WriteFileAtomically reports a parent directory that cannot be synced", "[final-record]")
+{
+    namespace fs = std::filesystem;
+    auto const dir = ScratchDir("atomic-dirsync");
+    auto const path = dir / "final.json";
+
+    // Write and search permission but no read permission: creating the temporary file and renaming succeed, opening
+    // the directory to fsync it does not.
+    fs::permissions(dir, fs::perms::owner_write | fs::perms::owner_exec, fs::perm_options::replace);
+    auto const restore = [&] { fs::permissions(dir, fs::perms::owner_all, fs::perm_options::replace); };
+    if (auto const fd = ::open(dir.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC); fd >= 0) { // NOLINT
+        ::close(fd);
+        restore();
+        fs::remove_all(dir);
+        SKIP("directory permissions are not enforced for this user (running as root?)");
+    }
+
+    CHECK_THROWS_WITH(Operon::Cli::WriteFileAtomically(path, "published\n"),
+        Catch::Matchers::ContainsSubstring("could not open") && Catch::Matchers::ContainsSubstring("published"));
+    restore();
+    // The error is truthful: the file was renamed into place (not removed), no temporary file is left behind, and
+    // the call did not report success.
+    CHECK(ReadFile(path) == "published\n");
+    std::size_t entries = 0;
+    for ([[maybe_unused]] auto const& e : fs::directory_iterator(dir)) {
+        ++entries;
+    }
+    CHECK(entries == 1);
+    fs::remove_all(dir);
+}
+
+TEST_CASE("FinalRun reports failure when the final record's directory cannot be synced", "[final-record]")
+{
+    namespace fs = std::filesystem;
+    auto const dir = ScratchDir("run-dirsync");
+    auto const path = dir / "final.json";
+    auto const result
+        = ParseFinalOptions({ "--final-json", path.string(), "--run-id", RunId, "--attempt-id", AttemptId });
+    StopFixture fix;
+    FinalRun run { result };
+    run.SetConfig(fix.Config);
+
+    fs::permissions(dir, fs::perms::owner_write | fs::perms::owner_exec, fs::perm_options::replace);
+    auto const restore = [&] { fs::permissions(dir, fs::perms::owner_all, fs::perm_options::replace); };
+    if (auto const fd = ::open(dir.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC); fd >= 0) { // NOLINT
+        ::close(fd);
+        restore();
+        fs::remove_all(dir);
+        SKIP("directory permissions are not enforced for this user (running as root?)");
+    }
+    CHECK(run.Finish(0) == EXIT_FAILURE);
+    restore();
+    fs::remove_all(dir);
+}
+#endif
 
 TEST_CASE("SIGTERM stops the run gracefully and gets its own exit status", "[final-record][signal]")
 {

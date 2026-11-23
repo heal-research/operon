@@ -27,7 +27,8 @@
 // last report), and the final model. The document is written atomically and always, also when the run failed.
 //
 // With --generation-log the stream is sealed before the final document, which carries its byte hashes and count.
-// Without a stream, `segments` and `record_count` are explicitly declared unsupported.
+// Without a stream (not requested, failed to start, or not sealed because closing it failed), `segments` and
+// `record_count` are explicitly declared unsupported: they are never an empty or partial manifest.
 namespace Operon::Cli {
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -78,7 +79,8 @@ struct FinalRecord {
 // Writes `content` to `path` so that readers see either the old file or the complete new one. The content goes to
 // a temporary sibling file that is flushed to disk and then replaces `path` in one step: POSIX rename() followed by
 // an fsync of the directory, Windows MoveFileExW(MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH). A temporary
-// file is removed on failure. Throws std::runtime_error on failure.
+// file is removed on failure. Throws std::runtime_error on failure; on POSIX a failure to open, sync or close the
+// directory after the rename also throws (the file is then already published but its durability is not confirmed).
 auto WriteFileAtomically(std::filesystem::path const& path, std::string_view content) -> void;
 
 // ---------------------------------------------------------------------------------------------------------------
