@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <filesystem>
 #include <fstream>
 #include <glaze/glaze.hpp>
@@ -328,6 +329,9 @@ TEST_CASE("generation recorder never seals a partially written record", "[genera
     auto const part = f.Directory / "generation-000000.jsonl.part";
     auto const complete = std::filesystem::file_size(part);
     auto const first = Contents(part);
+    auto const models = f.Directory / "models.jsonl.txt";
+    auto const originalModels = Contents(models);
+    f.Gp->Parents()[0].Genotype = InfixParser::ParseOrThrow("X1", f.Ds);
     recorder.Capture(*f.Gp);
     {
         // The second record is about as long as the first, so half a record fits and the rest fails.
@@ -338,6 +342,9 @@ TEST_CASE("generation recorder never seals a partially written record", "[genera
     CHECK(recorder.RecordCount() == 1);
     // The partial bytes were removed again: the open segment still holds exactly the one hashed record.
     CHECK(std::filesystem::file_size(part) == complete);
+    CHECK(Contents(models) == originalModels);
+    CHECK_THROWS_WITH(
+        recorder.Write(*f.Gp, f.Gp->Parents()[0], 0.25, 0.5, 1.0), "generation recorder write after failure");
     CHECK_NOTHROW(recorder.Close());
     CHECK(recorder.Errors() == 1);
     REQUIRE(recorder.Segments().size() == 1);
@@ -349,6 +356,22 @@ TEST_CASE("generation recorder never seals a partially written record", "[genera
     CHECK_FALSE(std::filesystem::exists(part));
     CHECK(Contents(sealed) == first);
     CHECK(s.Sha256 == Sha256FileHex(sealed));
+}
+
+TEST_CASE("generation recorder removes an empty segment after a failed first write", "[generation-record]")
+{
+    RecordingFixture f("empty-failed-write");
+    GenerationRecorder recorder(f.Options);
+    recorder.Capture(*f.Gp);
+    {
+        FileSizeLimit const limit(0);
+        CHECK_THROWS_AS(recorder.Write(*f.Gp, f.Gp->Parents()[0], 0.25, 0.5, 1.0), std::system_error);
+    }
+    CHECK_NOTHROW(recorder.Close());
+    CHECK(recorder.Segments().empty());
+    CHECK_FALSE(std::filesystem::exists(f.Directory / "generation-000000.jsonl.part"));
+    CHECK_FALSE(std::filesystem::exists(f.Directory / "generation-000000.jsonl"));
+    CHECK(Contents(f.Directory / "models.jsonl.txt").empty());
 }
 #endif
 
@@ -367,9 +390,14 @@ TEST_CASE("generation record ranks are bounded by the combined parent and offspr
     REQUIRE(ranks.size() == pop.size() + 4);
     CHECK(ranks[0] == pop.size() - 1);
     CHECK(ranks[pop.size() + 3] == 1);
-    pop[1].Rank = combined;
-    CHECK_THROWS_AS(recorder.Capture(*f.Gp), std::logic_error);
-    CHECK(recorder.Errors() == 1);
+    {
+        RecordingFixture invalid("invalid-rank");
+        invalid.Options.Nsga2 = true;
+        invalid.Gp->Parents()[1].Rank = invalid.Gp->Individuals().size();
+        GenerationRecorder invalidRecorder(invalid.Options);
+        CHECK_THROWS_WITH(invalidRecorder.Capture(*invalid.Gp), "invalid population rank");
+        CHECK(invalidRecorder.Errors() == 1);
+    }
 }
 
 TEST_CASE("generation shape validity is certified under the canonical scaling transform", "[generation-record]")

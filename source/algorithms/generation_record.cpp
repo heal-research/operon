@@ -403,15 +403,17 @@ auto GenerationRecorder::Write(GeneticAlgorithmBase const& algorithm, Individual
     double nmseTest, double finitePredictionFraction) -> void
 {
     Drain();
+    if (writeFailed_) {
+        throw std::logic_error("generation recorder write after failure");
+    }
+    auto const modelBytesBefore = modelsBytes_;
+    auto recordWritten = false;
     try {
         if (closed_) {
             throw std::logic_error("generation recorder write after close");
         }
         if (!captured_) {
             throw std::logic_error("generation recorder write without capture");
-        }
-        if (tainted_) {
-            throw std::runtime_error("generation log holds a partial record after a failed write");
         }
         if (segmentFd_ < 0) {
             sealedPath_ = options_.Directory / fmt::format("generation-{:06}.jsonl", segments_.size());
@@ -451,6 +453,7 @@ auto GenerationRecorder::Write(GeneticAlgorithmBase const& algorithm, Individual
         }
         Serialize(selected, nmseTrain, nmseTest, finitePredictionFraction, changed);
         Append(segmentFd_, buffer_, segmentBytes_, tainted_);
+        recordWritten = true;
         hash_.Update(buffer_);
         ++seq_;
         captured_ = false;
@@ -467,6 +470,14 @@ auto GenerationRecorder::Write(GeneticAlgorithmBase const& algorithm, Individual
             sealCondition_.notify_all();
         }
     } catch (...) {
+        writeFailed_ = true;
+        if (!recordWritten && modelsBytes_ != modelBytesBefore) {
+            if (Rollback(modelsFd_, modelBytesBefore)) {
+                modelsBytes_ = modelBytesBefore;
+            } else {
+                tainted_ = true;
+            }
+        }
         ++errors_;
         throw;
     }
