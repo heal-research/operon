@@ -91,7 +91,10 @@ public:
 
     // A zero-cost evaluator may keep generating under a zero budget. Any positive budget that has been reached,
     // and every overshoot, stops new generations.
-    [[nodiscard]] auto Exhausted() const -> bool { return committed_ > budget_ || (committed_ == budget_ && budget_ != 0); }
+    [[nodiscard]] auto Exhausted() const -> bool
+    {
+        return committed_ > budget_ || (committed_ == budget_ && budget_ != 0);
+    }
 
     [[nodiscard]] auto Remaining() const -> std::uint64_t { return committed_ < budget_ ? budget_ - committed_ : 0; }
 

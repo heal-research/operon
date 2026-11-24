@@ -258,6 +258,8 @@ struct EvaluatorBase
     virtual void Prepare(Operon::Span<Individual const> /*pop*/) const {}
 
     virtual auto ObjectiveCount() const -> std::size_t { return 1UL; }
+    [[nodiscard]] virtual auto ObjectiveNames() const -> std::vector<std::string> { return { objectiveName_ }; }
+    void SetObjectiveName(std::string name) { objectiveName_ = std::move(name); }
 
     // True iff a fitness computed for one genotype may be reused for any structurally identical genotype (the
     // Zobrist transposition cache ignores coefficient values). A shape-constrained evaluator's result depends on
@@ -348,6 +350,7 @@ private:
 
     mutable Operon::Span<Operon::Individual const> population_;
     gsl::not_null<Problem const*> problem_;
+    std::string objectiveName_ { "objective0" };
     size_t budget_ = DefaultEvaluationBudget;
 };
 
@@ -493,6 +496,18 @@ public:
     auto GetAggregateType() const -> std::optional<AggregateType> { return aggregateType_; }
 
     auto ObjectiveCount() const -> std::size_t override { return aggregateType_ ? 1UL : SubEvaluatorObjectiveCount(); }
+    [[nodiscard]] auto ObjectiveNames() const -> std::vector<std::string> override
+    {
+        if (aggregateType_) {
+            return EvaluatorBase::ObjectiveNames();
+        }
+        std::vector<std::string> names;
+        for (auto const& evaluator : evaluators_) {
+            auto child = evaluator->ObjectiveNames();
+            names.insert(names.end(), child.begin(), child.end());
+        }
+        return names;
+    }
 
     // Reusable only if every child's fitness is reusable across structurally identical genotypes.
     [[nodiscard]] auto StructuralFitnessReusable() const -> bool override

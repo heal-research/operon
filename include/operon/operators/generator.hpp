@@ -188,7 +188,7 @@ public:
     static constexpr size_t DefaultBroodSize { 10 };
 
 private:
-    size_t broodSize_{DefaultBroodSize};
+    size_t broodSize_ { DefaultBroodSize };
 };
 
 class OPERON_EXPORT PolygenicOffspringGenerator : public OffspringGeneratorBase {
@@ -209,7 +209,7 @@ public:
     static constexpr size_t DefaultBroodSize = 10;
 
 private:
-    size_t broodSize_{DefaultBroodSize};
+    size_t broodSize_ { DefaultBroodSize };
 };
 
 class OPERON_EXPORT OffspringSelectionGenerator : public OffspringGeneratorBase {
@@ -234,6 +234,14 @@ public:
     {
         OffspringGeneratorBase::Prepare(pop);
         lastEvaluations_ = this->Evaluator()->CallCount;
+    }
+
+    // Telemetry (generation records): the evaluator calls (scored candidates) since the last Prepare(), i.e. in the
+    // generation that was generated last. Not the attempt count of the commit rule (see MaxAttempts()): a
+    // transposition-cache hit is an attempt without an evaluator call.
+    [[nodiscard]] auto AttemptedCandidates() const -> std::size_t
+    {
+        return this->Evaluator()->CallCount - lastEvaluations_;
     }
 
     // DEPRECATED, telemetry only: evaluator calls since the last Prepare(), per parent, read from the shared

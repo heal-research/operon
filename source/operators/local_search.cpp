@@ -21,8 +21,9 @@ namespace {
             return;
         }
         auto current = counter.load(std::memory_order_relaxed);
-        while (!counter.compare_exchange_weak(
-            current, detail::SaturatingAdd(current, value), std::memory_order_relaxed)) { }
+        while (
+            !counter.compare_exchange_weak(current, detail::SaturatingAdd(current, value), std::memory_order_relaxed)) {
+        }
     }
 
     auto NonNegative(int value) -> std::uint64_t { return static_cast<std::uint64_t>(std::max(value, 0)); }

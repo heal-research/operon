@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Shared definitions for the operon record family (JSON Schema 2020-12 subset: type, enum, const, required, properties, additionalProperties, items, minItems, maxItems, uniqueItems, minimum, maximum, exclusiveMinimum, minLength, maxLength, pattern, $ref).",
+  "x-schema": "common",
+  "x-version": "1.2",
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nullable_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$"},
+    "uint": {"type": "integer", "minimum": 0},
+    "nullable_uint": {"type": ["integer", "null"], "minimum": 0},
+    "number_or_null": {"type": ["number", "null"]},
+    "nullable_string": {"type": ["string", "null"]},
+    "utc": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"},
+    "uuid": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
+    "id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "precision": {"type": "string", "enum": ["single", "double"]},
+    "algorithm": {"type": "string", "enum": ["gp", "nsga2"]},
+    "metric_status": {
+      "description": "Why a metric value is null. Non-finite values are never written as bare NaN/Infinity.",
+      "type": "string",
+      "enum": ["ok", "nan", "+inf", "-inf", "unavailable", "not_applicable"]
+    },
+    "stop_reason": {
+      "type": "string",
+      "enum": ["generation_limit", "evaluation_limit", "pressure_limit", "time_limit", "generator_termination", "callback", "signal", "engine_error"]
+    },
+    "counters": {
+      "description": "Cumulative evaluation counters. residual_total = residual_scoring + residual_optimizer; jacobian_total = jacobian_scoring + jacobian_optimizer; budget consumption = residual_total + jacobian_total. Since schema 1.1 the four scoring/optimizer split fields may be null when the producer cannot supply the split (declared in unsupported_fields); the totals are always required.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evaluator_calls", "residual_scoring", "residual_optimizer", "jacobian_scoring", "jacobian_optimizer", "residual_total", "jacobian_total"],
+      "properties": {
+        "evaluator_calls": {"$ref": "#/$defs/uint"},
+        "residual_scoring": {"$ref": "#/$defs/nullable_uint"},
+        "residual_optimizer": {"$ref": "#/$defs/nullable_uint"},
+        "jacobian_scoring": {"$ref": "#/$defs/nullable_uint"},
+        "jacobian_optimizer": {"$ref": "#/$defs/nullable_uint"},
+        "residual_total": {"$ref": "#/$defs/uint"},
+        "jacobian_total": {"$ref": "#/$defs/uint"},
+        "cache_hits": {"$ref": "#/$defs/nullable_uint"},
+        "cache_misses": {"$ref": "#/$defs/nullable_uint"},
+        "optimizer_seconds": {"$ref": "#/$defs/number_or_null"}
+      }
+    },
+    "stat3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mean", "min", "max"],
+      "properties": {
+        "mean": {"$ref": "#/$defs/number_or_null"},
+        "min": {"$ref": "#/$defs/number_or_null"},
+        "max": {"$ref": "#/$defs/number_or_null"}
+      }
+    }
+  }
+}

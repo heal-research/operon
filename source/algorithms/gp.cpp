@@ -101,13 +101,23 @@ auto GeneticProgrammingAlgorithm::Run(
     bool generationCommitted = false; // outcome of the current generation attempt
 
     // stop() is polled concurrently by offspring-generation workers and must
-    // not write shared state. It holds the two asynchronous stop conditions: a stop request and the time limit.
+    // not write shared state other than the atomic stop mask. It holds the two asynchronous stop conditions: a stop
+    // request and the time limit (recorded as StopReason::TimeLimit when a worker observes it).
     // A generation they cut short is discarded; they are not part of the determinism guarantee. The evaluation
     // budget, the attempt cap and the generation limit are not polled here: the first two are decided per
     // generation by the ledger, the generation limit at the loop condition. Elapsed() is published only from
     // single-task contexts (the loop condition and the report task), which the taskflow graph orders against every
     // reader.
-    auto stop = [&]() -> bool { return StopRequested() || computeElapsed() > static_cast<double>(config.TimeLimit); };
+    auto stop = [&]() -> bool {
+        if (StopRequested()) {
+            return true;
+        }
+        if (computeElapsed() > static_cast<double>(config.TimeLimit)) {
+            RecordStop(MaskOf(StopReason::TimeLimit));
+            return true;
+        }
+        return false;
+    };
     // Why the run ends, in the order documented at RunEnd; None to go on.
     auto decideEnd = [&](double elapsed) -> RunEnd {
         if (ledgerEnd != RunEnd::None) {
@@ -129,6 +139,9 @@ auto GeneticProgrammingAlgorithm::Run(
         auto const end = decideEnd(Elapsed());
         if (end != RunEnd::None) {
             ledger.SetEnd(end);
+            // The stop reasons are derived from the budget report (its End, the budget, the discarded generation).
+            SetBudgetReport(ledger.Report());
+            RecordStop(StopConditions(Elapsed()));
         }
         return end != RunEnd::None;
     };
@@ -146,8 +159,6 @@ auto GeneticProgrammingAlgorithm::Run(
     std::vector<Operon::Vector<Operon::Scalar>> savedFitness; // used only on warm resume
     std::vector<Operon::RandomGenerator> generationRngs; // slot RNG states at the start of the generation attempt
     std::vector<std::optional<std::vector<Operon::Scalar>>> originalCoeffs(parents.size());
-    std::atomic_size_t generatedOffspring {}; // pool slots filled in the current generation
-    std::atomic_size_t attemptedOffspring {}; // generator invocations (accepted + rejected) in the current generation
 
     // Declared here (Run()'s own scope), not inside the "init" task's
     // callable below: a subflow's tasks run after that callable returns, so
@@ -233,17 +244,16 @@ auto GeneticProgrammingAlgorithm::Run(
                 // eval) so that an evaluator snapshotting the population in
                 // Prepare() (e.g. DiversityEvaluator) sees post-optimization
                 // genotypes rather than the raw initial ones.
-                auto localSearch
-                    = subflow
-                          .for_each_index(size_t { 0 }, parents.size(), size_t { 1 },
-                              [&](size_t i) -> void {
-                                  auto search = LocalSearch(rngs[i], parents[i], generator->Optimizer(),
-                                      config.LocalSearchProbability, config.LamarckianProbability);
-                                  // Charged before the initial population is scored or committed.
-                                  accounting.Record(search);
-                                  originalCoeffs[i] = std::move(search.OriginalCoefficients);
-                              })
-                          .name("local search on initial population");
+                auto localSearch = subflow
+                                       .for_each_index(size_t { 0 }, parents.size(), size_t { 1 },
+                                           [&](size_t i) -> void {
+                                               auto search = LocalSearch(rngs[i], parents[i], generator->Optimizer(),
+                                                   config.LocalSearchProbability, config.LamarckianProbability);
+                                               // Charged before the initial population is scored or committed.
+                                               accounting.Record(search);
+                                               originalCoeffs[i] = std::move(search.OriginalCoefficients);
+                                           })
+                                       .name("local search on initial population");
                 auto restoreCoeffs = subflow
                                          .for_each_index(size_t { 0 }, parents.size(), size_t { 1 },
                                              [&](size_t i) -> void {
@@ -268,8 +278,7 @@ auto GeneticProgrammingAlgorithm::Run(
         [&, timer](tf::Subflow& subflow) -> void {
             auto prepareGenerator = subflow
                                         .emplace([&]() -> void {
-                                            generatedOffspring = 0;
-                                            attemptedOffspring = 0;
+                                            BeginOffspringProgress();
                                             generationCommitted = false;
                                             SetIncompleteGeneration(std::nullopt);
                                             // The slot RNG streams are restored from here if the generation is
@@ -297,6 +306,7 @@ auto GeneticProgrammingAlgorithm::Run(
                               slots[executor.this_worker_id()].resize(trainSize);
                               auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
                               size_t attempts = 0;
+                              bool filled = false;
                               bool const lastSlot = i + 1 == offspring.size();
                               // Entries this slot inserts are visible to its own later attempts only (see
                               // CacheVisibility::Committed); the scope belongs to the generator's cache.
@@ -312,11 +322,11 @@ auto GeneticProgrammingAlgorithm::Run(
                                   ledger.AddAttempt(lastSlot, result.has_value());
                                   if (result.has_value()) {
                                       offspring[i] = std::move(result.value());
-                                      generatedOffspring.fetch_add(1, std::memory_order_relaxed);
+                                      filled = true;
                                       break;
                                   }
                               }
-                              attemptedOffspring.fetch_add(attempts, std::memory_order_relaxed);
+                              CountOffspring(attempts, filled);
                           })
                       .name("generate offspring");
             // A generation commits iff its pool is completely filled and it stayed within the budget (and the
@@ -324,44 +334,48 @@ auto GeneticProgrammingAlgorithm::Run(
             // individuals, and an unaffordable generation must not depend on how many threads got how far, so nothing
             // is reinserted, counted or reported (same rule as NSGA2). The slot RNG streams go back to where the
             // generation started; the progress is kept in IncompleteGeneration().
-            auto reinsert
-                = subflow
-                      .emplace([&]() -> void {
-                          auto const generated = generatedOffspring.load(std::memory_order_relaxed);
-                          auto const full = generated == offspring.size();
-                          auto const exceeded = ledger.Exceeded();
-                          if (!full || exceeded) {
-                              auto const progress = ledger.Progress(attemptedOffspring.load(std::memory_order_relaxed),
-                                  generated, offspring.size(), StopRequested());
-                              SetIncompleteGeneration(progress);
-                              ledger.DiscardGeneration();
-                              // The offspring workers have finished. Their cache entries belong to a generation
-                              // that does not exist: drop them so a retry cannot see them (Committed only).
-                              if (auto* cache = generator->Cache()) {
-                                  cache->AbortGeneration();
-                              }
-                              openGenerationCache = nullptr;
-                              rngs = generationRngs;
-                              if (exceeded) {
-                                  ledgerEnd = RunEnd::ResourceLimit;
-                              } else {
-                                  // cut short by a stop request or the time limit
-                                  ledgerEnd = progress.Reason == DiscardReason::StopRequested ? RunEnd::StopRequested
-                                                                                              : RunEnd::TimeLimit;
-                                  RequestStop();
-                              }
-                              return;
-                          }
-                          ledger.CommitGeneration();
-                          generationCommitted = true;
-                          // A committed generation that made more attempts than the cap (its last attempt
-                          // crossed it) ends the run after it is reported, like the selection-pressure stop did.
-                          if (ledger.AttemptCapReached()) {
-                              ledgerEnd = RunEnd::AttemptCap;
-                          }
-                          (*reinserter)(random, Parents(), offspring);
-                      })
-                      .name("reinsert");
+            auto reinsert = subflow
+                                .emplace([&]() -> void {
+                                    auto const poolProgress = Progress();
+                                    auto const generated = poolProgress.Completed;
+                                    auto const full = generated == offspring.size();
+                                    auto const exceeded = ledger.Exceeded();
+                                    if (!full || exceeded) {
+                                        auto const progress = ledger.Progress(
+                                            poolProgress.Attempted, generated, offspring.size(), StopRequested());
+                                        SetIncompleteGeneration(progress);
+                                        ledger.DiscardGeneration();
+                                        // The offspring workers have finished. Their cache entries belong to a
+                                        // generation that does not exist: drop them so a retry cannot see them
+                                        // (Committed only).
+                                        if (auto* cache = generator->Cache()) {
+                                            cache->AbortGeneration();
+                                        }
+                                        openGenerationCache = nullptr;
+                                        rngs = generationRngs;
+                                        if (exceeded) {
+                                            ledgerEnd = RunEnd::ResourceLimit;
+                                        } else {
+                                            // cut short by a stop request or the time limit; both are already recorded
+                                            // in the stop mask (RequestStop(), or the worker that saw the limit), so no
+                                            // request is made here: StopRequested() stays false for a time-limit cut
+                                            ledgerEnd = progress.Reason == DiscardReason::StopRequested
+                                                ? RunEnd::StopRequested
+                                                : RunEnd::TimeLimit;
+                                        }
+                                        return;
+                                    }
+                                    ledger.CommitGeneration();
+                                    generationCommitted = true;
+                                    // A committed generation that made more attempts than the cap (its last attempt
+                                    // crossed it) ends the run after it is reported, like the selection-pressure stop
+                                    // did.
+                                    if (ledger.AttemptCapReached()) {
+                                        ledgerEnd = RunEnd::AttemptCap;
+                                    }
+                                    (*reinserter)(random, Parents(), offspring);
+                                })
+                                .name("reinsert");
             auto incrementGeneration = subflow
                                            .emplace([&]() -> void {
                                                if (generationCommitted) {

@@ -50,6 +50,27 @@ cmake -S . -B build -G "Visual Studio 16 2019" -A x64 \
 
 The file `CMakePresets.json` contains some presets that you may find useful. For using `clang-cl` instead of `cl`, pass `-TClangCL` to the above ([official documentation](https://docs.microsoft.com/en-us/cpp/build/clang-support-cmake?view=msvc-170)).
 
+## Engine-resolved configuration
+
+`operon_gp` and `operon_nsgp` accept `--print-config` alongside the normal run
+arguments. They construct and validate the configured operators, print one
+`operon.resolved_config` JSON document, and exit without evolving a population.
+Invalid settings return status 1 with the usual `error:` diagnostic.
+`--config-out PATH` writes the same configuration before evolution using a
+same-directory temporary file, fsync, rename, and directory fsync. With both
+flags, stdout and the file are byte-identical.
+
+The document includes the actual operator parameters, objective names, input
+order, dataset SHA-256, seed/thread provenance, budgets, shape policy, JIT/cache
+settings, and dotted `defaulted` paths. Explicit `--generations unlimited` and
+`--evaluations unlimited` (or values at least 2^62) appear as JSON null.
+Use explicit seed and thread count for reproducible runs. `argv` preserves the
+arguments exactly (excluding the executable), so separate print-only and
+executing invocations differ in `argv`; scientific values do not.
+Configuration identity hashes remain the consumer's responsibility; the CLI
+does not calculate a canonical JSON hash. Legacy `--report-json` is unchanged.
+The document's schema is `docs/schemas/resolved-config.schema.json`.
+
 ## Python wrapper
 
 Python bindings for the Operon library are available as a separate project: [PyOperon](https://github.com/heal-research/pyoperon), which also includes a [scikit-learn](https://scikit-learn.org/stable/index.html) compatible regressor.

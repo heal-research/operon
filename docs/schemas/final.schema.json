@@ -1,0 +1,282 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "operon.final: engine-produced termination record (final.json). Counters are read from the evaluator at termination, never copied from the last generation record.",
+  "x-schema": "operon.final",
+  "x-version": "1.2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "run_id",
+    "attempt_id",
+    "exit_status",
+    "termination",
+    "generations_completed",
+    "incomplete_generation",
+    "budgets",
+    "counters",
+    "final_model",
+    "front_ref",
+    "segments",
+    "record_count",
+    "instrumentation_errors"
+  ],
+  "properties": {
+    "schema": {
+      "const": "operon.final"
+    },
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/version"
+    },
+    "run_id": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "attempt_id": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "exit_status": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "error"
+      ]
+    },
+    "termination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "primary",
+        "reasons",
+        "precedence_version"
+      ],
+      "properties": {
+        "primary": {
+          "$ref": "common.schema.json#/$defs/stop_reason"
+        },
+        "reasons": {
+          "description": "Every stop condition true at termination.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "common.schema.json#/$defs/stop_reason"
+          }
+        },
+        "precedence_version": {
+          "enum": [1, 2]
+        }
+      }
+    },
+    "generations_completed": {
+      "description": "Index of the last completed generation (initialization = 0).",
+      "$ref": "common.schema.json#/$defs/uint"
+    },
+    "incomplete_generation": {
+      "description": "Work done after the last completed generation; null when none.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "attempted_offspring",
+        "completed_offspring",
+        "pool_count"
+      ],
+      "properties": {
+        "attempted_offspring": {
+          "$ref": "common.schema.json#/$defs/uint"
+        },
+        "completed_offspring": {
+          "$ref": "common.schema.json#/$defs/uint"
+        },
+        "pool_count": {
+          "$ref": "common.schema.json#/$defs/uint"
+        }
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generations",
+        "evaluations",
+        "time",
+        "pressure"
+      ],
+      "properties": {
+        "generations": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "limit"
+          ],
+          "properties": {
+            "limit": {
+              "$ref": "common.schema.json#/$defs/nullable_uint"
+            }
+          }
+        },
+        "evaluations": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "unit",
+            "limit",
+            "consumed",
+            "overshoot"
+          ],
+          "properties": {
+            "unit": {
+              "const": "residual+jacobian"
+            },
+            "limit": {
+              "$ref": "common.schema.json#/$defs/nullable_uint"
+            },
+            "consumed": {
+              "$ref": "common.schema.json#/$defs/uint"
+            },
+            "overshoot": {
+              "description": "max(0, consumed - limit); null when limit is null.",
+              "$ref": "common.schema.json#/$defs/nullable_uint"
+            }
+          }
+        },
+        "time": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "limit_s",
+            "elapsed_s"
+          ],
+          "properties": {
+            "limit_s": {
+              "$ref": "common.schema.json#/$defs/number_or_null"
+            },
+            "elapsed_s": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "pressure": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "max",
+            "last"
+          ],
+          "properties": {
+            "max": {
+              "$ref": "common.schema.json#/$defs/nullable_uint"
+            },
+            "last": {
+              "$ref": "common.schema.json#/$defs/number_or_null"
+            }
+          }
+        }
+      }
+    },
+    "counters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "logical",
+        "since_restart"
+      ],
+      "properties": {
+        "logical": {
+          "$ref": "common.schema.json#/$defs/counters"
+        },
+        "since_restart": {
+          "$ref": "common.schema.json#/$defs/counters"
+        }
+      }
+    },
+    "final_model": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "selection_rule",
+        "model_ref",
+        "infix"
+      ],
+      "properties": {
+        "selection_rule": {
+          "type": "string",
+          "enum": [
+            "obj0",
+            "mdl",
+            "bic",
+            "aic"
+          ]
+        },
+        "model_ref": {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        "infix": {
+          "type": "string"
+        }
+      }
+    },
+    "front_ref": {
+      "description": "NSGA2 final rank-0 front object; null for GP.",
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "segment_id",
+          "first_seq",
+          "last_seq",
+          "count",
+          "sha256"
+        ],
+        "properties": {
+          "segment_id": {
+            "$ref": "common.schema.json#/$defs/uint"
+          },
+          "first_seq": {
+            "$ref": "common.schema.json#/$defs/uint"
+          },
+          "last_seq": {
+            "$ref": "common.schema.json#/$defs/uint"
+          },
+          "count": {
+            "$ref": "common.schema.json#/$defs/uint"
+          },
+          "sha256": {
+            "description": "sha256 of the engine-written segment file bytes; null if the producer cannot hash. When present it must equal the manifest entry (segments are stored byte-identical).",
+            "$ref": "common.schema.json#/$defs/nullable_sha256"
+          }
+        }
+      }
+    },
+    "record_count": {
+      "description": "Total generation records written (including initialization).",
+      "$ref": "common.schema.json#/$defs/uint"
+    },
+    "instrumentation_errors": {
+      "description": "Sink write/serialization failures. Non-zero means the stream is incomplete.",
+      "$ref": "common.schema.json#/$defs/uint"
+    },
+    "producer": {
+      "description": "Optional (schema 1.1). Names who produced this record when it is not complete: a coordinator-side adapter (e.g. 'table-v1', parsed from the CLI stdout table) or the engine itself ('operon', engine-native record whose generation stream does not exist yet). unsupported_fields lists contract fields the producer could not supply (null != 0; 'segments' and 'record_count' switch off the stream checks, nothing else does); derived_fields lists fields computed by the producer from other evidence instead of being reported by the engine.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["adapter", "unsupported_fields", "derived_fields"],
+      "properties": {
+        "adapter": {"type": "string", "minLength": 1},
+        "unsupported_fields": {"type": "array", "items": {"type": "string"}},
+        "derived_fields": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

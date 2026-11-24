@@ -20,6 +20,9 @@ struct Individual {
     Operon::Vector<Operon::Scalar> Fitness;
     size_t Rank {}; // domination rank; used by NSGA2
     Operon::Scalar Distance {}; // crowding distance; used by NSGA2
+    // Outcome of shape HardReject for the evaluated fitness, not a comparison with WorstValue. Retained when
+    // copying/reinserting an individual (also for non-Lamarckian scores); reset by the shape prediction phase.
+    mutable bool ShapeRejected { false };
 
     template <typename Self> auto operator[](this Self& self, size_t const i) noexcept -> decltype(auto)
     {

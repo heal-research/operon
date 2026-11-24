@@ -1,0 +1,393 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "operon.resolved_config: engine-resolved configuration with every default made explicit (resolved-config.json). Produced by the engine before any computation.",
+  "x-schema": "operon.resolved_config",
+  "x-version": "1.0",
+  "$comment": "Extra keys are allowed at every level (additive minor versions); ALL keys, required or not, enter config_hash.",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "algorithm",
+    "engine",
+    "seed",
+    "seed_source",
+    "threads",
+    "budgets",
+    "population_size",
+    "pool_size",
+    "data",
+    "objective",
+    "optimizer",
+    "operators",
+    "defaulted",
+    "ignored_options",
+    "argv"
+  ],
+  "properties": {
+    "schema": {
+      "const": "operon.resolved_config"
+    },
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/version"
+    },
+    "algorithm": {
+      "$ref": "common.schema.json#/$defs/algorithm"
+    },
+    "engine": {
+      "type": "object",
+      "required": [
+        "program",
+        "revision",
+        "precision",
+        "build_type"
+      ],
+      "properties": {
+        "program": {
+          "type": "string"
+        },
+        "revision": {
+          "$ref": "common.schema.json#/$defs/nullable_string"
+        },
+        "precision": {
+          "$ref": "common.schema.json#/$defs/precision"
+        },
+        "build_type": {
+          "$ref": "common.schema.json#/$defs/nullable_string"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "seed": {
+      "$ref": "common.schema.json#/$defs/uint"
+    },
+    "seed_source": {
+      "description": "random_device is rejected by the runner: the seed must be explicit.",
+      "type": "string",
+      "enum": [
+        "explicit",
+        "random_device"
+      ]
+    },
+    "threads": {
+      "type": "object",
+      "required": [
+        "effective",
+        "source"
+      ],
+      "properties": {
+        "effective": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "explicit",
+            "hardware_concurrency"
+          ]
+        }
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "required": [
+        "generations",
+        "evaluations",
+        "time_limit_s",
+        "pressure_limit"
+      ],
+      "properties": {
+        "generations": {
+          "description": "null = effectively unlimited (engine value >= 2^62).",
+          "$ref": "common.schema.json#/$defs/nullable_uint"
+        },
+        "evaluations": {
+          "type": "object",
+          "required": [
+            "limit",
+            "unit"
+          ],
+          "properties": {
+            "limit": {
+              "description": "null = effectively unlimited.",
+              "$ref": "common.schema.json#/$defs/nullable_uint"
+            },
+            "unit": {
+              "const": "residual+jacobian"
+            }
+          }
+        },
+        "time_limit_s": {
+          "$ref": "common.schema.json#/$defs/number_or_null"
+        },
+        "pressure_limit": {
+          "description": "Maximum offspring-selection pressure; null for non-OS generators.",
+          "$ref": "common.schema.json#/$defs/nullable_uint"
+        }
+      }
+    },
+    "population_size": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "pool_size": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "data": {
+      "type": "object",
+      "required": [
+        "file_sha256",
+        "target",
+        "inputs",
+        "train",
+        "test",
+        "split"
+      ],
+      "properties": {
+        "file_sha256": {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        "target": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "train": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "$ref": "common.schema.json#/$defs/uint"
+          }
+        },
+        "test": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "$ref": "common.schema.json#/$defs/uint"
+          }
+        },
+        "split": {
+          "description": "Canonical split specification; sha256(canonical_json) = identity.split_hash.",
+          "type": "object"
+        }
+      }
+    },
+    "objective": {
+      "type": "object",
+      "required": [
+        "metric",
+        "objectives"
+      ],
+      "properties": {
+        "metric": {
+          "type": "string"
+        },
+        "objectives": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "direction"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "direction": {
+                "const": "min"
+              }
+            }
+          }
+        }
+      }
+    },
+    "optimizer": {
+      "type": "object",
+      "required": [
+        "kind",
+        "iterations",
+        "local_search_probability",
+        "lamarckian_probability"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "iterations": {
+          "$ref": "common.schema.json#/$defs/uint"
+        },
+        "local_search_probability": {
+          "type": "number"
+        },
+        "lamarckian_probability": {
+          "type": "number"
+        }
+      }
+    },
+    "operators": {
+      "type": "object",
+      "required": [
+        "creator",
+        "crossover",
+        "mutation",
+        "female_selector",
+        "male_selector",
+        "generator",
+        "reinserter"
+      ],
+      "properties": {
+        "creator": {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string"
+            }
+          }
+        },
+        "crossover": {
+          "type": "object",
+          "required": [
+            "kind",
+            "probability"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string"
+            },
+            "probability": {
+              "type": "number"
+            }
+          }
+        },
+        "mutation": {
+          "type": "object",
+          "required": [
+            "probability",
+            "mutators"
+          ],
+          "properties": {
+            "probability": {
+              "type": "number"
+            },
+            "mutators": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "weight"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "weight": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "female_selector": {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string"
+            }
+          }
+        },
+        "male_selector": {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string"
+            }
+          }
+        },
+        "generator": {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "basic",
+                "os",
+                "brood",
+                "poly"
+              ]
+            }
+          }
+        },
+        "reinserter": {
+          "type": "object",
+          "required": [
+            "name",
+            "elite_count"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "enum": [
+                "keep-best",
+                "replace-worst"
+              ]
+            },
+            "elite_count": {
+              "$ref": "common.schema.json#/$defs/uint"
+            }
+          }
+        }
+      }
+    },
+    "defaulted": {
+      "description": "Dotted paths into this document that were NOT given explicitly on the command line.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "ignored_options": {
+      "description": "Options that were supplied but have no effect in this program.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "argv": {
+      "description": "Requested form: the argument vector as received.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

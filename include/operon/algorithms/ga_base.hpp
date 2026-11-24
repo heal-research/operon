@@ -9,6 +9,7 @@
 #include "operon/core/types.hpp"
 #include "operon/operators/generator.hpp"
 #include "stoppable.hpp"
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <operon/operon_export.hpp>
@@ -135,6 +136,7 @@ public:
         , individuals_(other.individuals_)
         , parents_(individuals_.data(), config_.PopulationSize)
         , offspring_(individuals_.data() + config_.PopulationSize, config_.PoolSize)
+        , progress_(other.progress_)
         , workerRngs_(other.workerRngs_)
         , generation_(other.generation_)
         , elapsed_(other.elapsed_)
@@ -162,6 +164,7 @@ public:
         parents_ = Operon::Span<Individual>(individuals_.data(), config_.PopulationSize);
         offspring_ = Operon::Span<Individual>(individuals_.data() + config_.PopulationSize, config_.PoolSize);
         workerRngs_ = other.workerRngs_;
+        progress_ = other.progress_;
         generation_ = other.generation_;
         elapsed_ = other.elapsed_;
         phaseTimes_ = other.phaseTimes_;
@@ -248,6 +251,52 @@ public:
         return stats;
     }
 
+    // Offspring accounting of the generation body started last: generator invocations, filled pool slots and pool
+    // size (see OffspringProgress). Exact whenever no generation body is running, e.g. in the report callback and
+    // after Run() returns. IncompleteGeneration() is the part of it that was cut short.
+    [[nodiscard]] auto Progress() const -> OffspringProgress
+    {
+        return { progress_.Attempted.load(std::memory_order_relaxed),
+            progress_.Completed.load(std::memory_order_relaxed), progress_.PoolSize };
+    }
+
+    // Index of the last generation whose pool was filled (initialization = 0). A generation that stopped before its
+    // pool was full is discarded and not counted, so this is Generation().
+    [[nodiscard]] auto GenerationsCompleted() const -> std::size_t { return generation_; }
+
+    // Every stop condition that holds in the current state, derived from what the run recorded: the generation limit;
+    // the evaluation budget (committed work reached a positive budget, or a generation was discarded for spending
+    // more than the budget had left); selection pressure (a generation was discarded for exceeding the generator's
+    // attempt cap, or a committed generation crossed it and ended the run, see BudgetReport().End); and the time
+    // limit. Exact between generations and after Run() returned. Does not record anything. A custom generator's
+    // Terminate() is deprecated and not consulted (see OffspringGeneratorBase::Terminate()), so the engine never
+    // reports StopReason::GeneratorTermination.
+    [[nodiscard]] auto StopConditions(double elapsed) const -> StopMask
+    {
+        StopMask mask {};
+        if (generation_ >= config_.Generations) {
+            mask |= MaskOf(StopReason::GenerationLimit);
+        }
+        auto const& budget = budgetReport_;
+        auto const spent = budget.EvaluationsCommitted > budget.Budget
+            || (budget.EvaluationsCommitted == budget.Budget && budget.Budget != 0);
+        auto const discarded = incompleteGeneration_ && incompleteGeneration_->Reason == DiscardReason::ResourceLimit;
+        if (spent || (discarded && incompleteGeneration_->BudgetExceeded)) {
+            mask |= MaskOf(StopReason::EvaluationLimit);
+        }
+        if (budget.End == RunEnd::AttemptCap || (discarded && incompleteGeneration_->AttemptCapExceeded)) {
+            mask |= MaskOf(StopReason::PressureLimit);
+        }
+        if (elapsed > static_cast<double>(config_.TimeLimit)) {
+            mask |= MaskOf(StopReason::TimeLimit);
+        }
+        return mask;
+    }
+
+    // The reasons to report once Run() has returned: everything recorded while it ran, plus every condition that
+    // holds in the final state (at the last published Elapsed()).
+    [[nodiscard]] auto TerminationReasons() const -> StopMask { return StopReasons() | StopConditions(elapsed_); }
+
     [[nodiscard]] auto GetTreeInitializer() const -> TreeInitializerBase const* { return treeInit_.get(); }
     [[nodiscard]] auto GetCoefficientInitializer() const -> CoefficientInitializerBase const*
     {
@@ -323,6 +372,7 @@ public:
         elapsed_ = 0;
         ClearStopRequested();
         phaseTimes_.clear();
+        progress_ = {};
         GetGenerator()->Evaluator()->Reset();
         optimizerAccounting_.Reset();
         if (auto* cache = generator_->Cache()) {
@@ -339,6 +389,23 @@ public:
         offspring_ = Operon::Span<Individual>(individuals_.data() + config_.PopulationSize, config_.PoolSize);
     }
 
+protected:
+    // Offspring accounting for Run(): begin a generation body, then add each worker's slot (the generator
+    // invocations it needed and whether it filled the slot; thread-safe).
+    auto BeginOffspringProgress() -> void
+    {
+        progress_.Attempted.store(0, std::memory_order_relaxed);
+        progress_.Completed.store(0, std::memory_order_relaxed);
+        progress_.PoolSize = offspring_.size();
+    }
+    auto CountOffspring(std::size_t attempts, bool completed) -> void
+    {
+        progress_.Attempted.fetch_add(attempts, std::memory_order_relaxed);
+        if (completed) {
+            progress_.Completed.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+
 private:
     GeneticAlgorithmConfig config_;
 
@@ -351,6 +418,28 @@ private:
     Operon::Vector<Individual> individuals_;
     Operon::Span<Individual> parents_;
     Operon::Span<Individual> offspring_;
+
+    struct ProgressState {
+        std::atomic_size_t Attempted { 0 };
+        std::atomic_size_t Completed { 0 };
+        std::size_t PoolSize { 0 };
+
+        ProgressState() = default;
+        ProgressState(ProgressState const& other)
+            : Attempted(other.Attempted.load(std::memory_order_relaxed))
+            , Completed(other.Completed.load(std::memory_order_relaxed))
+            , PoolSize(other.PoolSize)
+        {
+        }
+        auto operator=(ProgressState const& other) -> ProgressState&
+        {
+            Attempted.store(other.Attempted.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            Completed.store(other.Completed.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            PoolSize = other.PoolSize;
+            return *this;
+        }
+    };
+    ProgressState progress_;
 
     std::vector<Operon::RandomGenerator> workerRngs_;
     size_t generation_ { 0 };

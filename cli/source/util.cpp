@@ -284,8 +284,32 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         "box), e.g. interval:4",
         cxxopts::value<std::string>()->default_value("interval"))("debug", "Debug mode (more information displayed)")(
         "help", "Print help")("version", "Print version and program information")("capabilities",
-        "Print build identity, precision, ISA, optional features and registered option names as one JSON object and "
-        "exit");
+        "Print build identity, precision, ISA, optional features and accepted options as one JSON object and exit");
+
+    if (name == "operon_gp" || name == "operon_nsgp") {
+        opts.add_options()("print-config", "Print the constructed operon.resolved_config and exit without running")(
+            "config-out", "Write operon.resolved_config atomically before running", cxxopts::value<std::string>());
+    }
+
+    // Machine-readable run record (operon.final), the identifiers stamped into it and the generation log. Only the
+    // population-based programs write them (FinalRun in final_record.hpp); operon_enum does not register them, so
+    // they are neither accepted nor advertised by --help/--capabilities.
+    if (name != "operon_enum") {
+        opts.add_options()("final-json",
+            "Write the operon.final termination record (stop reasons, final counters, final model) to this path, "
+            "atomically, also when the run fails; SIGINT/SIGTERM then stop the run gracefully and exit with "
+            "128+signal (also with --generation-log alone)",
+            cxxopts::value<std::string>())("run-id",
+            "Opaque run identifier (64 lowercase hex characters) recorded in --final-json and --generation-log",
+            cxxopts::value<std::string>())("attempt-id",
+            "Opaque attempt identifier (lowercase UUID) recorded in --final-json and --generation-log",
+            cxxopts::value<std::string>());
+        opts.add_options()("generation-log", "Write lossless generation segments and model sidecar in this directory",
+            cxxopts::value<std::string>())("segment-generations", "Seal a generation segment after this many records",
+            cxxopts::value<std::size_t>()->default_value("1000"))("segment-seconds",
+            "Seal a generation segment after this many seconds", cxxopts::value<double>()->default_value("5"))("sync",
+            "Generation log durability: record or segment", cxxopts::value<std::string>()->default_value("segment"));
+    }
     return opts;
 }
 
@@ -308,7 +332,8 @@ auto RunFingerprintExcludedOptions() -> std::vector<std::string> const&
         "checkpoint-interval", "checkpoint-file", "resume", "pareto-front", "model-selection", "mdl-likelihood",
         "probes-config", "report-json", "debug", "help", "version", "capabilities", "show-primitives", "dataset",
         "train", "test", "target", "inputs", "shape-constraints-config", "transposition-cache", "cache-visibility",
-        "cache-max-age", "seed" };
+        "cache-max-age", "seed", "print-config", "config-out", "final-json", "run-id", "attempt-id", "generation-log",
+        "segment-generations", "segment-seconds", "sync" };
     return excluded;
 }
 
@@ -644,6 +669,18 @@ auto ParseOptions(cxxopts::Options&& opts, int argc, char** argv) -> cxxopts::Pa
             optionNames.insert(optionNames.end(), option.l.begin(), option.l.end());
         }
     }
+    // Do not advertise registered compatibility options that this executable rejects or ignores.
+    auto unsupported = [&](std::string_view option) {
+        if (option == "selection-pressure") {
+            return true;
+        }
+        if (option == "epsilon") {
+            return program != "operon_nsgp";
+        }
+        return program == "operon_gp"
+            && (option == "pareto-front" || option == "model-selection" || option == "mdl-likelihood");
+    };
+    std::erase_if(optionNames, unsupported);
     cxxopts::ParseResult result;
     try {
         result = std::move(opts).parse(argc, argv);

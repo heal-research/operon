@@ -811,8 +811,10 @@ auto SaveCheckpoint(Checkpoint const& cp, std::string_view path, std::uint64_t m
                 path, bytes.size(), limit);
             return false;
         }
-        if (auto const wec = glz::buffer_to_file(bytes, tmpPath); bool(wec)) {
-            fmt::print(stderr, "error writing checkpoint to '{}': {}\n", tmpPath, glz::format_error(wec));
+        std::ofstream out(tmpPath, std::ios::binary | std::ios::trunc);
+        out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+        if (!out) {
+            fmt::print(stderr, "error writing checkpoint to '{}': could not write file\n", tmpPath);
             std::filesystem::remove(tmpPath, ec);
             return false;
         }

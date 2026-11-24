@@ -14,9 +14,7 @@
 
 #include <taskflow/taskflow.hpp>
 
-#include "reporter.hpp"
 #include "operon/algorithms/config.hpp"
-#include "operon/algorithms/ga_base.hpp"
 #include "operon/algorithms/gp.hpp"
 #include "operon/core/dataset.hpp"
 #include "operon/core/dispatch.hpp"
@@ -31,7 +29,7 @@
 #include "operon/operators/mutation.hpp"
 #include "operon/operators/reinserter.hpp"
 #include "operon/operators/selector.hpp"
-#include "operon/optimizer/optimizer.hpp"
+#include "reporter.hpp"
 
 namespace Operon::Test {
 namespace {

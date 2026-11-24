@@ -10,6 +10,7 @@
 #include "operon/core/operator.hpp"
 #include "operon/operon_export.hpp"
 #include <algorithm>
+#include <string_view>
 
 namespace Operon {
 // Elitism lives here (rather than as a separate per-algorithm mechanism,
@@ -49,6 +50,7 @@ public:
     }
 
     [[nodiscard]] auto EliteCount() const -> size_t { return eliteCount_; }
+    [[nodiscard]] virtual auto Name() const -> std::string_view { return "custom"; }
 
 protected:
     // Merge/replace strategy applied to the non-elite tail of pop and the
@@ -65,6 +67,7 @@ private:
 class OPERON_EXPORT KeepBestReinserter : public ReinserterBase {
 public:
     explicit KeepBestReinserter(ComparisonCallback const& cb, size_t eliteCount = 0) : ReinserterBase(cb, eliteCount) {}
+    [[nodiscard]] auto Name() const -> std::string_view override { return "keep-best"; }
 
 protected:
     // keep the best |pop| individuals from pop+pool
@@ -94,6 +97,8 @@ public:
         : ReinserterBase(cb, eliteCount)
     {
     }
+
+    [[nodiscard]] auto Name() const -> std::string_view override { return "replace-worst"; }
 
 protected:
     // replace the worst individuals in pop with the best individuals from pool

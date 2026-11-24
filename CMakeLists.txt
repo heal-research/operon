@@ -50,6 +50,7 @@ add_library(
     source/algorithms/domain_pruning.cpp
     source/algorithms/enumeration.cpp
     source/algorithms/gp.cpp
+    source/algorithms/generation_record.cpp
     source/algorithms/nsga2.cpp
     source/algorithms/probes/builtin.cpp
     source/algorithms/probes/chain.cpp
@@ -67,6 +68,8 @@ add_library(
     source/formatter/postfix.cpp
     source/formatter/tree.cpp
     source/hash/content_hash.cpp
+    source/hash/model_ref.cpp
+    source/hash/sha256.cpp
     source/hash/zobrist.cpp
     source/interpreter/affine_evaluator.cpp
     source/interpreter/interpreter.cpp

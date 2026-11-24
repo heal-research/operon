@@ -15,6 +15,7 @@ endif()
 
 find_package(Catch2 3 REQUIRED)
 find_package(scn REQUIRED)
+find_package(cxxopts REQUIRED)
 find_package(nanobench REQUIRED)
 # vdt is optional: if found, enables the "Backend vs vdt ULP accuracy" test case
 # (gated by OPERON_HAVE_VDT in backend.cpp). Not in vcpkg.json; provide via overlay or nix.
@@ -56,17 +57,23 @@ add_executable(operon_test
     source/implementation/permutation_importance.cpp
     source/implementation/evaluation_stats.cpp
     source/implementation/reporter.cpp
+    source/implementation/final_record.cpp
+    source/implementation/generation_record.cpp
     source/implementation/evaluator.cpp
     source/implementation/optimizer.cpp
     source/implementation/probes.cpp
     source/implementation/random.cpp
     source/implementation/selection.cpp
+    source/implementation/stop_reasons.cpp
     source/implementation/serialization.cpp
     source/implementation/resume_validation.cpp
+    source/implementation/sha256.cpp
     source/implementation/shape_constrained_evaluator.cpp
     source/implementation/shape_constrained_value_evaluator.cpp
     source/implementation/shape_bound_correctness.cpp
+    ../cli/source/final_record.cpp
     ../cli/source/shape_constraints_config.cpp
+    ../cli/source/stop_signal.cpp
     source/implementation/standard_library.cpp
     source/performance/autodiff.cpp
     source/performance/creator.cpp
@@ -100,7 +107,7 @@ add_executable(operon_test
     source/implementation/gaussian_gradient_cost.cpp
     source/implementation/poisson_gradient_cost.cpp
     )
-target_link_libraries(operon_test PRIVATE operon::operon Catch2::Catch2WithMain scn::scn nanobench::nanobench)
+target_link_libraries(operon_test PRIVATE operon::operon Catch2::Catch2WithMain scn::scn cxxopts::cxxopts nanobench::nanobench)
 target_compile_definitions(operon_test PRIVATE OPERON_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/..")
 if(vdt_FOUND)
     target_link_libraries(operon_test PRIVATE vdt::vdt)
@@ -401,6 +408,64 @@ if(TARGET operon_gp AND TARGET operon_nsgp)
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     )
     add_cli_test(nsgp_capabilities operon_nsgp ok "\"program\":\"operon_nsgp\".*\"machine_report_schema_versions\":\\[\\].*\"sorter\"" "--capabilities")
+    add_cli_test(gp_capabilities_run_record_options operon_gp ok
+        "\"attempt-id\".*\"final-json\".*\"generation-log\".*\"run-id\".*\"segment-generations\".*\"segment-seconds\".*\"sync\"" "--capabilities")
+    add_cli_test(nsgp_capabilities_run_record_options operon_nsgp ok
+        "\"attempt-id\".*\"final-json\".*\"generation-log\".*\"run-id\".*\"segment-generations\".*\"segment-seconds\".*\"sync\"" "--capabilities")
+
+    # operon_enum never writes a run record or generation log: it must neither accept nor advertise those options.
+    if(TARGET operon_enum)
+        add_dependencies(operon_test operon_enum)
+        set(operon_enum_run_record_options final-json run-id attempt-id generation-log segment-generations segment-seconds sync)
+        string(REPLACE ";" "|" operon_enum_run_record_regex "${operon_enum_run_record_options}")
+
+        foreach(option IN LISTS operon_enum_run_record_options)
+            add_test(
+                NAME cli_enum_rejects_${option}
+                COMMAND "${CMAKE_COMMAND}"
+                        "-DCLI=$<TARGET_FILE:operon_enum>"
+                        "-DARGS=--dataset|${operon_cli_data}|--target|Y|--${option}|x"
+                        "-DEXPECT=fail"
+                        "-DREGEX=${option}.* does not exist"
+                        -P "${CMAKE_CURRENT_SOURCE_DIR}/cli_expect.cmake"
+                WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+            )
+        endforeach()
+
+        add_test(
+            NAME cli_enum_capabilities_omit_run_record_options
+            COMMAND "${CMAKE_COMMAND}"
+                    "-DCLI=$<TARGET_FILE:operon_enum>"
+                    "-DARGS=--capabilities"
+                    "-DEXPECT=ok"
+                    "-DREGEX=\"program\":\"operon_enum\".*\"options\":\\[.*\"dataset\""
+                    "-DFORBID=\"(${operon_enum_run_record_regex})\""
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/cli_expect.cmake"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        )
+        add_test(
+            NAME cli_enum_help_omits_run_record_options
+            COMMAND "${CMAKE_COMMAND}"
+                    "-DCLI=$<TARGET_FILE:operon_enum>"
+                    "-DARGS=--help"
+                    "-DEXPECT=ok"
+                    "-DREGEX=--dataset"
+                    "-DFORBID=--(${operon_enum_run_record_regex})"
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/cli_expect.cmake"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        )
+
+        # seed/threads may be omitted (random seed, all hardware threads); GP-only options are rejected
+        add_cli_test(enum_capabilities operon_enum ok "\"program\":\"operon_enum\"" "--capabilities")
+        add_cli_test(enum_default_seed_and_threads operon_enum ok "mdl_bits="
+            "--dataset;${operon_cli_data};--target;Y;--train;0:50;--max-complexity;4;--top-k;1")
+        add_cli_test(enum_rejects_epsilon operon_enum fail
+            "error: --epsilon: is only used by operon_nsgp"
+            "--dataset;${operon_cli_data};--target;Y;--epsilon;1e-3")
+        add_cli_test(enum_rejects_selection_pressure operon_enum fail
+            "error: --selection-pressure: is not supported and has no effect"
+            "--dataset;${operon_cli_data};--target;Y;--selection-pressure;5")
+    endif()
 
     # threads
     add_cli_test(gp_rejects_zero_threads operon_gp fail
@@ -441,18 +506,18 @@ if(TARGET operon_gp AND TARGET operon_nsgp)
         "--dataset;${operon_cli_data};--target;Y;--population-size;10;--pool-size;10;--threads;1;--offspring-generator=")
     add_cli_test(gp_accepts_valid_generator_specs operon_gp ok "iteration"
         "--dataset;${operon_cli_data};--target;Y;--population-size;10;--pool-size;10;--threads;1;--seed;1;--generations;1;--offspring-generator;os:50:0.5")
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME cli_resolved_config
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/cli/resolved_config_smoke.py"
+                --gp "$<TARGET_FILE:operon_gp>" --nsgp "$<TARGET_FILE:operon_nsgp>")
 
-    # operon_enum: seed/threads may be omitted (random seed, all hardware threads); GP-only options are rejected
-    if(TARGET operon_enum)
-        add_dependencies(operon_test operon_enum)
-        add_cli_test(enum_capabilities operon_enum ok "\"program\":\"operon_enum\"" "--capabilities")
-        add_cli_test(enum_default_seed_and_threads operon_enum ok "mdl_bits="
-            "--dataset;${operon_cli_data};--target;Y;--train;0:50;--max-complexity;4;--top-k;1")
-        add_cli_test(enum_rejects_epsilon operon_enum fail
-            "error: --epsilon: is only used by operon_nsgp"
-            "--dataset;${operon_cli_data};--target;Y;--epsilon;1e-3")
-        add_cli_test(enum_rejects_selection_pressure operon_enum fail
-            "error: --selection-pressure: is not supported and has no effect"
-            "--dataset;${operon_cli_data};--target;Y;--selection-pressure;5")
-    endif()
+    add_test(NAME cli_final_json
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/cli/final_json_smoke.py"
+                --gp "$<TARGET_FILE:operon_gp>" --nsgp "$<TARGET_FILE:operon_nsgp>")
+
+    # --generation-log: deterministic stream/sidecar/segment/hash/front checks for both programs plus I/O failures.
+    # Standard-library Python only; no POSIX-specific facilities, so it is not platform gated.
+    add_test(NAME cli_generation_log
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/cli/generation_log_smoke.py"
+                --gp "$<TARGET_FILE:operon_gp>" --nsgp "$<TARGET_FILE:operon_nsgp>")
 endif()

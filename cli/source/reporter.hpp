@@ -12,6 +12,7 @@
 #include <functional>
 #include <glaze/glaze.hpp>
 #include <operon/algorithms/ga_base.hpp>
+#include <operon/algorithms/generation_record.hpp>
 #include <operon/algorithms/phase_timer.hpp>
 #include <operon/operators/linear_scaling.hpp>
 #include <stdexcept>
@@ -113,6 +114,7 @@ template <typename Evaluator> class Reporter {
     gsl::not_null<Evaluator const*> evaluator_;
     mutable Operon::Individual best_;
     ModelSelectorFn selector_;
+    GenerationRecorder* recorder_ { nullptr };
 
 public:
     explicit Reporter(gsl::not_null<Evaluator const*> evaluator, ModelSelectorFn selector = nullptr)
@@ -148,9 +150,13 @@ public:
     }
 
     auto GetBest() const -> Operon::Individual const& { return best_; }
+    auto SetGenerationRecorder(GenerationRecorder* recorder) -> void { recorder_ = recorder; }
 
     auto operator()(tf::Executor& executor, Operon::GeneticAlgorithmBase const& gp) const -> void
     {
+        if (recorder_) {
+            recorder_->Capture(gp);
+        }
         auto const config = gp.GetConfig();
         auto const pop = gp.Parents();
 
@@ -295,6 +301,14 @@ public:
         latest_.metrics = MachineMetrics { r2Train, r2Test, maeTrain, maeTest, nmseTrain, nmseTest, mseTrain, mseTest,
             best_[idx], avgQuality, avgLength, gp.Elapsed(), static_cast<std::uint64_t>(callCount),
             static_cast<std::uint64_t>(resEval), static_cast<std::uint64_t>(jacEval), optimizerSeconds };
+        if (recorder_) {
+            auto const finite = std::ranges::count_if(estimatedTrain, [](auto x) { return std::isfinite(x); })
+                + std::ranges::count_if(estimatedTest, [](auto x) { return std::isfinite(x); });
+            auto const total = estimatedTrain.size() + estimatedTest.size();
+            recorder_->Write(gp, best_, nmseTrain, nmseTest,
+                total ? static_cast<double>(finite) / static_cast<double>(total)
+                      : std::numeric_limits<double>::quiet_NaN());
+        }
         PrintStats({ stats.begin(), stats.end() }, gp.Generation() == 0);
     }
 

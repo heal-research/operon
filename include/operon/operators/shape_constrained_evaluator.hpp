@@ -182,6 +182,18 @@ namespace detail {
 
         // Width of the constrained objective vector: primary, structural objectives, optional violation.
         [[nodiscard]] auto ShapeObjectiveCount() const noexcept -> std::size_t;
+        [[nodiscard]] auto ShapeObjectiveNames(std::vector<std::string> names) const -> std::vector<std::string>
+        {
+            for (auto const& evaluator : structural_) {
+                auto child = evaluator->ObjectiveNames();
+                names.insert(names.end(), child.begin(), child.end());
+            }
+            if (policy_.Enforcement == ShapeConstraintEnforcement::ExtraObjective
+                || policy_.Enforcement == ShapeConstraintEnforcement::PenaltyAndExtraObjective) {
+                names.emplace_back("violation");
+            }
+            return names;
+        }
 
         // Prepares the structural objectives.
         void ShapePrepare(Operon::Span<Individual const> pop) const;
@@ -277,6 +289,10 @@ public:
     }
 
     [[nodiscard]] auto ObjectiveCount() const -> std::size_t override { return this->ShapeObjectiveCount(); }
+    [[nodiscard]] auto ObjectiveNames() const -> std::vector<std::string> override
+    {
+        return this->ShapeObjectiveNames(BaseEvaluator::ObjectiveNames());
+    }
 
     [[nodiscard]] auto StructuralFitnessReusable() const -> bool override { return false; }
 
@@ -310,11 +326,19 @@ protected:
         this->ShapeStructuralReset();
     }
 
+    auto Evaluate(Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf) const
+        -> tl::expected<std::optional<EvaluatedBuffer>, InterpreterError> override
+    {
+        ind.ShapeRejected = false;
+        return BaseEvaluator::Evaluate(ind, buf);
+    }
+
     auto Score(Operon::RandomGenerator& rng, Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf,
         std::optional<EvaluatedBuffer> evaluated) const -> typename EvaluatorBase::ReturnType override
     {
         auto const summary = this->ShapeCertify(ind.Genotype, evaluated);
         if (auto rejected = this->ShapeReject(summary)) {
+            ind.ShapeRejected = true;
             return std::move(*rejected);
         }
         auto const primary = BaseEvaluator::Score(rng, ind, buf, std::move(evaluated));

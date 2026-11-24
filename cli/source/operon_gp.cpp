@@ -33,10 +33,13 @@
 #include "operon/optimizer/optimizer.hpp"
 
 #include "cli_error.hpp"
+#include "final_record.hpp"
 #include "jit_setup.hpp"
 #include "operator_factory.hpp"
 #include "probes_config.hpp"
+#include "resolved_config.hpp"
 #include "shape_constraints_config.hpp"
+#include "stop_signal.hpp"
 #include "util.hpp"
 
 namespace {
@@ -66,15 +69,9 @@ auto MakeCoeffAndMutation(bool symbolic) -> std::tuple<std::unique_ptr<Operon::C
         ->ParameterizeDistribution(Operon::Scalar { 0 }, Operon::Scalar { 1 });
     return { std::move(ci), std::move(op), std::move(multi) };
 }
-} // anonymous namespace
 
-auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
+auto RunGp(cxxopts::ParseResult const& result, Operon::Cli::FinalRun& finalRun, Operon::Span<char* const> argv) -> int
 {
-    auto opts = Operon::InitOptions("operon_gp", "Genetic programming symbolic regression");
-    opts.add_options()("report-json", "Write a versioned lossless machine-readable report to this path",
-        cxxopts::value<std::string>());
-    auto result = Operon::ParseOptions(std::move(opts), argc, argv);
-
     // parse and set default values
     Operon::GeneticAlgorithmConfig config {};
     config.Generations = Operon::GetLimit(result, "generations");
@@ -88,6 +85,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     config.LamarckianProbability = result["lamarckian-probability"].as<Operon::Scalar>();
     config.TimeLimit = result["timelimit"].as<size_t>();
     config.Seed = std::random_device {}();
+    finalRun.SetConfig(config);
 
     Operon::Range trainingRange;
     Operon::Range testRange;
@@ -137,6 +135,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         auto const cacheOptions = Operon::ZobristOptions { .MaxAge = result["cache-max-age"].as<size_t>(),
             .Visibility = Operon::ParseCacheVisibility(result["cache-visibility"].as<std::string>()) };
         if (showPrimitiveSet) {
+            finalRun.Abandon(); // prints the primitive set and exits: nothing to record
             Operon::PrintPrimitives(primitiveSetConfig);
             return EXIT_SUCCESS;
         }
@@ -208,7 +207,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             { "discretepoint", &discretePoint },
             { "shuffle", &shuffleSubtrees },
         };
-        Operon::ParseMutators(result["mutators"].as<std::string>(), availableMutators, mutator);
+        std::vector<Operon::MutatorWeight> mutatorWeights;
+        Operon::ParseMutators(result["mutators"].as<std::string>(), availableMutators, mutator, mutatorWeights);
 
         Operon::ScalarDispatch dtable;
         auto const jitMode = result["jit"].as<std::string>(); // "all", "jac", or ""
@@ -322,7 +322,11 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
                     &dtable, &problem);
             }
         }
+        evaluator->SetObjectiveName(result["objective"].as<std::string>());
         optimizer->SetIterations(config.Iterations);
+        if (config.PopulationSize == 0 || config.PoolSize == 0 || problem.TrainingRange().Size() == 0) {
+            throw std::invalid_argument("population, pool and training range must be non-empty");
+        }
 
         // The constrained evaluator (when shape constraints are configured) is `evaluator` itself: it is the
         // outermost evaluator the GP loop and the Reporter see, and it is still an `Operon::Evaluator<T>` for the
@@ -365,6 +369,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         tf::Executor executor(threads);
         Operon::GeneticProgrammingAlgorithm gp { config, &problem, &treeInitializer, coeffInitializer.get(),
             generator.get(), reinserter.get() };
+        Operon::Cli::FinalRun::Watch const watch { finalRun, gp };
 
         auto const fingerprint = Operon::MakeRunFingerprint(gp, shapeSpec ? &shapeSpec->Constraints : nullptr);
         auto const warmStart = Operon::ResumeFromCheckpoint(gp, random, result, fingerprint);
@@ -390,9 +395,18 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             return Operon::Cli::Report(loadedProbes.error());
         }
         auto probes = std::move(*loadedProbes);
+        if (Operon::Cli::ExportResolvedConfig(result,
+                { "operon_gp", config, problem, threads, *creator, creatorMaxLength, creatorMinDepth, creatorMaxDepth,
+                    crossover, mutatorWeights, *femaleSelector, *maleSelector, *generator, *reinserter, *evaluator,
+                    *optimizer, shapeSpec, argv })) {
+            finalRun.Abandon();
+            return EXIT_SUCCESS;
+        }
+        reporter.SetGenerationRecorder(finalRun.StartGenerationLog(result, false, evaluator->ObjectiveCount()));
         gp.Run(
             executor, random,
             [&]() -> bool {
+                Operon::Cli::StopSignals::Forward(gp);
                 reporter(executor, gp);
                 if (probes) {
                     (*probes)(gp);
@@ -421,6 +435,9 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         auto const model
             = fmt::format("{:infix:roundtrip}", Operon::Fmt::TreeFormatArgs { best.Genotype, *problem.GetDataset() });
         fmt::print("{}\n", model);
+        if (!best.Genotype.Empty()) {
+            finalRun.SetModel("obj0", best.Genotype, model);
+        }
         if (result.contains("report-json")) {
             reporter.SetSymbolicModel(model);
             Operon::WriteMachineReport(reporter.GetMachineReport(), result["report-json"].as<std::string>());
@@ -431,4 +448,32 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     }
 
     return 0;
+}
+} // anonymous namespace
+
+auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
+{
+    auto const processStart = Operon::GenerationRecorder::Clock::now();
+    auto opts = Operon::InitOptions("operon_gp", "Genetic programming symbolic regression");
+    opts.add_options()("report-json", "Write a versioned lossless machine-readable report to this path",
+        cxxopts::value<std::string>());
+    auto result = Operon::ParseOptions(std::move(opts), argc, argv);
+
+    std::optional<Operon::Cli::FinalRun> finalRun;
+    try {
+        finalRun.emplace(result, processStart);
+    } catch (std::exception& e) {
+        fmt::print(stderr, "error: {}\n", e.what());
+        return EXIT_FAILURE;
+    }
+
+    auto exitCode = EXIT_FAILURE;
+    try {
+        exitCode = RunGp(result, *finalRun, { argv + 1, static_cast<std::size_t>(argc - 1) });
+    } catch (std::exception& e) {
+        fmt::print(stderr, "error: {}\n", e.what());
+    } catch (...) {
+        fmt::print(stderr, "error: unknown exception\n");
+    }
+    return finalRun->Finish(exitCode);
 }

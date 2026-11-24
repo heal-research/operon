@@ -26,6 +26,78 @@ An incomplete generation is not itself a stop reason and does not set `StopReque
 
 With `GeneticAlgorithmConfig::Cache` set, offspring that are structurally identical to an earlier one reuse its fitness instead of being scored again. By default (`CacheVisibility::Committed`) an entry becomes visible to other offspring slots only in the next generation, which makes the cache hit/miss decisions independent of slot arrival order. The whole run is independent of the thread count, also when the evaluation budget or the offspring-selection pressure binds, as long as no time limit or stop request cuts a generation; JIT evaluation is not covered. Lookups that used to hit an entry of the same generation become evaluations, which changes the search trajectory and therefore the number of evaluations a run consumes, in either direction. `CacheVisibility::Immediate` shares entries at once and depends on thread timing. **Offspring selection and the cache:** the selection pressure of `os` counts attempts, so a cache hit counts like an evaluated offspring (it made no evaluator call, and used to be free). With a cache an `os` run therefore reaches its pressure cap sooner and may stop earlier than before, also at one thread: on Poly-10 with `os:20:0.5`, population and pool 100, seed 3, 18 generations instead of 60. Without a cache, and for `basic`, `brood` and `poly`, results are unchanged, except when the evaluation budget binds inside an attempt that costs more than one evaluation (such a generation used to overshoot the budget and is now discarded). The cap also guarantees that offspring selection terminates when every candidate is a rejected cache hit. See the [search reference](../reference/search.md#transposition-cache). Checkpoints written with `--checkpoint-interval` carry the cache, so `--resume` continues a run with the cache on exactly like the uninterrupted run, unless `--evaluations` (or another limit that cuts a generation) binds (a resumed run gets a fresh evaluation budget and is charged one evaluation per parent for the re-evaluation at the warm start); resume with the same `--seed`, `--cache-visibility` and `--cache-max-age` (a mismatch is rejected).
 
+## Stop reasons
+
+A run records why it stopped as a `StopMask` (`stop_reason.hpp`): `GenerationLimit`, `EvaluationLimit`,
+`PressureLimit`, `TimeLimit`, `GeneratorTermination`, `Callback`, `Signal`, `EngineError`. The reasons are derived
+from the budget accounting of the run (`GeneticAlgorithmBase::StopConditions()`): the generation limit; the
+evaluation limit when committed work reached a positive budget or a generation was discarded for spending more than
+the budget had left; the pressure limit when a generation was discarded for exceeding the generator's attempt cap
+(`OffspringGeneratorBase::MaxAttempts()`) or a committed generation crossed it and ended the run; the time limit when
+it expired. The loop records every condition that holds, and a worker that sees the time limit expire records it,
+with an atomic `fetch_or`, so concurrent worker polls are safe. `StopReasons()` is what was recorded,
+`TerminationReasons()` adds final-state conditions, and `PrimaryStopReason()` uses `engine_error`, `signal`,
+`callback`, `generator_termination`, `evaluation_limit`, `pressure_limit`, `generation_limit`, `time_limit`.
+`RequestStop(source)` takes `Callback`, `Signal` or `EngineError`; `StopRequested()` is true only for external
+requests (a generation cut short by the time limit does not request a stop). `OffspringGeneratorBase::Terminate()` is
+deprecated and not consulted by the drivers, so the engine never records `GeneratorTermination` (the value remains
+for producers that map their own termination onto it).
+
+`operon_gp` and `operon_nsgp` write these, with the final counters read after `Run()` returns (the evaluation limit
+is `GeneticAlgorithmConfig::Evaluations`) and
+the final model's `ModelRef` (SHA-256 of `ModelSerialization`), as an `operon.final` JSON document with
+`--final-json PATH --run-id ID --attempt-id UUID`. The file is published atomically (a flushed temporary sibling
+replaces any existing file in one step; POSIX `rename` plus directory `fsync`, Windows `MoveFileExW` with
+`MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH`), also when the run fails
+(`exit_status` `error`, reason `engine_error`). Final records require a fresh run: `--final-json` rejects `--resume`
+until checkpoints persist the prior evaluation counters. With `--final-json` or `--generation-log`, SIGINT and SIGTERM
+stop the run gracefully (reason `signal`) and the process exits with 128 plus the signal number; a second signal
+terminates it immediately. The final document's schema is `docs/schemas/final.schema.json`.
+
+## Lossless generation records
+
+Both CLIs accept `--generation-log DIR --run-id HEX64 --attempt-id UUID`. The directory must not contain an earlier
+stream. Generation 0 is `initialized`, followed by one `generation_complete` per fully filled offspring pool.
+`--segment-generations 1000` and `--segment-seconds 5` seal at the first reached threshold, checked at each completed
+record; `--sync segment` is the default. Every line is written directly to the OS in `generation-000000.jsonl.part`.
+Sealing syncs the model sidecar and segment, closes the segment and renames it to `.jsonl`. On POSIX it then syncs the
+directory, which makes the rename durable; on Windows the file contents are flushed (`_commit`) but the directory
+entry is not, so the rename itself is not guaranteed to survive power loss.
+One persistent seal worker overlaps that durability sequence with the next generation's computation. Before writing
+another record the callback waits for the pending seal, so there is never more than one `.part`; worker errors are
+re-thrown on the callback thread or by `Close()`. `Drain()` waits for an already-requested count/time seal.
+`--sync record` additionally syncs after every record. SIGKILL can leave one `.part`, whose trailing incomplete line
+must be ignored; on POSIX only sealed segments are power-loss durable, on Windows a sealed segment's contents are
+durable but its name may revert to `.part`. A failed `Close()` is terminal: later calls rethrow the same error.
+Open/write/serialization/sync errors fail the run.
+With `--final-json`, the final document includes sealed segment ranges, byte-identical SHA-256 hashes, record count
+and instrumentation error count. A stream can also be requested without a final document.
+Each line follows `docs/schemas/generation.schema.json`.
+
+The library `GenerationRecorder` captures objective/length/depth/rank reductions in one population pass before the
+table reporter. The reporter then hands it the exact selected, linearly scaled tree and NMSE values, avoiding another
+model-selection or prediction pass. The existing table and `--report-json` v1 remain unchanged. Objective means use
+double accumulation in population order, excluding non-finite values, `ErrMax`, and `Individual::ShapeRejected`.
+Means are rounded once to native build precision for JSON, consistently with best/min/max; accumulation does not
+overflow at float precision, and a uniform population's emitted mean equals its emitted extrema.
+The shape adapter records that flag when hard rejection occurs; it is not inferred from the configurable worst
+fitness value, and describes evaluated fitness even under non-Lamarckian search. Resume with a generation log is
+rejected: this stream is restart-only.
+
+`models.jsonl.txt` is the per-attempt model sidecar (the `.txt` suffix distinguishes opaque objects from contract
+documents). It contains a `model_ref` and lossless `ModelSerialization` string only when the selected model changes;
+every generation references its SHA-256. Equality checks all serialized node attributes and coefficient bits.
+NSGA-II uses `--model-selection` exactly as the table does. `--pareto-front PATH` supplies the final front hash;
+with a stream and no explicit path, the front is stored in `DIR/pareto-front.json.txt`.
+Shape feasibility is certified for the exported model on change, not inferred from its possibly non-Lamarckian score.
+Validation NMSE is unavailable and declared as such. Scalar objectives use native-precision shortest round-trip
+numbers; non-finite metrics are JSON `null` with counts/status.
+
+`time.report_s` includes reductions, model selection, prediction metrics, changed-model serialization/certification,
+and JSON construction up to the timing field. The final write/fsync cannot be included in its own immutable bytes;
+measure that cost end-to-end. Generation wall time is the interval between callback entries; process elapsed time
+starts at `main()`. OS pressure counts evaluator calls since `Prepare()` (cache hits do not increment it).
+
 ## Fitness and ordering
 
 Fitness is a minimization vector. Single-objective GP commonly uses `SingleObjectiveComparison`; NSGA-II computes `Rank` and `Distance` and uses crowded comparison. `ParetoComparison` assumes minimization in every dimension. A custom comparator must be consistent for selection and reinsertion or the search transition no longer has a coherent ordering.

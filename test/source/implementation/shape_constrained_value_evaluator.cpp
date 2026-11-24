@@ -186,6 +186,24 @@ namespace {
 
 } // namespace
 
+TEST_CASE(
+    "shape rejection metadata follows the scored individual and resets on reevaluation", "[generation-record][shape]")
+{
+    GateFixture fx;
+    auto gate = fx.MakeGate(IncreasingInX1(), Policy(ShapeConstraintEnforcement::HardReject));
+    auto ind = GateFixture::MakeIndividual(fx.Parse("X2 - X1"));
+    auto buf = fx.Buffer();
+    ind.Fitness = (*gate)(fx.rng, ind, buf);
+    REQUIRE(ind.ShapeRejected);
+    CHECK(ind[0] == static_cast<Scalar>(gate->WorstValue()));
+    auto copied = ind;
+    CHECK(copied.ShapeRejected);
+    ind.Genotype = fx.tree;
+    ind.Fitness = (*gate)(fx.rng, ind, buf);
+    CHECK_FALSE(ind.ShapeRejected);
+    CHECK(copied.ShapeRejected);
+}
+
 // ── type structure and access boundary ──────────────────────────────────────────
 
 // The adapter is a derived typed evaluator, not a wrapper: it *is* its base evaluator and an EvaluatorBase.
