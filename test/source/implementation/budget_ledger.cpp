@@ -106,16 +106,14 @@ namespace {
         bool StopRequested {};
         std::uint64_t Calls {}; // calls to the active evaluator, discarded work included (informational)
         std::uint64_t Attempts {}; // invocations of a capped test generator, discarded work included (informational)
-        DiscardReason Reason { DiscardReason::None }; // why the discarded attempt was not committed, if one was
-        RunEnd End { RunEnd::None }; // why Run() ended
+        StopMask Stops {}; // why Run() ended: algo.TerminationReasons()
 
         // The committed part of the outcome.
         [[nodiscard]] auto operator==(Outcome const& other) const -> bool
         {
             return Committed == other.Committed && GenerationsCommitted == other.GenerationsCommitted
                 && EvaluationsCommitted == other.EvaluationsCommitted && BudgetOvershoot == other.BudgetOvershoot
-                && Discarded == other.Discarded && Reason == other.Reason && StopRequested == other.StopRequested
-                && End == other.End;
+                && Discarded == other.Discarded && StopRequested == other.StopRequested && Stops == other.Stops;
         }
     };
 
@@ -142,8 +140,7 @@ namespace {
             .Accounting = accounting,
             .Progress = algo.IncompleteGeneration(),
             .StopRequested = algo.StopRequested(),
-            .Reason = algo.IncompleteGeneration() ? algo.IncompleteGeneration()->Reason : DiscardReason::None,
-            .End = accounting.End };
+            .Stops = algo.TerminationReasons() };
     }
 
     // Offspring generator with a deterministic, slot-local rejection rule (decided by the slot's own RNG stream, so
@@ -453,28 +450,27 @@ namespace {
         return qualified;
     }
 
-    // The informational flags of a discarded attempt. With one finite limit (budget below unlimited, or a generator
-    // with an attempt cap, not both) they are deterministic: the workers stop on that limit alone.
+    auto Has(Outcome const& outcome, StopReason reason) -> bool { return Contains(outcome.Stops, reason); }
+
+    // The resource-limit bits observed. With one finite limit (budget below unlimited, or a generator with an
+    // attempt cap, not both) they are deterministic: the workers stop on that limit alone.
     auto Flags(Outcome const& outcome) -> std::pair<bool, bool>
     {
-        return outcome.Progress ? std::pair { outcome.Progress->BudgetExceeded, outcome.Progress->AttemptCapExceeded }
-                                : std::pair { false, false };
+        return { Has(outcome, StopReason::EvaluationLimit), Has(outcome, StopReason::PressureLimit) };
     }
 
     void CheckOnlyBudgetObserved(Outcome const& outcome)
     {
         REQUIRE(outcome.Progress.has_value());
-        CHECK(outcome.Progress->Reason == DiscardReason::ResourceLimit);
-        CHECK(outcome.Progress->BudgetExceeded);
-        CHECK_FALSE(outcome.Progress->AttemptCapExceeded);
+        CHECK(Has(outcome, StopReason::EvaluationLimit));
+        CHECK_FALSE(Has(outcome, StopReason::PressureLimit));
     }
 
     void CheckOnlyCapObserved(Outcome const& outcome)
     {
         REQUIRE(outcome.Progress.has_value());
-        CHECK(outcome.Progress->Reason == DiscardReason::ResourceLimit);
-        CHECK(outcome.Progress->AttemptCapExceeded);
-        CHECK_FALSE(outcome.Progress->BudgetExceeded);
+        CHECK(Has(outcome, StopReason::PressureLimit));
+        CHECK_FALSE(Has(outcome, StopReason::EvaluationLimit));
     }
 
 } // namespace
@@ -529,8 +525,7 @@ TEST_CASE("Budget boundary: committed state is the same at 1, 4 and 16 threads",
             CHECK(below.Discarded);
             CHECK_FALSE(below.StopRequested);
             REQUIRE(below.Progress.has_value());
-            CHECK(below.Progress->Reason == DiscardReason::ResourceLimit);
-            CHECK(below.End == RunEnd::ResourceLimit);
+            CHECK(Has(below, StopReason::EvaluationLimit));
             if (sc.Generator != "os") { // os has a finite attempt cap as well: then the flags are not deterministic
                 CheckOnlyBudgetObserved(below);
             }
@@ -538,8 +533,9 @@ TEST_CASE("Budget boundary: committed state is the same at 1, 4 and 16 threads",
             // Exactly enough: generation k commits and the budget is spent, so nothing is attempted afterwards.
             bounded.Budget = reference[k].EvaluationsCommitted;
             auto at = Run(bounded);
-            CHECK(at.End == RunEnd::BudgetSpent); // the budget is spent before the generation limit (1000)
-            at.End = reference[k].End; // the same committed outcome as the unbounded run, but for why it ended
+            CHECK(Has(at, StopReason::EvaluationLimit)); // the budget is spent before the generation limit (1000)
+            CHECK_FALSE(Has(at, StopReason::GenerationLimit));
+            at.Stops = reference[k].Stops; // the same committed outcome as the unbounded run, but for why it ended
             CHECK(at == reference[k]);
             CHECK(at.GenerationsCommitted == k);
             CHECK(at.EvaluationsCommitted == bounded.Budget);
@@ -577,9 +573,9 @@ TEST_CASE("Offspring-selection pressure binds identically at 1, 4 and 16 threads
         CAPTURE(seed);
         if (reference.Discarded) {
             CheckOnlyCapObserved(reference); // the budget is unlimited: one finite limit
-            CHECK(reference.End == RunEnd::ResourceLimit);
+            CHECK(Has(reference, StopReason::PressureLimit));
         } else {
-            CHECK(reference.End == RunEnd::AttemptCap); // the last committed generation crossed the cap
+            CHECK(Has(reference, StopReason::PressureLimit)); // the last committed generation crossed the cap
         }
         CHECK_FALSE(reference.StopRequested);
 
@@ -653,9 +649,9 @@ TEST_CASE("Attempt cap: transposition-cache hits are attempts", "[budget][determ
             CHECK(limited.GenerationsCommitted < sc.Generations);
             if (limited.Discarded) {
                 CheckOnlyCapObserved(limited);
-                CHECK(limited.End == RunEnd::ResourceLimit);
+                CHECK(Has(limited, StopReason::PressureLimit));
             } else {
-                CHECK(limited.End == RunEnd::AttemptCap);
+                CHECK(Has(limited, StopReason::PressureLimit));
             }
             CHECK(limited.Committed == reference[limited.GenerationsCommitted].Committed);
         }
@@ -712,8 +708,9 @@ TEST_CASE("Attempt cap: the edge is the sequential one, at every thread count", 
         // cap = needed - 1: attempts reach cap + 1 on the last accepted attempt, which started within the cap
         capped.Cap = needed - 1;
         auto atEdge = Run(capped);
-        CHECK(atEdge.End == RunEnd::AttemptCap); // the generation crossed the cap: the run ends, nothing is discarded
-        atEdge.End = one.End; // the same committed outcome as the unbounded generation, but for why it ended
+        CHECK(Has(
+            atEdge, StopReason::PressureLimit)); // the generation crossed the cap: the run ends, nothing is discarded
+        atEdge.Stops = one.Stops; // the same committed outcome as the unbounded generation, but for why it ended
         CHECK(atEdge == one);
         CHECK_FALSE(atEdge.Discarded);
 
@@ -722,15 +719,17 @@ TEST_CASE("Attempt cap: the edge is the sequential one, at every thread count", 
         auto longer = capped;
         longer.Generations = 3;
         auto ended = Run(longer);
-        CHECK(ended.End == RunEnd::AttemptCap); // ended by the committed generation that crossed the cap, no discard
-        ended.End = one.End;
+        CHECK(Has(
+            ended, StopReason::PressureLimit)); // ended by the committed generation that crossed the cap, no discard
+        ended.Stops = one.Stops;
         CHECK(ended == one);
         CHECK_FALSE(ended.Discarded);
 
         capped.Cap = needed;
         auto const within = Run(capped);
         CHECK(within == one);
-        CHECK(within.End == RunEnd::GenerationLimit);
+        CHECK(Has(within, StopReason::GenerationLimit));
+        CHECK_FALSE(Has(within, StopReason::PressureLimit));
         longer.Cap = 2 * needed;
         CHECK(Run(longer).GenerationsCommitted == 3); // well within the cap: the run goes on
 
@@ -742,7 +741,7 @@ TEST_CASE("Attempt cap: the edge is the sequential one, at every thread count", 
         CHECK(below.GenerationsCommitted == 0);
         CHECK_FALSE(below.StopRequested); // a cap does not call RequestStop()
         CheckOnlyCapObserved(below);
-        CHECK(below.End == RunEnd::ResourceLimit);
+        CHECK(Has(below, StopReason::PressureLimit));
         // Executed work can pass the cap by the attempts that were in flight, and is discarded with the generation:
         // workers do not start an attempt once the published attempts exceed the cap, so at most one attempt per worker
         // (plus the uncounted last accepted one) runs beyond it.
@@ -939,7 +938,9 @@ TEST_CASE("A zero-cost structural evaluator accepts a zero evaluation budget", "
         CHECK(algo.BudgetReport().GenerationsCommitted == 3);
         CHECK(algo.BudgetReport().EvaluationsCommitted == 0);
         CHECK(algo.BudgetReport().BudgetOvershoot == 0);
-        CHECK(algo.BudgetReport().End == RunEnd::GenerationLimit);
+        auto const reasons = algo.TerminationReasons();
+        CHECK(Contains(reasons, StopReason::GenerationLimit));
+        CHECK_FALSE(Contains(reasons, StopReason::EvaluationLimit));
         return 0;
     });
 }
@@ -980,8 +981,8 @@ TEST_CASE("Initialization always commits: overshoot is recorded and no generatio
         // A budget equal to the cost leaves nothing for a generation: none is attempted.
         bounded.Budget = cost;
         auto exact = Run(bounded);
-        CHECK(exact.End == RunEnd::BudgetSpent);
-        exact.End = reference.End; // the initial population either way, but for why the run ended
+        CHECK(Has(exact, StopReason::EvaluationLimit));
+        exact.Stops = reference.Stops; // the initial population either way, but for why the run ended
         CHECK(exact == reference);
         CHECK(exact.BudgetOvershoot == 0);
         CHECK_FALSE(exact.Discarded);
@@ -1142,7 +1143,7 @@ TEST_CASE("Ledger arithmetic saturates", "[budget][accounting]")
         CHECK(ledger.Consumed() == kSaturated);
         CHECK(ledger.BudgetExceeded()); // stays exceeded after the sum would have wrapped
         CHECK(ledger.Exceeded());
-        CHECK(ledger.Reason(false) == DiscardReason::ResourceLimit);
+        CHECK(Contains(ledger.Limits(), StopReason::EvaluationLimit));
 
         ledger.DiscardGeneration();
         auto const accounting = ledger.Report();
@@ -1219,22 +1220,17 @@ TEST_CASE("Ledger arithmetic saturates", "[budget][accounting]")
         CHECK(ledger.AttemptCapReached()); // ... except to end the run after a committed generation (6 > 5)
         add(1, false, false);
         CHECK(ledger.AttemptCapExceeded()); // 6 > 5
-        CHECK(ledger.Reason(false) == DiscardReason::ResourceLimit);
-        CHECK(ledger.Reason(true) == DiscardReason::ResourceLimit); // a resource limit comes before the async causes
-        CHECK(ledger.Progress(1, 2, 3, false).AttemptCapExceeded);
-        CHECK_FALSE(ledger.Progress(1, 2, 3, false).BudgetExceeded);
-        evaluator.ResidualEvaluations = 1000; // the budget fails as well: both flags, one reason
+        CHECK(Contains(ledger.Limits(), StopReason::PressureLimit));
+        CHECK_FALSE(Contains(ledger.Limits(), StopReason::EvaluationLimit));
+        evaluator.ResidualEvaluations = 1000; // the budget fails as well: both limits
         CHECK(ledger.BudgetExceeded());
-        auto const both = ledger.Progress(1, 2, 3, true);
-        CHECK(both.Reason == DiscardReason::ResourceLimit);
-        CHECK(both.BudgetExceeded);
-        CHECK(both.AttemptCapExceeded);
+        CHECK(Contains(ledger.Limits(), StopReason::PressureLimit));
+        CHECK(Contains(ledger.Limits(), StopReason::EvaluationLimit));
         evaluator.ResidualEvaluations = 101;
         ledger.BeginGeneration(std::nullopt);
         add(1000, false, false);
         CHECK_FALSE(ledger.AttemptCapExceeded()); // no cap, nothing counted
-        CHECK(ledger.Reason(true) == DiscardReason::StopRequested);
-        CHECK(ledger.Reason(false) == DiscardReason::TimeLimit);
+        CHECK(ledger.Limits() == StopMask {}); // within the budget, and no cap to exceed
     }
 }
 
@@ -1352,8 +1348,8 @@ TEST_CASE("Competing budget and attempt cap: one reason at every thread count", 
         if (!reference.Discarded) {
             return false; // the generation fits on this platform's draws (e.g. with cache hits): nothing to compare
         }
-        CHECK(reference.Reason == DiscardReason::ResourceLimit);
-        CHECK(reference.End == RunEnd::ResourceLimit);
+        CHECK((Contains(reference.Stops, StopReason::EvaluationLimit)
+            || Contains(reference.Stops, StopReason::PressureLimit)));
         CHECK(reference.Committed == initial.Committed);
         CHECK_FALSE(reference.StopRequested);
         for (auto const threads :
@@ -1361,11 +1357,15 @@ TEST_CASE("Competing budget and attempt cap: one reason at every thread count", 
             CAPTURE(threads);
             sc.Threads = threads;
             auto const outcome = Run(sc);
-            CHECK(outcome == reference); // includes Reason, StopRequested and End; not the informational flags
-            CHECK(outcome.Reason == DiscardReason::ResourceLimit);
+            // Both limits are finite: which of the two bits are set may differ across thread counts (the workers stop
+            // on whichever they see first, and a worker that ran further may also have crossed the other), so compare
+            // the outcome but for the stops, and check only that some resource-limit bit is set.
+            auto comparable = outcome;
+            comparable.Stops = reference.Stops;
+            CHECK(comparable == reference); // includes StopRequested; not the informational flags
             REQUIRE(outcome.Progress.has_value());
-            // at least one limit was seen exceeded: the workers stopped on it
-            CHECK((outcome.Progress->BudgetExceeded || outcome.Progress->AttemptCapExceeded));
+            CHECK((Contains(outcome.Stops, StopReason::EvaluationLimit)
+                || Contains(outcome.Stops, StopReason::PressureLimit)));
         }
         return true;
     });
@@ -1387,7 +1387,9 @@ TEST_CASE("Run end is reported", "[budget][accounting]")
         for (auto const threads : ThreadCounts) {
             sc.Threads = threads;
             auto const outcome = Run(sc);
-            CHECK(outcome.End == RunEnd::GenerationLimit);
+            CHECK(Has(outcome, StopReason::GenerationLimit));
+            CHECK_FALSE(Has(outcome, StopReason::EvaluationLimit));
+            CHECK_FALSE(Has(outcome, StopReason::PressureLimit));
             CHECK_FALSE(outcome.Discarded);
         }
     }
@@ -1395,14 +1397,14 @@ TEST_CASE("Run end is reported", "[budget][accounting]")
     SECTION("zero generations")
     {
         sc.Generations = 0;
-        CHECK(Run(sc).End == RunEnd::GenerationLimit);
+        CHECK(Has(Run(sc), StopReason::GenerationLimit));
     }
 
     SECTION("initialization alone spends the budget")
     {
         sc.Budget = sc.Population;
         auto const outcome = Run(sc);
-        CHECK(outcome.End == RunEnd::BudgetSpent);
+        CHECK(Has(outcome, StopReason::EvaluationLimit));
         CHECK(outcome.GenerationsCommitted == 0);
         CHECK_FALSE(outcome.Discarded);
     }
@@ -1411,7 +1413,7 @@ TEST_CASE("Run end is reported", "[budget][accounting]")
     {
         sc.Budget = 2 * sc.Population - 1;
         auto const outcome = Run(sc);
-        CHECK(outcome.End == RunEnd::ResourceLimit);
+        CHECK(Has(outcome, StopReason::EvaluationLimit));
         CHECK(outcome.Discarded);
     }
 
@@ -1419,7 +1421,7 @@ TEST_CASE("Run end is reported", "[budget][accounting]")
     {
         Fixture f { Poly10(), sc };
         f.With(f.Config(), [&](auto& algo) {
-            CHECK(algo.BudgetReport().End == RunEnd::None);
+            CHECK(algo.StopReasons() == 0); // nothing is recorded before Run()
             return 0;
         });
     }
@@ -1655,20 +1657,19 @@ TEST_CASE("Attempt cap: os with a cache cannot retry for ever on rejected cache 
     auto const check = [&](auto& algo, OffspringSelectionGenerator const& generator) {
         Operon::RandomGenerator rng { config.Seed };
         algo.Run(rng, nullptr, threads);
-        auto const& accounting = algo.BudgetReport();
-        CHECK(accounting.End != RunEnd::TimeLimit); // a regression runs into the time limit
-        CHECK(accounting.End != RunEnd::StopRequested);
+        auto const reasons = algo.TerminationReasons();
+        CHECK_FALSE(Contains(reasons, StopReason::TimeLimit)); // a regression runs into the time limit
+        CHECK_FALSE(algo.StopRequested());
         REQUIRE(generator.Cache() != nullptr);
         CHECK(algo.DetailedStats().CacheHits.value_or(0) > 0); // non-vacuous: the candidates were cache hits
         if (worstFemale) {
             // every candidate is rejected: the cap, counted in attempts, discards the first generation
             auto const cap = pressure * population;
             CHECK(algo.Generation() == 0);
-            CHECK(accounting.End == RunEnd::ResourceLimit);
+            CHECK(Contains(reasons, StopReason::PressureLimit));
             REQUIRE(algo.IncompleteGeneration().has_value());
             auto const& progress = *algo.IncompleteGeneration();
-            CHECK(progress.Reason == DiscardReason::ResourceLimit);
-            CHECK(progress.AttemptCapExceeded);
+            CHECK_FALSE(Contains(reasons, StopReason::EvaluationLimit));
             CHECK(progress.Completed < progress.PoolSize);
             CHECK(progress.Attempted > cap);
             CHECK(progress.Attempted <= cap + threads);

@@ -10,6 +10,7 @@
 #include "operon/operators/generator.hpp"
 #include "stoppable.hpp"
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <operon/operon_export.hpp>
@@ -53,46 +54,18 @@ struct EvaluationStats {
     [[nodiscard]] constexpr auto operator==(EvaluationStats const&) const -> bool = default;
 };
 
-// Why a generation attempt was not committed. `None` is the neutral value of a default-constructed
-// OffspringProgress. ResourceLimit means the generation went over the evaluation budget and/or over the generator's
-// attempt cap; the decision itself is deterministic (the same committed state gives the same decision at every
-// thread count) but which of the two limits the *executed* work was seen to exceed is not when both are finite, see
-// OffspringProgress. TimeLimit and StopRequested are asynchronous and are reported only if no resource limit was
-// observed; StopRequested takes precedence over TimeLimit.
-enum class DiscardReason : std::uint8_t {
-    None,
-    ResourceLimit, // the generation spent more than the budget has left and/or made more attempts than the cap
-    TimeLimit, // the time limit expired before the offspring pool was filled
-    StopRequested, // RequestStop() (or the report callback) ended the generation before the pool was filled
-};
-
 // A generation attempt that was not committed (informational: it describes the work executed before the workers
-// stopped, which can depend on the thread count). Attempted, Completed, BudgetExceeded and AttemptCapExceeded are
-// thread-count dependent in general. BudgetExceeded / AttemptCapExceeded say which limit the executed work was
-// observed to exceed: they are deterministic when only one of the two limits is finite (finite = a budget below
-// unlimited, a generator with MaxAttempts()), because the workers then stop on that limit alone; when both are
-// finite, work that was in flight when the first one tripped may or may not have tripped the other, so the flags
-// depend on the thread count. Reason is still ResourceLimit then.
+// stopped, which can depend on the thread count). A generation is not committed when its pool was not filled (the
+// time limit or a stop request cut it short), or when it spent more than the budget has left or made more attempts
+// than the generator's cap (the pool may be full then). Why is in GeneticAlgorithmBase::StopReasons(): the limits
+// the generation was observed to exceed are recorded there as EvaluationLimit / PressureLimit, and a time limit or a
+// stop request as TimeLimit / Callback / Signal / EngineError. The decision to discard is deterministic; which of
+// the two resource limits the executed work was seen to exceed is not when both are finite (work in flight when the
+// first tripped may or may not have tripped the other).
 struct OffspringProgress {
     size_t Attempted { 0 }; // offspring-generator invocations (accepted and rejected)
     size_t Completed { 0 }; // pool slots filled
     size_t PoolSize { 0 }; // pool slots to fill
-    DiscardReason Reason { DiscardReason::None };
-    bool BudgetExceeded { false }; // the executed work spent more than the budget had left
-    bool AttemptCapExceeded { false }; // the executed work made more attempts than the generator's cap
-};
-
-// Why the last Run() ended. Deterministic (the same at every thread count) except for TimeLimit and StopRequested.
-// If several conditions hold at once, the first of this list is reported (ResourceLimit and AttemptCap are recorded
-// when they occur, so they come before the loop-condition checks).
-enum class RunEnd : std::uint8_t {
-    None, // no Run() yet, or it is still running
-    ResourceLimit, // a generation was discarded for budget and/or attempt cap (IncompleteGeneration() is set)
-    AttemptCap, // a committed generation made more attempts than the cap and ended the run (nothing discarded)
-    GenerationLimit, // Generation() reached GeneticAlgorithmConfig::Generations
-    BudgetSpent, // committed work reached a positive budget (initialization alone may also do so)
-    StopRequested, // RequestStop(), or the report callback returned true
-    TimeLimit, // GeneticAlgorithmConfig::TimeLimit expired
 };
 
 // Budget accounting of the last Run(), in the units of the evaluation budget (residual + Jacobian evaluations, see
@@ -111,7 +84,6 @@ struct BudgetAccounting {
     std::uint64_t EvaluationsExecuted { 0 }; // everything counted since Run() started (scoring + optimizer)
     std::uint64_t EvaluationsDiscarded { 0 }; // spent by the generation attempts that were discarded
     std::uint64_t BudgetOvershoot { 0 }; // max(0, committed - budget): only initialization can overshoot
-    RunEnd End { RunEnd::None }; // why Run() ended; None while it is running
 
     [[nodiscard]] constexpr auto operator==(BudgetAccounting const&) const -> bool = default;
 };
@@ -264,12 +236,12 @@ public:
     // pool was full is discarded and not counted, so this is Generation().
     [[nodiscard]] auto GenerationsCompleted() const -> std::size_t { return generation_; }
 
-    // Every stop condition that holds in the current state, derived from what the run recorded: the generation limit;
-    // the evaluation budget (committed work reached a positive budget, or a generation was discarded for spending
-    // more than the budget had left); selection pressure (a generation was discarded for exceeding the generator's
-    // attempt cap, or a committed generation crossed it and ended the run, see BudgetReport().End); and the time
-    // limit. Exact between generations and after Run() returned. Does not record anything. The engine never
-    // reports StopReason::GeneratorTermination (no generator takes part in the stop decision).
+    // The stop conditions that follow from the committed state and the clock: the generation limit; the evaluation
+    // budget (committed work reached a positive budget); and the time limit. The limits a generation exceeds
+    // (EvaluationLimit, PressureLimit) are not derived here: the driver records them in StopReasons() when it
+    // discards that generation or when a committed one crosses the attempt cap. Exact between generations and after
+    // Run() returned. Does not record anything. The engine never reports StopReason::GeneratorTermination (no
+    // generator takes part in the stop decision).
     [[nodiscard]] auto StopConditions(double elapsed) const -> StopMask
     {
         StopMask mask {};
@@ -277,14 +249,9 @@ public:
             mask |= MaskOf(StopReason::GenerationLimit);
         }
         auto const& budget = budgetReport_;
-        auto const spent = budget.EvaluationsCommitted > budget.Budget
-            || (budget.EvaluationsCommitted == budget.Budget && budget.Budget != 0);
-        auto const discarded = incompleteGeneration_ && incompleteGeneration_->Reason == DiscardReason::ResourceLimit;
-        if (spent || (discarded && incompleteGeneration_->BudgetExceeded)) {
+        if (budget.EvaluationsCommitted > budget.Budget
+            || (budget.EvaluationsCommitted == budget.Budget && budget.Budget != 0)) {
             mask |= MaskOf(StopReason::EvaluationLimit);
-        }
-        if (budget.End == RunEnd::AttemptCap || (discarded && incompleteGeneration_->AttemptCapExceeded)) {
-            mask |= MaskOf(StopReason::PressureLimit);
         }
         if (elapsed > static_cast<double>(config_.TimeLimit)) {
             mask |= MaskOf(StopReason::TimeLimit);
@@ -338,19 +305,19 @@ public:
 
     // Budget accounting of the last Run() (see BudgetAccounting). All zero before the first Run(). Not to be confused
     // with Accounting(), the run's coefficient-optimizer accounting: this one reports committed, discarded and
-    // executed work in units of the evaluation budget (scoring plus optimizer work) and why the run ended.
+    // executed work in units of the evaluation budget (scoring plus optimizer work).
     [[nodiscard]] auto BudgetReport() const -> BudgetAccounting const& { return budgetReport_; }
     auto SetBudgetReport(BudgetAccounting const& report) -> void { budgetReport_ = report; }
 
-    // Progress of the last generation attempt that was not committed, with the reason; nullopt if the last attempted
-    // generation was committed. A generation is not committed if its offspring pool was not completely filled (time
-    // limit or stop request), if it spent more than the budget has left, or if it made more attempts than the
-    // generator allows (OffspringGeneratorBase::MaxAttempts()); in the last two cases the pool may be full
-    // (Completed == PoolSize). Such a generation is neither reinserted, counted in Generation(), nor reported:
-    // Parents() holds the last committed generation and the worker RNG states are those it had when the discarded
-    // generation started. The counts and flags describe the work executed before the workers stopped and may depend
-    // on the thread count (see OffspringProgress, DiscardReason). A run that a committed generation ended by crossing
-    // the attempt cap leaves this empty: see BudgetReport().End.
+    // Progress of the last generation attempt that was not committed; nullopt if the last attempted generation was
+    // committed. A generation is not committed if its offspring pool was not completely filled (time limit or stop
+    // request), if it spent more than the budget has left, or if it made more attempts than the generator allows
+    // (OffspringGeneratorBase::MaxAttempts()); in the last two cases the pool may be full (Completed == PoolSize).
+    // Such a generation is neither reinserted, counted in Generation(), nor reported: Parents() holds the last
+    // committed generation and the worker RNG states are those it had when the discarded generation started. The
+    // counts describe the work executed before the workers stopped and may depend on the thread count. The reason is
+    // in StopReasons(). A run that a committed generation ended by crossing the attempt cap leaves this empty; it
+    // records PressureLimit.
     [[nodiscard]] auto IncompleteGeneration() const -> std::optional<OffspringProgress> const&
     {
         return incompleteGeneration_;
@@ -403,6 +370,38 @@ protected:
         if (completed) {
             progress_.Completed.fetch_add(1, std::memory_order_relaxed);
         }
+    }
+
+    using Clock = std::chrono::steady_clock;
+    [[nodiscard]] static auto SecondsSince(Clock::time_point start) -> double
+    {
+        return std::chrono::duration<double>(Clock::now() - start).count();
+    }
+
+    // Polled concurrently by the offspring-generation workers: true once a stop was requested or the time limit has
+    // elapsed (recorded as StopReason::TimeLimit). Writes only the atomic stop mask. A generation these cut short is
+    // discarded. The evaluation budget and the attempt cap are decided per generation by the ledger, the generation
+    // limit by EndOfIteration().
+    [[nodiscard]] auto PollStop(Clock::time_point start) -> bool
+    {
+        if (StopRequested()) {
+            return true;
+        }
+        if (SecondsSince(start) > static_cast<double>(config_.TimeLimit)) {
+            RecordStop(MaskOf(StopReason::TimeLimit));
+            return true;
+        }
+        return false;
+    }
+
+    // The loop condition of a driver's main loop, called from a single task between generations: publishes
+    // Elapsed(), records every stop condition that holds, and returns true when the run has to end, i.e. when any
+    // stop reason is recorded (including the limits that the generation just run recorded).
+    [[nodiscard]] auto EndOfIteration(Clock::time_point start) -> bool
+    {
+        elapsed_ = SecondsSince(start);
+        RecordStop(StopConditions(elapsed_));
+        return StopReasons() != 0;
     }
 
 private:

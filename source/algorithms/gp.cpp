@@ -63,12 +63,7 @@ auto GeneticProgrammingAlgorithm::Run(
     const auto& reinserter = GetReinserter();
     const auto& problem = GetProblem();
 
-    auto t0 = std::chrono::steady_clock::now();
-    auto computeElapsed = [t0]() -> double {
-        auto t1 = std::chrono::steady_clock::now();
-        constexpr double ms { 1e3 };
-        return static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count()) / ms;
-    };
+    auto const t0 = Clock::now();
 
     // Reuse worker RNG states on warm resume.
     size_t const s = std::max(config.PopulationSize, config.PoolSize);
@@ -94,57 +89,13 @@ auto GeneticProgrammingAlgorithm::Run(
     // The budget is a limit on committed work (see BudgetLedger). Initialization always commits.
     detail::BudgetLedger ledger { evaluator, &accounting, config.Evaluations };
     ledger.Begin();
-    // Set by the task that ends the run from inside a generation: a discard (for a resource limit, a stop request or
-    // the time limit) or a committed generation that crossed the attempt cap. A resource-limit discard ends
-    // the run without a (public) stop request.
-    RunEnd ledgerEnd = RunEnd::None;
     bool generationCommitted = false; // outcome of the current generation attempt
 
-    // stop() is polled concurrently by offspring-generation workers and must
-    // not write shared state other than the atomic stop mask. It holds the two asynchronous stop conditions: a stop
-    // request and the time limit (recorded as StopReason::TimeLimit when a worker observes it).
-    // A generation they cut short is discarded; they are not part of the determinism guarantee. The evaluation
-    // budget, the attempt cap and the generation limit are not polled here: the first two are decided per
-    // generation by the ledger, the generation limit at the loop condition. Elapsed() is published only from
-    // single-task contexts (the loop condition and the report task), which the taskflow graph orders against every
-    // reader.
-    auto stop = [&]() -> bool {
-        if (StopRequested()) {
-            return true;
-        }
-        if (computeElapsed() > static_cast<double>(config.TimeLimit)) {
-            RecordStop(MaskOf(StopReason::TimeLimit));
-            return true;
-        }
-        return false;
-    };
-    // Why the run ends, in the order documented at RunEnd; None to go on.
-    auto decideEnd = [&](double elapsed) -> RunEnd {
-        if (ledgerEnd != RunEnd::None) {
-            return ledgerEnd;
-        }
-        if (Generation() >= config.Generations) {
-            return RunEnd::GenerationLimit;
-        }
-        if (ledger.Exhausted()) {
-            return RunEnd::BudgetSpent;
-        }
-        if (StopRequested()) {
-            return RunEnd::StopRequested;
-        }
-        return elapsed > static_cast<double>(config.TimeLimit) ? RunEnd::TimeLimit : RunEnd::None;
-    };
-    auto loopCondition = [&]() -> bool {
-        Elapsed() = computeElapsed();
-        auto const end = decideEnd(Elapsed());
-        if (end != RunEnd::None) {
-            ledger.SetEnd(end);
-            // The stop reasons are derived from the budget report (its End, the budget, the discarded generation).
-            SetBudgetReport(ledger.Report());
-            RecordStop(StopConditions(Elapsed()));
-        }
-        return end != RunEnd::None;
-    };
+    // The workers poll PollStop(); the loop ends when EndOfIteration() finds a recorded stop reason (see
+    // GeneticAlgorithmBase). The limits a generation exceeds are recorded by the reinsert task below. Elapsed() is
+    // published only from single-task contexts (the loop condition and the report task), which the taskflow graph
+    // orders against every reader.
+    auto loopCondition = [&]() -> bool { return EndOfIteration(t0); };
 
     auto parents = Parents();
     auto offspring = Offspring();
@@ -314,7 +265,7 @@ auto GeneticProgrammingAlgorithm::Run(
                               // Workers stop starting attempts once the generation has already spent more than
                               // the budget has left (or made more attempts than the cap): the counters only
                               // grow, so this fires only for a generation that could not commit anyway.
-                              while (!stop() && !ledger.Exceeded()) {
+                              while (!PollStop(t0) && !ledger.Exceeded()) {
                                   ++attempts;
                                   auto result
                                       = (*generator)(rngs[i], config.CrossoverProbability, config.MutationProbability,
@@ -337,13 +288,10 @@ auto GeneticProgrammingAlgorithm::Run(
             auto reinsert = subflow
                                 .emplace([&]() -> void {
                                     auto const poolProgress = Progress();
-                                    auto const generated = poolProgress.Completed;
-                                    auto const full = generated == offspring.size();
-                                    auto const exceeded = ledger.Exceeded();
-                                    if (!full || exceeded) {
-                                        auto const progress = ledger.Progress(
-                                            poolProgress.Attempted, generated, offspring.size(), StopRequested());
-                                        SetIncompleteGeneration(progress);
+                                    auto const full = poolProgress.Completed == offspring.size();
+                                    auto const limits = ledger.Limits();
+                                    if (!full || limits != 0) {
+                                        SetIncompleteGeneration(poolProgress);
                                         ledger.DiscardGeneration();
                                         // The offspring workers have finished. Their cache entries belong to a
                                         // generation that does not exist: drop them so a retry cannot see them
@@ -353,16 +301,10 @@ auto GeneticProgrammingAlgorithm::Run(
                                         }
                                         openGenerationCache = nullptr;
                                         rngs = generationRngs;
-                                        if (exceeded) {
-                                            ledgerEnd = RunEnd::ResourceLimit;
-                                        } else {
-                                            // cut short by a stop request or the time limit; both are already recorded
-                                            // in the stop mask (RequestStop(), or the worker that saw the limit), so no
-                                            // request is made here: StopRequested() stays false for a time-limit cut
-                                            ledgerEnd = progress.Reason == DiscardReason::StopRequested
-                                                ? RunEnd::StopRequested
-                                                : RunEnd::TimeLimit;
-                                        }
+                                        // A resource limit ends the run without a (public) stop request. A cut by a
+                                        // stop request or the time limit is already recorded in the stop reasons
+                                        // (RequestStop(), or the worker that saw the limit).
+                                        RecordStop(limits);
                                         return;
                                     }
                                     ledger.CommitGeneration();
@@ -371,7 +313,7 @@ auto GeneticProgrammingAlgorithm::Run(
                                     // crossed it) ends the run after it is reported, like the selection-pressure stop
                                     // did.
                                     if (ledger.AttemptCapReached()) {
-                                        ledgerEnd = RunEnd::AttemptCap;
+                                        RecordStop(MaskOf(StopReason::PressureLimit));
                                     }
                                     (*reinserter)(random, Parents(), offspring);
                                 })
@@ -389,7 +331,7 @@ auto GeneticProgrammingAlgorithm::Run(
             auto reportProgress = subflow
                                       .emplace([&, timer]() -> void {
                                           // Include discarded work in telemetry, but skip its report.
-                                          Elapsed() = computeElapsed();
+                                          Elapsed() = SecondsSince(t0);
                                           Timings() = timer->Timings();
                                           if (!generationCommitted) {
                                               return;
