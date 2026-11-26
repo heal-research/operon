@@ -443,6 +443,11 @@ TEST_CASE("generation records count offspring-selection attempts as the algorith
     CAPTURE(cached);
     RecordingFixture f("os-attempts");
     f.Config.Generations = 3;
+    // The only mutator is one-point, which moves coefficients and never the structure, and there is no crossover: every
+    // offspring has the structure of a parent, so a cache holding the parents' structures hits by construction, not
+    // by the random sequence of the standard library.
+    f.Config.CrossoverProbability = 0.0;
+    f.Config.MutationProbability = 1.0;
     Operon::RandomGenerator cacheRng { 1 };
     Operon::Zobrist cache { cacheRng, 20, f.Problem.GetInputs(), // the crossover's maximum tree length
         ZobristOptions { .MaxAge = 0, .Visibility = CacheVisibility::Committed } };
@@ -451,6 +456,7 @@ TEST_CASE("generation records count offspring-selection attempts as the algorith
     }
     f.Gp = f.MakeGp(&f.OffspringSelection);
     f.Options.SegmentGenerations = 100;
+    f.Options.Generator = "os"; // the records say which generator produced them (selection.applicable follows it)
     GenerationRecorder recorder(f.Options);
 
     std::vector<std::size_t> attempts; // Progress().Attempted at each report, generation 0 first
