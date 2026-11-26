@@ -312,13 +312,6 @@ public:
             detail::SaturatingAdd(jacobian, structuralJacobian), calls };
     }
 
-    // Scoring work only (see EvaluatorBase::BudgetExhausted).
-    auto BudgetExhausted() const -> bool override
-    {
-        auto const [residual, jacobian, calls] = Stats();
-        return detail::SaturatingAdd(residual, jacobian) >= this->Budget();
-    }
-
 protected:
     void ResetChildren() const override
     {

@@ -778,18 +778,12 @@ TEST_CASE("The adapter aggregates its structural objectives' accounting", "[shap
     auto buf = fx.Buffer();
     auto const holder = fx.MakeGate(IncreasingInX1(), Policy(E::HardReject), { length.get() });
     auto& gate = *holder;
-    gate.SetBudget(3);
-
-    CHECK_FALSE(gate.BudgetExhausted());
     static_cast<void>(gate(fx.rng, ind, buf));
     static_cast<void>(gate(fx.rng, ind, buf));
     auto const [residual, jacobian, calls] = gate.Stats();
     CHECK(residual == 2);
     CHECK(jacobian == 0);
     CHECK(calls == 2);
-    CHECK_FALSE(gate.BudgetExhausted());
-    static_cast<void>(gate(fx.rng, ind, buf));
-    CHECK(gate.BudgetExhausted());
 }
 
 TEST_CASE("The adapter's scoring stats and Reset cover its structural objectives", "[shape-adapter][stats]")

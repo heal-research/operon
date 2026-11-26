@@ -339,12 +339,6 @@ TEST_CASE("MultiEvaluator aggregates its children's scoring work, never optimize
     CHECK(calls == 1); // the composite's own calls
     CHECK(fix.Accounting.Snapshot().Residual == FunctionEvaluationsPerSearch);
     CHECK(fix.Accounting.Snapshot().Jacobian == JacobianEvaluationsPerSearch);
-
-    // The composite's own budget check is scoring-only: children's scoring plus its own.
-    multi.SetBudget(2);
-    CHECK(multi.BudgetExhausted());
-    multi.SetBudget(3);
-    CHECK_FALSE(multi.BudgetExhausted());
 }
 
 TEST_CASE("MultiEvaluator::Reset zeroes every child, however deeply nested", "[evaluator][stats]")
@@ -377,9 +371,9 @@ TEST_CASE("A child added twice to a MultiEvaluator is counted once per slot, in 
 {
     StatsFixture fix;
     Evaluator<DTable> const mse { &fix.Problem, &fix.Dtable, MSE {} };
-    // MultiEvaluator::Add does not reject duplicates, and neither Stats() nor BudgetExhausted() deduplicates: every
-    // slot contributes the child's own counters. The child runs once per slot, so a shared child is counted
-    // (slots x its own work) times by the composite.
+    // MultiEvaluator::Add does not reject duplicates, and Stats() does not deduplicate: every slot contributes the
+    // child's own counters. The child runs once per slot, so a shared child is counted (slots x its own work) times
+    // by the composite.
     MultiEvaluator inner { &fix.Problem };
     inner.Add(&mse);
     MultiEvaluator multi { &fix.Problem };
@@ -395,12 +389,6 @@ TEST_CASE("A child added twice to a MultiEvaluator is counted once per slot, in 
     CHECK(jacobian == 0);
     CHECK(calls == 1);
     CHECK(fix.Accounting.Snapshot().Residual == FunctionEvaluationsPerSearch); // recorded once, not per slot
-
-    // The budget consumes exactly what Stats() reports.
-    multi.SetBudget(residual + jacobian);
-    CHECK(multi.BudgetExhausted());
-    multi.SetBudget(residual + jacobian + 1);
-    CHECK_FALSE(multi.BudgetExhausted());
 
     multi.Reset();
     CHECK(multi.Stats() == ScoringStats { 0, 0, 0 });
@@ -433,31 +421,6 @@ TEST_CASE("Scoring counters stay exact under concurrent scoring and recording", 
     auto const work = fix.Accounting.Snapshot();
     CHECK(work.Residual == n * FunctionEvaluationsPerSearch);
     CHECK(work.Jacobian == n * JacobianEvaluationsPerSearch);
-}
-
-TEST_CASE("The evaluator's budget check is scoring-only; the run's stop condition adds the optimizer work",
-    "[evaluator][stats]")
-{
-    AlgorithmFixture fix;
-    Evaluator<DTable> evaluator { &fix.Problem, &fix.Dtable, MSE {} };
-    Operon::BasicOffspringGenerator generator { &evaluator, &fix.Crossover, &fix.Mutator, &fix.FemSel, &fix.MaleSel,
-        &fix.CoeffOptimizer };
-    auto ind = fix.MakeIndividual("X1 + 0.5");
-    fix.ScoreWithLocalSearch(evaluator, ind);
-    constexpr std::size_t consumed = CostPerCandidate;
-
-    evaluator.SetBudget(consumed + 1);
-    CHECK_FALSE(generator.Terminate(fix.Accounting));
-    evaluator.SetBudget(consumed);
-    CHECK(generator.Terminate(fix.Accounting));
-
-    // Without the run's accounting the same evaluator has only scored once.
-    Operon::OptimizerAccounting empty;
-    CHECK_FALSE(generator.Terminate(empty));
-    CHECK_FALSE(evaluator.BudgetExhausted()); // scoring work alone: 1 < 6
-    evaluator.SetBudget(1);
-    CHECK(evaluator.BudgetExhausted());
-    CHECK(generator.Terminate(empty));
 }
 
 // ---- OptimizerAccounting ------------------------------------------------------------------------------------------

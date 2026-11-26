@@ -74,7 +74,6 @@ TEST_CASE("JIT compile time distribution", "[performance][jit][breakeven]")
     Operon::RandomGenerator zrng(42); // NOLINT(cert-msc51-cpp)
     Operon::JIT::JitZobrist zobrist(zrng, MAX_SIZE, inputs);
     Operon::JIT::JitEvaluator jitEval(&problem, &zobrist, Operon::MSE {});
-    jitEval.SetBudget(std::numeric_limits<std::size_t>::max());
 
     Operon::BalancedTreeCreator creator(&problem.GetPrimitiveSet(), inputs, 0.0, MAX_SIZE);
     Operon::RandomGenerator treeRng(123); // NOLINT(cert-msc51-cpp)
@@ -139,7 +138,6 @@ TEST_CASE("JIT vs interpreter break-even", "[performance][jit][breakeven]")
 #ifdef HAVE_ASMJIT
     Operon::JIT::JitZobrist zobrist(zrng, MAX_SIZE, inputs);
     Operon::JIT::JitEvaluator jitEval(&problem, &zobrist, Operon::MSE {});
-    jitEval.SetBudget(std::numeric_limits<std::size_t>::max());
 #endif
 
     nb::Bench bench;
@@ -247,7 +245,6 @@ TEST_CASE("JIT vs interpreter Jacobian break-even", "[performance][jit][breakeve
     auto const nRowsPadMax = static_cast<std::size_t>((static_cast<unsigned>(MAX_ROWS) + 7U) & ~7U);
 
     Operon::JIT::JitEvaluator jitEval(&problem, &zobrist, Operon::MSE {});
-    jitEval.SetBudget(std::numeric_limits<std::size_t>::max());
 
     nb::Bench bench;
     bench.title("jac-breakeven").batch(1);

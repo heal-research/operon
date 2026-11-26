@@ -268,9 +268,8 @@ public:
     // the evaluation budget (committed work reached a positive budget, or a generation was discarded for spending
     // more than the budget had left); selection pressure (a generation was discarded for exceeding the generator's
     // attempt cap, or a committed generation crossed it and ended the run, see BudgetReport().End); and the time
-    // limit. Exact between generations and after Run() returned. Does not record anything. A custom generator's
-    // Terminate() is deprecated and not consulted (see OffspringGeneratorBase::Terminate()), so the engine never
-    // reports StopReason::GeneratorTermination.
+    // limit. Exact between generations and after Run() returned. Does not record anything. The engine never
+    // reports StopReason::GeneratorTermination (no generator takes part in the stop decision).
     [[nodiscard]] auto StopConditions(double elapsed) const -> StopMask
     {
         StopMask mask {};

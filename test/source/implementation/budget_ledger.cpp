@@ -81,7 +81,6 @@ namespace {
         std::size_t SaturateOnPrepare {
             0
         }; // the evaluator's n-th Prepare() (1-based) saturates its counters; 0 = never
-        bool Terminate { false }; // capped: the deprecated Terminate() always reports true
         std::size_t Threads { 1 };
         std::uint64_t Seed { 4242 };
     };
@@ -155,13 +154,7 @@ namespace {
         using OffspringGeneratorBase::OffspringGeneratorBase;
 
         std::optional<std::size_t> Cap;
-        bool TerminateAlways { false }; // what the deprecated Terminate() reports
         mutable std::atomic<std::uint64_t> Invocations { 0 }; // every call of operator(), whatever the outcome
-
-        [[nodiscard]] auto Terminate(OptimizerAccounting const& /*accounting*/) const -> bool override
-        {
-            return TerminateAlways;
-        }
 
         [[nodiscard]] auto MaxAttempts(std::size_t /*parents*/) const -> std::optional<std::size_t> override
         {
@@ -348,7 +341,6 @@ namespace {
                 auto g = std::make_unique<CappedGenerator>(
                     eval, crossover_.get(), &mutator_, fem_.get(), male_.get(), opt);
                 g->Cap = sc.Cap;
-                g->TerminateAlways = sc.Terminate;
                 return g;
             }
             auto g = std::make_unique<PolygenicOffspringGenerator>(
@@ -1464,8 +1456,6 @@ TEST_CASE("MultiEvaluator::Stats() aggregates in 64 bit and saturates", "[budget
     std::tie(residual, jacobian) = sum();
     CHECK(residual == kSaturated);
     CHECK(multi.TotalEvaluations() == 5); // the composite's own counters only
-    multi.SetBudget(100);
-    CHECK(multi.BudgetExhausted());
     childB.ResidualEvaluations = 0;
     multi.ResidualEvaluations = 11; // the composite's own counter is added with saturation as well
     std::tie(residual, jacobian) = sum();
@@ -1529,32 +1519,6 @@ TEST_CASE("The attempt-cap sum saturates", "[budget][accounting]")
     ledger.BeginGeneration(std::nullopt);
     ledger.AddAttempt(false, true);
     CHECK_FALSE(ledger.AttemptCapExceeded());
-}
-
-TEST_CASE("The algorithms no longer consult Terminate() or the evaluator's own budget", "[budget][config]")
-{
-    Scenario sc;
-    sc.Algo = GENERATE(Algorithm::GP, Algorithm::NSGA2);
-    sc.Generator = "capped";
-    sc.Terminate = true;
-    sc.Generations = 3;
-    sc.Population = 16;
-    sc.Pool = 16;
-    CAPTURE(Label(sc));
-
-    Fixture f { Poly10(), sc };
-    OptimizerAccounting accounting;
-    REQUIRE(f.Generator().Terminate(accounting));
-    f.ActiveEvaluator().SetBudget(0); // telemetry only: it would stop every run at once
-    REQUIRE(f.ActiveEvaluator().BudgetExhausted());
-    f.With(f.Config(), [&](auto& algo) {
-        Operon::RandomGenerator random { sc.Seed };
-        algo.Run(random, nullptr, 2);
-        CHECK(algo.Generation() == 3);
-        CHECK(algo.BudgetReport().GenerationsCommitted == 3);
-        CHECK_FALSE(algo.IncompleteGeneration().has_value());
-        return 0;
-    });
 }
 
 TEST_CASE("OffspringSelectionGenerator::MaxAttempts is the selection pressure times the parents", "[budget][os]")

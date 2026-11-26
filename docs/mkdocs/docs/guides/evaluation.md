@@ -100,8 +100,7 @@ The unit of the evaluation budget is scoring plus optimizer work, but what ends 
 `GeneticAlgorithmConfig::Evaluations`, applied by the algorithm to committed work (see
 [Evaluation budget and commit rule](../reference/search.md#evaluation-budget-and-commit-rule)). The algorithm sums the
 cost of a generation from the evaluator tree's `Stats()` and the run's optimizer accounting after its workers finish.
-The evaluator's own `Budget()`/`BudgetExhausted()` and `TotalEvaluations()` see scoring work only and are telemetry,
-as is the deprecated `OffspringGeneratorBase::Terminate(OptimizerAccounting const&)`: none of them stops a run. What a
+The evaluator's own `TotalEvaluations()` sees scoring work only and is telemetry: it does not stop a run. What a
 slot costs must be a function of the slot alone: a custom evaluator has to charge the base counters
 deterministically (not depending on other slots or on arrival order), and an evaluator or cache whose cost depends on
 what another slot did in the same generation (a transposition cache with `CacheVisibility::Immediate`, JIT compilation

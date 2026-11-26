@@ -595,7 +595,6 @@ TEST_CASE("Zobrist hash is structural: constant values do not affect the hash", 
 
         problem.SetLinearScalingEnabled(false);
         JIT::JitEvaluator jitEval(&problem, &zobrist, MSE {});
-        jitEval.SetBudget(std::numeric_limits<std::size_t>::max());
 
         auto tree1 = InfixParser::ParseOrThrow("X1 + 1.0", ds);
         auto tree2 = InfixParser::ParseOrThrow("X1 + 1.0", ds);

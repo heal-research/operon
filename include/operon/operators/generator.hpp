@@ -58,20 +58,6 @@ public:
         Evaluator()->Prepare(pop);
     }
 
-    // DEPRECATED. GeneticProgrammingAlgorithm and NSGA2 no longer call Terminate(): the evaluation budget is
-    // GeneticAlgorithmConfig::Evaluations, enforced by the algorithm on committed work, and the offspring-selection
-    // pressure limit is MaxAttempts(). An override (in C++ or in a binding) is not consulted any more. The virtual is
-    // kept so that existing subclasses and bindings still compile; it still reports whether the evaluation budget of
-    // the evaluator -- its scoring evaluations (EvaluatorBase::Stats()) plus the optimizer evaluations recorded in
-    // `accounting` -- has been consumed.
-    [[nodiscard]] virtual auto Terminate(OptimizerAccounting const& accounting) const -> bool
-    {
-        auto const [residual, jacobian, calls] = evaluator_->Stats();
-        auto const scoring
-            = detail::SaturatingAdd(static_cast<std::uint64_t>(residual), static_cast<std::uint64_t>(jacobian));
-        return detail::SaturatingAdd(scoring, accounting.Evaluations()) >= evaluator_->Budget();
-    }
-
     // Largest number of attempts that one generation may make, given the number of parents; nullopt means no limit.
     // One attempt is one invocation of the generator (operator()) for a pool slot: a candidate is generated, evaluated
     // or taken from the transposition cache, and accepted or rejected. The algorithm counts the attempts of every pool

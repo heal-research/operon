@@ -39,9 +39,9 @@ with an atomic `fetch_or`, so concurrent worker polls are safe. `StopReasons()` 
 `TerminationReasons()` adds final-state conditions, and `PrimaryStopReason()` uses `engine_error`, `signal`,
 `callback`, `generator_termination`, `evaluation_limit`, `pressure_limit`, `generation_limit`, `time_limit`.
 `RequestStop(source)` takes `Callback`, `Signal` or `EngineError`; `StopRequested()` is true only for external
-requests (a generation cut short by the time limit does not request a stop). `OffspringGeneratorBase::Terminate()` is
-deprecated and not consulted by the drivers, so the engine never records `GeneratorTermination` (the value remains
-for producers that map their own termination onto it).
+requests (a generation cut short by the time limit does not request a stop). No generator takes part in the stop
+decision, so the engine never records `GeneratorTermination` (the value remains in the record schema so that records
+written by earlier versions still validate).
 
 `operon_gp` and `operon_nsgp` write these, with the final counters read after `Run()` returns (the evaluation limit
 is `GeneticAlgorithmConfig::Evaluations`) and
