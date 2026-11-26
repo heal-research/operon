@@ -230,42 +230,6 @@ public:
     void ComparisonFactor(double value) { comparisonFactor_ = value; }
     auto ComparisonFactor() const -> double { return comparisonFactor_; }
 
-    void Prepare(const Operon::Span<const Individual> pop) const override
-    {
-        OffspringGeneratorBase::Prepare(pop);
-        lastEvaluations_ = this->Evaluator()->CallCount;
-    }
-
-    // Telemetry (generation records): the evaluator calls (scored candidates) since the last Prepare(), i.e. in the
-    // generation that was generated last. Not the attempt count of the commit rule (see MaxAttempts()): a
-    // transposition-cache hit is an attempt without an evaluator call.
-    [[nodiscard]] auto AttemptedCandidates() const -> std::size_t
-    {
-        return this->Evaluator()->CallCount - lastEvaluations_;
-    }
-
-    // DEPRECATED, telemetry only: evaluator calls since the last Prepare(), per parent, read from the shared
-    // CallCount. The algorithms do not use it (see MaxAttempts(), which counts the attempts per pool slot; the two
-    // differ when transposition-cache hits make attempts without an evaluator call). Counts one CallCount increment
-    // per scored individual, regardless of local search, not local search's own internal residual/Jacobian
-    // evaluations.
-    auto SelectionPressure() const -> double
-    {
-        auto n = this->FemaleSelector()->Population().size();
-        if (n == 0U) {
-            return 0;
-        }
-        auto e = this->Evaluator()->CallCount - lastEvaluations_;
-        return static_cast<double>(e) / static_cast<double>(n);
-    }
-
-    // DEPRECATED, no longer consulted by the algorithms (see OffspringGeneratorBase::Terminate()).
-    auto Terminate(OptimizerAccounting const& accounting) const -> bool override
-    {
-        return OffspringGeneratorBase::Terminate(accounting)
-            || SelectionPressure() > static_cast<double>(maxSelectionPressure_);
-    };
-
     // The selection pressure of a generation is the number of attempts (candidates generated, whether evaluated or
     // taken from the transposition cache) divided by the parents, as in offspring selection genetic algorithms. The
     // generation may make at most MaxSelectionPressure() * parents attempts (saturating); see
@@ -285,7 +249,6 @@ public:
     static constexpr double DefaultComparisonFactor { 1.0 };
 
 private:
-    mutable size_t lastEvaluations_ { 0 };
     size_t maxSelectionPressure_ { DefaultMaxSelectionPressure };
     double comparisonFactor_ { 0 };
 };

@@ -380,7 +380,7 @@ auto GenerationRecorder::Capture(GeneticAlgorithmBase const& algorithm) -> void
             }
         }
         if (auto const* os = dynamic_cast<OffspringSelectionGenerator const*>(algorithm.GetGenerator())) {
-            r.AttemptedCandidates = r.Generation ? std::optional { os->AttemptedCandidates() } : std::nullopt;
+            r.AttemptedCandidates = r.Generation ? std::optional { r.Progress.Attempted } : std::nullopt;
             r.AcceptedCandidates = r.Generation ? std::optional { r.Progress.Completed } : std::nullopt;
             r.PressureDenominator = os->FemaleSelector()->Population().size();
             r.PressureMax = os->MaxSelectionPressure();

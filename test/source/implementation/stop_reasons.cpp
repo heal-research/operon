@@ -272,7 +272,7 @@ TEST_CASE("GP records why it stopped", "[stop][algorithms]")
         REQUIRE(incomplete.has_value());
         CHECK(incomplete->Completed < incomplete->PoolSize);
         CHECK(incomplete->Attempted > incomplete->Completed);
-        CHECK(fix.OffspringSelection.SelectionPressure() > 1.0);
+        CHECK(incomplete->Attempted > StopFixture::PopSize); // more than one attempt per parent
     }
 
     SECTION("time limit")

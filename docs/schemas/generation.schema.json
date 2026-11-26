@@ -91,7 +91,7 @@
           "additionalProperties": false,
           "required": ["numerator", "denominator", "value", "max"],
           "properties": {
-            "numerator": {"description": "Evaluator CallCount delta since generator Prepare().", "$ref": "common.schema.json#/$defs/uint"},
+            "numerator": {"description": "Generator invocations of the generation (offspring attempts, transposition-cache hits included); equals structure.attempted_offspring.", "$ref": "common.schema.json#/$defs/uint"},
             "denominator": {"description": "Parent population size seen by the selector.", "$ref": "common.schema.json#/$defs/uint"},
             "value": {"$ref": "common.schema.json#/$defs/number_or_null"},
             "max": {"$ref": "common.schema.json#/$defs/uint"}
