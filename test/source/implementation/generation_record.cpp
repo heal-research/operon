@@ -468,6 +468,13 @@ TEST_CASE("generation records count offspring-selection attempts as the algorith
         [&]() {
             recorder.Capture(*f.Gp);
             attempts.push_back(f.Gp->Progress().Attempted);
+            if (cached && attempts.size() == 1) {
+                // The initial population is scored without the cache. Seed it with the parents' structures: every
+                // offspring keeps a parent's structure, so every attempt of every generation is a hit by construction.
+                for (auto const& ind : f.Gp->Parents()) {
+                    cache.Insert(cache.ComputeHash(ind.Genotype), ind.Fitness);
+                }
+            }
             calls.push_back(f.Evaluator.CallCount - previousCalls);
             previousCalls = f.Evaluator.CallCount;
             recorder.Write(*f.Gp, f.Gp->Parents()[0], 0.25, 0.5, 1.0);
@@ -495,6 +502,9 @@ TEST_CASE("generation records count offspring-selection attempts as the algorith
         CHECK(candidates == number(lines[g], "\"numerator\":"));
         CHECK(candidates >= StopFixture::PoolSize); // every accepted offspring was an attempt
         CHECK(candidates >= calls[g]); // an attempt without an evaluator call is a cache hit
+        if (cached) {
+            CHECK(calls[g] == 0); // nothing but hits
+        }
         hitSeen = hitSeen || candidates > calls[g];
     }
     CHECK(hitSeen == cached); // the cache is what separates attempts from evaluator calls
