@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <filesystem>
 #include <fstream>
@@ -20,9 +21,11 @@
 #include <unistd.h>
 #endif
 
+#include "final_record.hpp"
 #include "operon/algorithms/generation_record.hpp"
 #include "operon/core/constraint.hpp"
 #include "operon/hash/model_ref.hpp"
+#include "operon/hash/zobrist.hpp"
 #include "operon/operators/shape_constrained_evaluator.hpp"
 #include "operon/parser/infix.hpp"
 #include "stop_fixture.hpp"
@@ -435,19 +438,32 @@ TEST_CASE("generation shape validity is certified under the canonical scaling tr
 
 TEST_CASE("generation records count offspring-selection attempts as the algorithm does", "[generation-record][os]")
 {
+    // With a transposition cache a hit is an attempt without an evaluator call.
+    auto const cached = GENERATE(false, true);
+    CAPTURE(cached);
     RecordingFixture f("os-attempts");
     f.Config.Generations = 3;
+    Operon::RandomGenerator cacheRng { 1 };
+    Operon::Zobrist cache { cacheRng, 20, f.Problem.GetInputs(), // the crossover's maximum tree length
+        ZobristOptions { .MaxAge = 0, .Visibility = CacheVisibility::Committed } };
+    if (cached) {
+        f.Config.Cache = &cache;
+    }
     f.Gp = f.MakeGp(&f.OffspringSelection);
     f.Options.SegmentGenerations = 100;
     GenerationRecorder recorder(f.Options);
 
     std::vector<std::size_t> attempts; // Progress().Attempted at each report, generation 0 first
+    std::vector<std::size_t> calls; // evaluator calls since the previous report
+    std::size_t previousCalls = 0;
     Operon::RandomGenerator rng { 7 };
     f.Gp->Run(
         rng,
         [&]() {
             recorder.Capture(*f.Gp);
             attempts.push_back(f.Gp->Progress().Attempted);
+            calls.push_back(f.Evaluator.CallCount - previousCalls);
+            previousCalls = f.Evaluator.CallCount;
             recorder.Write(*f.Gp, f.Gp->Parents()[0], 0.25, 0.5, 1.0);
             return false;
         },
@@ -464,6 +480,7 @@ TEST_CASE("generation records count offspring-selection attempts as the algorith
     auto const lines = Lines(f.Directory / "generation-000000.jsonl");
     REQUIRE(lines.size() == attempts.size());
     CHECK(lines[0].find("\"attempted_candidates\":null") != std::string::npos); // initialization has none
+    bool hitSeen = false;
     for (std::size_t g = 1; g < lines.size(); ++g) {
         CAPTURE(g);
         auto const candidates = number(lines[g], "\"attempted_candidates\":");
@@ -471,6 +488,13 @@ TEST_CASE("generation records count offspring-selection attempts as the algorith
         CHECK(candidates == number(lines[g], "\"attempted_offspring\":"));
         CHECK(candidates == number(lines[g], "\"numerator\":"));
         CHECK(candidates >= StopFixture::PoolSize); // every accepted offspring was an attempt
+        CHECK(candidates >= calls[g]); // an attempt without an evaluator call is a cache hit
+        hitSeen = hitSeen || candidates > calls[g];
     }
+    CHECK(hitSeen == cached); // the cache is what separates attempts from evaluator calls
+
+    auto const record = Operon::Cli::MakeFinalRecord(*f.Gp);
+    REQUIRE(record.PressureLast.has_value());
+    CHECK(*record.PressureLast == static_cast<double>(attempts.back()) / static_cast<double>(f.Gp->Parents().size()));
 }
 } // namespace Operon::Test
