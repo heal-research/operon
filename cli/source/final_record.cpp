@@ -149,7 +149,11 @@ auto MakeFinalRecord(Operon::GeneticAlgorithmBase const& algorithm) -> FinalReco
     record.ElapsedSeconds = algorithm.Elapsed();
     if (auto const* os = dynamic_cast<Operon::OffspringSelectionGenerator const*>(algorithm.GetGenerator())) {
         record.PressureMax = os->MaxSelectionPressure();
-        record.PressureLast = os->SelectionPressure();
+        // The last generation attempt's invocations of the generator per parent: the quantity MaxSelectionPressure()
+        // caps (a transposition-cache hit is an attempt).
+        if (auto const parents = algorithm.Parents().size(); parents != 0) {
+            record.PressureLast = static_cast<double>(algorithm.Progress().Attempted) / static_cast<double>(parents);
+        }
     }
     record.Stats = algorithm.DetailedStats();
     return record;

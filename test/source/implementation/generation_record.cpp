@@ -432,4 +432,45 @@ TEST_CASE("generation shape validity is certified under the canonical scaling tr
     CHECK(text.find("\"shape_feasible\":false") != std::string::npos);
     CHECK(text.find("\"shape_feasible\":true") == std::string::npos);
 }
+
+TEST_CASE("generation records count offspring-selection attempts as the algorithm does", "[generation-record][os]")
+{
+    RecordingFixture f("os-attempts");
+    f.Config.Generations = 3;
+    f.Gp = f.MakeGp(&f.OffspringSelection);
+    f.Options.SegmentGenerations = 100;
+    GenerationRecorder recorder(f.Options);
+
+    std::vector<std::size_t> attempts; // Progress().Attempted at each report, generation 0 first
+    Operon::RandomGenerator rng { 7 };
+    f.Gp->Run(
+        rng,
+        [&]() {
+            recorder.Capture(*f.Gp);
+            attempts.push_back(f.Gp->Progress().Attempted);
+            recorder.Write(*f.Gp, f.Gp->Parents()[0], 0.25, 0.5, 1.0);
+            return false;
+        },
+        /*threads=*/1);
+    recorder.Close();
+    REQUIRE(recorder.Errors() == 0);
+    REQUIRE(attempts.size() == f.Config.Generations + 1);
+
+    auto const number = [](std::string const& line, std::string const& key) {
+        auto const at = line.find(key);
+        REQUIRE(at != std::string::npos);
+        return std::stoull(line.substr(at + key.size()));
+    };
+    auto const lines = Lines(f.Directory / "generation-000000.jsonl");
+    REQUIRE(lines.size() == attempts.size());
+    CHECK(lines[0].find("\"attempted_candidates\":null") != std::string::npos); // initialization has none
+    for (std::size_t g = 1; g < lines.size(); ++g) {
+        CAPTURE(g);
+        auto const candidates = number(lines[g], "\"attempted_candidates\":");
+        CHECK(candidates == attempts[g]);
+        CHECK(candidates == number(lines[g], "\"attempted_offspring\":"));
+        CHECK(candidates == number(lines[g], "\"numerator\":"));
+        CHECK(candidates >= StopFixture::PoolSize); // every accepted offspring was an attempt
+    }
+}
 } // namespace Operon::Test

@@ -96,7 +96,7 @@ numbers; non-finite metrics are JSON `null` with counts/status.
 `time.report_s` includes reductions, model selection, prediction metrics, changed-model serialization/certification,
 and JSON construction up to the timing field. The final write/fsync cannot be included in its own immutable bytes;
 measure that cost end-to-end. Generation wall time is the interval between callback entries; process elapsed time
-starts at `main()`. OS pressure counts evaluator calls since `Prepare()` (cache hits do not increment it).
+starts at `main()`. OS pressure counts attempts of the generation (`Progress().Attempted`): a cache hit is an attempt.
 
 ## Fitness and ordering
 
