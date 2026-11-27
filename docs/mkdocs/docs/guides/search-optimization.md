@@ -28,13 +28,15 @@ With `GeneticAlgorithmConfig::Cache` set, offspring that are structurally identi
 ## Stop reasons
 
 A run records why it stopped as a `StopMask` (`stop_reason.hpp`): `GenerationLimit`, `EvaluationLimit`,
-`PressureLimit`, `TimeLimit`, `GeneratorTermination`, `Callback`, `Signal`, `EngineError`. The reasons are derived
-from the budget accounting of the run (`GeneticAlgorithmBase::StopConditions()`): the generation limit; the
-evaluation limit when committed work reached a positive budget or a generation was discarded for spending more than
-the budget had left; the pressure limit when a generation was discarded for exceeding the generator's attempt cap
-(`OffspringGeneratorBase::MaxAttempts()`) or a committed generation crossed it and ended the run; the time limit when
-it expired. The loop records every condition that holds, and a worker that sees the time limit expire records it,
-with an atomic `fetch_or`, so concurrent worker polls are safe. `StopReasons()` is what was recorded,
+`PressureLimit`, `TimeLimit`, `GeneratorTermination`, `Callback`, `Signal`, `EngineError`. The loop condition records
+the conditions it checks itself (`GeneticAlgorithmBase::StopConditions()`): the generation limit, the evaluation limit
+when committed work reached a positive budget, and the time limit when it expired. The limits a generation exceeds are
+recorded when that generation is decided, once the workers have finished: `EvaluationLimit` when it spent more than the
+budget had left and `PressureLimit` when it made more attempts than the generator's cap
+(`OffspringGeneratorBase::MaxAttempts()`); `PressureLimit` is also recorded when a committed generation crossed the cap
+and ended the run, after that generation was reinserted and before its report. A worker that sees the time limit expire
+records it, with an atomic `fetch_or`, so concurrent worker polls are safe. The run ends as soon as any reason is
+recorded. `StopReasons()` is what was recorded,
 `TerminationReasons()` adds final-state conditions, and `PrimaryStopReason()` uses `engine_error`, `signal`,
 `callback`, `generator_termination`, `evaluation_limit`, `pressure_limit`, `generation_limit`, `time_limit`.
 `RequestStop(source)` takes `Callback`, `Signal` or `EngineError`; `StopRequested()` is true only for external

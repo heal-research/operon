@@ -3,8 +3,6 @@
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <algorithm> // for max
-#include <atomic> // for atomic_size_t
-#include <chrono> // for steady_clock
 #include <cstddef> // for size_t
 #include <functional> // for std::function
 #include <optional> // for std::optional
@@ -309,12 +307,6 @@ auto GeneticProgrammingAlgorithm::Run(
                                     }
                                     ledger.CommitGeneration();
                                     generationCommitted = true;
-                                    // A committed generation that made more attempts than the cap (its last attempt
-                                    // crossed it) ends the run after it is reported, like the selection-pressure stop
-                                    // did.
-                                    if (ledger.AttemptCapReached()) {
-                                        RecordStop(MaskOf(StopReason::PressureLimit));
-                                    }
                                     (*reinserter)(random, Parents(), offspring);
                                 })
                                 .name("reinsert");
@@ -325,6 +317,13 @@ auto GeneticProgrammingAlgorithm::Run(
                                                    openGenerationCache
                                                        = nullptr; // committed: a later exception must not undo it
                                                    SetBudgetReport(ledger.Report());
+                                                   // A committed generation that made more attempts than the cap
+                                                   // (its last attempt crossed it) ends the run after it is
+                                                   // reported, like the selection-pressure stop did. Recorded only
+                                                   // once the generation has been reinserted, before its report.
+                                                   if (ledger.AttemptCapReached()) {
+                                                       RecordStop(MaskOf(StopReason::PressureLimit));
+                                                   }
                                                }
                                            })
                                            .name("increment generation");

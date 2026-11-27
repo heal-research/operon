@@ -719,7 +719,6 @@ namespace {
         } else {
             CHECK_FALSE(algo.StopRequested());
             CHECK(progress.Attempted >= 1);
-            CHECK(Operon::Contains(algo.StopReasons(), Operon::StopReason::TimeLimit));
             // Elapsed() covers the discarded generation: the run ended because it exceeded the limit.
             CHECK(algo.Elapsed() > static_cast<double>(f.Config.TimeLimit));
             CHECK(algo.StopReasons() == Operon::MaskOf(Operon::StopReason::TimeLimit));

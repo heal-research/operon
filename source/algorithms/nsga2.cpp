@@ -3,8 +3,6 @@
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <algorithm> // for stable_sort, copy_n, max
-#include <atomic> // for atomic_size_t
-#include <chrono> // for steady_clock
 #include <cmath> // for isfinite
 #include <iterator> // for move_iterator, back_inse...
 #include <limits> // for numeric_limits
@@ -424,12 +422,6 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                                             }
                                             ledger.CommitGeneration();
                                             generationCommitted = true;
-                                            // A committed generation that made more attempts than the cap (its last
-                                            // attempt crossed it) ends the run after it is reported, like the
-                                            // selection-pressure stop did.
-                                            if (ledger.AttemptCapReached()) {
-                                                RecordStop(MaskOf(StopReason::PressureLimit));
-                                            }
                                             Sort(individuals);
                                         })
                                         .name(std::string { SortTaskName });
@@ -447,6 +439,14 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                                                    openGenerationCache
                                                        = nullptr; // committed: a later exception must not undo it
                                                    SetBudgetReport(ledger.Report());
+                                                   // A committed generation that made more attempts than the cap
+                                                   // (its last attempt crossed it) ends the run after it is
+                                                   // reported, like the selection-pressure stop did. Recorded only
+                                                   // once the generation has been sorted and reinserted, before
+                                                   // its report.
+                                                   if (ledger.AttemptCapReached()) {
+                                                       RecordStop(MaskOf(StopReason::PressureLimit));
+                                                   }
                                                }
                                            })
                                            .name("increment generation");

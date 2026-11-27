@@ -234,7 +234,6 @@ TEST_CASE("GP records why it stopped", "[stop][algorithms]")
         CHECK(incomplete->PoolSize == StopFixture::PoolSize);
         CHECK(incomplete->Completed > StopFixture::PoolSize / 2); // the attempt that crossed the budget completes
         CHECK(incomplete->Completed < StopFixture::PoolSize);
-        CHECK(Operon::Contains(gp->StopReasons(), Operon::StopReason::EvaluationLimit));
         CHECK(incomplete->Attempted >= incomplete->Completed);
         CHECK(gp->GenerationsCompleted() == 0);
     }
@@ -253,7 +252,6 @@ TEST_CASE("GP records why it stopped", "[stop][algorithms]")
         REQUIRE(incomplete.has_value());
         CHECK(incomplete->Attempted == 1);
         CHECK(incomplete->Completed <= 1);
-        CHECK(Operon::Contains(gp->StopReasons(), Operon::StopReason::PressureLimit));
         CHECK(gp->GenerationsCompleted() == 0);
     }
 

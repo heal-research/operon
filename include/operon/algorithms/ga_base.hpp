@@ -307,7 +307,6 @@ public:
     // with Accounting(), the run's coefficient-optimizer accounting: this one reports committed, discarded and
     // executed work in units of the evaluation budget (scoring plus optimizer work).
     [[nodiscard]] auto BudgetReport() const -> BudgetAccounting const& { return budgetReport_; }
-    auto SetBudgetReport(BudgetAccounting const& report) -> void { budgetReport_ = report; }
 
     // Progress of the last generation attempt that was not committed; nullopt if the last attempted generation was
     // committed. A generation is not committed if its offspring pool was not completely filled (time limit or stop
@@ -356,6 +355,11 @@ public:
     }
 
 protected:
+    // The drivers publish the budget accounting here (after initialization, after every committed generation and when
+    // the run ends); it is an input of StopConditions(), so it is not settable from outside (a report callback must
+    // not be able to change the stop decision).
+    auto SetBudgetReport(BudgetAccounting const& report) -> void { budgetReport_ = report; }
+
     // Offspring accounting for Run(): begin a generation body, then add each worker's slot (the generator
     // invocations it needed and whether it filled the slot; thread-safe).
     auto BeginOffspringProgress() -> void
