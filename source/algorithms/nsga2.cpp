@@ -181,10 +181,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
     ledger.Begin();
     bool generationCommitted = false; // outcome of the current generation attempt
 
-    // The workers poll PollStop(); the loop ends when EndOfIteration() finds a recorded stop reason (see
-    // GeneticAlgorithmBase). The limits a generation exceeds are recorded by the sort task below. Elapsed() is
-    // published only from single-task contexts (the loop condition and the report task), which the taskflow graph
-    // orders against every reader.
+    // Workers poll PollStop(); the loop ends once any stop reason is recorded (EndOfIteration()).
     auto loopCondition = [&]() -> bool { return EndOfIteration(t0); };
 
     auto& individuals = Individuals();
@@ -414,9 +411,8 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                                                 }
                                                 openGenerationCache = nullptr;
                                                 rngs = generationRngs;
-                                                // A resource limit ends the run without a (public) stop request. A
-                                                // cut by a stop request or the time limit is already recorded in the
-                                                // stop reasons (RequestStop(), or the worker that saw the limit).
+                                                // A resource limit is recorded here; a stop request or time limit is
+                                                // already.
                                                 RecordStop(limits);
                                                 return;
                                             }
@@ -439,11 +435,8 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                                                    openGenerationCache
                                                        = nullptr; // committed: a later exception must not undo it
                                                    SetBudgetReport(ledger.Report());
-                                                   // A committed generation that made more attempts than the cap
-                                                   // (its last attempt crossed it) ends the run after it is
-                                                   // reported, like the selection-pressure stop did. Recorded only
-                                                   // once the generation has been sorted and reinserted, before
-                                                   // its report.
+                                                   // A committed generation that crossed the attempt cap ends the
+                                                   // run: recorded after sorting and reinsertion, before the report.
                                                    if (ledger.AttemptCapReached()) {
                                                        RecordStop(MaskOf(StopReason::PressureLimit));
                                                    }
