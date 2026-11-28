@@ -481,10 +481,8 @@ TEST_CASE("GP: a generation that does not fit in the evaluation budget is neithe
     // The generation was discarded because it spent more than what was left (PartialLeft; one evaluation per
     // offspring here), so more than PartialLeft offspring were produced, and no more than the pool. How much earlier
     // than the full pool the workers stopped is informational.
-    CHECK(progress.Reason == Operon::DiscardReason::ResourceLimit);
-    CHECK(progress.BudgetExceeded); // one finite limit: the flags are deterministic
-    CHECK_FALSE(progress.AttemptCapExceeded);
-    CHECK(gp.BudgetReport().End == Operon::RunEnd::ResourceLimit);
+    CHECK(Operon::Contains(gp.TerminationReasons(), Operon::StopReason::EvaluationLimit));
+    CHECK_FALSE(Operon::Contains(gp.TerminationReasons(), Operon::StopReason::PressureLimit)); // one finite limit
     CHECK(progress.Completed > PartialLeft);
     CHECK(progress.Completed <= PartialPop);
     CHECK(progress.Attempted >= progress.Completed);
@@ -568,7 +566,7 @@ TEST_CASE("GP: generations that fill their pool before the budget is reached are
     CHECK(gp.Generation() == 3);
     REQUIRE(gp.IncompleteGeneration().has_value());
     CHECK(gp.IncompleteGeneration()->Completed > PartialLeft);
-    CHECK(gp.IncompleteGeneration()->Reason == Operon::DiscardReason::ResourceLimit);
+    CHECK(Operon::Contains(gp.StopReasons(), Operon::StopReason::EvaluationLimit));
     CHECK(gp.BudgetReport().GenerationsCommitted == 3);
     CHECK(gp.BudgetReport().EvaluationsCommitted == 4 * PartialPop);
 }
@@ -602,7 +600,7 @@ TEST_CASE("NSGA2: IncompleteGeneration() reports the generation that did not fit
         REQUIRE(nsga.IncompleteGeneration().has_value());
         CHECK(nsga.IncompleteGeneration()->PoolSize == PartialPop);
         CHECK(nsga.IncompleteGeneration()->Completed > PartialLeft);
-        CHECK(nsga.IncompleteGeneration()->Reason == Operon::DiscardReason::ResourceLimit);
+        CHECK(Operon::Contains(nsga.StopReasons(), Operon::StopReason::EvaluationLimit));
         CHECK_FALSE(nsga.StopRequested());
         CHECK(nsga.BudgetReport().GenerationsCommitted == 0);
         CHECK(nsga.BudgetReport().EvaluationsCommitted == PartialPop);
@@ -659,8 +657,7 @@ namespace {
     {
         constexpr std::size_t pop = 16;
         constexpr std::size_t stopAfterCalls = 5;
-        // The elapsed time is truncated to milliseconds and compared against an integral number of seconds, so
-        // TimeLimit = 1 is exceeded once more than 1001 ms have passed since Run() started.
+        // TimeLimit = 1 is exceeded once more than 1000 ms have passed since Run() started.
         constexpr auto timeGate = std::chrono::milliseconds { 1100 };
 
         BudgetedRun f { pop, pop, /*generations=*/100, std::numeric_limits<std::size_t>::max() };
@@ -722,8 +719,6 @@ namespace {
         } else {
             CHECK_FALSE(algo.StopRequested());
             CHECK(progress.Attempted >= 1);
-            CHECK(progress.Reason == Operon::DiscardReason::TimeLimit);
-            CHECK(algo.BudgetReport().End == Operon::RunEnd::TimeLimit);
             // Elapsed() covers the discarded generation: the run ended because it exceeded the limit.
             CHECK(algo.Elapsed() > static_cast<double>(f.Config.TimeLimit));
             CHECK(algo.StopReasons() == Operon::MaskOf(Operon::StopReason::TimeLimit));

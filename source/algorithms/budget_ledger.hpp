@@ -83,18 +83,10 @@ public:
         committed_ = 0;
         discarded_ = 0;
         generations_ = 0;
-        end_ = RunEnd::None;
     }
 
     // Initialization (or the warm-start re-evaluation) always commits, even beyond the budget.
     auto CommitInitialization() -> void { committed_ = SaturatingSub(Consumed(), baseline_); }
-
-    // A zero-cost evaluator may keep generating under a zero budget. Any positive budget that has been reached,
-    // and every overshoot, stops new generations.
-    [[nodiscard]] auto Exhausted() const -> bool
-    {
-        return committed_ > budget_ || (committed_ == budget_ && budget_ != 0);
-    }
 
     [[nodiscard]] auto Remaining() const -> std::uint64_t { return committed_ < budget_ ? budget_ - committed_ : 0; }
 
@@ -148,26 +140,20 @@ public:
     // Safe to call concurrently with the workers; monotone while they run.
     [[nodiscard]] auto Exceeded() const -> bool { return BudgetExceeded() || AttemptCapExceeded(); }
 
-    // Why the attempt cannot be committed (see DiscardReason): a resource limit if either limit was observed to be
-    // exceeded, else the asynchronous cause. Meaningful only for a generation that is not committed.
-    [[nodiscard]] auto Reason(bool stopRequested) const -> DiscardReason
+    // The resource limits the current generation attempt was observed to exceed, as stop reasons: EvaluationLimit
+    // for the budget, PressureLimit for the attempt cap. Both are evaluated here, after the workers have finished,
+    // not just the one that stopped them. Empty when the attempt is within both limits.
+    [[nodiscard]] auto Limits() const -> StopMask
     {
-        if (Exceeded()) {
-            return DiscardReason::ResourceLimit;
+        StopMask limits {};
+        if (BudgetExceeded()) {
+            limits |= MaskOf(StopReason::EvaluationLimit);
         }
-        return stopRequested ? DiscardReason::StopRequested : DiscardReason::TimeLimit;
+        if (AttemptCapExceeded()) {
+            limits |= MaskOf(StopReason::PressureLimit);
+        }
+        return limits;
     }
-
-    // The progress record of the discarded attempt (the work counts come from the caller).
-    [[nodiscard]] auto Progress(std::size_t attempted, std::size_t completed, std::size_t poolSize,
-        bool stopRequested) const -> OffspringProgress
-    {
-        return OffspringProgress { attempted, completed, poolSize, Reason(stopRequested), BudgetExceeded(),
-            AttemptCapExceeded() };
-    }
-
-    // Why the run ended (BudgetReport().End); set once, by the loop condition that ends it.
-    auto SetEnd(RunEnd end) -> void { end_ = end; }
 
     // The attempt is committed: its spending becomes committed work.
     auto CommitGeneration() -> void
@@ -191,7 +177,6 @@ public:
             .EvaluationsExecuted = SaturatingSub(Consumed(), baseline_),
             .EvaluationsDiscarded = discarded_,
             .BudgetOvershoot = committed_ > budget_ ? committed_ - budget_ : 0,
-            .End = end_,
         };
     }
 
@@ -208,7 +193,6 @@ private:
     std::uint64_t baseline_ { 0 };
     std::uint64_t committed_ { 0 };
     std::uint64_t discarded_ { 0 };
-    RunEnd end_ { RunEnd::None };
     std::size_t generations_ { 0 };
     std::uint64_t generationStart_ { 0 };
     std::optional<std::size_t> maxAttempts_;

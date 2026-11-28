@@ -3,8 +3,6 @@
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <algorithm> // for stable_sort, copy_n, max
-#include <atomic> // for atomic_size_t
-#include <chrono> // for steady_clock
 #include <cmath> // for isfinite
 #include <iterator> // for move_iterator, back_inse...
 #include <limits> // for numeric_limits
@@ -155,12 +153,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
     const auto& reinserter = GetReinserter();
     const auto& problem = GetProblem();
 
-    auto t0 = std::chrono::steady_clock::now();
-    auto computeElapsed = [t0]() -> double {
-        auto t1 = std::chrono::steady_clock::now();
-        constexpr double us { 1e6 };
-        return static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count()) / us;
-    };
+    auto const t0 = Clock::now();
 
     // Reuse worker RNG states on warm resume.
     size_t const s = std::max(config.PopulationSize, config.PoolSize);
@@ -186,57 +179,10 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
     // The budget is a limit on committed work (see BudgetLedger). Initialization always commits.
     detail::BudgetLedger ledger { evaluator, &accounting, config.Evaluations };
     ledger.Begin();
-    // Set by the task that ends the run from inside a generation: a discard (for a resource limit, a stop request or
-    // the time limit) or a committed generation that crossed the attempt cap. A resource-limit discard ends
-    // the run without a (public) stop request.
-    RunEnd ledgerEnd = RunEnd::None;
     bool generationCommitted = false; // outcome of the current generation attempt
 
-    // stop() is polled concurrently by offspring-generation workers and must
-    // not write shared state other than the atomic stop mask. It holds the two asynchronous stop conditions: a stop
-    // request and the time limit (recorded as StopReason::TimeLimit when a worker observes it).
-    // A generation they cut short is discarded; they are not part of the determinism guarantee. The evaluation
-    // budget, the attempt cap and the generation limit are not polled here: the first two are decided per
-    // generation by the ledger, the generation limit at the loop condition. Elapsed() is published only from
-    // single-task contexts (the loop condition and the report task), which the taskflow graph orders against every
-    // reader.
-    auto stop = [&]() -> bool {
-        if (StopRequested()) {
-            return true;
-        }
-        if (computeElapsed() > static_cast<double>(config.TimeLimit)) {
-            RecordStop(MaskOf(StopReason::TimeLimit));
-            return true;
-        }
-        return false;
-    };
-    // Why the run ends, in the order documented at RunEnd; None to go on.
-    auto decideEnd = [&](double elapsed) -> RunEnd {
-        if (ledgerEnd != RunEnd::None) {
-            return ledgerEnd;
-        }
-        if (Generation() >= config.Generations) {
-            return RunEnd::GenerationLimit;
-        }
-        if (ledger.Exhausted()) {
-            return RunEnd::BudgetSpent;
-        }
-        if (StopRequested()) {
-            return RunEnd::StopRequested;
-        }
-        return elapsed > static_cast<double>(config.TimeLimit) ? RunEnd::TimeLimit : RunEnd::None;
-    };
-    auto loopCondition = [&]() -> bool {
-        Elapsed() = computeElapsed();
-        auto const end = decideEnd(Elapsed());
-        if (end != RunEnd::None) {
-            ledger.SetEnd(end);
-            // The stop reasons are derived from the budget report (its End, the budget, the discarded generation).
-            SetBudgetReport(ledger.Report());
-            RecordStop(StopConditions(Elapsed()));
-        }
-        return end != RunEnd::None;
-    };
+    // Workers poll PollStop(); the loop ends once any stop reason is recorded (EndOfIteration()).
+    auto loopCondition = [&]() -> bool { return EndOfIteration(t0); };
 
     auto& individuals = Individuals();
     auto parents = Parents();
@@ -430,7 +376,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                               // Workers stop starting attempts once the generation has already spent more than
                               // the budget has left (or made more attempts than the cap): the counters only
                               // grow, so this fires only for a generation that could not commit anyway.
-                              while (!stop() && !ledger.Exceeded()) {
+                              while (!PollStop(t0) && !ledger.Exceeded()) {
                                   ++attempts;
                                   auto result
                                       = (*generator)(rngs[i], config.CrossoverProbability, config.MutationProbability,
@@ -453,11 +399,9 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                                             auto const poolProgress = Progress();
                                             auto const generated = poolProgress.Completed;
                                             auto const full = generated == offspring.size();
-                                            auto const exceeded = ledger.Exceeded();
-                                            if (!full || exceeded) {
-                                                auto const progress = ledger.Progress(poolProgress.Attempted, generated,
-                                                    offspring.size(), StopRequested());
-                                                SetIncompleteGeneration(progress);
+                                            auto const limits = ledger.Limits();
+                                            if (!full || limits != 0) {
+                                                SetIncompleteGeneration(poolProgress);
                                                 ledger.DiscardGeneration();
                                                 // The offspring workers have finished. Their cache entries belong to a
                                                 // generation that does not exist: drop them so a retry cannot see them
@@ -467,27 +411,13 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                                                 }
                                                 openGenerationCache = nullptr;
                                                 rngs = generationRngs;
-                                                if (exceeded) {
-                                                    ledgerEnd = RunEnd::ResourceLimit;
-                                                } else {
-                                                    // cut short by a stop request or the time limit; both are already
-                                                    // recorded in the stop mask (RequestStop(), or the worker that saw
-                                                    // the limit), so no request is made here: StopRequested() stays
-                                                    // false for a time-limit cut
-                                                    ledgerEnd = progress.Reason == DiscardReason::StopRequested
-                                                        ? RunEnd::StopRequested
-                                                        : RunEnd::TimeLimit;
-                                                }
+                                                // A resource limit is recorded here; a stop request or time limit is
+                                                // already.
+                                                RecordStop(limits);
                                                 return;
                                             }
                                             ledger.CommitGeneration();
                                             generationCommitted = true;
-                                            // A committed generation that made more attempts than the cap (its last
-                                            // attempt crossed it) ends the run after it is reported, like the
-                                            // selection-pressure stop did.
-                                            if (ledger.AttemptCapReached()) {
-                                                ledgerEnd = RunEnd::AttemptCap;
-                                            }
                                             Sort(individuals);
                                         })
                                         .name(std::string { SortTaskName });
@@ -505,13 +435,18 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                                                    openGenerationCache
                                                        = nullptr; // committed: a later exception must not undo it
                                                    SetBudgetReport(ledger.Report());
+                                                   // A committed generation that crossed the attempt cap ends the
+                                                   // run: recorded after sorting and reinsertion, before the report.
+                                                   if (ledger.AttemptCapReached()) {
+                                                       RecordStop(MaskOf(StopReason::PressureLimit));
+                                                   }
                                                }
                                            })
                                            .name("increment generation");
             auto reportProgress = subflow
                                       .emplace([&, timer]() -> void {
                                           // Include discarded work in telemetry, but skip its report.
-                                          Elapsed() = computeElapsed();
+                                          Elapsed() = SecondsSince(t0);
                                           Timings() = timer->Timings();
                                           if (!generationCommitted) {
                                               return;

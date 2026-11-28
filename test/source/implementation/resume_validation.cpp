@@ -118,7 +118,6 @@ namespace {
         optimizer.SetIterations(0);
         Operon::CoefficientOptimizer const coeffOptimizer { &optimizer };
         Operon::Evaluator<DTable> evaluator { &problem, &dtable };
-        evaluator.SetBudget(config.Evaluations);
         Operon::ComparisonCallback const comp = Operon::SingleObjectiveComparison { 0 };
         Operon::TournamentSelector fem { comp };
         Operon::TournamentSelector male { comp };

@@ -222,8 +222,6 @@ struct EvaluatorBase
     mutable std::atomic<std::uint64_t> JacobianEvaluations { 0 }; // NOLINT
     mutable std::atomic<std::uint64_t> CallCount { 0 }; // NOLINT
 
-    static constexpr size_t DefaultEvaluationBudget = 100'000;
-
     static auto constexpr ErrMax { std::numeric_limits<Operon::Scalar>::max() };
 
     EvaluatorBase(EvaluatorBase const&) = delete;
@@ -271,17 +269,6 @@ struct EvaluatorBase
     {
         return detail::SaturatingAdd(ResidualEvaluations.load(), JacobianEvaluations.load());
     }
-
-    // The configured evaluation budget. The unit is scoring residual + Jacobian evaluations plus the coefficient
-    // optimizer's residual + Jacobian evaluations; the run that owns both sources applies it
-    // (OffspringGeneratorBase::Terminate(OptimizerAccounting const&)).
-    void SetBudget(size_t value) { budget_ = value; }
-    auto Budget() const -> size_t { return budget_; }
-
-    // Whether the scoring work alone (Stats(): residual + Jacobian, children included) reached Budget(). Scoring-only
-    // by ownership: it cannot see the optimizer work of a run, so it is not the run's stop condition. Virtual because
-    // more complex evaluators (e.g. MultiEvaluator) might need to calculate it differently.
-    virtual auto BudgetExhausted() const -> bool { return TotalEvaluations() >= Budget(); }
 
     // Scoring counters of this evaluator (composite evaluators include their children): residual evaluations,
     // Jacobian evaluations, calls. Residual/Jacobian evaluations are the ones spent by scoring: the prediction pass
@@ -351,7 +338,6 @@ private:
     mutable Operon::Span<Operon::Individual const> population_;
     gsl::not_null<Problem const*> problem_;
     std::string objectiveName_ { "objective0" };
-    size_t budget_ = DefaultEvaluationBudget;
 };
 
 // Runs LocalSearch (local_search.hpp), publishes the optimizer work it performed to `accounting` -- immediately,
@@ -474,10 +460,9 @@ public:
     explicit MultiEvaluator(Problem const* problem) : EvaluatorBase(problem) {}
 
     // Shared children: Add() does not reject a child that is already registered (directly or through a nested
-    // composite). Stats() and BudgetExhausted() sum the children slot by slot, and a child runs once per slot (its
-    // own counters grow once per run), so a child occupying k slots contributes k times its own counters. The two
-    // always agree and the budget consumes exactly what they report; Reset() reaching a shared child more than once
-    // is harmless.
+    // composite). Stats() sums the children slot by slot, and a child runs once per slot (its own counters grow
+    // once per run), so a child occupying k slots contributes k times its own counters; Reset() reaching a shared
+    // child more than once is harmless.
     // Registers a child that runs through its own operator(). Throws std::invalid_argument for a
     // ShapeConstrainedValueEvaluator: it owns the whole constrained objective vector (including its structural
     // objectives) and its non-Lamarckian restoration step (RestoreNonLamarckianCoefficients) is only reachable when
@@ -532,13 +517,6 @@ public:
 
         return std::tuple { detail::SaturatingAdd(resEval, ResidualEvaluations.load()),
             detail::SaturatingAdd(jacEval, JacobianEvaluations.load()), CallCount.load() };
-    }
-
-    // Scoring work only (see EvaluatorBase::BudgetExhausted).
-    auto BudgetExhausted() const -> bool final
-    {
-        auto [re, je, cc] = Stats();
-        return detail::SaturatingAdd(re, je) >= Budget();
     }
 
     auto Evaluators() const { return evaluators_; }

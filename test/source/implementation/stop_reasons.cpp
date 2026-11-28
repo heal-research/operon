@@ -234,7 +234,6 @@ TEST_CASE("GP records why it stopped", "[stop][algorithms]")
         CHECK(incomplete->PoolSize == StopFixture::PoolSize);
         CHECK(incomplete->Completed > StopFixture::PoolSize / 2); // the attempt that crossed the budget completes
         CHECK(incomplete->Completed < StopFixture::PoolSize);
-        CHECK(incomplete->BudgetExceeded);
         CHECK(incomplete->Attempted >= incomplete->Completed);
         CHECK(gp->GenerationsCompleted() == 0);
     }
@@ -253,7 +252,6 @@ TEST_CASE("GP records why it stopped", "[stop][algorithms]")
         REQUIRE(incomplete.has_value());
         CHECK(incomplete->Attempted == 1);
         CHECK(incomplete->Completed <= 1);
-        CHECK(incomplete->AttemptCapExceeded);
         CHECK(gp->GenerationsCompleted() == 0);
     }
 
@@ -279,7 +277,7 @@ TEST_CASE("GP records why it stopped", "[stop][algorithms]")
     {
         fix.Config.TimeLimit = 0;
         auto gp = fix.MakeGp();
-        // GP reports elapsed time in whole milliseconds: let one pass over the loop take longer than that
+        // a time limit of 0 is exceeded as soon as any time has passed: let one pass over the loop take a while
         gp->Run(
             rng,
             [] {

@@ -224,7 +224,6 @@ TEST_CASE("Evaluator performance", "[performance]")
 
     auto test = [&](std::string const& name,
                     EvaluatorBase&& evaluator) -> void { // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved)
-        evaluator.SetBudget(std::numeric_limits<size_t>::max());
         tf::Executor executor(std::thread::hardware_concurrency());
         tf::Taskflow taskflow;
 
@@ -330,7 +329,6 @@ TEST_CASE("skipNonFinite_ evaluator performance", "[performance]")
             auto test
                 = [&](std::string const& name,
                       EvaluatorBase&& evaluator) -> void { // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved)
-                evaluator.SetBudget(std::numeric_limits<size_t>::max());
                 tf::Executor executor(std::thread::hardware_concurrency());
                 tf::Taskflow taskflow;
 
@@ -567,8 +565,6 @@ TEST_CASE("JIT evaluator performance", "[performance][jit]")
         problem.SetLinearScalingEnabled(false);
         Evaluator<ScalarDispatch> interp(&problem, &dtable, MSE {});
         JIT::JitEvaluator jit(&problem, &zobrist, MSE {});
-        interp.SetBudget(std::numeric_limits<size_t>::max());
-        jit.SetBudget(std::numeric_limits<size_t>::max());
 
         // --- cold-cache run: first pass includes compilation ---
         auto const nThreads = nPhysical;

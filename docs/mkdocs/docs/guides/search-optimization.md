@@ -17,10 +17,9 @@ The GP and NSGA-II drivers share the same operator boundary. Initializers create
 
 `GeneticAlgorithmConfig` bounds generations, evaluations, iterations, population size, pool size, and seed. Its evaluation budget is consumed by evaluator scoring work plus coefficient-optimizer work (residual and Jacobian evaluations of both)—not by offspring attempts, calls, optimizer time or cache lookups—so operators should not embed untracked objective calculations. Optimizer work is recorded by the run (`GeneticAlgorithmBase::Accounting()`) for every local search it invokes: cold initialization, and every offspring candidate, including candidates later rejected, losing a brood or polygenic selection, or discarded with an incomplete generation. A cache hit performs no local search and spends nothing.
 
-The evaluation budget limits committed work. Initialization always commits (a zero population or pool size is a configuration error: `Run()` throws `std::invalid_argument`, `operon_gp`/`operon_nsgp` exit with status 1; a structural evaluator may cost zero work, while a larger initialization cost, e.g. with local search, is allowed and recorded as the overshoot). A generation commits only if its offspring pool was completely filled and everything it spent still fits in what the budget has left; offspring selection (`os`) additionally needs at most `MaxSelectionPressure * parents` attempts, one attempt being one candidate generated for a pool slot, whether it was evaluated or found in the transposition cache (see below for what this changes with a cache). Otherwise both drivers discard that generation and end the run: nothing is reinserted, `Generation()` is not incremented, the report callback is not invoked, `Parents()` holds the last committed generation and the worker RNG states are restored, so the committed result is the same at every thread count. A run can therefore finish with less than the budget used; what the discarded attempts spent is `EvaluationsDiscarded` in `BudgetReport()` (informational: it can depend on the thread count, and it does not include work done outside the generations, e.g. in a report callback). A time limit or a stop request that cuts a generation discards it the same way, but where that happens depends on timing. `IncompleteGeneration()` returns the attempted/completed/pool counts of the discarded generation (informational: they describe the work executed before the workers stopped and can differ between thread counts) and why it was discarded (`ResourceLimit`, `TimeLimit` or `StopRequested`, plus flags for the budget and the attempt cap seen exceeded: deterministic only when just one of the two limits is finite), or `nullopt` if the last generation was committed. `BudgetReport().End` says why the run ended, also when a committed generation crossed the attempt cap and nothing was discarded.
+The evaluation budget limits committed work. Initialization always commits (a zero population or pool size is a configuration error: `Run()` throws `std::invalid_argument`, `operon_gp`/`operon_nsgp` exit with status 1; a structural evaluator may cost zero work, while a larger initialization cost, e.g. with local search, is allowed and recorded as the overshoot). A generation commits only if its offspring pool was completely filled and everything it spent still fits in what the budget has left; offspring selection (`os`) additionally needs at most `MaxSelectionPressure * parents` attempts, one attempt being one candidate generated for a pool slot, whether it was evaluated or found in the transposition cache (see below for what this changes with a cache). Otherwise both drivers discard that generation and end the run: nothing is reinserted, `Generation()` is not incremented, the report callback is not invoked, `Parents()` holds the last committed generation and the worker RNG states are restored, so the committed result is the same at every thread count. A run can therefore finish with less than the budget used; what the discarded attempts spent is `EvaluationsDiscarded` in `BudgetReport()` (informational: it can depend on the thread count, and it does not include work done outside the generations, e.g. in a report callback). A time limit or a stop request that cuts a generation discards it the same way, but where that happens depends on timing. `IncompleteGeneration()` returns the attempted/completed/pool counts of the discarded generation (informational: they describe the work executed before the workers stopped and can differ between thread counts), or `nullopt` if the last generation was committed. Why the run ended is in `StopReasons()`: `EvaluationLimit` and/or `PressureLimit` for the limits a discarded generation was seen to exceed (which of the two is deterministic only when just one of the two limits is finite), `TimeLimit` or `Callback`/`Signal` for an asynchronous cut. A committed generation that crossed the attempt cap records `PressureLimit` and ends the run, with nothing discarded.
 
-// keep both
-An incomplete generation is not itself a stop reason and does not set `StopRequested()`: the run ends only because the stop condition that cut the generation short (evaluation budget, generator termination, time limit, stop request or a `true` report) holds. A generator-defined termination that clears again before the loop checks it, such as the selection-pressure limit, still ends the run. `StopRequested()` is true only after `RequestStop()` or a `true` report callback.
+An incomplete generation is not itself a stop reason and does not set `StopRequested()`: the run ends only because a stop reason is recorded (the evaluation budget or attempt cap the generation exceeded, the generation limit, the time limit, a stop request or a `true` report). `StopRequested()` is true only after `RequestStop()` or a `true` report callback.
 
 ## Transposition cache
 
@@ -29,19 +28,21 @@ With `GeneticAlgorithmConfig::Cache` set, offspring that are structurally identi
 ## Stop reasons
 
 A run records why it stopped as a `StopMask` (`stop_reason.hpp`): `GenerationLimit`, `EvaluationLimit`,
-`PressureLimit`, `TimeLimit`, `GeneratorTermination`, `Callback`, `Signal`, `EngineError`. The reasons are derived
-from the budget accounting of the run (`GeneticAlgorithmBase::StopConditions()`): the generation limit; the
-evaluation limit when committed work reached a positive budget or a generation was discarded for spending more than
-the budget had left; the pressure limit when a generation was discarded for exceeding the generator's attempt cap
-(`OffspringGeneratorBase::MaxAttempts()`) or a committed generation crossed it and ended the run; the time limit when
-it expired. The loop records every condition that holds, and a worker that sees the time limit expire records it,
-with an atomic `fetch_or`, so concurrent worker polls are safe. `StopReasons()` is what was recorded,
+`PressureLimit`, `TimeLimit`, `GeneratorTermination`, `Callback`, `Signal`, `EngineError`. The loop condition records
+the conditions it checks itself (`GeneticAlgorithmBase::StopConditions()`): the generation limit, the evaluation limit
+when committed work reached a positive budget, and the time limit when it expired. The limits a generation exceeds are
+recorded when that generation is decided, once the workers have finished: `EvaluationLimit` when it spent more than the
+budget had left and `PressureLimit` when it made more attempts than the generator's cap
+(`OffspringGeneratorBase::MaxAttempts()`); `PressureLimit` is also recorded when a committed generation crossed the cap
+and ended the run, after that generation was reinserted and before its report. A worker that sees the time limit expire
+records it, with an atomic `fetch_or`, so concurrent worker polls are safe. The run ends as soon as any reason is
+recorded. `StopReasons()` is what was recorded,
 `TerminationReasons()` adds final-state conditions, and `PrimaryStopReason()` uses `engine_error`, `signal`,
 `callback`, `generator_termination`, `evaluation_limit`, `pressure_limit`, `generation_limit`, `time_limit`.
 `RequestStop(source)` takes `Callback`, `Signal` or `EngineError`; `StopRequested()` is true only for external
-requests (a generation cut short by the time limit does not request a stop). `OffspringGeneratorBase::Terminate()` is
-deprecated and not consulted by the drivers, so the engine never records `GeneratorTermination` (the value remains
-for producers that map their own termination onto it).
+requests (a generation cut short by the time limit does not request a stop). No generator takes part in the stop
+decision, so the engine never records `GeneratorTermination` (the value remains in the record schema so that records
+written by earlier versions still validate).
 
 `operon_gp` and `operon_nsgp` write these, with the final counters read after `Run()` returns (the evaluation limit
 is `GeneticAlgorithmConfig::Evaluations`) and

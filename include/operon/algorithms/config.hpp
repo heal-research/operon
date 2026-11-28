@@ -16,8 +16,8 @@ struct GeneticAlgorithmConfig {
     // Evaluation budget in residual + Jacobian evaluations (EvaluationStats::Consumed(): scoring plus
     // coefficient-optimizer evaluations): a limit on *committed* work. A generation commits only if everything it
     // spent still fits. The library permits a structural evaluator to cost zero work; the command-line programs
-    // additionally reject a budget below PopulationSize for their objectives. This is the budget authority of GP and
-    // NSGA2 (EvaluatorBase::Budget() is telemetry).
+    // additionally reject a budget below PopulationSize for their objectives. This is the only budget: the
+    // evaluators carry none.
     size_t Evaluations { ~std::size_t { 0 } }; // unlimited by default
     size_t Iterations; // local search iterations
     size_t PopulationSize;
