@@ -19,15 +19,11 @@
 
 namespace Operon {
 
-// Evaluation counters of a run, split by who spent them. `Residual*`/`Jacobian*` count the units the evaluation
-// budget is made of: `*Scoring` is spent by evaluator scoring (the prediction pass of Evaluate, a Jacobian taken by
-// a likelihood scorer, ...; EvaluatorBase::Stats()), `*Optimizer` by coefficient optimization (recorded by the run
-// in its OptimizerAccounting, from the per-fit FitOutcome diagnostics). Each pair is read from its own owner: nothing
-// is derived by subtracting one from the other. Budget consumption is `Consumed()`; calls, optimizer time and cache
-// counters never consume it. Calls is the number of evaluator operator() calls (candidate scorings) and
-// OptimizerTimeUs the wall time spent in the optimizer, summed over threads (not deterministic, and 0 for a fit
-// faster than the clock resolution). The cache counters are filled by GeneticAlgorithmBase::DetailedStats() when a
-// transposition cache is configured (nullopt means "no cache", not zero).
+// Evaluation counters of a run, split by who spent them. `Residual*`/`Jacobian*` are the units of the evaluation
+// budget (Consumed()): `*Scoring` comes from evaluator scoring (EvaluatorBase::Stats()), `*Optimizer` from coefficient
+// optimization (the run's OptimizerAccounting). Each pair is read from its own owner, never derived by subtraction.
+// Calls (candidate scorings), OptimizerTimeUs (wall time summed over threads, not deterministic) and the cache
+// counters (filled by DetailedStats(); nullopt means "no cache") never consume the budget.
 struct EvaluationStats {
     std::size_t Calls {};
     std::size_t ResidualScoring {};
@@ -62,14 +58,11 @@ struct OffspringProgress {
     size_t PoolSize { 0 }; // pool slots to fill
 };
 
-// Budget accounting of the last Run(), in the units of the evaluation budget (residual + Jacobian evaluations, see
-// EvaluationStats::Consumed()). Committed work is the initialization plus every committed generation; the budget
-// limits committed work only. Discarded work is what the generation attempts that were discarded spent (before the
-// workers noticed that they could not commit): it is informational and can depend on the thread count, like
-// Executed, which is everything counted since Run() started by the evaluator tree (scoring) and by the run's
-// OptimizerAccounting: committed and discarded work, and anything else that used the evaluator, e.g. a report
-// callback. Committed work does not depend on the thread count.
-// All values saturate instead of wrapping. Reset by Reset() and at the start of Run(); refreshed after
+// Budget accounting of the last Run(), in the units of the evaluation budget (see EvaluationStats::Consumed()).
+// Committed work (initialization plus every committed generation) is all the budget limits, and does not depend on the
+// thread count. Discarded work is what discarded generation attempts spent; Executed is everything counted since Run()
+// started, including evaluator work done by a report callback. Both are informational and can depend on the thread
+// count. Values saturate instead of wrapping. Reset by Reset() and at the start of Run(); refreshed after
 // initialization, after every committed generation and when Run() returns.
 struct BudgetAccounting {
     std::uint64_t Budget { 0 }; // GeneticAlgorithmConfig::Evaluations of the run
